@@ -19,6 +19,13 @@ describe('§12.4 rule processes', () => {
     expect(t.players[0].breakZone).toContain(f)
     expect(events).toContainEqual({ type: 'broken', card: f })
   })
+  it('§12.4.5: a forward with power below 1000 is not broken by damage', () => {
+    let s = makeGame({ defs: [...VANILLA_POOL, makeDef({ code: 'V-W', power: 500 })] }); let w: number
+    ;[s, w] = withField(s, 0, 'forwards', 'V-W', { damage: 9000 })
+    const [t, events] = runRuleProcesses(s)
+    expect(t.players[0].forwards.map((c) => c.id)).toEqual([w])
+    expect(events).toEqual([])
+  })
   it('§12.4.1: seven cards in the damage zone loses', () => {
     let s = makeGame()
     s = { ...s, players: [{ ...s.players[0], damageZone: s.players[0].deck.slice(0, 7), deck: s.players[0].deck.slice(7) }, s.players[1]] }

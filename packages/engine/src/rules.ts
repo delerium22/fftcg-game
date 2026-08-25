@@ -28,7 +28,7 @@ export function runRuleProcesses(state: GameState): [GameState, Event[]] {
       for (const c of s.players[p].forwards) {
         const power = powerOf(s, c)
         if (power <= 0) zero.push(c.id)
-        else if (c.damage >= power) broken.push(c.id)
+        else if (power >= 1000 && c.damage >= power) broken.push(c.id)
       }
     }
     const leaving = [...zero, ...broken]
