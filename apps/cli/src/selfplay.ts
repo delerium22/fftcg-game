@@ -22,6 +22,9 @@ export function selfPlay(opts: { games: number; seed: number; decks: [string[], 
         s = r.state
         const problems = checkInvariants(s)
         if (problems.length) throw new Error(`invariants violated after step ${i} (${cmd.type}): ${problems.join('; ')}`)
+        if (!s.result && !legalCommands(s, actingPlayer(s)!).some((c) => c.type !== 'concede')) {
+          throw new Error(`dead end after step ${i}: acting player has only concede in ${s.phase}/${s.attack?.step}/${s.pending?.kind}`)
+        }
         report.unimplementedAbilities += r.events.filter((e) => e.type === 'unimplementedAbility').length
       }
       if (!s.result) throw new Error(`no result after ${max} commands`)
