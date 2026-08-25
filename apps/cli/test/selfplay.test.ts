@@ -31,4 +31,10 @@ describe('self-play with the real Vol. 2 pool', () => {
     const r = selfPlay({ games: 5, seed: 700, decks: [deck, deck], defs: loadCards(), agents: [{ kind: 'greedy' }, { kind: 'greedy' }], strict: false })
     expect(r.failures).toEqual([]); expect(r.completed).toBe(5)
   }, 180_000)
+
+  it('W5: 5 greedy-vs-greedy games under strict (invariants/mutation/dead-end checks) complete without engine errors', () => {
+    const deck = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
+    const r = selfPlay({ games: 5, seed: 800, decks: [deck, deck], defs: loadCards(), agents: [{ kind: 'greedy' }, { kind: 'greedy' }], strict: true })
+    expect(r.failures).toEqual([]); expect(r.completed).toBe(5)
+  }, 180_000)
 })

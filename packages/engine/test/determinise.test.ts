@@ -7,7 +7,7 @@ import { viewFor } from '../src/view.js'
 import { determinise, SYNTHETIC_ID_BASE } from '../src/determinise.js'
 import { nextInt, seedRng } from '../src/rng.js'
 import type { GameState, PlayerId } from '../src/index.js'
-import { DEFAULT_DECK, VANILLA_POOL, makeGame } from './helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, deckOf, makeGame } from './helpers.js'
 
 const DECKS: [string[], string[]] = [DEFAULT_DECK, DEFAULT_DECK]
 
@@ -75,6 +75,21 @@ describe('determinise', () => {
     expect(s2).not.toBeNull()
     const [d2] = determinise({ view: viewFor(s2!, s2!.pending!.player), decks: DECKS, rng: seedRng(1) })
     expect(d2.attack).toEqual(s2!.attack); expect(checkInvariants(d2)).toEqual([])
+  })
+  it('W5: conserves each player\'s own deck list even when the two players declared different (rotated) compositions', () => {
+    // deckOf cycles the given codes to fill 50 slots (50 = 18*2 + 14), so a rotated code order changes WHICH 14
+    // codes get a 3rd copy — a genuinely different composition, not just a reordering — catching a determinise
+    // bug that indexed into the wrong player's deck list.
+    const codes = VANILLA_POOL.map((d) => d.code)
+    const decks: [string[], string[]] = [deckOf(codes), deckOf([...codes.slice(3), ...codes.slice(0, 3)])]
+    expect([...decks[0]].sort()).not.toEqual([...decks[1]].sort())
+    const s0 = createGame({ seed: 6, decks, defs: VANILLA_POOL })
+    for (const me of [0, 1] as const) {
+      const view = viewFor(s0, me)
+      const [det] = determinise({ view, decks, rng: seedRng(1) })
+      expect(checkInvariants(det)).toEqual([])
+      for (const p of [0, 1] as const) expect(codesOf(det, p)).toEqual([...decks[p]].sort())
+    }
   })
   it('throws when the deck lists do not match what is visible', () => {
     const view = viewFor(makeGame(), 0)

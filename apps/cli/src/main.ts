@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCards } from '@fftcg/cards'
 import type { AgentSpec } from './agents.js'
-import { parseAgentSpec } from './agents.js'
+import { parseAgentSpec, parseDepth } from './agents.js'
 import { parseDeckFile } from './deck.js'
 import { hotseat } from './hotseat.js'
 import { selfPlay } from './selfplay.js'
@@ -27,10 +27,16 @@ function withDefaultDepth(spec: AgentSpec, depth: 0 | 1 | 2): AgentSpec {
   return spec.kind === 'greedy' && spec.depth === undefined ? { kind: 'greedy', depth } : spec
 }
 
+const usage = 'usage: <hotseat|selfplay|deckorder> [--seed N] [--games N] [--deck path] [--p0 spec] [--p1 spec] [--depth N] [--fast]'
+
 if (cmd === 'hotseat') {
   await hotseat({ seed, decks: [deck, deck], defs })
 } else if (cmd === 'selfplay') {
-  const depth = Number(flag('depth', '1')) as 0 | 1 | 2
+  // C7: --depth gets the same 0-2 integer validation as greedy:N, instead of `Number(...)` silently coercing
+  // any garbage input (including NaN) into the 0|1|2 type.
+  let depth: 0 | 1 | 2
+  try { depth = parseDepth(flag('depth', '1')) }
+  catch { console.error(usage); process.exit(2) }
   const agents: [AgentSpec, AgentSpec] = [
     withDefaultDepth(parseAgentSpec(flag('p0', 'random')), depth),
     withDefaultDepth(parseAgentSpec(flag('p1', 'random')), depth),
@@ -42,6 +48,6 @@ if (cmd === 'hotseat') {
 } else if (cmd === 'deckorder') {
   console.log(deckOrder({ seed, decks: [deck, deck], defs }))
 } else {
-  console.error('usage: <hotseat|selfplay|deckorder> [--seed N] [--games N] [--deck path] [--p0 spec] [--p1 spec] [--depth N] [--fast]')
+  console.error(usage)
   process.exit(2)
 }

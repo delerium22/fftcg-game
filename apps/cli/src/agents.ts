@@ -2,12 +2,20 @@ import { GreedyAgent, RandomAgent, type Agent } from '@fftcg/ai'
 
 export type AgentSpec = { kind: 'random' } | { kind: 'greedy'; depth?: 0 | 1 | 2 }
 
+/** C7: parses a bare depth string ("0"|"1"|"2"); throws on anything else (including "3", negatives, decimals,
+ *  leading zeros/whitespace, or non-numeric input). Shared by parseAgentSpec's `greedy:N` suffix and main.ts's
+ *  `--depth` flag so both are validated identically. */
+export function parseDepth(s: string): 0 | 1 | 2 {
+  if (!/^[0-2]$/.test(s)) throw new Error(`invalid depth "${s}" (expected 0, 1, or 2)`)
+  return Number(s) as 0 | 1 | 2
+}
+
 /** Parses `random | greedy | greedy:0 | greedy:1 | greedy:2`; throws on anything else. */
 export function parseAgentSpec(s: string): AgentSpec {
   if (s === 'random') return { kind: 'random' }
   if (s === 'greedy') return { kind: 'greedy' }
-  const m = /^greedy:([0-2])$/.exec(s)
-  if (m) return { kind: 'greedy', depth: Number(m[1]) as 0 | 1 | 2 }
+  const m = /^greedy:(.+)$/.exec(s)
+  if (m) return { kind: 'greedy', depth: parseDepth(m[1] as string) }
   throw new Error(`unknown agent spec "${s}" (expected random | greedy | greedy:0 | greedy:1 | greedy:2)`)
 }
 
