@@ -154,6 +154,8 @@ Both greedy-vs-random seat orders cleared 160/200 (80 %) at depth 1 on the first
 
 All six seed-1 gate runs completed 200/200 games with zero failures. Both greedy-vs-random seat orders clear the ≥ 80 % A9 gate by a wide margin (98.5–100 %) at both depths; greedy-vs-greedy stays close to 50/50 (as expected — a symmetric weight set playing itself), and terminates well within the command cap. All `msPerDecision` figures are two orders of magnitude under the < 50 ms A8 budget.
 
+**Re-verified after the final fix wave (2026-08-26, `DEFAULT_WEIGHTS` unchanged, depth 1, same `--seed 1` gate)**: greedy(p0) vs random 199/1 (99.5 %); random vs greedy(p1) 3/197 (98.5 %, identical to the row above); greedy vs greedy 96/104. All 200/200 completed, 0 failures. Not a material change from the table above (still comfortably ≥ 160/200 in both asymmetric seats; the symmetric matchup stays close to 50/50) — the small per-game deltas are the expected effect of C1–C5's behavioural fixes (per-candidate budget, budget-exempt combat resolution, corrected `resolveCombat` perspective, bounded-backtracking payment, deduplicated attack pairs), not a regression.
+
 Commands used (repo root, `pnpm --filter @fftcg/cli selfplay`), e.g.:
 ```
 pnpm --filter @fftcg/cli selfplay --games 200 --seed 1000 --p0 greedy --p1 random --fast
