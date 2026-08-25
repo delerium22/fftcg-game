@@ -7,3 +7,4 @@ images/
 .claude/worktrees/
 .superpowers/
 .playwright-mcp/
+.claude/*.lock
