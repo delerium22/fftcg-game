@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { apply, attackCheck, defOf, legalCommands, type Command } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
 import { cardValue } from '../src/cardValue.js'
-import { makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
+import { VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 describe('candidateCommands', () => {
   it('collapses casts to one per card and never includes concede', () => {
@@ -30,14 +30,20 @@ describe('candidateCommands', () => {
     expect(cmd.cards).toHaveLength(1)
     expect(candidateCommands(s, 1)).toEqual([])
   })
-  it('F3: bounds attack candidates when more than 6 forwards are eligible, and every candidate is legal', () => {
-    let s = withHandSize(makeGame(), 0, 0)
-    for (let i = 0; i < 8; i++) [s] = withField(s, 0, 'forwards', 'V-F1')
+  it('F3/C5: bounds attack candidates when more than 6 forwards are eligible (singles + pairs + per-element parties), every candidate legal and deduplicated', () => {
+    const defs = [...VANILLA_POOL, makeDef({ code: 'V-DUAL', elements: ['earth', 'lightning'], cost: 1, power: 3000 })]
+    let s = withHandSize(makeGame({ defs }), 0, 0)
+    for (let i = 0; i < 8; i++) [s] = withField(s, 0, 'forwards', 'V-DUAL')
     s = apply(s, { type: 'pass', player: 0 }).state   // main1 -> attack declaration
     const c = candidateCommands(s, 0)
     const attacks = c.filter((x): x is Extract<Command, { type: 'declareAttack' }> => x.type === 'declareAttack')
-    expect(attacks.length).toBeLessThanOrEqual(8 + 1)   // 8 singles + 1 same-element (earth) party
+    // 8 singles + up to C(8,2)=28 pairs + 1 party per shared element (earth, lightning) = up to 8 + 28 + 2 = 38
+    expect(attacks.length).toBeLessThanOrEqual(8 + 28 + 2)
     for (const a of attacks) expect(attackCheck(s, 0, a.attackers)).toBeNull()
+    const signatures = attacks.map((a) => [...a.attackers].sort((x, y) => x - y).join(','))
+    expect(new Set(signatures).size).toBe(signatures.length)   // no duplicate attacker sets
+    expect(attacks.filter((a) => a.attackers.length === 2).length).toBeGreaterThan(0)   // pairs are present
+    expect(attacks.filter((a) => a.attackers.length === 1).length).toBe(8)   // every single is a candidate
     expect(c.some((x) => x.type === 'pass')).toBe(true)
   })
 })

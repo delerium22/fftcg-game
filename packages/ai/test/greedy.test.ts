@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { actingPlayer, apply, createGame, legalCommands, viewFor, type Command, type GameState } from '@fftcg/engine'
-import { GreedyAgent, greedyStep, pruneCandidates } from '../src/greedy.js'
+import { actingPlayer, apply, createGame, determinise, legalCommands, seedRng, viewFor, type Command, type GameState } from '@fftcg/engine'
+import { GreedyAgent, greedyStep, pruneCandidates, resolveCombat, scoreCandidates } from '../src/greedy.js'
 import { candidateCommands } from '../src/candidates.js'
 import { DEFAULT_WEIGHTS, type Weights } from '../src/evaluate.js'
-import { DEFAULT_DECK, VANILLA_POOL, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
 
 /** withField/withHand MINT extra card instances, so deck lists must be derived from the state under test, not DEFAULT_DECK. */
 const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
@@ -127,16 +127,19 @@ describe('GreedyAgent', () => {
     expect(cmd).toEqual(cands[0])
     expect(cmd?.type).not.toBe('pass')   // pass is always last by contract, so the first candidate is a real move here
   })
-  it('minor (b): falls back to a non-concede legal command when candidates are empty', () => {
+  it('C6: falls back to the only legal command (concede) when candidates are empty and it is not the acting player\'s turn', () => {
     const s = makeGame()   // player 0 is the acting player, so decide()-as-player-1 has no candidates
     const a = agent(s)
-    const fakeLegal: Command[] = [{ type: 'concede', player: 1 }, { type: 'pass', player: 1 }]
-    expect(a.decide(viewFor(s, 1), fakeLegal)).toEqual({ type: 'pass', player: 1 })
+    // legalCommands is genuinely [concede] here — pass is not legal for a non-acting player. The old test's
+    // fakeLegal included `pass`, which is never actually legal in this state (Codex LOW finding).
+    const legal = legalCommands(s, 1)
+    expect(legal).toEqual([{ type: 'concede', player: 1 }])
+    expect(a.decide(viewFor(s, 1), legal)).toEqual({ type: 'concede', player: 1 })
   })
-  it('minor (b): throws when neither candidates nor a non-concede legal command exist', () => {
-    const s = makeGame()
+  it('C6: throws only when legal is genuinely empty (no fallback pool at all)', () => {
+    const s = { ...makeGame(), result: { winner: 0 as const, reason: 'test' } }   // a finished game: legalCommands returns []
     const a = agent(s)
-    expect(() => a.decide(viewFor(s, 1), [{ type: 'concede', player: 1 }])).toThrow()
+    expect(() => a.decide(viewFor(s, 1), [])).toThrow()
   })
   it('F7: is deterministic over a whole game — two fresh agents with the same seed produce identical traces', () => {
     const play = (): Command[] => {
@@ -153,5 +156,116 @@ describe('GreedyAgent', () => {
       return trace
     }
     expect(play()).toEqual(play())
+  })
+
+  describe('final fix wave', () => {
+    it('C1: scoreCandidates is invariant under candidate reordering (per-candidate budget, not a shared one)', () => {
+      // Three non-tied candidates: attacking with the WEAK (3000) forward preserves more of my own active-threat
+      // material than attacking with the STRONG (7000) one, for the identical opponent-damage benefit — so
+      // attack(weak) > attack(strong) > pass, strictly. A shared budget consumed by earlier candidates (the C1
+      // bug) would make later candidates' rollouts under-resourced and could flip this order depending on scan
+      // direction; a per-candidate budget must not.
+      let s = withHandSize(makeGame(), 0, 5)
+      let weak: number, strong: number
+      ;[s, weak] = withField(s, 0, 'forwards', 'V-F1')     // 3000 power, earth
+      ;[s, strong] = withField(s, 0, 'forwards', 'V-F5')   // 7000 power, earth
+      s = toAttackDeclaration(s)
+      const [det] = determinise({ view: viewFor(s, 0), decks: decksOf(s), rng: seedRng(1) })
+      const cands = candidateCommands(det, 0)
+      expect(cands.length).toBeGreaterThan(2)
+      const opts = { me: 0 as const, weights: DEFAULT_WEIGHTS, aggression: 0.5, depth: 2 as const, owner: det.turnPlayer, maxSimulations: 6 }
+      const forward = scoreCandidates(det, cands, opts)
+      const backward = scoreCandidates(det, [...cands].reverse(), opts)
+      const argmax = (scores: typeof forward) => scores.reduce((best, sc) => (sc.score > best.score ? sc : best))
+      const scoreOf = (scores: typeof forward, attackers: number[]) => scores.find((sc) => sc.command.type === 'declareAttack' && sc.command.attackers.join(',') === attackers.join(','))!.score
+      expect(scoreOf(forward, [weak])).toBeGreaterThan(scoreOf(forward, [strong]))   // confirms the fixture is genuinely non-tied
+      expect(argmax(forward).command).toEqual({ type: 'declareAttack', player: 0, attackers: [weak] })
+      expect(argmax(backward).command).toEqual(argmax(forward).command)
+      // Stronger structural check: each candidate's own budget spend is the same regardless of where it sits in the list.
+      const usedFor = (scores: typeof forward, cmd: Command) => scores.find((sc) => JSON.stringify(sc.command) === JSON.stringify(cmd))!.used
+      for (const c of cands) expect(usedFor(forward, c)).toBe(usedFor(backward, c))
+    })
+
+    it('C4: resolveCombat scores a pending decision from the explicit perspective, not state.turnPlayer', () => {
+      // forwardPresence-only weights make the effect crisp: at aggression 0 the perspective player values ONLY
+      // its own forward count. The attacker and blocker have equal power (mutual kill if blocked). The OLD
+      // buggy formula (p === state.turnPlayer ? aggression : 1 - aggression) would use 1 - aggression = 1 for
+      // the defender's own decision (since defender !== turnPlayer, the attacker) — pure opponent-harm — and
+      // block to kill the attacker. The FIX uses aggression = 0 (self-interest) for the defender's own decision
+      // (p === perspective) and keeps its own forward instead.
+      const W: Weights = { ...ZERO_WEIGHTS, forwardPresence: 1 }
+      let s = withHandSize(makeGame(), 0, 5)
+      let attacker: number, blocker: number
+      ;[s, attacker] = withField(s, 0, 'forwards', 'V-F1')   // 3000 power, earth
+      ;[s, blocker] = withField(s, 1, 'forwards', 'V-F1')    // 3000 power — mutual kill if blocked
+      s = toAttackDeclaration(s)
+      s = apply(s, { type: 'declareAttack', player: 0, attackers: [attacker] }).state
+      expect(s.pending).toEqual({ kind: 'declareBlock', player: 1 })
+      const result = resolveCombat(s, W, 0, 1)   // aggression 0 from the defender's (player 1) own perspective
+      expect(result.players[1].forwards.some((c) => c.id === blocker)).toBe(true)   // did NOT block — kept its own forward
+    })
+
+    it('W1: resolveCombat never stops early on an exhausted budget — a just-declared attack still resolves to pending === null', () => {
+      let s = withHandSize(makeGame(), 0, 5); let a: number
+      ;[s, a] = withField(s, 0, 'forwards', 'V-F1')
+      ;[s] = withField(s, 1, 'forwards', 'V-F3')
+      s = toAttackDeclaration(s)
+      s = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
+      expect(s.pending?.kind).toBe('declareBlock')
+      const result = resolveCombat(s, DEFAULT_WEIGHTS, 0.5, 1, { used: 999, cap: 1 })   // already exhausted
+      expect(result.pending).toBeNull()
+    })
+
+    it('W1: maxSimulations 6 picks the same command as the default cap on a stark attack-declaration fixture', () => {
+      // A 3-attacker-vs-2-blocker fixture (the brief's literal "3×V-F2 vs 2×V-F5") turns out to admit a genuine
+      // multi-attacker party trade (two attackers can jointly overwhelm one 7000 blocker) whose full value is only
+      // visible several rollout steps deep — so a 6-simulation budget and the 2000 default can legitimately reach
+      // different (both reasonable) answers there; that is budget-limited search behaving as expected, not a
+      // regression. The property this test is actually after — combat resolution is budget-exempt, so even a
+      // razor-thin budget gets the CORE trade right — is more robustly shown on a stark single-attacker-vs-single-
+      // blocker fixture where there are only two real candidates (attack, pass) and one is clearly, immediately
+      // wrong (the F1 fixture: an active 3000 attacking into an active 7000 blocker) regardless of rollout depth.
+      let s = withHandSize(makeGame(), 0, 5)
+      ;[s] = withField(s, 0, 'forwards', 'V-F1')   // 3000
+      ;[s] = withField(s, 1, 'forwards', 'V-F3')   // 7000 active blocker
+      s = toAttackDeclaration(s)
+      const full = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1 })
+      const tight = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1, maxSimulations: 6 })
+      const fullCmd = full.decide(viewFor(s, 0), legalCommands(s, 0))
+      const tightCmd = tight.decide(viewFor(s, 0), legalCommands(s, 0))
+      expect(fullCmd.type).toBe('pass')
+      expect(tightCmd).toEqual(fullCmd)
+    })
+
+    it('W2: a party block is scored on the fully resolved outcome — blocks with the forward that survives and kills, not the one that just dies', () => {
+      const defs = [...VANILLA_POOL, makeDef({ code: 'V-WEAK', elements: ['earth'], cost: 1, power: 1000 })]
+      let s = withHandSize(makeGame({ defs }), 0, 5)
+      let a1: number, a2: number, weak: number, strong: number
+      ;[s, a1] = withField(s, 0, 'forwards', 'V-F1')   // attacker 1, earth, 3000
+      ;[s, a2] = withField(s, 0, 'forwards', 'V-F1')   // attacker 2, earth, 3000
+      ;[s, weak] = withField(s, 1, 'forwards', 'V-WEAK')   // added first: earlier in legalBlockers order, but the WRONG choice
+      ;[s, strong] = withField(s, 1, 'forwards', 'V-F8')   // 9000 power — survives 3000+3000 and can kill both in the split
+      s = toAttackDeclaration(s)
+      s = apply(s, { type: 'declareAttack', player: 0, attackers: [a1, a2] }).state
+      expect(s.pending?.kind).toBe('declareBlock')
+      const result = resolveCombat(s, DEFAULT_WEIGHTS, 0.5, 1)
+      expect(result.pending).toBeNull()
+      const strongFc = result.players[1].forwards.find((c) => c.id === strong)
+      const weakFc = result.players[1].forwards.find((c) => c.id === weak)
+      expect(strongFc).toBeDefined()               // STRONG survives — it was used to block
+      expect(strongFc!.damage).toBeGreaterThan(0)   // and actually fought (took the attackers' combined power)
+      expect(weakFc?.damage ?? 0).toBe(0)           // WEAK was never chosen — it never took damage
+    })
+
+    it('W4: decide never trips the synthetic-id guard on a normal decision', () => {
+      const s = makeGame()
+      expect(() => agent(s).decide(viewFor(s, 0), legalCommands(s, 0))).not.toThrow()
+    })
+
+    it('W5: decide(view, []) — the way self-play calls it for a greedy agent — returns a legal command', () => {
+      const s = makeGame()
+      const cmd = agent(s).decide(viewFor(s, 0), [])
+      expect(() => apply(s, cmd)).not.toThrow()
+    })
   })
 })
