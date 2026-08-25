@@ -3,6 +3,12 @@ import { stdin, stdout } from 'node:process'
 import { actingPlayer, apply, createGame, legalCommands, viewFor, type CardDef, type Event } from '@fftcg/engine'
 import { describeCommand, renderView } from './render.js'
 
+export interface HotseatIo {
+  ask(prompt: string): Promise<string>
+  print(line: string): void
+  clear(): void
+}
+
 function describeEvent(e: Event): string | null {
   switch (e.type) {
     case 'unimplementedAbility': return `  ! ${e.code} has abilities that are not implemented yet (played as vanilla)`
@@ -15,39 +21,41 @@ function describeEvent(e: Event): string | null {
   }
 }
 
-export async function hotseat(opts: { seed: number; decks: [string[], string[]]; defs: CardDef[] }): Promise<void> {
-  const rl = createInterface({ input: stdin, output: stdout })
+export async function hotseat(opts: { seed: number; decks: [string[], string[]]; defs: CardDef[] }, io?: HotseatIo): Promise<void> {
+  const rl = io ? null : createInterface({ input: stdin, output: stdout })
+  const realIo: HotseatIo = { ask: (p) => rl!.question(p), print: (l) => console.log(l), clear: () => console.clear() }
+  const term = io ?? realIo
   let s = createGame(opts)
   let lastPlayer: number | null = null
   while (!s.result) {
     const p = actingPlayer(s)!
     if (p !== lastPlayer) {
       // pass-device barrier: never leave the previous player's hand on screen
-      if (lastPlayer !== null) { console.clear(); await rl.question(`Pass the device to P${p} and press Enter... `) }
-      console.clear()
+      if (lastPlayer !== null) { term.clear(); await term.ask(`Pass the device to P${p} and press Enter... `) }
+      term.clear()
       lastPlayer = p
     }
     const view = viewFor(s, p)
     const legal = legalCommands(s, p)
     const nonConcede = legal.filter((c) => c.type !== 'concede')
-    console.log('\n' + renderView(view))
+    term.print('\n' + renderView(view))
     let choice
     if (nonConcede.length === 1 && nonConcede[0]?.type === 'pass') {
-      choice = nonConcede[0]; console.log('(auto-pass: nothing else to do)')
+      choice = nonConcede[0]; term.print('(auto-pass: nothing else to do)')
     } else {
-      legal.forEach((c, i) => console.log(`  ${i}: ${describeCommand(view, c)}`))
+      legal.forEach((c, i) => term.print(`  ${i}: ${describeCommand(view, c)}`))
       for (;;) {
-        const answer = await rl.question(`P${p}> `)
+        const answer = await term.ask(`P${p}> `)
         const i = Number(answer)
         if (Number.isInteger(i) && legal[i]) { choice = legal[i]; break }
-        console.log('enter a number from the list')
+        term.print('enter a number from the list')
       }
     }
     const r = apply(s, choice!)
     s = r.state
-    for (const e of r.events) { const line = describeEvent(e); if (line) console.log(line) }
+    for (const e of r.events) { const line = describeEvent(e); if (line) term.print(line) }
   }
-  console.clear()
-  console.log(renderView(viewFor(s, 0)))
-  rl.close()
+  term.clear()
+  term.print(renderView(viewFor(s, 0)))
+  rl?.close()
 }
