@@ -53,6 +53,7 @@ describe('castCheck', () => {
     expect(castCheck({ ...s, phase: 'attack' }, 0, f)).toMatch(/main phase/i)
     expect(castCheck({ ...s, priority: 1 }, 0, f)).toMatch(/priority/i)
     expect(castCheck(s, 1, f)).toMatch(/hand/i)
+    expect(castCheck({ ...s, pending: { kind: 'mulligan', player: 0 } }, 0, f)).toMatch(/pending/i)
   })
   it('§7.7.4: no 6th backup', () => {
     let { s } = ready(); let b: number
