@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apply, defOf, legalCommands, type Command } from '@fftcg/engine'
+import { apply, attackCheck, defOf, legalCommands, type Command } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
 import { cardValue } from '../src/cardValue.js'
 import { makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
@@ -29,5 +29,15 @@ describe('candidateCommands', () => {
     expect(cmd.cards).toEqual(byValue.slice(0, pending?.kind === 'discardToHandSize' ? pending.count : 0))
     expect(cmd.cards).toHaveLength(1)
     expect(candidateCommands(s, 1)).toEqual([])
+  })
+  it('F3: bounds attack candidates when more than 6 forwards are eligible, and every candidate is legal', () => {
+    let s = withHandSize(makeGame(), 0, 0)
+    for (let i = 0; i < 8; i++) [s] = withField(s, 0, 'forwards', 'V-F1')
+    s = apply(s, { type: 'pass', player: 0 }).state   // main1 -> attack declaration
+    const c = candidateCommands(s, 0)
+    const attacks = c.filter((x): x is Extract<Command, { type: 'declareAttack' }> => x.type === 'declareAttack')
+    expect(attacks.length).toBeLessThanOrEqual(8 + 1)   // 8 singles + 1 same-element (earth) party
+    for (const a of attacks) expect(attackCheck(s, 0, a.attackers)).toBeNull()
+    expect(c.some((x) => x.type === 'pass')).toBe(true)
   })
 })

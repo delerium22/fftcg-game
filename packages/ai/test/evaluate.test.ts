@@ -8,11 +8,11 @@ describe('evaluate', () => {
     ;[s] = withField(s, 0, 'forwards', 'V-F3'); [s] = withField(s, 1, 'backups', 'V-B1')
     expect(evaluate(s, 0) + evaluate(s, 1)).toBeCloseTo(0, 6)
   })
-  it('values a better hand (handQuality)', () => {
-    let s = withHandSize(makeGame(), 0, 0)
-    const base = evaluate(s, 0)
-    ;[s] = withHand(s, 0, 'V-F8')
-    expect(evaluate(s, 0)).toBeGreaterThan(base)
+  it('values a better hand (handQuality) between two equal-size hands', () => {
+    let sLow = withHandSize(makeGame(), 0, 0); let sHigh = withHandSize(makeGame(), 0, 0)
+    ;[sLow] = withHand(sLow, 0, 'V-F1')    // cheap, low-value forward
+    ;[sHigh] = withHand(sHigh, 0, 'V-F8')  // expensive, high-value forward
+    expect(evaluate(sHigh, 0)).toBeGreaterThan(evaluate(sLow, 0))
   })
   it('more own damage is worse; more own board is better; dull forwards count less', () => {
     let s = makeGame(); let f: number
@@ -35,5 +35,22 @@ describe('evaluate', () => {
     const mineOnly = evaluate(s, 0, DEFAULT_WEIGHTS, 0)
     const oppOnly = evaluate(s, 0, DEFAULT_WEIGHTS, 1)
     expect(mineOnly).toBeGreaterThan(0); expect(oppOnly).toBeLessThan(0)
+  })
+  it('F6: aggression 0 is exactly invariant when only the opponent\'s board changes', () => {
+    let s = makeGame()
+    const before = evaluate(s, 0, DEFAULT_WEIGHTS, 0)
+    ;[s] = withField(s, 1, 'forwards', 'V-F3')
+    expect(evaluate(s, 0, DEFAULT_WEIGHTS, 0)).toBe(before)
+  })
+  it('F6: aggression 1 is exactly invariant when only my own board changes', () => {
+    let s = makeGame()
+    const before = evaluate(s, 0, DEFAULT_WEIGHTS, 1)
+    ;[s] = withField(s, 0, 'forwards', 'V-F3')
+    expect(evaluate(s, 0, DEFAULT_WEIGHTS, 1)).toBe(before)
+  })
+  it('F6: throws a RangeError when aggression is outside [0, 1]', () => {
+    const s = makeGame()
+    expect(() => evaluate(s, 0, DEFAULT_WEIGHTS, -0.001)).toThrow(RangeError)
+    expect(() => evaluate(s, 0, DEFAULT_WEIGHTS, 1.001)).toThrow(RangeError)
   })
 })

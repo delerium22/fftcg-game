@@ -49,8 +49,7 @@ describe('determinise', () => {
       }
       const opp = me === 0 ? 1 : 0
       for (const id of [...det.players[opp].hand, ...det.players[0].deck, ...det.players[1].deck]) expect(id).toBeGreaterThanOrEqual(SYNTHETIC_ID_BASE)
-      expect(viewFor(det, me).fields).toEqual(view.fields)
-      expect({ ...viewFor(det, me), cards: null }).toEqual({ ...view, cards: null })
+      expect(viewFor(det, me)).toEqual(view)   // F7: full equality, including visible card metadata — not just fields
     }
   })
   it('is deterministic per rng and differs across rngs', () => {
@@ -80,5 +79,28 @@ describe('determinise', () => {
   it('throws when the deck lists do not match what is visible', () => {
     const view = viewFor(makeGame(), 0)
     expect(() => determinise({ view, decks: [DEFAULT_DECK.slice(0, 49), DEFAULT_DECK], rng: seedRng(1) })).toThrow(/deck list/)
+  })
+  it('F8: throws when a deck list contains a code with no definition in view.defs', () => {
+    const view = viewFor(makeGame(), 0)
+    const badDeck = [...DEFAULT_DECK.slice(0, 49), 'NOT-A-REAL-CODE']
+    expect(() => determinise({ view, decks: [badDeck, DEFAULT_DECK], rng: seedRng(1) })).toThrow(/deck list/)
+  })
+  it('F8: synthetic ids start above the highest visible id, even when one is already >= SYNTHETIC_ID_BASE', () => {
+    const s0 = makeGame()
+    const oldId = s0.players[0].hand[0]!
+    const highId = SYNTHETIC_ID_BASE + 5
+    const inst = s0.cards[oldId]!
+    const cards = { ...s0.cards }
+    delete cards[oldId]
+    cards[highId] = { ...inst, id: highId }
+    const players = [s0.players[0], s0.players[1]] as typeof s0.players
+    players[0] = { ...players[0], hand: players[0].hand.map((id) => (id === oldId ? highId : id)) }
+    const s: GameState = { ...s0, cards, players }
+    const view = viewFor(s, 0)
+    const [det] = determinise({ view, decks: DECKS, rng: seedRng(1) })
+    expect(checkInvariants(det)).toEqual([])
+    const mintedIds = [...det.players[1].hand, ...det.players[0].deck, ...det.players[1].deck]
+    expect(mintedIds.length).toBeGreaterThan(0)
+    expect(mintedIds.every((id) => id > highId)).toBe(true)
   })
 })

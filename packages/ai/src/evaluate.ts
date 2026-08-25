@@ -30,8 +30,10 @@ export const DEFAULT_WEIGHTS: Weights = {
 function material(state: GameState, p: PlayerId, w: Weights): number {
   const ps = state.players[p]
   let v = (DAMAGE_TO_LOSE - ps.damageZone.length) * w.damage
-  for (const c of ps.forwards)
+  for (const c of ps.forwards) {
     v += (powerOf(state, c) / 1000) * w.forwardPower * (c.status === 'dull' ? w.dullFactor : 1) + w.forwardPresence
+    if (c.status === 'active') v += (powerOf(state, c) / 1000) * w.threat   // active-power tempo: this side's own attack-ready threat
+  }
   v += Math.min(ps.backups.length, MAX_BACKUPS) * w.backup
   v += Math.min(ps.hand.length, HAND_SIZE_LIMIT) * w.hand + Math.max(0, ps.hand.length - HAND_SIZE_LIMIT) * w.hand * 0.25
   for (const id of ps.hand) v += cardValue(defOf(state, id)) * w.handQuality
@@ -39,15 +41,11 @@ function material(state: GameState, p: PlayerId, w: Weights): number {
   return v
 }
 
-function activePower(state: GameState, p: PlayerId): number {
-  return state.players[p].forwards.filter((c) => c.status === 'active').reduce((n, c) => n + powerOf(state, c) / 1000, 0)
-}
-
 export function evaluate(state: GameState, me: PlayerId, weights: Weights = DEFAULT_WEIGHTS, aggression = 0.5): number {
+  if (aggression < 0 || aggression > 1) throw new RangeError(`aggression must be within [0, 1], got ${aggression}`)
   const opp = opponentOf(me)
   if (state.result) return state.result.winner === me ? weights.terminal : state.result.winner === opp ? -weights.terminal : 0
-  const threat = (activePower(state, me) - activePower(state, opp)) * weights.threat // antisymmetric
-  const mine = (material(state, me, weights) + threat) * 2 * (1 - aggression)
-  const theirs = (material(state, opp, weights) - threat) * 2 * aggression
+  const mine = material(state, me, weights) * 2 * (1 - aggression)
+  const theirs = material(state, opp, weights) * 2 * aggression
   return mine - theirs
 }

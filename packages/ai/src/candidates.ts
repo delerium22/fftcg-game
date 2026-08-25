@@ -1,6 +1,28 @@
-import { actingPlayer, castCheck, defOf, legalAttackSets, legalBlockers, legalPartyDamageAssignments, type Command, type GameState, type PlayerId } from '@fftcg/engine'
+import { actingPlayer, attackCheck, castCheck, defOf, legalAttackSets, legalBlockers, legalPartyDamageAssignments, type CardId, type Command, type GameState, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { preferredPayment } from './payment.js'
+
+const ATTACK_SET_EXPLOSION_THRESHOLD = 6
+
+/**
+ * `legalAttackSets` enumerates every subset of eligible attackers (2^n), which is fine for a handful of forwards
+ * but explodes well before a 50-card deck's forward count is even reachable in practice. Above the threshold, fall
+ * back to a bounded set of candidates: every single attacker, plus — per element — the full party of every
+ * eligible forward sharing that element (deduplicated), which covers "attack with everything of one element" and
+ * "attack with just this one" without ever enumerating all 2^n combinations.
+ */
+function boundedAttackSets(state: GameState, player: PlayerId): CardId[][] {
+  const eligible = state.players[player].forwards.map((c) => c.id).filter((id) => attackCheck(state, player, [id]) === null)
+  if (eligible.length <= ATTACK_SET_EXPLOSION_THRESHOLD) return legalAttackSets(state, player)
+  const out: CardId[][] = eligible.map((id) => [id])
+  const byElement = new Map<string, CardId[]>()
+  for (const id of eligible) for (const e of defOf(state, id).elements) byElement.set(e, [...(byElement.get(e) ?? []), id])
+  for (const ids of byElement.values()) {
+    if (ids.length < 2) continue
+    if (attackCheck(state, player, ids) === null) out.push(ids)
+  }
+  return out
+}
 
 export function candidateCommands(state: GameState, player: PlayerId): Command[] {
   if (state.result || actingPlayer(state) !== player) return []
@@ -27,7 +49,7 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
     }
     out.push({ type: 'pass', player })
   } else if (state.phase === 'attack' && state.attack?.step === 'declaration') {
-    for (const attackers of legalAttackSets(state, player)) out.push({ type: 'declareAttack', player, attackers })
+    for (const attackers of boundedAttackSets(state, player)) out.push({ type: 'declareAttack', player, attackers })
     out.push({ type: 'pass', player })
   }
   return out

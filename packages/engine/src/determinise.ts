@@ -4,6 +4,12 @@ import type { PlayerView } from './view.js'
 import { shuffle, type Rng } from './rng.js'
 
 export const SYNTHETIC_ID_BASE = 100_000
+/**
+ * `decks` must be the players' complete, publicly declared 50-card lists — the game-mode assumption that both
+ * decks are open/fixed information (e.g. a fixed starter matchup), not a general rules guarantee. Callers must
+ * supply only declared lists here, never lists reconstructed from hidden `GameState` (that would leak information
+ * a real opponent would not have revealed).
+ */
 export interface DeterminiseOptions { view: PlayerView; decks: [string[], string[]]; rng: Rng }
 
 function removeVisible(multiset: string[], codes: string[], p: PlayerId): string[] {
@@ -19,7 +25,11 @@ function removeVisible(multiset: string[], codes: string[], p: PlayerId): string
 /** Rebuild a full GameState consistent with `view`: visible cards keep their ids; the opponent's hand and both decks are sampled from each player's unseen deck-list multiset. Returns the state and the advanced rng. */
 export function determinise({ view, decks, rng }: DeterminiseOptions): [GameState, Rng] {
   const cards: Record<CardId, CardInstance> = { ...view.cards }
-  let nextId = SYNTHETIC_ID_BASE
+  for (const p of [0, 1] as const) {
+    for (const code of decks[p]) if (!view.defs[code]) throw new Error(`deck list for player ${p} contains code ${code} which has no definition in view.defs`)
+  }
+  const maxVisibleId = Object.keys(cards).reduce((m, id) => Math.max(m, Number(id)), 0)
+  let nextId = Math.max(SYNTHETIC_ID_BASE, maxVisibleId + 1)
   let r = rng
   const players: PlayerState[] = []
   for (const p of [0, 1] as const) {

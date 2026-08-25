@@ -15,19 +15,27 @@ export function preferredPayment(state: GameState, player: PlayerId, card: CardI
     if (d.elements.includes('light') || d.elements.includes('dark')) continue
     sources.push({ kind: 'discard', id, elements: d.elements, cp: 2, cost: 2 + cardValue(d) })
   }
-  sources.sort((a, b) => a.cost - b.cost)
   const chosen = new Set<Source>()
   const declared = new Map<CardId, Element>()
   let total = 0
   const take = (s: Source, element: Element) => { chosen.add(s); total += s.cp; if (s.kind === 'discard') declared.set(s.id, element) }
   const provides = (s: Source, e: Element) => (s.kind === 'backup' ? s.elements[0] === e : declared.get(s.id) === e)
-  for (const e of def.elements) {                       // §11.2.2.1: at least one CP of each required element
+  const canSupply = (s: Source, e: Element) => (s.kind === 'backup' ? s.elements[0] === e : s.elements.includes(e))   // backups produce elements[0] only (cp.ts)
+  // §11.2.2.1: at least one CP of each required element. Greedily grabbing the cheapest source per element (in
+  // declaration order) can spend a scarce dual-element source on an element a plentiful source could have covered,
+  // then find nothing left for the element only that scarce source could pay. Process the scarcest elements first
+  // (fewest matching sources), and among equal-cost sources for an element prefer the least flexible one (fewest
+  // elements) so a more flexible source is kept in reserve for whatever comes next.
+  const scarcity = new Map(def.elements.map((e) => [e, sources.filter((s) => canSupply(s, e)).length]))
+  const requiredOrder = [...def.elements].sort((a, b) => (scarcity.get(a) as number) - (scarcity.get(b) as number))
+  for (const e of requiredOrder) {
     if ([...chosen].some((s) => provides(s, e))) continue
-    const s = sources.find((x) => !chosen.has(x) && (x.kind === 'backup' ? x.elements[0] === e : x.elements.includes(e)))   // backups produce elements[0] only (cp.ts)
+    const candidates = sources.filter((s) => !chosen.has(s) && canSupply(s, e)).sort((a, b) => a.cost - b.cost || a.elements.length - b.elements.length)
+    const s = candidates[0]
     if (!s) return null
     take(s, e)
   }
-  for (const s of sources) { if (total >= def.cost) break; if (!chosen.has(s)) take(s, s.elements[0] as Element) }
+  for (const s of [...sources].sort((a, b) => a.cost - b.cost)) { if (total >= def.cost) break; if (!chosen.has(s)) take(s, s.elements[0] as Element) }
   if (total < def.cost) return null
   const payment: Payment = {
     dullBackups: [...chosen].filter((s) => s.kind === 'backup').map((s) => s.id),
