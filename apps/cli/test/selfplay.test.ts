@@ -22,6 +22,8 @@ describe('self-play with the real Vol. 2 pool', () => {
     expect(a.failures).toEqual([]); expect(b.failures).toEqual([])
     expect(a.wins[0] + b.wins[1]).toBeGreaterThanOrEqual(21)          // ≥ 70 % of 30
     expect(Math.max(a.msPerDecision[0], b.msPerDecision[1])).toBeLessThan(80)   // spec A8 says < 50 ms average; 80 leaves CI headroom — the CLI run reports the real figure
+    expect(a.decisions[0]).toBeGreaterThan(0); expect(b.decisions[1]).toBeGreaterThan(0)
+    expect(a.msPerDecision[0]).toBeGreaterThan(0); expect(b.msPerDecision[1]).toBeGreaterThan(0)   // guards against a broken timer/counter passing vacuously
   }, 180_000)
 
   it('greedy vs greedy terminates', () => {
