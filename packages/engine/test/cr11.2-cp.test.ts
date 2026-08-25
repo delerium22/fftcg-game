@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { canPay, enumeratePayments, generateCp, pay } from '../src/cp.js'
+import { canPay, enumeratePayments, generateCp, pay, requiredElements } from '../src/cp.js'
+import { applyCastCharacter } from '../src/cast.js'
 import { IllegalCommandError } from '../src/errors.js'
-import { makeGame, withField, withHand } from './helpers.js'
+import { VANILLA_POOL, makeDef, makeGame, withField, withHand } from './helpers.js'
 
 function setup() {
   let s = makeGame()
@@ -73,6 +74,31 @@ describe('enumeratePayments', () => {
     s = { ...s, players: [{ ...s.players[0], hand: [] }, s.players[1]] }
     ;[s, t] = withHand(s, 0, 'V-F3')   // cost 3, nothing else in hand, no backups
     expect(enumeratePayments(s, 0, t)).toEqual([])
+  })
+})
+
+describe('C3: requiredElements — §11.2.1.1/§11.2.2 Light/Dark same-element exemption', () => {
+  it('is [] for a pure Light or pure Dark card, unchanged elements otherwise', () => {
+    expect(requiredElements(makeDef({ code: 'V-L1', elements: ['light'], cost: 2, power: 5000 }))).toEqual([])
+    expect(requiredElements(makeDef({ code: 'V-D1', elements: ['dark'], cost: 2, power: 5000 }))).toEqual([])
+    expect(requiredElements(makeDef({ code: 'V-E1', elements: ['earth'], cost: 2, power: 5000 }))).toEqual(['earth'])
+    expect(requiredElements(makeDef({ code: 'V-EL1', elements: ['earth', 'lightning'], cost: 2, power: 5000 }))).toEqual(['earth', 'lightning'])
+  })
+  it('a cost-2 Light forward is castable with two off-element (earth) backups', () => {
+    const defs = [...VANILLA_POOL, makeDef({ code: 'V-L1', elements: ['light'], cost: 2, power: 5000 })]
+    let s = makeGame({ defs }); let b1: number, b2: number, card: number
+    ;[s, b1] = withField(s, 0, 'backups', 'V-B1')   // earth
+    ;[s, b2] = withField(s, 0, 'backups', 'V-B3')   // earth
+    ;[s, card] = withHand(s, 0, 'V-L1')
+    const [t] = applyCastCharacter(s, 0, card, { dullBackups: [b1, b2], discards: [] })
+    expect(t.players[0].forwards.some((c) => c.id === card)).toBe(true)
+  })
+  it('Light/Dark cards still cannot be discarded for CP (§11.2.1.1) even though they need no same-element CP', () => {
+    const defs = [...VANILLA_POOL, makeDef({ code: 'V-L1', elements: ['light'], cost: 2, power: 5000 })]
+    let s = makeGame({ defs }); let light: number, target: number
+    ;[s, light] = withHand(s, 0, 'V-L1')
+    ;[s, target] = withHand(s, 0, 'V-F2')   // earth cost 2
+    expect(() => generateCp(s, 0, { dullBackups: [], discards: [{ card: light, element: 'earth' }] }, target)).toThrow(IllegalCommandError)
   })
 })
 

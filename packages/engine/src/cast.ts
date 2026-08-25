@@ -4,7 +4,7 @@ import { MAX_BACKUPS, defOf, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
-import { canPay, generateCp, pay } from './cp.js'
+import { canPay, generateCp, pay, requiredElements } from './cp.js'
 
 export function castCheck(state: GameState, player: PlayerId, card: CardId): string | null {
   if (state.result) return 'game is over'
@@ -31,7 +31,7 @@ export function castCheck(state: GameState, player: PlayerId, card: CardId): str
 function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
   const def = defOf(state, card)
   const cp = generateCp(state, player, payment, card)
-  if (!canPay(def.cost, def.elements, cp)) throw new IllegalCommandError(`payment does not cover cost ${def.cost} ${def.elements.join('/')}`)
+  if (!canPay(def.cost, requiredElements(def), cp)) throw new IllegalCommandError(`payment does not cover cost ${def.cost} ${def.elements.join('/')}`)
   return pay(state, player, payment)
 }
 

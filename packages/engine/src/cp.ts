@@ -1,9 +1,18 @@
-import type { Element, PlayerId } from './types.js'
+import type { CardDef, Element, PlayerId } from './types.js'
 import type { CardId, GameState } from './state.js'
 import { defOf, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
+
+/** §11.2.1.1/§11.2.2: a pure Light or pure Dark card needs no CP of its own element — its cost may be paid entirely
+ *  with off-element CP. Every other card (including a Light/Dark card combined with another element, none in the
+ *  MVP0 pool) still requires ≥1 CP of each of its listed elements. Callers pass this — not `def.elements` directly
+ *  — to `canPay` and to `preferredPayment`'s required-element phase. */
+export function requiredElements(def: CardDef): Element[] {
+  if (def.elements.length === 1 && (def.elements[0] === 'light' || def.elements[0] === 'dark')) return []
+  return def.elements
+}
 
 export interface GeneratedCp { element: Element; source: CardId }
 
@@ -38,7 +47,7 @@ export function generateCp(state: GameState, player: PlayerId, payment: Payment,
 export function canPay(cost: number, elements: Element[], cp: GeneratedCp[]): boolean {
   if (cost === 0) return cp.length === 0   // §11.2.2.4 / §11.2.2.1 last sentence
   if (cp.length < cost) return false
-  // MVP0-SIMPLIFICATION: §11.2.2 Light/Dark same-element exemption not implemented (pool has none)
+  // `elements` is expected to already be `requiredElements(def)` (Light/Dark exemption applied by the caller).
   return elements.every((e) => cp.some((c) => c.element === e))   // §11.2.2.1–2
 }
 
@@ -46,6 +55,7 @@ export function canPay(cost: number, elements: Element[], cp: GeneratedCp[]): bo
 export function enumeratePayments(state: GameState, player: PlayerId, card: CardId): Payment[] {
   const def = defOf(state, card)
   if (def.cost === 0) return [{ dullBackups: [], discards: [] }]
+  const elements = requiredElements(def)
   const ps = state.players[player]
   const backups = ps.backups.filter((b) => b.status === 'active').map((b) => b.id)
   const discardOptions = ps.hand
@@ -65,15 +75,15 @@ export function enumeratePayments(state: GameState, player: PlayerId, card: Card
       const dullBackups = backups.filter((_, k) => backupMask & (1 << k))
       const payment = { dullBackups, discards }
       const cp = generateCp(state, player, payment, card)
-      if (!canPay(def.cost, def.elements, cp)) return
+      if (!canPay(def.cost, elements, cp)) return
       // minimality: removing any single source must break payment
       for (let k = 0; k < dullBackups.length; k++) {
         const less = { ...payment, dullBackups: dullBackups.filter((_, j) => j !== k) }
-        if (canPay(def.cost, def.elements, generateCp(state, player, less, card))) return
+        if (canPay(def.cost, elements, generateCp(state, player, less, card))) return
       }
       for (let k = 0; k < discards.length; k++) {
         const less = { ...payment, discards: discards.filter((_, j) => j !== k) }
-        if (canPay(def.cost, def.elements, generateCp(state, player, less, card))) return
+        if (canPay(def.cost, elements, generateCp(state, player, less, card))) return
       }
       results.push(payment)
       return

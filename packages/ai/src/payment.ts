@@ -1,7 +1,46 @@
-import { canPay, defOf, generateCp, type CardId, type Element, type GameState, type Payment, type PlayerId } from '@fftcg/engine'
+import { canPay, defOf, generateCp, requiredElements, type CardId, type Element, type GameState, type Payment, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 
 interface Source { kind: 'backup' | 'discard'; id: CardId; elements: Element[]; cp: number; cost: number }
+
+/**
+ * Find the cheapest way to cover every required element with one source each, via bounded backtracking (required
+ * elements ≤ 8 per CardDef, sources ≤ ~12 in practice — trivially small to search exhaustively). A single greedy
+ * pass — even scarcest-element-first — can still strand a later element: spending a flexible source on an element
+ * a less flexible (but pricier) source could also have covered, only to find nothing left for the element only
+ * the flexible source could pay (Codex: sources {earth}(expensive), {earth,lightning}(cheap), {lightning,fire} —
+ * greedy spends the cheap dual source on earth, then has nothing for lightning once the fire-only source is
+ * spent on fire). Backtracking explores every source-to-element assignment (not just the first that fits) and
+ * keeps the cheapest complete one, so it finds a covering assignment whenever one exists.
+ */
+function assignRequiredElements(elements: Element[], sources: Source[], canSupply: (s: Source, e: Element) => boolean): Map<Element, Source> | null {
+  // Processing scarcest elements first prunes the search fastest but doesn't change correctness — every branch
+  // below tries every remaining candidate for the current element and recurses, so it finds a covering
+  // assignment (the cheapest one) whenever one exists, regardless of element order.
+  const order = [...elements].sort((a, b) => sources.filter((s) => canSupply(s, a)).length - sources.filter((s) => canSupply(s, b)).length)
+  const used = new Set<Source>()
+  const rec = (i: number): { assignment: Map<Element, Source>; cost: number } | null => {
+    if (i === order.length) return { assignment: new Map(), cost: 0 }
+    const e = order[i] as Element
+    let best: { assignment: Map<Element, Source>; cost: number } | null = null
+    for (const s of sources) {
+      if (used.has(s) || !canSupply(s, e)) continue
+      used.add(s)
+      const rest = rec(i + 1)
+      used.delete(s)
+      if (!rest) continue
+      const cost = s.cp + rest.cost
+      if (!best || cost < best.cost) {
+        const assignment = new Map(rest.assignment)
+        assignment.set(e, s)
+        best = { assignment, cost }
+      }
+    }
+    return best
+  }
+  const result = rec(0)
+  return result ? result.assignment : null
+}
 
 export function preferredPayment(state: GameState, player: PlayerId, card: CardId): Payment | null {
   const def = defOf(state, card)
@@ -19,27 +58,19 @@ export function preferredPayment(state: GameState, player: PlayerId, card: CardI
   const declared = new Map<CardId, Element>()
   let total = 0
   const take = (s: Source, element: Element) => { chosen.add(s); total += s.cp; if (s.kind === 'discard') declared.set(s.id, element) }
-  const provides = (s: Source, e: Element) => (s.kind === 'backup' ? s.elements[0] === e : declared.get(s.id) === e)
   const canSupply = (s: Source, e: Element) => (s.kind === 'backup' ? s.elements[0] === e : s.elements.includes(e))   // backups produce elements[0] only (cp.ts)
-  // §11.2.2.1: at least one CP of each required element. Greedily grabbing the cheapest source per element (in
-  // declaration order) can spend a scarce dual-element source on an element a plentiful source could have covered,
-  // then find nothing left for the element only that scarce source could pay. Process the scarcest elements first
-  // (fewest matching sources), and among equal-cost sources for an element prefer the least flexible one (fewest
-  // elements) so a more flexible source is kept in reserve for whatever comes next.
-  const scarcity = new Map(def.elements.map((e) => [e, sources.filter((s) => canSupply(s, e)).length]))
-  const requiredOrder = [...def.elements].sort((a, b) => (scarcity.get(a) as number) - (scarcity.get(b) as number))
-  for (const e of requiredOrder) {
-    if ([...chosen].some((s) => provides(s, e))) continue
-    const candidates = sources.filter((s) => !chosen.has(s) && canSupply(s, e)).sort((a, b) => a.cost - b.cost || a.elements.length - b.elements.length)
-    const s = candidates[0]
-    if (!s) return null
-    take(s, e)
-  }
+
+  // §11.2.2.1 / §11.2.1.1: at least one CP of each required element (requiredElements exempts pure Light/Dark).
+  const elements = requiredElements(def)
+  const assignment = assignRequiredElements(elements, sources, canSupply)
+  if (elements.length && !assignment) return null
+  if (assignment) for (const [e, s] of assignment) take(s, e)
+
   for (const s of [...sources].sort((a, b) => a.cost - b.cost)) { if (total >= def.cost) break; if (!chosen.has(s)) take(s, s.elements[0] as Element) }
   if (total < def.cost) return null
   const payment: Payment = {
     dullBackups: [...chosen].filter((s) => s.kind === 'backup').map((s) => s.id),
     discards: [...chosen].filter((s) => s.kind === 'discard').map((s) => ({ card: s.id, element: declared.get(s.id) as Element })),
   }
-  return canPay(def.cost, def.elements, generateCp(state, player, payment, card)) ? payment : null
+  return canPay(def.cost, elements, generateCp(state, player, payment, card)) ? payment : null
 }

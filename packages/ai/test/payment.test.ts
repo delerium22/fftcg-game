@@ -57,4 +57,36 @@ describe('preferredPayment', () => {
     ;[s, card] = withHand(s, 0, 'V-F6')                 // lightning cost 1 — cannot be paid
     expect(preferredPayment(s, 0, card)).toBeNull()
   })
+  it('C2: bounded backtracking covers 3 required elements when a single scarcity-ordered greedy pass would strand one (Codex counterexample)', () => {
+    const defs = [
+      ...VANILLA_POOL,
+      makeDef({ code: 'V-TARGET3', type: 'forward', elements: ['earth', 'lightning', 'fire'], cost: 3, power: 5000 }),
+      makeDef({ code: 'V-EARTH', type: 'forward', elements: ['earth'], cost: 4, power: 8000 }),          // sole earth-only source — EXPENSIVE
+      makeDef({ code: 'V-EL', type: 'forward', elements: ['earth', 'lightning'], cost: 1, power: 1000 }), // sole other earth source, one of two lightning sources — CHEAP
+      makeDef({ code: 'V-LF', type: 'forward', elements: ['lightning', 'fire'], cost: 2, power: 3000 }),  // sole fire source, other lightning source
+    ]
+    let s = withHandSize(makeGame({ defs }), 0, 0); let target: number
+    ;[s] = withHand(s, 0, 'V-EARTH')
+    ;[s] = withHand(s, 0, 'V-EL')
+    ;[s] = withHand(s, 0, 'V-LF')
+    ;[s, target] = withHand(s, 0, 'V-TARGET3')
+    // Scarcity puts fire first (only V-LF), then earth (tie, processed next): a single greedy pass picks the
+    // CHEAPEST earth source, V-EL — but V-EL is the ONLY remaining source for lightning once V-LF is spent on
+    // fire, so a non-backtracking greedy pass then fails lightning even though {earth: V-EARTH, lightning: V-EL,
+    // fire: V-LF} is a legal assignment. Bounded backtracking must find it.
+    const p = preferredPayment(s, 0, target)
+    expect(p).not.toBeNull()
+    expect(canPay(3, ['earth', 'lightning', 'fire'], generateCp(s, 0, p!, target))).toBe(true)
+  })
+  it('C3: preferredPayment pays a Light card with two off-element (earth) backups, no same-element CP needed', () => {
+    const defs = [...VANILLA_POOL, makeDef({ code: 'V-L1', elements: ['light'], cost: 2, power: 5000 })]
+    let s = withHandSize(makeGame({ defs }), 0, 0); let card: number
+    ;[s] = withField(s, 0, 'backups', 'V-B1')   // earth
+    ;[s] = withField(s, 0, 'backups', 'V-B3')   // earth
+    ;[s, card] = withHand(s, 0, 'V-L1')
+    const p = preferredPayment(s, 0, card)
+    expect(p).not.toBeNull()
+    expect(p!.discards).toEqual([])
+    expect(canPay(2, [], generateCp(s, 0, p!, card))).toBe(true)
+  })
 })
