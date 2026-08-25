@@ -6,7 +6,7 @@ export * from './commands.js'
 export * from './events.js'
 export * from './errors.js'
 export * from './setup.js'
-// export * from './rules.js'      // Task 5
+export * from './rules.js'
 export * from './phases.js'
 // export * from './cp.js'         // Task 6
 // export * from './cast.js'       // Task 7
