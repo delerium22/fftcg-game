@@ -111,7 +111,9 @@ export function legalPartyDamageAssignments(state: GameState): Assignment[][] {
   if (state.pending?.kind !== 'assignPartyDamage' || !at || at.blocker === null) return []
   const blocker = findFieldCard(state, at.blocker)
   if (!blocker) return [[]]   // blocker left the field (§10.1.3.3) — nothing to assign
-  return splits(powerOf(state, blocker.card), at.attackers)
+  const result = splits(powerOf(state, blocker.card), at.attackers)
+  // the blocker's power cannot be split into ≥1000 multiples across the party — it deals no battle damage
+  return result.length === 0 ? [[]] : result
 }
 
 export function applyAssignPartyDamage(state: GameState, player: PlayerId, assignments: Assignment[]): [GameState, Event[]] {
@@ -120,6 +122,8 @@ export function applyAssignPartyDamage(state: GameState, player: PlayerId, assig
   const at = state.attack!
   const blocker = at.blocker === null ? null : findFieldCard(state, at.blocker)
   const total = blocker ? powerOf(state, blocker.card) : 0
+  const noValidSplit = blocker !== null && splits(total, at.attackers).length === 0
+  if (assignments.length === 0 && noValidSplit) return resolveDamage({ ...state, pending: null }, assignments)
   const sum = assignments.reduce((n, a) => n + a.amount, 0)
   if (sum !== total) throw new IllegalCommandError(`assignments must total the blocker's power ${total} (§10.1.4.2.1)`)
   if (assignments.some((a) => a.amount < 1000 || a.amount % 1000 !== 0)) throw new IllegalCommandError('each assignment must be a multiple of 1000 and at least 1000 (§10.1.4.2.1)')

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyPass } from '../src/phases.js'
 import { applyAssignPartyDamage, applyDeclareAttack, applyDeclareBlock, attackCheck, legalAttackSets, legalBlockers, legalPartyDamageAssignments } from '../src/attack.js'
 import { IllegalCommandError } from '../src/errors.js'
-import { makeGame, withField } from './helpers.js'
+import { makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
 
 /** turn 1, player 0 in the attack declaration step */
 function inAttack() {
@@ -125,6 +125,31 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     ;[s] = applyDeclareAttack(s, 0, [a1, a2])
     const [t] = applyDeclareBlock(s, 1, null)
     expect(t.players[1].damageZone).toHaveLength(1)
+  })
+  it('a blocker whose power is not a sum of ≥1000 multiples deals no battle damage (party damage dead end)', () => {
+    // power 2500 (not a multiple of 1000, so unsplittable across a 2-forward party) but ≥1000, so it still
+    // breaks normally via §12.4.5 once damage lands — isolating the party-damage-split dead end from the
+    // separate (pre-existing, documented) "power < 1000 never breaks by damage" behavior in rules.ts.
+    const defs = [...VANILLA_POOL, makeDef({ code: 'V-W5', power: 2500 })]
+    let s = makeGame({ defs })
+    ;[s] = applyPass(s, 0)
+    let a1: number, a2: number, b: number
+    ;[s, a1] = withField(s, 0, 'forwards', 'V-F1')   // 3000
+    ;[s, a2] = withField(s, 0, 'forwards', 'V-F2')   // 5000
+    ;[s, b] = withField(s, 1, 'forwards', 'V-W5')    // 2500 — not a sum of ≥1000 multiples
+    ;[s] = applyDeclareAttack(s, 0, [a1, a2])
+    ;[s] = applyDeclareBlock(s, 1, b)
+    expect(legalPartyDamageAssignments(s)).toEqual([[]])
+    const [t, events] = applyAssignPartyDamage(s, 1, [])
+    expect(events).toContainEqual({ type: 'battleDamage', source: a1, target: b, amount: 3000 })
+    expect(events).toContainEqual({ type: 'battleDamage', source: a2, target: b, amount: 5000 })
+    expect(events).toContainEqual({ type: 'broken', card: b })
+    expect(t.players[1].forwards.find((c) => c.id === b)).toBeUndefined()
+    expect(t.players[1].breakZone).toContain(b)
+    expect(t.players[0].forwards.find((c) => c.id === a1)?.damage).toBe(0)
+    expect(t.players[0].forwards.find((c) => c.id === a2)?.damage).toBe(0)
+    expect(t.attack).toEqual(IDLE)
+    expect(t.pending).toBeNull()
   })
   it('the 7th damage ends the game', () => {
     let { s } = attacking()

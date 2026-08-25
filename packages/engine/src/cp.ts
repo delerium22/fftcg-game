@@ -38,7 +38,8 @@ export function generateCp(state: GameState, player: PlayerId, payment: Payment,
 export function canPay(cost: number, elements: Element[], cp: GeneratedCp[]): boolean {
   if (cost === 0) return cp.length === 0   // §11.2.2.4 / §11.2.2.1 last sentence
   if (cp.length < cost) return false
-  return elements.every((e) => cp.some((c) => c.element === e))   // §11.2.2.1–2 (Light/Dark exemption not needed for this pool)
+  // MVP0-SIMPLIFICATION: §11.2.2 Light/Dark same-element exemption not implemented (pool has none)
+  return elements.every((e) => cp.some((c) => c.element === e))   // §11.2.2.1–2
 }
 
 /** Every *minimal* legal payment for `card` (no source can be removed and still pay). Used by legalCommands as the canonical choice list; `apply` accepts any payment that `canPay` — overpaying is legal (§11.2.2.3). */

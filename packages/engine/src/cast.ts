@@ -19,6 +19,9 @@ export function castCheck(state: GameState, player: PlayerId, card: CardId): str
   // MVP0-SIMPLIFICATION: §7.7.4 is normally a rule process (§12.4.8) that keeps a 6th Backup off the field; here casting one is simply illegal.
   if (def.type === 'backup' && ps.backups.length >= MAX_BACKUPS) return `you already control ${MAX_BACKUPS} backups (§7.7.4)`
   if (def.type !== 'summon' && !def.generic) {
+    // MVP0-SIMPLIFICATION: §7.7.3 only prohibits *simultaneous* deployment; casting a second non-generic
+    // same-name Character is legal and §12.4.6 then puts ALL copies into the Break Zone as a rule process.
+    // Here the cast is simply illegal. §12.4.6/§12.4.7 are MVP3 work.
     const clash = [...ps.forwards, ...ps.backups].some((c) => { const d = defOf(state, c.id); return !d.generic && d.name === def.name })
     if (clash) return `you already control a non-generic character with the same name (§7.7.3)`
   }
@@ -26,8 +29,6 @@ export function castCheck(state: GameState, player: PlayerId, card: CardId): str
 }
 
 function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
-  const why = castCheck(state, player, card)
-  if (why) throw new IllegalCommandError(why)
   const def = defOf(state, card)
   const cp = generateCp(state, player, payment, card)
   if (!canPay(def.cost, def.elements, cp)) throw new IllegalCommandError(`payment does not cover cost ${def.cost} ${def.elements.join('/')}`)
@@ -35,6 +36,8 @@ function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: P
 }
 
 export function applyCastCharacter(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
+  const why = castCheck(state, player, card)
+  if (why) throw new IllegalCommandError(why)
   const def = defOf(state, card)
   if (def.type === 'summon') throw new IllegalCommandError('use castSummon for summons')
   const [paid, events] = checkedPay(state, player, card, payment)
@@ -51,6 +54,8 @@ export function applyCastCharacter(state: GameState, player: PlayerId, card: Car
 }
 
 export function applyCastSummon(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
+  const why = castCheck(state, player, card)
+  if (why) throw new IllegalCommandError(why)
   const def = defOf(state, card)
   if (def.type !== 'summon') throw new IllegalCommandError('not a summon')
   const [paid, events] = checkedPay(state, player, card, payment)

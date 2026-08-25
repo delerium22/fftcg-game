@@ -29,7 +29,7 @@ export function apply(state: GameState, command: Command): ApplyResult {
       case 'discardToHandSize': [s, events] = applyDiscardToHandSize(state, command.player, command.cards); break
       case 'pass': [s, events] = applyPass(state, command.player); break
       case 'concede':
-        s = { ...state, result: { winner: opponentOf(command.player), reason: `player ${command.player} conceded (§2.1)` } }; events = []; break
+        s = { ...state, pending: null, result: { winner: opponentOf(command.player), reason: `player ${command.player} conceded (§2.1)` } }; events = []; break
     }
   } catch (e) {
     if (e instanceof IllegalCommandError) throw new IllegalCommandError(e.message, command)

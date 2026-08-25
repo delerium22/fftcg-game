@@ -75,6 +75,15 @@ describe('apply', () => {
     expect(legalCommands(state, 0)).toEqual([]); expect(legalCommands(state, 1)).toEqual([])
     expect(() => apply(state, { type: 'pass', player: 0 })).toThrow(/over/)
   })
+  it('concede clears a pending decision (e.g. chooseFirst)', () => {
+    const s = createGame({ seed: 1, decks: [DEFAULT_DECK, DEFAULT_DECK], defs: VANILLA_POOL })
+    const acting = actingPlayer(s)!
+    const other = acting === 0 ? 1 : 0
+    const { state } = apply(s, { type: 'concede', player: other })
+    expect(state.result?.winner).toBe(acting)
+    expect(state.pending).toBeNull()
+    expect(checkInvariants(state)).toEqual([])
+  })
 })
 
 describe('invariant: random walks over legalCommands never throw and keep the state well-formed', () => {

@@ -43,6 +43,10 @@ describe('§11.4 casting a Character', () => {
     const [, events] = applyCastCharacter(s, 0, f, { dullBackups: [b1], discards: [] })
     expect(events).toContainEqual({ type: 'unimplementedAbility', card: f, code: 'V-A1' })
   })
+  it('an unknown card id throws IllegalCommandError instead of a plain Error (castCheck runs before defOf)', () => {
+    const { s } = ready()
+    expect(() => applyCastCharacter(s, 0, 99999, { dullBackups: [], discards: [] })).toThrow(IllegalCommandError)
+  })
 })
 
 describe('castCheck', () => {
@@ -93,5 +97,9 @@ describe('§11.3 casting a Summon (MVP0: no effect)', () => {
     let { s } = ready(); let x: number
     ;[s, x] = withHand(s, 0, 'V-S1')
     expect(castCheck({ ...s, phase: 'attack', attack: { step: 'declaration', attackers: [], blocker: null } }, 0, x)).toMatch(/main phase/i)
+  })
+  it('an unknown card id throws IllegalCommandError instead of a plain Error (castCheck runs before defOf)', () => {
+    const { s } = ready()
+    expect(() => applyCastSummon(s, 0, 99999, { dullBackups: [], discards: [] })).toThrow(IllegalCommandError)
   })
 })
