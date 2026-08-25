@@ -19,23 +19,24 @@
 - `GreedyAgent` never returns `concede` while any other legal command exists.
 - Every commit green: `pnpm test && pnpm typecheck && pnpm lint`, pristine; commit messages `type(scope): summary` ending with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`. Relative imports use `.js`; `exactOptionalPropertyTypes`/`noUncheckedIndexedAccess` are on; tests may use `let s; [s, x] = ...`.
 - Engine API used as-is (all exported from `@fftcg/engine`): `GameState`, `PlayerState`, `FieldCard`, `PlayerView`, `FieldView`, `CardId`, `PlayerId`, `CardDef`, `Element`, `Command`, `Payment`, `Rng`, `seedRng`, `nextInt`, `shuffle`, `apply`, `legalCommands`, `actingPlayer`, `castCheck`, `canPay`, `generateCp`, `legalAttackSets`, `legalBlockers`, `legalPartyDamageAssignments`, `checkInvariants`, `createGame`, `viewFor`, `defOf`, `powerOf`, `opponentOf`, `HAND_SIZE_LIMIT`, `MAX_BACKUPS`, `DAMAGE_TO_LOSE`, `IllegalCommandError`.
-- Test helpers live in `packages/engine/test/helpers.ts` (`makeGame`, `withField`, `withHand`, `withHandSize`, `VANILLA_POOL`, `DEFAULT_DECK`, `makeDef`); `packages/ai` tests may import them by relative path `../../engine/test/helpers.js` (add `"../engine/test"` to `packages/ai/tsconfig.json` `include` only if typecheck complains; Vitest resolves it regardless).
+- Test helpers live in `packages/engine/test/helpers.ts` (`makeGame`, `withField`, `withHand`, `withHandSize`, `VANILLA_POOL`, `DEFAULT_DECK`, `makeDef`); `packages/ai` tests import them by relative path `../../engine/test/helpers.js` (Vitest resolves it; `tsc -b` builds engine first). **`withField`/`withHand` MINT new card instances** — a state built with them owns more than 50 cards per player, so any test that determinises such a state must derive the deck lists from the state (`decksOf(s)` helper below), never use `DEFAULT_DECK`.
+- `GreedyOptions` optional fields are declared `?: T | undefined` (exactOptionalPropertyTypes) so callers can forward possibly-undefined values.
 
 ## File Structure
 
 ```
 packages/engine/src/view.ts            + firstPlayer, mulliganDecided on PlayerView (public info the AI needs to determinise setup states)
-packages/engine/src/determinise.ts     determinise(view, decks, rng): GameState
+packages/engine/src/determinise.ts     determinise({ view, decks, rng }): [GameState, Rng]
 packages/engine/src/index.ts           + export * from './determinise.js'
 packages/engine/test/determinise.test.ts
 packages/ai/src/cardValue.ts           cardValue(def): number
 packages/ai/src/evaluate.ts            Weights, DEFAULT_WEIGHTS, evaluate(state, me, weights?, aggression?)
 packages/ai/src/payment.ts             preferredPayment(state, player, card): Payment | null
 packages/ai/src/candidates.ts          candidateCommands(state, player): Command[]
-packages/ai/src/greedy.ts              GreedyAgent, GreedyOptions, greedyPolicy (rollout)
+packages/ai/src/greedy.ts              GreedyAgent, GreedyOptions, greedyStep (rollout policy)
 packages/ai/src/index.ts               re-exports
 packages/ai/test/{cardValue,evaluate,payment,candidates,greedy}.test.ts
-apps/cli/src/agents.ts                 AgentSpec, makeAgent(spec, seat, decks)
+apps/cli/src/agents.ts                 AgentSpec, parseAgentSpec, describeAgentSpec, makeAgent(spec, seed, decks)
 apps/cli/src/selfplay.ts               agents per seat, strict flag, msPerDecision
 apps/cli/src/main.ts                   --p0 --p1 --depth flags
 apps/cli/test/selfplay.test.ts         + greedy-vs-random strength test
@@ -55,7 +56,7 @@ docs/superpowers/specs/2026-08-26-heuristic-ai-design.md   + appendix: measured 
 - Produces:
 ```ts
 // view.ts — add two public fields (both are public information at the table)
-export interface PlayerView { …existing…; firstPlayer: PlayerId; mulliganDecided: [boolean, boolean] }
+export interface PlayerView { …existing…; firstPlayer: PlayerId /* meaningful once chooseFirst has been decided; before that it is the setup default 0 */; mulliganDecided: [boolean, boolean] }
 
 // determinise.ts
 export interface DeterminiseOptions { view: PlayerView; decks: [string[], string[]]; rng: Rng }
@@ -102,7 +103,8 @@ function walk(seed: number, n: number): GameState {
 
 describe('determinise', () => {
   it('preserves everything visible and conserves each deck list', () => {
-    const s = walk(5, 120)
+    const s = walk(5, 40)
+    expect(s.result).toBeNull()   // a LIVE mid-game state; a finished game would make this test trivial
     for (const me of [0, 1] as const) {
       const view = viewFor(s, me)
       const [det] = determinise({ view, decks: DECKS, rng: seedRng(1) })
@@ -124,7 +126,8 @@ describe('determinise', () => {
     }
   })
   it('is deterministic per rng and differs across rngs', () => {
-    const view = viewFor(walk(9, 80), 0)
+    const live = walk(9, 40); expect(live.result).toBeNull()
+    const view = viewFor(live, 0)
     const [a] = determinise({ view, decks: DECKS, rng: seedRng(3) })
     const [b] = determinise({ view, decks: DECKS, rng: seedRng(3) })
     const [c] = determinise({ view, decks: DECKS, rng: seedRng(4) })
@@ -137,7 +140,7 @@ describe('determinise', () => {
     expect(checkInvariants(d0)).toEqual([]); expect(d0.pending).toEqual(s0.pending); expect(d0.players[1].deck).toHaveLength(50)
     const s1 = walk(2, 1)   // after chooseFirst → mulligan pending, 5 cards each
     const [d1] = determinise({ view: viewFor(s1, 0), decks: DECKS, rng: seedRng(1) })
-    expect(d1.mulliganDecided).toEqual(s1.mulliganDecided); expect(d1.firstPlayer).toBe(s1.firstPlayer)
+    expect([d1.players[0].mulliganDecided, d1.players[1].mulliganDecided]).toEqual([s1.players[0].mulliganDecided, s1.players[1].mulliganDecided]); expect(d1.firstPlayer).toBe(s1.firstPlayer)
     expect(d1.players[1].hand).toHaveLength(5)
     // mid-attack: find a walk state with declareBlock pending
     let s2: GameState | null = null
@@ -223,21 +226,22 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
 ```ts
 // cardValue.ts — how much a card in hand is worth (for discard/payment choices); pure function of the def
 export function cardValue(def: CardDef): number
-//   forward: power/1000 + 1.5; backup: 3 (CP engine) − 0.25·cost; summon: 1 + cost·0.25 (no effect yet, cheap fodder); monster: 1. Cost ≥ 5 forwards +0.5 (win conditions).
+//   forward: power/1000 + 1.5 (+0.5 if cost ≥ 5 — win conditions); backup: 3.5 − 0.15·cost (a CP engine always outranks fodder); summon: 1 flat (no effects exist yet — pure discard fodder); monster: 1.
 
 // evaluate.ts
-export interface Weights { damage: number; forwardPower: number; forwardPresence: number; dullFactor: number; backup: number; hand: number; deck: number; threat: number; terminal: number }
-export const DEFAULT_WEIGHTS: Weights = { damage: 30, forwardPower: 1.2, forwardPresence: 4, dullFactor: 0.6, backup: 5, hand: 2, deck: 0.1, threat: 0.8, terminal: 100_000 }
-/** Zero-sum board evaluation from `me`'s perspective. aggression ∈ [0,1] scales how much the opponent's material counts vs mine (0.5 = symmetric). */
+export interface Weights { damage: number; forwardPower: number; forwardPresence: number; dullFactor: number; backup: number; hand: number; handQuality: number; deck: number; threat: number; terminal: number }
+export const DEFAULT_WEIGHTS: Weights = { damage: 30, forwardPower: 1.2, forwardPresence: 4, dullFactor: 0.6, backup: 5, hand: 2, handQuality: 0.5, deck: 0.1, threat: 0.8, terminal: 100_000 }
+/** Board evaluation from `me`'s perspective. Exactly zero-sum at aggression 0.5: evaluate(s, me, w, 0.5) === -evaluate(s, opp, w, 0.5). aggression ∈ [0,1] scales how much the opponent's material counts vs mine. */
 export function evaluate(state: GameState, me: PlayerId, weights?: Weights, aggression?: number): number
 ```
-Feature definitions (per player `p`, then `mine − opp` with opponent terms scaled by `2·aggression`, mine by `2·(1−aggression)`):
+Feature definitions (per player `p`, then `mine − opp` with mine scaled by `2·(1−aggression)` and the opponent's by `2·aggression`; the threat term is antisymmetric and scaled the same way):
 - `damage`: `(DAMAGE_TO_LOSE − damageZone.length) · w.damage`
 - `board`: Σ over forwards of `(powerOf/1000 · w.forwardPower · (status === 'dull' ? w.dullFactor : 1)) + w.forwardPresence`
 - `backups`: `min(backups.length, MAX_BACKUPS) · w.backup`
 - `hand`: `min(hand.length, HAND_SIZE_LIMIT) · w.hand + max(0, hand.length − HAND_SIZE_LIMIT) · w.hand · 0.25`
+- `handQuality`: `Σ cardValue(def) over the hand · w.handQuality` — makes discard, payment and mulligan choices visible to the evaluation (for the opponent's hidden hand this scores the determinised sample).
 - `deck`: `deck.length · w.deck`
-- `threat` (opponent-only, subtracted from mine): `max(0, Σ opp active forward power/1000 − Σ my active forward power/1000) · w.threat`
+- `threat`: a SIGNED antisymmetric term `(Σ my active forward power/1000 − Σ opp active forward power/1000) · w.threat`, added to mine and subtracted from theirs — so the function is exactly zero-sum at aggression 0.5.
 - Terminal: `result.winner === me → +w.terminal`, `=== opp → −w.terminal`, draw → 0 (overrides everything).
 
 - [ ] **Step 1: Failing tests**
@@ -246,12 +250,19 @@ Feature definitions (per player `p`, then `mine − opp` with opponent terms sca
 ```ts
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_WEIGHTS, evaluate } from '../src/evaluate.js'
-import { makeGame, withField } from '../../engine/test/helpers.js'
+import { makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 describe('evaluate', () => {
-  it('is zero-sum and symmetric on an empty symmetric board', () => {
-    const s = makeGame()   // P0 has 6 cards vs 5 — tiny asymmetry; compare both perspectives sum to 0
+  it('is exactly zero-sum at aggression 0.5, including on an asymmetric board', () => {
+    let s = makeGame()   // P0 has 6 cards vs 5 already
+    ;[s] = withField(s, 0, 'forwards', 'V-F3'); [s] = withField(s, 1, 'backups', 'V-B1')
     expect(evaluate(s, 0) + evaluate(s, 1)).toBeCloseTo(0, 6)
+  })
+  it('values a better hand (handQuality)', () => {
+    let s = withHandSize(makeGame(), 0, 0)
+    const base = evaluate(s, 0)
+    ;[s] = withHand(s, 0, 'V-F8')
+    expect(evaluate(s, 0)).toBeGreaterThan(base)
   })
   it('more own damage is worse; more own board is better; dull forwards count less', () => {
     let s = makeGame(); let f: number
@@ -287,7 +298,8 @@ describe('cardValue', () => {
   it('ranks a big forward above a small one, a backup above a summon, and a summon lowest', () => {
     const big = cardValue(makeDef({ code: 'A', cost: 5, power: 9000 })), small = cardValue(makeDef({ code: 'B', cost: 1, power: 3000 }))
     const backup = cardValue(makeDef({ code: 'C', type: 'backup', cost: 2, power: null })), summon = cardValue(makeDef({ code: 'D', type: 'summon', cost: 2, power: null }))
-    expect(big).toBeGreaterThan(small); expect(small).toBeGreaterThan(summon); expect(backup).toBeGreaterThan(summon)
+    const dearBackup = cardValue(makeDef({ code: 'E', type: 'backup', cost: 4, power: null })), dearSummon = cardValue(makeDef({ code: 'F', type: 'summon', cost: 5, power: null }))
+    expect(big).toBeGreaterThan(small); expect(small).toBeGreaterThan(summon); expect(backup).toBeGreaterThan(summon); expect(dearBackup).toBeGreaterThan(dearSummon)
   })
 })
 ```
@@ -302,15 +314,16 @@ import type { CardDef } from '@fftcg/engine'
 export function cardValue(def: CardDef): number {
   switch (def.type) {
     case 'forward': return (def.power ?? 0) / 1000 + 1.5 + (def.cost >= 5 ? 0.5 : 0)
-    case 'backup': return 3 - def.cost * 0.25
-    case 'summon': return 1 + def.cost * 0.25
+    case 'backup': return 3.5 - def.cost * 0.15
+    case 'summon': return 1
     case 'monster': return 1
   }
 }
 ```
 `evaluate.ts`:
 ```ts
-import { DAMAGE_TO_LOSE, HAND_SIZE_LIMIT, MAX_BACKUPS, opponentOf, powerOf, type GameState, type PlayerId } from '@fftcg/engine'
+import { DAMAGE_TO_LOSE, HAND_SIZE_LIMIT, MAX_BACKUPS, defOf, opponentOf, powerOf, type GameState, type PlayerId } from '@fftcg/engine'
+import { cardValue } from './cardValue.js'
 
 export interface Weights { damage: number; forwardPower: number; forwardPresence: number; dullFactor: number; backup: number; hand: number; deck: number; threat: number; terminal: number }
 export const DEFAULT_WEIGHTS: Weights = { damage: 30, forwardPower: 1.2, forwardPresence: 4, dullFactor: 0.6, backup: 5, hand: 2, deck: 0.1, threat: 0.8, terminal: 100_000 }
@@ -321,6 +334,7 @@ function material(state: GameState, p: PlayerId, w: Weights): number {
   for (const c of ps.forwards) v += (powerOf(state, c) / 1000) * w.forwardPower * (c.status === 'dull' ? w.dullFactor : 1) + w.forwardPresence
   v += Math.min(ps.backups.length, MAX_BACKUPS) * w.backup
   v += Math.min(ps.hand.length, HAND_SIZE_LIMIT) * w.hand + Math.max(0, ps.hand.length - HAND_SIZE_LIMIT) * w.hand * 0.25
+  for (const id of ps.hand) v += cardValue(defOf(state, id)) * w.handQuality
   v += ps.deck.length * w.deck
   return v
 }
@@ -331,13 +345,13 @@ function activePower(state: GameState, p: PlayerId): number {
 export function evaluate(state: GameState, me: PlayerId, weights: Weights = DEFAULT_WEIGHTS, aggression = 0.5): number {
   const opp = opponentOf(me)
   if (state.result) return state.result.winner === me ? weights.terminal : state.result.winner === opp ? -weights.terminal : 0
-  const mine = material(state, me, weights) * 2 * (1 - aggression)
-  const theirs = material(state, opp, weights) * 2 * aggression
-  const threat = Math.max(0, activePower(state, opp) - activePower(state, me)) * weights.threat * 2 * aggression
-  return mine - theirs - threat
+  const threat = (activePower(state, me) - activePower(state, opp)) * weights.threat   // antisymmetric
+  const mine = (material(state, me, weights) + threat) * 2 * (1 - aggression)
+  const theirs = (material(state, opp, weights) - threat) * 2 * aggression
+  return mine - theirs
 }
 ```
-Note the zero-sum test: with aggression 0.5 both scale factors are 1 and `evaluate(s,0) + evaluate(s,1) = -(threat0 + threat1)`, which is 0 only when neither side out-powers the other — true on the empty board in the test. Keep the test's board empty.
+At aggression 0.5 both scale factors are 1: `evaluate(s,0) = (M0 + T) − (M1 − T)` and `evaluate(s,1) = (M1 − T) − (M0 + T)`, which sum to 0 for any board — the antisymmetric threat term is what makes the rollout opponent's `greedyStep` (which maximises its own evaluation with `1 − aggression`) a true zero-sum adversary.
 
 - [ ] **Step 4: Run everything** → green. **Step 5: Commit** `feat(ai): card value and board evaluation`.
 
@@ -355,10 +369,10 @@ Note the zero-sum test: with aggression 0.5 both scale factors are 1 and `evalua
 export function preferredPayment(state: GameState, player: PlayerId, card: CardId): Payment | null
 
 // candidates.ts
-/** The AI's move list for `player` in `state` — never enumerates payment permutations. Excludes concede. Empty only when the game is over or it is not `player`'s decision. */
+/** The AI's move list for `player` in `state` — never enumerates payment permutations. Excludes concede. Empty when the game is over, when it is not `player`'s decision, or in a phase/step that awaits no command. `pass` is always emitted LAST so a strict `>` argmax prefers action over passing on ties. */
 export function candidateCommands(state: GameState, player: PlayerId): Command[]
 ```
-`preferredPayment` algorithm: `def = defOf(card)`; `need = def.cost`; if 0 → `{ dullBackups: [], discards: [] }`. Required elements = `def.elements`. Sources: active backups (1 CP each, element = `defOf(backup).elements[0]`), hand cards other than `card` and not Light/Dark (2 CP each; declare one of the card's elements that is still required, else its first element), sorted by resource cost ascending (backup = 1; discard = 2 + `cardValue`). Greedy: first satisfy each required element with the cheapest matching source (backup over discard), then fill the remaining `need` with the cheapest remaining sources; stop as soon as total ≥ need. Verify with `canPay(def.cost, def.elements, generateCp(state, player, payment, card))`; return null if it fails or sources run out.
+`preferredPayment` algorithm: `def = defOf(card)`; `need = def.cost`; if 0 → `{ dullBackups: [], discards: [] }`. Required elements = `def.elements`. Sources: active backups (1 CP each — the engine's `generateCp` produces the backup's FIRST element only, so a backup matches a required element only via `elements[0]`), hand cards other than `card` and not Light/Dark (2 CP each; declare one of the card's elements that is still required, else its first element), sorted by resource cost ascending (backup = 1; discard = 2 + `cardValue`). Greedy: first satisfy each required element with the cheapest matching source (backup over discard), then fill the remaining `need` with the cheapest remaining sources; stop as soon as total ≥ need. Verify with `canPay(def.cost, def.elements, generateCp(state, player, payment, card))`; return null if it fails or sources run out.
 
 `candidateCommands` by situation (mirror `legalCommands`' structure but cheaper):
 - game over → `[]`; `actingPlayer(state) !== player` → `[]`.
@@ -373,7 +387,7 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
 import { describe, expect, it } from 'vitest'
 import { canPay, generateCp } from '@fftcg/engine'
 import { preferredPayment } from '../src/payment.js'
-import { makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
+import { VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 describe('preferredPayment', () => {
   it('dulls matching backups before discarding, and the result satisfies canPay', () => {
@@ -404,6 +418,13 @@ describe('preferredPayment', () => {
     let t = withHandSize(makeGame(), 0, 0)
     ;[t, poor] = withHand(t, 0, 'V-F8')                 // cost 5, nothing to pay with
     expect(preferredPayment(t, 0, poor)).toBeNull()
+  })
+  it('does not count a multi-element backup for its non-first element (engine produces elements[0] only)', () => {
+    const defs = [...VANILLA_POOL, makeDef({ code: 'V-BD', type: 'backup', elements: ['earth', 'lightning'], cost: 1, power: null })]
+    let s = withHandSize(makeGame({ defs }), 0, 0); let card: number
+    ;[s] = withField(s, 0, 'backups', 'V-BD')          // produces EARTH only
+    ;[s, card] = withHand(s, 0, 'V-F6')                 // lightning cost 1 — cannot be paid
+    expect(preferredPayment(s, 0, card)).toBeNull()
   })
 })
 ```
@@ -469,7 +490,7 @@ export function preferredPayment(state: GameState, player: PlayerId, card: CardI
   const provides = (s: Source, e: Element) => (s.kind === 'backup' ? s.elements[0] === e : declared.get(s.id) === e)
   for (const e of def.elements) {                       // §11.2.2.1: at least one CP of each required element
     if ([...chosen].some((s) => provides(s, e))) continue
-    const s = sources.find((x) => !chosen.has(x) && x.elements.includes(e))
+    const s = sources.find((x) => !chosen.has(x) && (x.kind === 'backup' ? x.elements[0] === e : x.elements.includes(e)))   // backups produce elements[0] only (cp.ts)
     if (!s) return null
     take(s, e)
   }
@@ -534,24 +555,28 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
 
 **Interfaces:**
 ```ts
-export interface GreedyOptions { seed: number; decks: [string[], string[]]; depth?: 0 | 1 | 2; weights?: Weights; aggression?: number; maxSimulations?: number }
+export interface GreedyOptions { seed: number; decks: [string[], string[]]; depth?: 0 | 1 | 2 | undefined; weights?: Weights | undefined; aggression?: number | undefined; maxSimulations?: number | undefined }
 export class GreedyAgent implements Agent {
   constructor(opts: GreedyOptions)
   decide(view: PlayerView, legal: Command[]): Command
-  /** number of apply() calls made in the last decide(); for tests/timing */
-  readonly lastSimulations: number
+  /** taken simulation steps in the last decide() (top-level applies + rollout steps) */
+  lastSimulations: number
+  /** candidates considered and the depth actually used in the last decide() */
+  lastCandidates: number
+  lastDepth: 0 | 1 | 2
 }
 /** Greedy depth-0 policy on a full state: best candidate by immediate evaluate() from `player`'s perspective. Exported for rollouts and later ISMCTS playouts. */
 export function greedyStep(state: GameState, player: PlayerId, weights: Weights, aggression: number): Command | null
 ```
 Algorithm of `decide(view, legal)`:
 1. `me = view.me`. `[det, rng'] = determinise({ view, decks, rng })`; store `rng'`.
-2. `cands = candidateCommands(det, me)`, non-pass first, `pass` last; if empty → the first non-concede command in `legal`, else `legal[0]`.
-3. Effective depth: `depth`, unless `cands.length × 20 > maxSimulations` (default 2000) → 0.
-4. For each cand: `s = apply(det, cand).state`; `sims++`. If depth ≥ 1: rollout `while (!s.result && s.turnPlayer === me && sims < maxSimulations) { const p = actingPlayer(s)!; const c = greedyStep(s, p, weights, aggression); if (!c) break; s = apply(s, c).state; sims++ }` — the opponent answers block/party decisions inside my turn with its own greedy step (zero-sum: it maximises `evaluate(·, opp)`). If depth ≥ 2: continue the same loop while `s.turnPlayer !== me` (the opponent's whole turn) under the same cap. Score = `evaluate(s, me, weights, aggression)`.
-5. Pick max score; ties → earlier candidate (so a non-pass beats an equal-scoring pass).
-6. Set `lastSimulations = sims`; return the chosen command.
-Determinism: only the seeded `rng` is consulted, and only by `determinise`.
+2. `cands = candidateCommands(det, me)` (already ordered with `pass` last); if empty → the first non-concede command in `legal`, else `legal[0]`.
+3. Effective depth (spec A2): `depth`, raised to at least 2 when `det.phase === 'attack' && det.attack?.step === 'declaration'` (attack decisions look at the opponent's reply turn).
+4. **Per-candidate budget** (order-independent, no depth collapse): `budget = max(1, floor(maxSimulations / cands.length))` rollout steps per candidate (default `maxSimulations` 2000).
+5. For each cand: `s = apply(det, cand).state`; `used = 1`. Let `owner = det.turnPlayer` (the turn being played — may be the opponent's when I am deciding a block). If depth ≥ 1: rollout **to the end of the current turn** — `while (!s.result && s.turnPlayer === owner && used < budget) { const p = actingPlayer(s)!; const c = greedyStep(s, p, weights, p === me ? aggression : 1 - aggression); if (!c) break; s = apply(s, c).state; used++ }` — whoever must act (either player: blocks, party splits, the turn player's casts/attacks) is played by a greedy step from THEIR perspective. If depth ≥ 2: continue while `s.turnPlayer !== owner` (the following turn) under the same budget. Score = `evaluate(s, me, weights, aggression)`. `sims += used`.
+6. Pick max score with strict `>`; ties → earlier candidate (so a non-pass beats an equal-scoring pass because `pass` is last).
+7. Set `lastSimulations = sims`, `lastCandidates = cands.length`, `lastDepth`; return the chosen command.
+Determinism: only the seeded `rng` is consulted, and only by `determinise`; iteration order is array order throughout (no Set/Map ordering affects choices).
 
 - [ ] **Step 1: Failing tests**
 
@@ -560,10 +585,14 @@ Determinism: only the seeded `rng` is consulted, and only by `determinise`.
 import { describe, expect, it } from 'vitest'
 import { apply, legalCommands, viewFor, type GameState } from '@fftcg/engine'
 import { GreedyAgent } from '../src/greedy.js'
-import { DEFAULT_DECK, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
+import { makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
 
-const DECKS: [string[], string[]] = [DEFAULT_DECK, DEFAULT_DECK]
-const agent = (seed = 1, depth: 0 | 1 | 2 = 1) => new GreedyAgent({ seed, decks: DECKS, depth })
+/** withField/withHand MINT extra card instances, so deck lists must be derived from the state under test, not DEFAULT_DECK. */
+const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
+  const q = s.players[p]
+  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone].map((id) => s.cards[id]!.code)
+}) as [string[], string[]]
+const agent = (s: GameState, seed = 1, depth: 0 | 1 | 2 = 1) => new GreedyAgent({ seed, decks: decksOf(s), depth })
 const hurt = (s: GameState, p: 0 | 1, n: number): GameState => {
   const ps = s.players[p]
   const players = [s.players[0], s.players[1]] as typeof s.players
@@ -575,21 +604,22 @@ const toAttackDeclaration = (s: GameState): GameState => apply(s, { type: 'pass'
 describe('GreedyAgent', () => {
   it('is deterministic per seed and never concedes', () => {
     const s = makeGame()
-    const a = agent(7).decide(viewFor(s, 0), legalCommands(s, 0)), b = agent(7).decide(viewFor(s, 0), legalCommands(s, 0))
+    const a = agent(s, 7).decide(viewFor(s, 0), legalCommands(s, 0)), b = agent(s, 7).decide(viewFor(s, 0), legalCommands(s, 0))
     expect(a).toEqual(b); expect(a.type).not.toBe('concede')
   })
   it('takes lethal: attacks when the opponent is at 6 damage and cannot block', () => {
     let s = withHandSize(makeGame(), 0, 5); let f: number
     ;[s, f] = withField(s, 0, 'forwards', 'V-F2')
     s = toAttackDeclaration(hurt(s, 1, 6))
-    expect(agent().decide(viewFor(s, 0), legalCommands(s, 0))).toEqual({ type: 'declareAttack', player: 0, attackers: [f] })
+    expect(agent(s).decide(viewFor(s, 0), legalCommands(s, 0))).toEqual({ type: 'declareAttack', player: 0, attackers: [f] })
   })
   it('does not attack a 3000 into an active 7000 blocker for no gain (depth 1)', () => {
     let s = withHandSize(makeGame(), 0, 5)
     ;[s] = withField(s, 0, 'forwards', 'V-F1')   // 3000
     ;[s] = withField(s, 1, 'forwards', 'V-F3')   // 7000 active blocker
     s = toAttackDeclaration(s)
-    expect(agent().decide(viewFor(s, 0), legalCommands(s, 0)).type).toBe('pass')
+    expect(agent(s).decide(viewFor(s, 0), legalCommands(s, 0)).type).toBe('pass')
+    expect(agent(s, 1, 2).decide(viewFor(s, 0), legalCommands(s, 0)).type).toBe('pass')   // depth 2 agrees
   })
   it('blocks a lethal attack when it can', () => {
     let s = withHandSize(makeGame(), 0, 5); let a: number, b: number
@@ -597,20 +627,23 @@ describe('GreedyAgent', () => {
     ;[s, b] = withField(s, 1, 'forwards', 'V-F3')   // blocker 7000
     s = toAttackDeclaration(hurt(s, 1, 6))
     s = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
-    expect(agent().decide(viewFor(s, 1), legalCommands(s, 1))).toEqual({ type: 'declareBlock', player: 1, blocker: b })
+    expect(agent(s).decide(viewFor(s, 1), legalCommands(s, 1))).toEqual({ type: 'declareBlock', player: 1, blocker: b })
   })
   it('returns a legal command on turn 1 and reports its simulation count', () => {
     const s = makeGame()
-    const a = agent()
+    const a = agent(s)
     const cmd = a.decide(viewFor(s, 0), legalCommands(s, 0))
     expect(() => apply(s, cmd)).not.toThrow()
-    expect(a.lastSimulations).toBeGreaterThan(0)
+    expect(a.lastSimulations).toBeGreaterThan(0); expect(a.lastCandidates).toBeGreaterThan(0)
   })
-  it('respects maxSimulations by dropping to depth 0', () => {
-    const s = makeGame()
-    const a = new GreedyAgent({ seed: 1, decks: DECKS, depth: 2, maxSimulations: 5 })
+  it('uses depth 2 at the attack declaration step (spec A2) and honours the per-candidate budget', () => {
+    let s = withHandSize(makeGame(), 0, 5)
+    ;[s] = withField(s, 0, 'forwards', 'V-F1')
+    s = toAttackDeclaration(s)
+    const a = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1, maxSimulations: 6 })
     a.decide(viewFor(s, 0), legalCommands(s, 0))
-    expect(a.lastSimulations).toBeLessThanOrEqual(40)
+    expect(a.lastDepth).toBe(2)
+    expect(a.lastSimulations).toBeLessThanOrEqual(a.lastCandidates * Math.max(1, Math.floor(6 / a.lastCandidates)))
   })
 })
 ```
@@ -625,8 +658,7 @@ import type { Agent } from './agent.js'
 import { candidateCommands } from './candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from './evaluate.js'
 
-export interface GreedyOptions { seed: number; decks: [string[], string[]]; depth?: 0 | 1 | 2; weights?: Weights; aggression?: number; maxSimulations?: number }
-const ROLLOUT_ESTIMATE = 20
+export interface GreedyOptions { seed: number; decks: [string[], string[]]; depth?: 0 | 1 | 2 | undefined; weights?: Weights | undefined; aggression?: number | undefined; maxSimulations?: number | undefined }
 
 export function greedyStep(state: GameState, player: PlayerId, weights: Weights, aggression: number): Command | null {
   let best: Command | null = null
@@ -650,32 +682,39 @@ export class GreedyAgent implements Agent {
     this.rng = seedRng(opts.seed); this.decks = opts.decks; this.depth = opts.depth ?? 1
     this.weights = opts.weights ?? DEFAULT_WEIGHTS; this.aggression = opts.aggression ?? 0.5; this.maxSimulations = opts.maxSimulations ?? 2000
   }
+  lastCandidates = 0
+  lastDepth: 0 | 1 | 2 = 0
   decide(view: PlayerView, legal: Command[]): Command {
     const me = view.me
     const [det, rng] = determinise({ view, decks: this.decks, rng: this.rng })
     this.rng = rng
-    const cands = candidateCommands(det, me).sort((a, b) => Number(a.type === 'pass') - Number(b.type === 'pass'))
+    const cands = candidateCommands(det, me)   // pass is last by contract
     if (!cands.length) return legal.find((c) => c.type !== 'concede') ?? (legal[0] as Command)
-    const depth = cands.length * ROLLOUT_ESTIMATE > this.maxSimulations ? 0 : this.depth
+    const atDeclaration = det.phase === 'attack' && det.attack?.step === 'declaration'
+    const depth: 0 | 1 | 2 = atDeclaration ? (Math.max(this.depth, 2) as 2) : this.depth   // spec A2
+    const budget = Math.max(1, Math.floor(this.maxSimulations / cands.length))
+    const owner = det.turnPlayer
     let sims = 0
     let best = cands[0] as Command
     let bestScore = -Infinity
     for (const cand of cands) {
-      let s = apply(det, cand).state; sims++
+      let s = apply(det, cand).state
+      let used = 1
       const rollout = (until: (t: GameState) => boolean) => {
-        while (!s.result && until(s) && sims < this.maxSimulations) {
+        while (!s.result && until(s) && used < budget) {
           const p = actingPlayer(s)!
-          const c = greedyStep(s, p, this.weights, this.aggression)
+          const c = greedyStep(s, p, this.weights, p === me ? this.aggression : 1 - this.aggression)
           if (!c) break
-          s = apply(s, c).state; sims++
+          s = apply(s, c).state; used++
         }
       }
-      if (depth >= 1) rollout((t) => t.turnPlayer === me)
-      if (depth >= 2) rollout((t) => t.turnPlayer !== me)
+      if (depth >= 1) rollout((t) => t.turnPlayer === owner)    // finish the current turn (mine, or the opponent's when I am blocking)
+      if (depth >= 2) rollout((t) => t.turnPlayer !== owner)    // and the following turn
       const score = evaluate(s, me, this.weights, this.aggression)
       if (score > bestScore) { best = cand; bestScore = score }
+      sims += used
     }
-    this.lastSimulations = sims
+    this.lastSimulations = sims; this.lastCandidates = cands.length; this.lastDepth = depth
     return best
   }
 }
@@ -689,9 +728,9 @@ export * from './payment.js'
 export * from './candidates.js'
 export * from './greedy.js'
 ```
-The inner `apply` calls made by `greedyStep` while scoring candidates are deliberately not counted in `sims`; the cap bounds taken steps and `ROLLOUT_ESTIMATE` accounts for the fan-out.
+The inner `apply` calls made by `greedyStep` while scoring rollout candidates are deliberately not counted in `used` — the budget bounds taken steps; real cost is roughly `used × (average candidates per step)`, which the CLI timing measures directly.
 
-- [ ] **Step 4: Run everything** → green. If the "3000 into 7000" test fails because the evaluation still prefers attacking, first confirm the rollout is letting the opponent block (it should — `greedyStep` for the opponent maximises their evaluation); only then consider weights, and record any change in the spec appendix (Task 6).
+- [ ] **Step 4: Run everything** → green. The three behaviour tests (lethal, no bad attack, lethal block) were verified during plan review to pass with this exact algorithm once deck lists are derived from the state; if one fails, the first suspect is `decksOf`/determinise consistency, then the rollout owner logic, and only then weights (record any weight change in the spec appendix, Task 6).
 - [ ] **Step 5: Commit** `feat(ai): greedy lookahead agent with determinised rollouts`.
 
 ---
@@ -712,9 +751,9 @@ export function describeAgentSpec(spec: AgentSpec): string  // 'random' | 'greed
 export function makeAgent(spec: AgentSpec, seed: number, decks: [string[], string[]]): Agent
 // selfplay.ts
 export interface SelfPlayOptions { games: number; seed: number; decks: [string[], string[]]; defs: CardDef[]; maxCommands?: number; agents?: [AgentSpec, AgentSpec]; strict?: boolean }
-export interface SelfPlayReport { games; completed; wins; draws; avgTurns; unimplementedAbilities; failures; agents: [string, string]; msPerDecision: [number, number]; decisions: [number, number] }
+export interface SelfPlayReport { games: number; completed: number; wins: [number, number]; draws: number; avgTurns: number; unimplementedAbilities: number; failures: { seed: number; error: string }[]; agents: [string, string]; msPerDecision: [number, number]; decisions: [number, number] }
 ```
-`strict` (default `true`) keeps the per-command mutation/invariant/dead-end checks; `strict: false` skips them for tournaments (still runs `checkInvariants` once at game end). Timing via `performance.now()` around `decide` only — measurement, not decision logic. `main.ts`: `--p0`, `--p1` (default `random`), `--depth` (default 1, applied to greedy specs without an explicit depth), `--fast` → `strict: false`; the printed JSON includes `agents` and `msPerDecision`.
+`strict` (default `true`) keeps the per-command mutation/invariant/dead-end checks; `strict: false` skips them for tournaments (still runs `checkInvariants` once at game end). Timing via `performance.now()` around `decide` only — measurement, not decision logic. `main.ts`: `--p0`, `--p1` (default `random`), `--depth` (default 1, applied to greedy specs without an explicit depth), `--fast` → `strict: false` — the existing `flag(name, dflt)` helper reads a VALUE after the flag, so add `const has = (name: string) => rest.includes(`--${name}`)` for boolean flags; the printed JSON includes `agents` and `msPerDecision`. `makeAgent` builds `GreedyOptions` without undefined-valued keys when `spec.depth` is absent (or relies on the `| undefined` declarations).
 
 - [ ] **Step 1: Failing tests** — extend `apps/cli/test/selfplay.test.ts`:
 ```ts
@@ -724,7 +763,7 @@ it('greedy beats random decisively (30 games, depth 1, both seats)', () => {
   const b = selfPlay({ games: 15, seed: 600, decks: [deck, deck], defs: loadCards(), agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: false })
   expect(a.failures).toEqual([]); expect(b.failures).toEqual([])
   expect(a.wins[0] + b.wins[1]).toBeGreaterThanOrEqual(21)          // ≥ 70 % of 30
-  expect(Math.max(a.msPerDecision[0], b.msPerDecision[1])).toBeLessThan(200)
+  expect(Math.max(a.msPerDecision[0], b.msPerDecision[1])).toBeLessThan(80)   // spec A8 says < 50 ms average; 80 leaves CI headroom — the CLI run reports the real figure
 }, 180_000)
 it('greedy vs greedy terminates', () => {
   const deck = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
@@ -753,4 +792,5 @@ Also assert in the existing 20-game test that `r.agents` equals `['random', 'ran
 ## Self-review notes
 - Spec coverage: A1–A2 (Task 4), A3 (Task 1), A4 (Task 3), A5–A6 (Task 2), A7 (Tasks 1 and 4 tests), A8 (Task 4 cap + Task 5 timing), A9 (Tasks 5–6), A10 respected.
 - Type consistency: `determinise` returns `[GameState, Rng]`; `GreedyAgent` replaces its `rng` after each determinise; `candidateCommands` uses engine `legal*` helpers that take `(state, player)` except `legalPartyDamageAssignments(state)`; `SelfPlayReport` gains `agents`, `msPerDecision`, `decisions`; `Agent`/`RandomAgent` move to `agent.ts` in Task 4.
+- Plan review (2026-08-26, 3-lens ultracode; Codex pending until ~05:20): accepted — greedy tests derive deck lists from the fixture state (withField/withHand mint cards); `mulliganDecided` assertion per player; per-candidate simulation budget instead of a shared counter/depth collapse; rollout runs to the end of the CURRENT turn's owner (so block decisions get lookahead) and the opponent's greedy step uses `1 − aggression`; spec A2 depth 2 at attack declaration implemented; antisymmetric threat term makes `evaluate` exactly zero-sum; `handQuality` term; `cardValue` summons flat/backups above; backups match required elements via `elements[0]` only; live-state fixtures in determinise tests; `| undefined` option types; `--fast` via `has()`; timing assertion 80 ms. Deferred: a runtime cross-check of candidateCommands against legalCommands (LOW).
 - Known deviation from MVP0 patterns: `packages/ai` tests import engine test helpers by relative path — acceptable in a private monorepo; noted in Global Constraints.
