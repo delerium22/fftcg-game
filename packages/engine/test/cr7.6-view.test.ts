@@ -16,6 +16,8 @@ describe('§7.6 hidden zones', () => {
     expect(visible.has(f)).toBe(true)
     expect(v.fields[1].deckCount).toBe(s.players[1].deck.length)   // 45 after dealing 5
     expect(JSON.stringify(v)).not.toMatch(/"deck":/)
+    expect(v.firstPlayer).toBe(s.firstPlayer)
+    expect(v.mulliganDecided).toEqual([true, true])
   })
   it('is isolated from engine state', () => {
     const s = makeGame()

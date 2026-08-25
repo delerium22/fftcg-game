@@ -16,3 +16,4 @@ export * from './apply.js'      // Task 9
 export * from './invariants.js' // Task 9
 export * from './session.js'    // Task 9
 export * from './view.js'       // Task 10
+export * from './determinise.js'

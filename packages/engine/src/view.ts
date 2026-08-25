@@ -6,6 +6,8 @@ export interface PlayerView {
   me: PlayerId; turn: number; turnPlayer: PlayerId; phase: Phase; attack: AttackState | null; priority: PlayerId
   pending: Pending | null; result: GameResult | null; hand: CardId[]; fields: [FieldView, FieldView]
   cards: Record<CardId, CardInstance>; defs: Record<string, CardDef>
+  firstPlayer: PlayerId /* meaningful once chooseFirst has been decided; before that it is the setup default 0 */
+  mulliganDecided: [boolean, boolean]
 }
 
 export function viewFor(state: GameState, me: PlayerId): PlayerView {
@@ -26,5 +28,6 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
   return structuredClone({
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
     pending: state.pending, result: state.result, hand: state.players[me].hand, fields: [field(0), field(1)], cards, defs: state.defs,
+    firstPlayer: state.firstPlayer, mulliganDecided: [state.players[0].mulliganDecided, state.players[1].mulliganDecided],
   })
 }
