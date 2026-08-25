@@ -5,9 +5,9 @@ export * from './state.js'
 export * from './commands.js'
 export * from './events.js'
 export * from './errors.js'
-// export * from './setup.js'      // Task 4
+export * from './setup.js'
 // export * from './rules.js'      // Task 5
-// export * from './phases.js'     // Task 5
+export * from './phases.js'
 // export * from './cp.js'         // Task 6
 // export * from './cast.js'       // Task 7
 // export * from './attack.js'     // Task 8
