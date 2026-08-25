@@ -55,6 +55,7 @@ describe('§10.1.2 attack declaration', () => {
     expect(t.pending).toEqual({ kind: 'declareBlock', player: 1 })
     expect(t.priority).toBe(0)
     expect(events).toContainEqual({ type: 'attackDeclared', player: 0, attackers: [a, b] })
+    expect(events).toContainEqual({ type: 'phaseStarted', phase: 'attack', step: 'block' })
   })
 })
 
@@ -78,6 +79,8 @@ describe('§10.1.3–10.1.4 block and damage', () => {
   it('§10.1.4.1: unblocked → 1 damage to the defender, then back to declaration with nothing pending', () => {
     const { s } = attacking()
     const [t, events] = applyDeclareBlock(s, 1, null)
+    expect(events[0]).toEqual({ type: 'blockDeclared', player: 1, blocker: null })
+    expect(events[1]).toEqual({ type: 'phaseStarted', phase: 'attack', step: 'damage' })
     expect(t.players[1].damageZone).toHaveLength(1)
     expect(events).toContainEqual(expect.objectContaining({ type: 'playerDamaged', player: 1 }))
     expect(t.attack).toEqual(IDLE)
@@ -87,6 +90,7 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     let { s, a } = attacking('V-F2'); let b: number          // 5000 vs 7000
     ;[s, b] = withField(s, 1, 'forwards', 'V-F3')
     const [t, events] = applyDeclareBlock(s, 1, b)
+    expect(events).toContainEqual({ type: 'blockDeclared', player: 1, blocker: b })
     expect(events).toContainEqual({ type: 'battleDamage', source: a, target: b, amount: 5000 })
     expect(events).toContainEqual({ type: 'battleDamage', source: b, target: a, amount: 7000 })
     expect(events).toContainEqual({ type: 'broken', card: a })
