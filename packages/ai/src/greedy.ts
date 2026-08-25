@@ -67,7 +67,7 @@ export function greedyStep(state: GameState, player: PlayerId, weights: Weights,
 }
 
 /** Deterministically keep only the first `max` candidates, but always keep `pass` (moved to the end) if it was present. */
-function pruneCandidates(cands: Command[], max: number): Command[] {
+export function pruneCandidates(cands: Command[], max: number): Command[] {
   if (cands.length <= max) return cands
   const passIdx = cands.findIndex((c) => c.type === 'pass')
   if (passIdx === -1 || passIdx < max) return cands.slice(0, max)

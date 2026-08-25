@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { actingPlayer, apply, createGame, legalCommands, viewFor, type Command, type GameState } from '@fftcg/engine'
-import { GreedyAgent, greedyStep } from '../src/greedy.js'
+import { GreedyAgent, greedyStep, pruneCandidates } from '../src/greedy.js'
 import { candidateCommands } from '../src/candidates.js'
 import { DEFAULT_WEIGHTS, type Weights } from '../src/evaluate.js'
 import { DEFAULT_DECK, VANILLA_POOL, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
@@ -90,6 +90,18 @@ describe('GreedyAgent', () => {
     const a = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1, maxSimulations: 5 })
     a.decide(viewFor(s, 0), legalCommands(s, 0))
     expect(a.lastCandidates).toBeLessThanOrEqual(5)
+  })
+  it('F2: pruneCandidates keeps pass last and preserves the order of the kept candidates', () => {
+    const attacks: Command[] = Array.from({ length: 8 }, (_, i) => ({ type: 'declareAttack', player: 0, attackers: [i] }))
+    const list: Command[] = [...attacks, { type: 'pass', player: 0 }]   // pass last, 9 candidates total
+    const pruned = pruneCandidates(list, 5)
+    expect(pruned).toHaveLength(5)
+    expect(pruned.filter((c) => c.type === 'pass')).toHaveLength(1)
+    expect(pruned[4]).toEqual({ type: 'pass', player: 0 })
+    expect(pruned.slice(0, 4)).toEqual(attacks.slice(0, 4))
+    expect(pruneCandidates(list, 5)).toEqual(pruned)   // deterministic: same input -> deep-equal output
+    const short = attacks.slice(0, 3)
+    expect(pruneCandidates(short, 5)).toEqual(short)   // already <= the limit: returned unchanged
   })
   it('F5: at createGame (chooseFirst pending) both candidates are scored at depth 0, without a rollout', () => {
     const s = createGame({ seed: 1, decks: [DEFAULT_DECK, DEFAULT_DECK], defs: VANILLA_POOL })
