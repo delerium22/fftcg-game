@@ -1,4 +1,4 @@
-import { actingPlayer, apply, determinise, seedRng, type Command, type GameState, type PlayerId, type PlayerView, type Rng } from '@fftcg/engine'
+import { actingPlayer, apply, determinise, legalCommands, seedRng, type Command, type GameState, type PlayerId, type PlayerView, type Rng } from '@fftcg/engine'
 import type { Agent } from './agent.js'
 import { candidateCommands } from './candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from './evaluate.js'
@@ -84,6 +84,7 @@ export class GreedyAgent implements Agent {
   lastSimulations = 0
   lastCandidates = 0
   lastDepth: 0 | 1 | 2 = 0
+  readonly needsLegalCommands = false
   constructor(opts: GreedyOptions) {
     this.rng = seedRng(opts.seed); this.decks = opts.decks; this.depth = opts.depth ?? 1
     this.weights = opts.weights ?? DEFAULT_WEIGHTS; this.aggression = opts.aggression ?? 0.5; this.maxSimulations = opts.maxSimulations ?? 2000
@@ -95,7 +96,10 @@ export class GreedyAgent implements Agent {
     this.rng = rng
     let cands = candidateCommands(det, me)   // pass is last by contract
     if (!cands.length) {
-      const fallback = legal.find((c) => c.type !== 'concede')
+      // legal may be [] here (needsLegalCommands is false, so a caller may skip generating it on the hot
+      // path); compute it ourselves rather than relying on the argument, but reuse a non-empty one as-is.
+      const pool = legal.length ? legal : legalCommands(det, me)
+      const fallback = pool.find((c) => c.type !== 'concede')
       if (!fallback) throw new Error('GreedyAgent.decide: no legal command to choose or fall back to')
       return fallback
     }
