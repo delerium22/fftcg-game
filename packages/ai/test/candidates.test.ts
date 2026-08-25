@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { apply, legalCommands } from '@fftcg/engine'
+import { apply, defOf, legalCommands, type Command } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
+import { cardValue } from '../src/cardValue.js'
 import { makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 describe('candidateCommands', () => {
@@ -22,6 +23,11 @@ describe('candidateCommands', () => {
     const c = candidateCommands(s, 0)
     expect(c).toHaveLength(1); expect(c[0]!.type).toBe('discardToHandSize')
     expect(() => apply(s, c[0]!)).not.toThrow()
+    const cmd = c[0]! as Extract<Command, { type: 'discardToHandSize' }>
+    const byValue = [...s.players[0].hand].sort((a, b) => cardValue(defOf(s, a)) - cardValue(defOf(s, b)))
+    const pending = s.pending
+    expect(cmd.cards).toEqual(byValue.slice(0, pending?.kind === 'discardToHandSize' ? pending.count : 0))
+    expect(cmd.cards).toHaveLength(1)
     expect(candidateCommands(s, 1)).toEqual([])
   })
 })
