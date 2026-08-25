@@ -1,0 +1,274 @@
+[
+  {
+    "code": "1-121C",
+    "name": "Red Mage",
+    "type": "backup",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 2,
+    "power": null,
+    "keywords": [],
+    "generic": true,
+    "exBurst": false,
+    "text": "[Lightning][Dull]: Choose 1 Forward. It gains Haste until the end of the turn.",
+    "hasAbilities": true
+  },
+  {
+    "code": "9-074C",
+    "name": "Class Tenth Moogle",
+    "type": "backup",
+    "elements": [
+      "earth"
+    ],
+    "cost": 2,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "If Class Tenth Moogle is on the field, Class Tenth Moogle can produce Lightning CP.",
+    "hasAbilities": true
+  },
+  {
+    "code": "12-120C",
+    "name": "Shantotto",
+    "type": "forward",
+    "elements": [
+      "earth",
+      "lightning"
+    ],
+    "cost": 2,
+    "power": 7000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "When Shantotto enters the field, select 1 of the 2 following actions.\n\"Choose 1 Forward other than Shantotto. It gains Haste until the end of the turn.\"\n\"Choose 1 Forward you control. It gains ‘This Forward cannot be broken’ until the end of the turn.\"",
+    "hasAbilities": true
+  },
+  {
+    "code": "13-072R",
+    "name": "Odin",
+    "type": "summon",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 5,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "text": "If you have received 5 points of damage or more, the cost required to cast Odin is reduced by 3.\nEX BURST Choose 1 Forward of cost 5 or less. Break it.",
+    "hasAbilities": true
+  },
+  {
+    "code": "16-092C",
+    "name": "Noel",
+    "type": "forward",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 5,
+    "power": 9000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "text": "EX BURST When Noel enters the field, choose up to 2 Forwards opponent controls. Dull them.\n[Dull], put Noel into the Break Zone: Dull all the Forwards opponent controls.",
+    "hasAbilities": true
+  },
+  {
+    "code": "18-064C",
+    "name": "Geomancer",
+    "type": "backup",
+    "elements": [
+      "earth"
+    ],
+    "cost": 1,
+    "power": null,
+    "keywords": [],
+    "generic": true,
+    "exBurst": false,
+    "text": "[Earth], discard Geomancer: Draw 1 card. You can only use this ability if Geomancer is in your hand.",
+    "hasAbilities": true
+  },
+  {
+    "code": "18-069C",
+    "name": "Red Mage",
+    "type": "backup",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 1,
+    "power": null,
+    "keywords": [],
+    "generic": true,
+    "exBurst": false,
+    "text": "[Lightning], discard Red Mage: Draw 1 card. You can only use this ability if Red Mage is in your hand.",
+    "hasAbilities": true
+  },
+  {
+    "code": "18-124C",
+    "name": "Billy Bob",
+    "type": "forward",
+    "elements": [
+      "earth",
+      "lightning"
+    ],
+    "cost": 3,
+    "power": 8000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "When Billy Bob enters the field, choose 1 Forward other than Card Name Billy Bob in your Break Zone. Add it to your hand.",
+    "hasAbilities": true
+  },
+  {
+    "code": "19-052C",
+    "name": "Undead Princess",
+    "type": "forward",
+    "elements": [
+      "earth"
+    ],
+    "cost": 1,
+    "power": 2000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "Put Undead Princess into the Break Zone: Choose 1 Forward. It gains +4000 power until the end of the turn.\nRemove Undead Princess in the Break Zone from the game: Choose 1 Earth Forward. It gains +2000 power until the end of the turn. You can only use this ability during your Main Phase and if Undead Princess is in the Break Zone.",
+    "hasAbilities": true
+  },
+  {
+    "code": "20-074C",
+    "name": "Miner",
+    "type": "backup",
+    "elements": [
+      "earth"
+    ],
+    "cost": 3,
+    "power": null,
+    "keywords": [],
+    "generic": true,
+    "exBurst": false,
+    "text": "When Miner enters the field, reveal the top 5 cards of your deck. Add 1 Backup among them to your hand and return the other cards to the bottom of your deck in any order.\n[2][Dull], put Miner into the Break Zone: Draw 1 card.",
+    "hasAbilities": true
+  },
+  {
+    "code": "20-103H",
+    "name": "Ramuh",
+    "type": "summon",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 2,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "Select up to 2 of the 3 following actions.\n\"Choose 1 Forward. Dull it.\"\n\"Choose 1 Forward. Deal it 5000 damage.\"\n\"Choose 1 Forward. It gains Haste until the end of the turn.\"",
+    "hasAbilities": true
+  },
+  {
+    "code": "20-105C",
+    "name": "Reeve",
+    "type": "backup",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 4,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "text": "EX BURST When Reeve enters the field, look at the top 3 cards of your deck. Add 1 card among them to your hand and return the other cards to the bottom of your deck in any order.",
+    "hasAbilities": true
+  },
+  {
+    "code": "22-068R",
+    "name": "Prishe",
+    "type": "forward",
+    "elements": [
+      "earth"
+    ],
+    "cost": 2,
+    "power": 5000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "When Prishe is chosen by a Summon or an ability, Prishe gains +2000 power until the end of the turn.\nWhen Prishe deals damage to your opponent, choose 1 Character in your Break Zone. Add it to your hand.",
+    "hasAbilities": true
+  },
+  {
+    "code": "24-063H",
+    "name": "Hugh Yurg",
+    "type": "forward",
+    "elements": [
+      "earth"
+    ],
+    "cost": 4,
+    "power": 8000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "When Hugh Yurg enters the field, you may search for 1 Earth Forward of cost 1 and play it onto the field.\nWhen a Forward of cost 1 enters your field, choose 1 Forward. Until the end of the turn, it gains +2000 power and Brave.",
+    "hasAbilities": true
+  },
+  {
+    "code": "27-124S",
+    "name": "Cloud",
+    "type": "forward",
+    "elements": [
+      "earth"
+    ],
+    "cost": 3,
+    "power": 7000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "hasAbilities": true,
+    "text": "When Cloud enters the field, until the end of the turn, all the Forwards you control gain 3000 power and Brave.\nAt the beginning of the Attack Phase during each of your turns, choose 1 Forward you control. Until the end of the turn, it gains \"This Forward cannot be broken.\" and \"This Forward cannot be returned to its owner's hand by your opponent's Summons or abilities.\""
+  },
+  {
+    "code": "27-125S",
+    "name": "Luso",
+    "type": "forward",
+    "elements": [
+      "earth"
+    ],
+    "cost": 1,
+    "power": 3000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "hasAbilities": true,
+    "text": "When Luso deals damage to a Forward, break it.\nWhen Luso deals damage to your opponent, select up to 2 of the 2 following actions. \"Choose 1 Forward. Deal it 3000 damage.\" \"Choose 1 Character in your Break Zone. Add it to your hand.\""
+  },
+  {
+    "code": "27-126S",
+    "name": "Sphene",
+    "type": "forward",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 3,
+    "power": 7000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "hasAbilities": true,
+    "text": "All cards in your Break Zone cannot be removed from the game by your opponent's Summons or abilities.\n[0]: Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn. Add it to your hand. You can only use this ability during your turn and only once per turn."
+  },
+  {
+    "code": "27-127S",
+    "name": "Lightning",
+    "type": "forward",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 7,
+    "power": 9000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "hasAbilities": true,
+    "text": "EX BURST When Lightning enters the field, choose 1 Forward of cost 4 or less opponent controls. Break it.\nWhen a Forward opponent controls is put from the field into the Break Zone, choose 1 Forward you control. It gains Haste until the end of the turn."
+  }
+]

@@ -1,0 +1,10 @@
+[
+  { "code": "27-124S", "name": "Cloud", "type": "forward", "elements": ["earth"], "cost": 3, "power": 7000, "keywords": [], "generic": false, "exBurst": false, "hasAbilities": true,
+    "text": "When Cloud enters the field, until the end of the turn, all the Forwards you control gain 3000 power and Brave.\nAt the beginning of the Attack Phase during each of your turns, choose 1 Forward you control. Until the end of the turn, it gains \"This Forward cannot be broken.\" and \"This Forward cannot be returned to its owner's hand by your opponent's Summons or abilities.\"" },
+  { "code": "27-125S", "name": "Luso", "type": "forward", "elements": ["earth"], "cost": 1, "power": 3000, "keywords": [], "generic": false, "exBurst": false, "hasAbilities": true,
+    "text": "When Luso deals damage to a Forward, break it.\nWhen Luso deals damage to your opponent, select up to 2 of the 2 following actions. \"Choose 1 Forward. Deal it 3000 damage.\" \"Choose 1 Character in your Break Zone. Add it to your hand.\"" },
+  { "code": "27-126S", "name": "Sphene", "type": "forward", "elements": ["lightning"], "cost": 3, "power": 7000, "keywords": [], "generic": false, "exBurst": false, "hasAbilities": true,
+    "text": "All cards in your Break Zone cannot be removed from the game by your opponent's Summons or abilities.\n[0]: Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn. Add it to your hand. You can only use this ability during your turn and only once per turn." },
+  { "code": "27-127S", "name": "Lightning", "type": "forward", "elements": ["lightning"], "cost": 7, "power": 9000, "keywords": [], "generic": false, "exBurst": true, "hasAbilities": true,
+    "text": "EX BURST When Lightning enters the field, choose 1 Forward of cost 4 or less opponent controls. Break it.\nWhen a Forward opponent controls is put from the field into the Break Zone, choose 1 Forward you control. It gains Haste until the end of the turn." }
+]
