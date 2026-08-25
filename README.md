@@ -64,7 +64,7 @@ Summons resolve with no effect, EX Burst skipped, etc.), each marked in the sour
 comment. Find them all with:
 
 ```sh
-grep -rn MVP0-SIMPLIFICATION packages
+grep -rn MVP0-SIMPLIFICATION packages apps --include='*.ts' --exclude-dir=dist
 ```
 
 ## Repo layout
