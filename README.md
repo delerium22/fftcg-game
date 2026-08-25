@@ -64,15 +64,18 @@ play.
 ## AI opponent
 
 `packages/ai`'s `GreedyAgent` plays by determinising the game (rebuilding a full, consistent
-`GameState` from the agent's own `PlayerView` plus both players' public deck lists, sampling
-unseen cards with a seeded RNG — never the ground-truth state), then, for each legal move,
-simulating a greedy lookahead (its own turn, and optionally the opponent's, at attack
-declarations) and scoring the result with a hand-tuned evaluation function. It is seeded and
-deterministic (same seed + same views ⇒ same decisions) and never sees hidden information beyond
-what a real player could infer from the deck list being public knowledge. Measured over 200
-seeded self-play games against `RandomAgent` (`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`'s
-appendix has the full breakdown): greedy wins 98.5–100 % of games regardless of seat or lookahead
-depth.
+`GameState` from the agent's own `PlayerView` plus both players' deck lists — assumed public
+knowledge, e.g. a fixed starter matchup — sampling unseen cards with a seeded RNG, never the
+ground-truth state). The search itself is a **greedy one-ply lookahead with rollout**: for each
+legal move it applies the move, fully resolves any combat it opens, then rolls out greedily to the
+end of the current turn (depth 1, the default); at attack declaration the depth adaptively widens
+to 2, also rolling out the opponent's following turn. Every resulting state is scored with a
+hand-tuned evaluation function and the best-scoring move is played. It is seeded and deterministic
+(same seed + same views ⇒ same decisions) and never sees hidden information beyond what a real
+player could infer from the deck lists being public. Measured over 200 seeded self-play games
+(`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`'s appendix has the full breakdown):
+greedy wins **≥ 98 % of games vs. the concrete-command random baseline** on 200-game seeded runs,
+regardless of seat or lookahead depth.
 
 ## Rules version
 

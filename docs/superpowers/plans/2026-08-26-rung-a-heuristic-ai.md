@@ -813,3 +813,36 @@ Also assert in the existing 20-game test that `r.agents` equals `['random', 'ran
 - Plan review (2026-08-26, 3-lens ultracode; Codex pending until ~05:20): accepted — greedy tests derive deck lists from the fixture state (withField/withHand mint cards); `mulliganDecided` assertion per player; per-candidate simulation budget instead of a shared counter/depth collapse; rollout runs to the end of the CURRENT turn's owner (so block decisions get lookahead) and the opponent's greedy step uses `1 − aggression`; spec A2 depth 2 at attack declaration implemented; antisymmetric threat term makes `evaluate` exactly zero-sum; `handQuality` term; `cardValue` summons flat/backups above; backups match required elements via `elements[0]` only; live-state fixtures in determinise tests; `| undefined` option types; `--fast` via `has()`; timing assertion 80 ms. Deferred: a runtime cross-check of candidateCommands against legalCommands (LOW).
 - Codex plan review (2026-08-26 ~06:00, after Tasks 1–3 were built; `…codex-review.md`): CRITICAL plan-snippet/interface mismatch (handQuality) — implementation already correct, plan snippet fixed; HIGH ×6 accepted as Task 4b (rollouts must resolve combat; honest budget; bounded attack candidates; scarcity-first payment; setup at depth 0) and Task 5 (end-to-end timing, `needsLegalCommands`); MEDIUM accepted: per-side tempo replaces the antisymmetric threat term, equal-size handQuality test, full-view determinise equality, synthetic-id/code validation, open-list fairness note, concrete-random baseline label, agents/parser/determinism tests, separate tuning vs gate seeds; deferred to backlog: owner-vs-controller conservation (no control changes exist in MVP0), engine `legalAttackSets` 32-bit mask (unreachable), semantic-random baseline, candidate phase-table test.
 - Known deviation from MVP0 patterns: `packages/ai` tests import engine test helpers by relative path — acceptable in a private monorepo; noted in Global Constraints.
+
+## Execution notes (2026-08-26)
+
+Chronological record of the review passes this plan went through, kept at the end so the task
+list above stays a historically-accurate record of what was originally planned:
+
+1. **3-lens plan review** (see the self-review notes above): accepted before Tasks 1–4 were
+   built — per-candidate simulation budget, rollout-to-turn-boundary, the opponent's simulated
+   step scored at `1 − aggression`, and several other rulings folded directly into the task
+   briefs.
+2. **Task 4b: Codex plan-review fix wave** (`…codex-review.md`), built into Tasks 1–4: combat
+   must be resolved before scoring, an honest (not silently-truncated) simulation budget, bounded
+   attack candidates, scarcity-first payment, setup phase scored at depth 0.
+3. **This final fix wave** (`…codex-code-review.md`, `final-fix-brief.md`, items C1–C8/W1–W6):
+   the per-candidate simulation budget was restored — an interim version of the Task 4b fix wave
+   had regressed to a single budget shared across all of `decide`'s candidates, which made
+   scoring order-dependent (C1); combat resolution is now budget-exempt and a party's block
+   candidates are scored on their fully-resolved outcome, not the pre-split snapshot (W1/W2);
+   `resolveCombat` takes an explicit `perspective` player instead of keying off `state.turnPlayer`
+   (C4); `preferredPayment`'s required-element phase is bounded backtracking, not a single
+   scarcity-first greedy pass, which could still strand an element (C2); the engine's Light/Dark
+   same-element CP exemption (§11.2.1.1/§11.2.2) is implemented via `cp.ts`'s
+   `requiredElements(def)` (C3); `boundedAttackSets` adds legal pairs, deduplicated by sorted
+   attacker-id signature (C5); `candidateCommands`'s pending switch is exhaustive (W3); the
+   chosen command is asserted free of synthetic ids (W4); `--depth` is validated identically to
+   `greedy:N` (C7); several test and documentation minors (C6, W5, W6).
+4. **Refuted / deferred** (raised during review, not acted on): `determinise` conserves visible
+   cards by field **controller** rather than `CardInstance.owner` — correct today (MVP0 has no
+   control-changing effects) but will need the owner-based fix once one exists;
+   `candidateCommands` duplicates `legalCommands`'s pending/phase switch instead of deriving from
+   it — a maintenance burden (LOW), deferred; `evaluate`'s `dullFactor` and `threat` weights both
+   encode active-vs-dull forward power from different angles (LOW, tuning/design overlap) —
+   deferred, no behavioural bug.

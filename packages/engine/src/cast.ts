@@ -15,7 +15,7 @@ export function castCheck(state: GameState, player: PlayerId, card: CardId): str
   if (state.priority !== player) return 'you do not have priority'
   if (state.pending) return 'a decision is pending'
   const def = defOf(state, card)
-  if (def.type === 'monster') return 'monsters unsupported in MVP0'
+  if (def.type === 'monster') return 'monsters unsupported in MVP0'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
   // MVP0-SIMPLIFICATION: §7.7.4 is normally a rule process (§12.4.8) that keeps a 6th Backup off the field; here casting one is simply illegal.
   if (def.type === 'backup' && ps.backups.length >= MAX_BACKUPS) return `you already control ${MAX_BACKUPS} backups (§7.7.4)`
   if (def.type !== 'summon' && !def.generic) {
