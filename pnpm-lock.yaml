@@ -27,6 +27,18 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.13.3)(supports-color@7.2.0)(tsx@4.23.12)
 
+  apps/cli:
+    dependencies:
+      '@fftcg/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@fftcg/cards':
+        specifier: workspace:*
+        version: link:../../packages/cards
+      '@fftcg/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+
   packages/ai:
     dependencies:
       '@fftcg/engine':

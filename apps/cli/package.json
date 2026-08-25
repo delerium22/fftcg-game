@@ -1,0 +1,12 @@
+{
+  "name": "@fftcg/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hotseat": "tsx src/main.ts hotseat",
+    "selfplay": "tsx src/main.ts selfplay",
+    "deckorder": "tsx src/main.ts deckorder"
+  },
+  "dependencies": { "@fftcg/ai": "workspace:*", "@fftcg/cards": "workspace:*", "@fftcg/engine": "workspace:*" }
+}
