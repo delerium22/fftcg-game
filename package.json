@@ -7,7 +7,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b packages/engine packages/cards",
+    "typecheck": "tsc -b packages/engine packages/cards packages/ai",
     "lint": "eslint ."
   },
   "devDependencies": {
