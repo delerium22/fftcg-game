@@ -62,8 +62,10 @@ describe('enumeratePayments', () => {
     // legal minimal: {b1 + discard h1 as lightning}, {discard h2 as earth}, {b1 + discard h2 as lightning}; {b1 + h2 as earth} is NOT minimal (h2 alone pays)
     expect(ps).toContainEqual({ dullBackups: [b1], discards: [{ card: h1, element: 'lightning' }] })
     expect(ps).toContainEqual({ dullBackups: [], discards: [{ card: h2, element: 'earth' }] })
+    expect(ps).toContainEqual({ dullBackups: [b1], discards: [{ card: h2, element: 'lightning' }] })
     expect(ps).not.toContainEqual({ dullBackups: [], discards: [{ card: h1, element: 'lightning' }] })   // no earth CP
     expect(ps).not.toContainEqual({ dullBackups: [b1], discards: [{ card: h1, element: 'lightning' }, { card: h2, element: 'earth' }] }) // not minimal
+    expect(ps).not.toContainEqual({ dullBackups: [b1], discards: [{ card: h2, element: 'earth' }] })   // h2-as-earth alone already pays → not minimal
     for (const p of ps) expect(p.discards.some((d) => d.card === target)).toBe(false)
   })
   it('returns [] when the cost cannot be met', () => {
@@ -81,6 +83,8 @@ describe('pay', () => {
     expect(t.players[0].backups.find((c) => c.id === b1)?.status).toBe('dull')
     expect(t.players[0].hand).not.toContain(h1)
     expect(t.players[0].breakZone).toContain(h1)
-    expect(events).toContainEqual({ type: 'discarded', player: 0, card: h1, reason: 'cp' })
+    expect(events[0]).toEqual({ type: 'cpGenerated', player: 0, cp: ['earth', 'lightning', 'lightning'] })
+    expect(events[1]).toEqual({ type: 'discarded', player: 0, card: h1, reason: 'cp' })
+    expect(events).toHaveLength(2)
   })
 })
