@@ -1,0 +1,6 @@
+HANDOFF.md
+.handoff-snapshot
+node_modules/
+dist/
+.cache/
+images/

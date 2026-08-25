@@ -1,0 +1,108 @@
+- generic [ref=f20e1]:
+  - dialog "Cookie Consent Banner" [ref=f20e2]:
+    - generic [ref=f20e3]:
+      - generic [ref=f20e4]: We use cookies on our websites to enhance your experience, for analytics and to show you offers tailored to your interests. We may share your information with our advertising and analytics partners. By clicking "Accept", you agree to our use of advertising and analytics cookies and similar technologies.
+      - link "Cookie Notice" [active] [ref=f20e5] [cursor=pointer]:
+        - /url: https://www.square-enix-games.com/documents/cookies
+      - generic [ref=f20e6]: "|"
+      - link "Privacy Policy" [ref=f20e7] [cursor=pointer]:
+        - /url: https://www.square-enix-games.com/documents/privacy
+      - paragraph [ref=f20e8]:
+        - link "Cookie Settings" [ref=f20e9] [cursor=pointer]:
+          - /url: "#defbbc35-8632-4e6d-8144-81b5697e208a"
+      - group "Cookie Settings"
+    - generic [ref=f20e10]:
+      - button "Accept" [ref=f20e11] [cursor=pointer]
+      - button "Reject Non-Essential" [ref=f20e12] [cursor=pointer]
+  - navigation [ref=f20e17]:
+    - link "FF Trading Card Game" [ref=f20e19] [cursor=pointer]:
+      - /url: /en
+    - list [ref=f20e22]:
+      - listitem [ref=f20e23]:
+        - link "RELEASES" [ref=f20e24] [cursor=pointer]:
+          - /url: /en/releases
+      - listitem [ref=f20e25]:
+        - link "NEWS" [ref=f20e26] [cursor=pointer]:
+          - /url: /en/news
+      - listitem [ref=f20e27]:
+        - link "PLAY" [ref=f20e28] [cursor=pointer]:
+          - /url: /en/play
+      - listitem [ref=f20e29]:
+        - link "CARD BROWSER" [ref=f20e30] [cursor=pointer]:
+          - /url: /en/card-browser
+      - listitem [ref=f20e31]:
+        - link "STORES & DISTRIBUTION" [ref=f20e32] [cursor=pointer]:
+          - /url: /en/store-locator
+      - listitem [ref=f20e33]:
+        - link "CALENDAR" [ref=f20e34] [cursor=pointer]:
+          - /url: /en/calendar
+  - link "Skip to main content" [ref=f20e35] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=f20e38]:
+    - heading "PLAY" [level=1] [ref=f20e41]
+    - separator [ref=f20e42]
+    - generic [ref=f20e43]:
+      - navigation "Side Navigation" [ref=f20e44]:
+        - navigation [ref=f20e46]:
+          - link "Rules" [ref=f20e47] [cursor=pointer]:
+            - /url: /en/play-article/rules
+          - heading "Tutorial" [level=3] [ref=f20e48] [cursor=pointer]
+          - heading "Organised Play" [level=3] [ref=f20e49] [cursor=pointer]
+          - link "FAQ" [ref=f20e50] [cursor=pointer]:
+            - /url: /en/play-article/faq
+          - link "Ban List & Errata" [ref=f20e51] [cursor=pointer]:
+            - /url: /en/play-article/ban-list-errata
+          - link "Keywords" [ref=f20e52] [cursor=pointer]:
+            - /url: /en/play-article/keywords
+          - link "Game Formats" [ref=f20e53] [cursor=pointer]:
+            - /url: /en/play-article/games-format
+      - main [ref=f20e54]
+  - contentinfo [ref=f20e56]:
+    - generic [ref=f20e57]:
+      - generic [ref=f20e58]:
+        - heading "Connect with Square Enix" [level=3] [ref=f20e59]
+        - list [ref=f20e60]:
+          - listitem [ref=f20e61]:
+            - link "Facebook " [ref=f20e62] [cursor=pointer]:
+              - /url: https://www.facebook.com/fftcgeurope/
+              - generic [ref=f20e63]: Facebook
+              - generic [ref=f20e64]: 
+          - listitem [ref=f20e65]:
+            - link "X" [ref=f20e66] [cursor=pointer]:
+              - /url: http://weblet.square-enix.com/geojmp.php?d=FFTCG&l=twitter
+          - listitem [ref=f20e69]:
+            - link "YouTube " [ref=f20e70] [cursor=pointer]:
+              - /url: https://www.youtube.com/playlist?list=PLBZbCppmka-b5ie7tb6HkAUvZTLBDMqTc
+              - generic [ref=f20e71]: YouTube
+              - generic [ref=f20e72]: 
+      - generic [ref=f20e75]:
+        - heading "Subscribe to the newsletter" [level=3] [ref=f20e76]
+        - generic [ref=f20e77]:
+          - textbox "Email address" [ref=f20e78]:
+            - /placeholder: Your email address
+          - button "Subscribe" [ref=f20e79] [cursor=pointer]
+    - generic [ref=f20e80]:
+      - generic "English UK" [ref=f20e83]:
+        - generic [ref=f20e84] [cursor=pointer]
+      - generic [ref=f20e86]:
+        - link [ref=f20e87] [cursor=pointer]:
+          - /url: http://weblet.square-enix.com/geojmp.php?d=FFTCG&l=squareenix
+          - img "Square Enix logo" [ref=f20e88]
+        - link [ref=f20e89] [cursor=pointer]:
+          - /url: http://hobbyjapan.co.jp/
+          - img "hobby japan logo" [ref=f20e90]
+      - navigation "footer navigation" [ref=f20e92]:
+        - link "TERMS & CONDITIONS" [ref=f20e93] [cursor=pointer]:
+          - /url: http://weblet.square-enix.com/geojmp.php?d=DOCUMENTS&l=tnc
+        - text: "|"
+        - link "PRIVACY NOTICE" [ref=f20e94] [cursor=pointer]:
+          - /url: http://weblet.square-enix.com/geojmp.php?d=DOCUMENTS&l=privacy
+        - text: "|"
+        - link "COOKIES NOTICE" [ref=f20e95] [cursor=pointer]:
+          - /url: http://weblet.square-enix.com/geojmp.php?d=DOCUMENTS&l=cookies
+        - text: "|"
+        - link "ACCESSIBILITY STATEMENT" [ref=f20e96] [cursor=pointer]:
+          - /url: https://weblet.square-enix.com/geojmp.php?d=DOCUMENTS&l=accessibility-statement
+      - generic [ref=f20e97]:
+        - paragraph [ref=f20e98]: © SQUARE ENIX
+        - paragraph [ref=f20e99]: "Square Enix Limited, Registered in England No. 01804186 - Registered office: 240 Blackfriars Road, London, SE1 8NW."

@@ -1,0 +1,380 @@
+- generic [ref=f7e13]:
+  - navigation [ref=f7e16]:
+    - list [ref=f7e17]:
+      - listitem [ref=f7e18]:
+        - link "Server Cost Tracker victory image" [ref=f7e19] [cursor=pointer]:
+          - /url: https://ko-fi.com/materiahunter
+          - generic [ref=f7e20]: Server Cost Tracker
+          - img "victory image" [ref=f7e39]
+      - listitem [ref=f7e40]:
+        - list [ref=f7e41]:
+          - listitem [ref=f7e42]:
+            - button "Log In" [ref=f7e43] [cursor=pointer]
+      - listitem [ref=f7e49]
+      - listitem [ref=f7e50]:
+        - list [ref=f7e51]:
+          - generic [ref=f7e52]:
+            - generic [ref=f7e53] [cursor=pointer]: Discover
+            - list [ref=f7e61]:
+              - listitem [ref=f7e62]:
+                - link "News" [ref=f7e63] [cursor=pointer]:
+                  - /url: /en/news
+              - listitem [ref=f7e65]:
+                - link "Cards" [ref=f7e66] [cursor=pointer]:
+                  - /url: /en/cards
+              - listitem [ref=f7e68]:
+                - link "Products" [ref=f7e69] [cursor=pointer]:
+                  - /url: /en/products
+              - listitem [ref=f7e71]:
+                - link "Resources" [ref=f7e72] [cursor=pointer]:
+                  - /url: /en/resources
+          - generic [ref=f7e74]:
+            - generic [ref=f7e75] [cursor=pointer]: Play
+            - list [ref=f7e84]:
+              - listitem [ref=f7e85]:
+                - link "Decks" [ref=f7e86] [cursor=pointer]:
+                  - /url: /en/deck-list/all
+              - listitem [ref=f7e88]:
+                - link "Tournaments" [ref=f7e89] [cursor=pointer]:
+                  - /url: /en/tournaments
+              - listitem [ref=f7e91]:
+                - link "Archetypes" [ref=f7e92] [cursor=pointer]:
+                  - /url: /en/decks/archetypes
+              - listitem [ref=f7e94]:
+                - link "Events" [ref=f7e95] [cursor=pointer]:
+                  - /url: /en/events
+              - listitem [ref=f7e97]:
+                - link "Venues" [ref=f7e98] [cursor=pointer]:
+                  - /url: /en/venues
+          - generic [ref=f7e100]:
+            - generic [ref=f7e101] [cursor=pointer]: Collection
+            - list [ref=f7e108]:
+              - listitem [ref=f7e109]:
+                - link "Final Fantasy TCG" [ref=f7e110] [cursor=pointer]:
+                  - /url: /en/collection/fftcg
+              - listitem [ref=f7e112]:
+                - link "Other Final Fantasy" [ref=f7e113] [cursor=pointer]:
+                  - /url: /en/collection/other
+              - listitem [ref=f7e115]:
+                - link "Trade Lists" [ref=f7e116] [cursor=pointer]:
+                  - /url: /en/trade-lists
+          - generic [ref=f7e118]:
+            - generic [ref=f7e119] [cursor=pointer]: Rules
+            - list [ref=f7e127]:
+              - listitem [ref=f7e128]:
+                - link "Formats / Ban List" [ref=f7e129] [cursor=pointer]:
+                  - /url: /en/game/formats
+              - listitem [ref=f7e131]:
+                - link "Errata" [ref=f7e132] [cursor=pointer]:
+                  - /url: /en/cards/errata
+              - listitem [ref=f7e134]:
+                - link "Game Phases" [ref=f7e135] [cursor=pointer]:
+                  - /url: /en/phases
+              - listitem [ref=f7e137]:
+                - link "Rules Q&A" [ref=f7e138] [cursor=pointer]:
+                  - /url: /en/rules-questions
+      - listitem [ref=f7e140]
+      - listitem:
+        - list
+      - listitem [ref=f7e141]:
+        - list [ref=f7e142]:
+          - button "English" [ref=f7e144] [cursor=pointer]
+  - generic [ref=f7e152]:
+    - button "Open sidebar" [ref=f7e153] [cursor=pointer]
+    - link [ref=f7e156] [cursor=pointer]:
+      - /url: /en/
+      - img "materia hunter logo" [ref=f7e157]
+      - img "Materia Hunter" [ref=f7e158]:
+        - generic [ref=f7e159]: MATERIA HUNTER
+  - main [ref=f7e160]:
+    - generic [ref=f7e161]:
+      - generic [ref=f7e162]:
+        - generic [ref=f7e165]:
+          - generic [ref=f7e167]:
+            - img "Starter Set 2025 Vol. 1 image" [ref=f7e170]
+            - generic [ref=f7e172]:
+              - heading "Starter Set 2025 Vol. 1" [level=1] [ref=f7e173]
+              - generic [ref=f7e174]:
+                - generic [ref=f7e175]: 10/3/2025
+                - generic [ref=f7e179]: "40.80"
+                - link "Report a bug" [ref=f7e184] [cursor=pointer]:
+                  - /url: https://discord.gg/6Nxnuf2jWY
+              - paragraph [ref=f7e192]: STARTER SET 2025 Vol. 1 is a Fire/Water deck, centered around Zack [27-123S], a Starter exclusive card. This is an aggressive, attack-oriented deck that often gains benefits from launching attacks.
+          - generic [ref=f7e194]:
+            - heading "Cards" [level=3] [ref=f7e195]
+            - generic [ref=f7e196]:
+              - textbox "Search Text" [ref=f7e198]
+              - button "0" [ref=f7e200] [cursor=pointer]
+              - button "Reset" [ref=f7e205] [cursor=pointer]
+            - generic [ref=f7e212]:
+              - button "Images" [ref=f7e213]
+              - button "List" [ref=f7e219] [cursor=pointer]
+            - list [ref=f7e224]:
+              - generic [ref=f7e225]:
+                - generic "3 included in this product" [ref=f7e226]: ×3
+                - generic [ref=f7e229]:
+                  - link "Link to Wuk Lamat 27-122S details" [ref=f7e230] [cursor=pointer]:
+                    - /url: /cards/27-122S
+                  - img "Wuk Lamat - 27-122S - FFTCG card" [ref=f7e232]
+                - generic [ref=f7e234]:
+                  - heading "Wuk Lamat" [level=3] [ref=f7e235]
+                  - generic [ref=f7e237]:
+                    - generic [ref=f7e238]: 27-122S
+                    - button "$3.14" [ref=f7e239] [cursor=pointer]
+              - generic [ref=f7e244]:
+                - generic "2 included in this product" [ref=f7e245]: ×2
+                - generic [ref=f7e248]:
+                  - link "Link to Zack 27-123S details" [ref=f7e249] [cursor=pointer]:
+                    - /url: /cards/27-123S
+                  - img "Zack - 27-123S - FFTCG card" [ref=f7e251]
+                - generic [ref=f7e253]:
+                  - heading "Zack" [level=3] [ref=f7e254]
+                  - generic [ref=f7e256]:
+                    - generic [ref=f7e257]: 27-123S
+                    - button "$1.83" [ref=f7e258] [cursor=pointer]
+              - generic [ref=f7e263]:
+                - generic "1 included in this product" [ref=f7e264]: ×1
+                - generic [ref=f7e267]:
+                  - link "Link to Zack 27-123S details" [ref=f7e268] [cursor=pointer]:
+                    - /url: /cards/27-123S
+                  - img "Zack - 27-123S - FFTCG card" [ref=f7e270]
+                - generic [ref=f7e272]:
+                  - heading "Zack Foil Full Art" [level=3] [ref=f7e273]:
+                    - generic [ref=f7e274]: Zack
+                    - generic [ref=f7e275]:
+                      - generic "Foil" [ref=f7e276]
+                      - generic "Full Art" [ref=f7e279]
+                  - generic [ref=f7e282]:
+                    - generic [ref=f7e283]: 27-123S
+                    - button "$5.95" [ref=f7e284] [cursor=pointer]
+              - generic [ref=f7e289]:
+                - generic "3 included in this product" [ref=f7e290]: ×3
+                - generic [ref=f7e293]:
+                  - link "Link to Charlotte 27-128S details" [ref=f7e294] [cursor=pointer]:
+                    - /url: /cards/27-128S
+                  - img "Charlotte - 27-128S - FFTCG card" [ref=f7e296]
+                - generic [ref=f7e298]:
+                  - heading "Charlotte" [level=3] [ref=f7e299]
+                  - generic [ref=f7e301]:
+                    - generic [ref=f7e302]: 27-128S
+                    - button "$1.10" [ref=f7e303] [cursor=pointer]
+              - generic [ref=f7e308]:
+                - generic "3 included in this product" [ref=f7e309]: ×3
+                - generic [ref=f7e312]:
+                  - link "Link to Yuna 27-129S details" [ref=f7e313] [cursor=pointer]:
+                    - /url: /cards/27-129S
+                  - img "Yuna - 27-129S - FFTCG card" [ref=f7e315]
+                - generic [ref=f7e317]:
+                  - heading "Yuna" [level=3] [ref=f7e318]
+                  - generic [ref=f7e320]:
+                    - generic [ref=f7e321]: 27-129S
+                    - button "$1.08" [ref=f7e322] [cursor=pointer]
+              - generic [ref=f7e327]:
+                - generic "2 included in this product" [ref=f7e328]: ×2
+                - generic [ref=f7e331]:
+                  - link "Link to Ultima Weapon 24-126H details" [ref=f7e332] [cursor=pointer]:
+                    - /url: /cards/24-126H
+                  - img "Ultima Weapon - 24-126H - FFTCG card" [ref=f7e334]
+                - generic [ref=f7e336]:
+                  - heading "Ultima Weapon" [level=3] [ref=f7e337]
+                  - generic [ref=f7e339]:
+                    - generic [ref=f7e340]: 24-126H
+                    - button "$0.38" [ref=f7e341] [cursor=pointer]
+              - generic [ref=f7e346]:
+                - generic "1 included in this product" [ref=f7e347]: ×1
+                - generic [ref=f7e350]:
+                  - link "Link to Vincent 23-119R details" [ref=f7e351] [cursor=pointer]:
+                    - /url: /cards/23-119R
+                  - img "Vincent - 23-119R - FFTCG card" [ref=f7e353]
+                - generic [ref=f7e355]:
+                  - heading "Vincent" [level=3] [ref=f7e356]
+                  - generic [ref=f7e358]:
+                    - generic [ref=f7e359]: 23-119R
+                    - button "$0.47" [ref=f7e360] [cursor=pointer]
+              - generic [ref=f7e365]:
+                - generic "1 included in this product" [ref=f7e366]: ×1
+                - generic [ref=f7e369]:
+                  - link "Link to Luso 23-130H details" [ref=f7e370] [cursor=pointer]:
+                    - /url: /cards/23-130H
+                  - img "Luso - 23-130H - FFTCG card" [ref=f7e372]
+                - generic [ref=f7e374]:
+                  - heading "Luso" [level=3] [ref=f7e375]
+                  - generic [ref=f7e377]:
+                    - generic [ref=f7e378]: 23-130H
+                    - button "$0.96" [ref=f7e379] [cursor=pointer]
+              - generic [ref=f7e384]:
+                - generic "2 included in this product" [ref=f7e385]: ×2
+                - generic [ref=f7e388]:
+                  - link "Link to Zack 22-112R details" [ref=f7e389] [cursor=pointer]:
+                    - /url: /cards/22-112R
+                  - img "Zack - 22-112R - FFTCG card" [ref=f7e391]
+                - generic [ref=f7e393]:
+                  - heading "Zack" [level=3] [ref=f7e394]
+                  - generic [ref=f7e396]:
+                    - generic [ref=f7e397]: 22-112R
+                    - button "$0.89" [ref=f7e398] [cursor=pointer]
+              - generic [ref=f7e403]:
+                - generic "2 included in this product" [ref=f7e404]: ×2
+                - generic [ref=f7e407]:
+                  - link "Link to Leo 22-123R details" [ref=f7e408] [cursor=pointer]:
+                    - /url: /cards/22-123R
+                  - img "Leo - 22-123R - FFTCG card" [ref=f7e410]
+                - generic [ref=f7e412]:
+                  - heading "Leo" [level=3] [ref=f7e413]
+                  - generic [ref=f7e415]:
+                    - generic [ref=f7e416]: 22-123R
+                    - button "$0.90" [ref=f7e417] [cursor=pointer]
+              - generic [ref=f7e422]:
+                - generic "3 included in this product" [ref=f7e423]: ×3
+                - generic [ref=f7e426]:
+                  - link "Link to Ward 21-001R details" [ref=f7e427] [cursor=pointer]:
+                    - /url: /cards/21-001R
+                  - img "Ward - 21-001R - FFTCG card" [ref=f7e429]
+                - generic [ref=f7e431]:
+                  - heading "Ward" [level=3] [ref=f7e432]
+                  - generic [ref=f7e434]:
+                    - generic [ref=f7e435]: 21-001R
+                    - button "$0.25" [ref=f7e436] [cursor=pointer]
+              - generic [ref=f7e441]:
+                - generic "3 included in this product" [ref=f7e442]: ×3
+                - generic [ref=f7e445]:
+                  - link "Link to Taivas 21-010H details" [ref=f7e446] [cursor=pointer]:
+                    - /url: /cards/21-010H
+                  - img "Taivas - 21-010H - FFTCG card" [ref=f7e448]
+                - generic [ref=f7e450]:
+                  - heading "Taivas" [level=3] [ref=f7e451]
+                  - generic [ref=f7e453]:
+                    - generic [ref=f7e454]: 21-010H
+                    - button "$1.53" [ref=f7e455] [cursor=pointer]
+              - generic [ref=f7e460]:
+                - generic "2 included in this product" [ref=f7e461]: ×2
+                - generic [ref=f7e464]:
+                  - link "Link to Alphinaud 20-106R details" [ref=f7e465] [cursor=pointer]:
+                    - /url: /cards/20-106R
+                  - img "Alphinaud - 20-106R - FFTCG card" [ref=f7e467]
+                - generic [ref=f7e469]:
+                  - heading "Alphinaud" [level=3] [ref=f7e470]
+                  - generic [ref=f7e472]:
+                    - generic [ref=f7e473]: 20-106R
+                    - button "$0.17" [ref=f7e474] [cursor=pointer]
+              - generic [ref=f7e479]:
+                - generic "3 included in this product" [ref=f7e480]: ×3
+                - generic [ref=f7e483]:
+                  - link "Link to Machinist 18-003C details" [ref=f7e484] [cursor=pointer]:
+                    - /url: /cards/18-003C
+                  - img "Machinist - 18-003C - FFTCG card" [ref=f7e486]
+                - generic [ref=f7e488]:
+                  - heading "Machinist" [level=3] [ref=f7e489]
+                  - generic [ref=f7e491]:
+                    - generic [ref=f7e492]: 18-003C
+                    - button "$0.04" [ref=f7e493] [cursor=pointer]
+              - generic [ref=f7e498]:
+                - generic "3 included in this product" [ref=f7e499]: ×3
+                - generic [ref=f7e502]:
+                  - link "Link to Geomancer 18-094C details" [ref=f7e503] [cursor=pointer]:
+                    - /url: /cards/18-094C
+                  - img "Geomancer - 18-094C - FFTCG card" [ref=f7e505]
+                - generic [ref=f7e507]:
+                  - heading "Geomancer" [level=3] [ref=f7e508]
+                  - generic [ref=f7e510]:
+                    - generic [ref=f7e511]: 18-094C
+                    - button "$0.08" [ref=f7e512] [cursor=pointer]
+              - generic [ref=f7e517]:
+                - generic "3 included in this product" [ref=f7e518]: ×3
+                - generic [ref=f7e521]:
+                  - link "Link to Jecht 18-129C details" [ref=f7e522] [cursor=pointer]:
+                    - /url: /cards/18-129C
+                  - img "Jecht - 18-129C - FFTCG card" [ref=f7e524]
+                - generic [ref=f7e526]:
+                  - heading "Jecht" [level=3] [ref=f7e527]
+                  - generic [ref=f7e529]:
+                    - generic [ref=f7e530]: 18-129C
+                    - button "$0.11" [ref=f7e531] [cursor=pointer]
+              - generic [ref=f7e536]:
+                - generic "3 included in this product" [ref=f7e537]: ×3
+                - generic [ref=f7e540]:
+                  - link "Link to Palom 13-013C details" [ref=f7e541] [cursor=pointer]:
+                    - /url: /cards/13-013C
+                  - img "Palom - 13-013C - FFTCG card" [ref=f7e543]
+                - generic [ref=f7e545]:
+                  - heading "Palom" [level=3] [ref=f7e546]
+                  - generic [ref=f7e548]:
+                    - generic [ref=f7e549]: 13-013C
+                    - button "$0.15" [ref=f7e550] [cursor=pointer]
+              - generic [ref=f7e555]:
+                - generic "3 included in this product" [ref=f7e556]: ×3
+                - generic [ref=f7e559]:
+                  - link "Link to Yuzuki 13-125R details" [ref=f7e560] [cursor=pointer]:
+                    - /url: /cards/13-125R
+                  - img "Yuzuki - 13-125R - FFTCG card" [ref=f7e562]
+                - generic [ref=f7e564]:
+                  - heading "Yuzuki" [level=3] [ref=f7e565]
+                  - generic [ref=f7e567]:
+                    - generic [ref=f7e568]: 13-125R
+                    - button "$0.35" [ref=f7e569] [cursor=pointer]
+              - generic [ref=f7e574]:
+                - generic "3 included in this product" [ref=f7e575]: ×3
+                - generic [ref=f7e578]:
+                  - link "Link to Ifrit 12-005C details" [ref=f7e579] [cursor=pointer]:
+                    - /url: /cards/12-005C
+                  - img "Ifrit - 12-005C - FFTCG card" [ref=f7e581]
+                - generic [ref=f7e583]:
+                  - heading "Ifrit" [level=3] [ref=f7e584]
+                  - generic [ref=f7e586]:
+                    - generic [ref=f7e587]: 12-005C
+                    - button "$0.11" [ref=f7e588] [cursor=pointer]
+              - generic [ref=f7e593]:
+                - generic "3 included in this product" [ref=f7e594]: ×3
+                - generic [ref=f7e597]:
+                  - link "Link to Warrior 11-010C details" [ref=f7e598] [cursor=pointer]:
+                    - /url: /cards/11-010C
+                  - img "Warrior - 11-010C - FFTCG card" [ref=f7e600]
+                - generic [ref=f7e602]:
+                  - heading "Warrior" [level=3] [ref=f7e603]
+                  - generic [ref=f7e605]:
+                    - generic [ref=f7e606]: 11-010C
+                    - button "$0.08" [ref=f7e607] [cursor=pointer]
+              - generic [ref=f7e612]:
+                - generic "3 included in this product" [ref=f7e613]: ×3
+                - generic [ref=f7e616]:
+                  - link "Link to Porom 11-121C details" [ref=f7e617] [cursor=pointer]:
+                    - /url: /cards/11-121C
+                  - img "Porom - 11-121C - FFTCG card" [ref=f7e619]
+                - generic [ref=f7e621]:
+                  - heading "Porom" [level=3] [ref=f7e622]
+                  - generic [ref=f7e624]:
+                    - generic [ref=f7e625]: 11-121C
+                    - button "$0.11" [ref=f7e626] [cursor=pointer]
+              - generic [ref=f7e631]:
+                - generic "3 included in this product" [ref=f7e632]: ×3
+                - generic [ref=f7e635]:
+                  - link "Link to Leonora 3-143C details" [ref=f7e636] [cursor=pointer]:
+                    - /url: /cards/3-143C
+                  - img "Leonora - 3-143C - FFTCG card" [ref=f7e638]
+                - generic [ref=f7e640]:
+                  - heading "Leonora" [level=3] [ref=f7e641]
+                  - generic [ref=f7e643]:
+                    - generic [ref=f7e644]: 3-143C
+                    - button "$0.09" [ref=f7e645] [cursor=pointer]
+              - generic [ref=f7e650]:
+                - generic "3 included in this product" [ref=f7e651]: ×3
+                - generic [ref=f7e654]:
+                  - link "Link to Fairy 1-170C details" [ref=f7e655] [cursor=pointer]:
+                    - /url: /cards/1-170C
+                  - img "Fairy - 1-170C - FFTCG card" [ref=f7e657]
+                - generic [ref=f7e659]:
+                  - heading "Fairy" [level=3] [ref=f7e660]
+                  - generic [ref=f7e662]:
+                    - generic [ref=f7e663]: 1-170C
+                    - button "$0.14" [ref=f7e664] [cursor=pointer]
+        - generic:
+          - status
+      - generic [ref=f7e669]:
+        - generic [ref=f7e670]: FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.
+        - generic [ref=f7e671]:
+          - link [ref=f7e672] [cursor=pointer]:
+            - /url: https://discord.gg/mAErry4jUf
+          - link [ref=f7e676] [cursor=pointer]:
+            - /url: https://x.com/materiahunter_
+          - link [ref=f7e679] [cursor=pointer]:
+            - /url: https://ko-fi.com/materiahunter

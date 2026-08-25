@@ -1,0 +1,562 @@
+- generic [ref=e13]:
+  - navigation [ref=e16]:
+    - list [ref=e17]:
+      - listitem [ref=e18]:
+        - link "Server Cost Tracker victory image" [ref=e19] [cursor=pointer]:
+          - /url: https://ko-fi.com/materiahunter
+          - generic [ref=e20]: Server Cost Tracker
+          - img "victory image" [ref=e39]
+      - listitem [ref=e40]:
+        - list [ref=e41]:
+          - listitem [ref=e42]:
+            - button "Log In" [ref=e43] [cursor=pointer]
+      - listitem [ref=e49]
+      - listitem [ref=e50]:
+        - list [ref=e51]:
+          - generic [ref=e52]:
+            - generic [ref=e53] [cursor=pointer]: Discover
+            - list [ref=e61]:
+              - listitem [ref=e62]:
+                - link "News" [ref=e63] [cursor=pointer]:
+                  - /url: /en/news
+              - listitem [ref=e65]:
+                - link "Cards" [ref=e66] [cursor=pointer]:
+                  - /url: /en/cards
+              - listitem [ref=e68]:
+                - link "Products" [ref=e69] [cursor=pointer]:
+                  - /url: /en/products
+              - listitem [ref=e71]:
+                - link "Resources" [ref=e72] [cursor=pointer]:
+                  - /url: /en/resources
+          - generic [ref=e74]:
+            - generic [ref=e75] [cursor=pointer]: Play
+            - list [ref=e84]:
+              - listitem [ref=e85]:
+                - link "Decks" [ref=e86] [cursor=pointer]:
+                  - /url: /en/deck-list/all
+              - listitem [ref=e88]:
+                - link "Tournaments" [ref=e89] [cursor=pointer]:
+                  - /url: /en/tournaments
+              - listitem [ref=e91]:
+                - link "Archetypes" [ref=e92] [cursor=pointer]:
+                  - /url: /en/decks/archetypes
+              - listitem [ref=e94]:
+                - link "Events" [ref=e95] [cursor=pointer]:
+                  - /url: /en/events
+              - listitem [ref=e97]:
+                - link "Venues" [ref=e98] [cursor=pointer]:
+                  - /url: /en/venues
+          - generic [ref=e100]:
+            - generic [ref=e101] [cursor=pointer]: Collection
+            - list [ref=e108]:
+              - listitem [ref=e109]:
+                - link "Final Fantasy TCG" [ref=e110] [cursor=pointer]:
+                  - /url: /en/collection/fftcg
+              - listitem [ref=e112]:
+                - link "Other Final Fantasy" [ref=e113] [cursor=pointer]:
+                  - /url: /en/collection/other
+              - listitem [ref=e115]:
+                - link "Trade Lists" [ref=e116] [cursor=pointer]:
+                  - /url: /en/trade-lists
+          - generic [ref=e118]:
+            - generic [ref=e119] [cursor=pointer]: Rules
+            - list [ref=e127]:
+              - listitem [ref=e128]:
+                - link "Formats / Ban List" [ref=e129] [cursor=pointer]:
+                  - /url: /en/game/formats
+              - listitem [ref=e131]:
+                - link "Errata" [ref=e132] [cursor=pointer]:
+                  - /url: /en/cards/errata
+              - listitem [ref=e134]:
+                - link "Game Phases" [ref=e135] [cursor=pointer]:
+                  - /url: /en/phases
+              - listitem [ref=e137]:
+                - link "Rules Q&A" [ref=e138] [cursor=pointer]:
+                  - /url: /en/rules-questions
+      - listitem [ref=e140]
+      - listitem:
+        - list
+      - listitem [ref=e141]:
+        - list [ref=e142]:
+          - button "English" [ref=e144] [cursor=pointer]
+  - generic [ref=e152]:
+    - button "Open sidebar" [ref=e153] [cursor=pointer]
+    - link [ref=e156] [cursor=pointer]:
+      - /url: /en/
+      - img "materia hunter logo" [ref=e157]
+      - img "Materia Hunter" [ref=e158]:
+        - generic [ref=e159]: MATERIA HUNTER
+  - main [ref=e160]:
+    - generic [ref=e161]:
+      - generic [ref=e162]:
+        - generic [ref=e209]:
+          - generic [ref=e212]:
+            - img "Zack - 27-123S - FFTCG card" [ref=e216]
+            - generic [ref=e217]:
+              - link "Zack" [ref=e219] [cursor=pointer]:
+                - /url: /en/cards?searchText=Zack&searchTextMatchMethod=name only
+              - generic [ref=e220]:
+                - generic [ref=e221]: Serial
+                - generic [ref=e222]: 27-123S
+                - generic [ref=e223]: Cost
+                - link "5" [ref=e225] [cursor=pointer]:
+                  - /url: /en/cards?costs=5
+                - generic [ref=e226]: Categories
+                - link "VII" [ref=e229] [cursor=pointer]:
+                  - /url: /en/cards?categories=VII
+                - generic [ref=e230]: Type
+                - link "Forward" [ref=e232] [cursor=pointer]:
+                  - /url: /en/cards?cardTypes=Forward
+                - generic [ref=e233]: Jobs
+                - link "SOLDIER" [ref=e236] [cursor=pointer]:
+                  - /url: /en/cards?jobs=SOLDIER
+                - generic [ref=e237]: Power
+                - generic [ref=e238]: "9000"
+                - generic [ref=e239]: Elements
+                - generic [ref=e240]: Fire
+              - generic [ref=e241]: If your opponent controls 3 or more Forwards, Zack gains Haste. When Zack enters the field or attacks, deal 1000 damage for each Backup you control to all the Forwards opponent control.
+              - link "Submit an edit" [ref=e245] [cursor=pointer]:
+                - /url: /en/cards/submit?serial=27-123S
+          - generic [ref=e252]:
+            - heading "Seen With" [level=2] [ref=e253]
+            - generic [ref=e254]:
+              - generic [ref=e257]:
+                - generic [ref=e258]:
+                  - generic [ref=e259]: "Region: All"
+                  - generic [ref=e260]: "Tier: All"
+                  - generic [ref=e261]: "Timeframe: Last 90 Days"
+                - generic [ref=e262]:
+                  - generic [ref=e263]: Card
+                  - generic [ref=e264]: Decks
+                - generic [ref=e265]:
+                  - generic [ref=e266]:
+                    - generic [ref=e267]:
+                      - generic [ref=e268]:
+                        - generic [ref=e269]: "3"
+                        - generic [ref=e277]:
+                          - generic [ref=e278]: Amaterasu
+                          - generic [ref=e279]: 12-002H
+                      - generic [ref=e280]: "35"
+                    - generic [ref=e281]:
+                      - generic [ref=e282]:
+                        - generic [ref=e283]: "2"
+                        - generic [ref=e291]:
+                          - generic [ref=e292]: Culinarian
+                          - generic [ref=e293]: 20-013C
+                      - generic [ref=e294]: "35"
+                    - generic [ref=e295]:
+                      - generic [ref=e296]:
+                        - generic [ref=e297]: "6"
+                        - generic [ref=e305]:
+                          - generic [ref=e306]: Jecht
+                          - generic [ref=e307]: 22-009H
+                      - generic [ref=e308]: "35"
+                    - generic [ref=e309]:
+                      - generic [ref=e310]:
+                        - generic [ref=e311]: "3"
+                        - generic [ref=e319]:
+                          - generic [ref=e320]: Human
+                          - generic [ref=e321]: 24-012C
+                      - generic [ref=e322]: "34"
+                    - generic [ref=e323]:
+                      - generic [ref=e324]:
+                        - generic [ref=e325]: "5"
+                        - generic [ref=e333]:
+                          - generic [ref=e334]: Cloud
+                          - generic [ref=e335]: 25-006L
+                      - generic [ref=e336]: "34"
+                    - generic [ref=e337]:
+                      - generic [ref=e338]:
+                        - generic [ref=e339]: "1"
+                        - generic [ref=e347]:
+                          - generic [ref=e348]: Ifrit
+                          - generic [ref=e349]: 20-003H
+                      - generic [ref=e350]: "33"
+                    - generic [ref=e351]:
+                      - generic [ref=e352]:
+                        - generic [ref=e353]: "3"
+                        - generic [ref=e361]:
+                          - generic [ref=e362]: Wuk Lamat
+                          - generic [ref=e363]: 27-122S
+                      - generic [ref=e364]: "33"
+                    - generic [ref=e365]:
+                      - generic [ref=e366]:
+                        - generic [ref=e367]: "4"
+                        - generic [ref=e375]:
+                          - generic [ref=e376]: Selphie
+                          - generic [ref=e377]: 18-007C
+                      - generic [ref=e378]: "32"
+                    - generic [ref=e379]:
+                      - generic [ref=e380]:
+                        - generic [ref=e381]: "5"
+                        - generic [ref=e389]:
+                          - generic [ref=e390]: Terra
+                          - generic [ref=e391]: 23-011L
+                      - generic [ref=e392]: "30"
+                    - generic [ref=e393]:
+                      - generic [ref=e394]:
+                        - generic [ref=e395]: "3"
+                        - generic [ref=e403]:
+                          - generic [ref=e404]: Mootie
+                          - generic [ref=e405]: 11-012C
+                      - generic [ref=e406]: "29"
+                  - generic [ref=e407]:
+                    - generic [ref=e408]: 1–10 of 20
+                    - generic [ref=e409]:
+                      - button "First page" [disabled] [ref=e410]
+                      - button "Previous page" [disabled] [ref=e414]
+                      - button "Next page" [ref=e417] [cursor=pointer]
+                      - button "Last page" [ref=e420] [cursor=pointer]
+              - generic [ref=e426]:
+                - generic [ref=e427]:
+                  - generic [ref=e428]: "Region: All"
+                  - generic [ref=e429]: "Tier: All"
+                  - generic [ref=e430]: "Timeframe: Last 90 Days"
+                - generic [ref=e431]:
+                  - generic [ref=e432]: Card
+                  - generic [ref=e433]: Decks
+                - generic [ref=e434]:
+                  - generic [ref=e435]:
+                    - generic [ref=e436]:
+                      - generic [ref=e437]:
+                        - generic [ref=e438]: "3"
+                        - generic [ref=e446]:
+                          - generic [ref=e447]: Zack
+                          - generic [ref=e448]: 22-112R
+                      - generic [ref=e449]: "36"
+                    - generic [ref=e450]:
+                      - generic [ref=e451]:
+                        - generic [ref=e452]: "8"
+                        - generic [ref=e460]:
+                          - generic [ref=e461]: Mont Leonis
+                          - generic [ref=e462]: 22-113L
+                      - generic [ref=e463]: "35"
+                    - generic [ref=e464]:
+                      - generic [ref=e465]:
+                        - generic [ref=e466]: "5"
+                        - generic [ref=e474]:
+                          - generic [ref=e475]: Luso
+                          - generic [ref=e476]: 23-130H
+                      - generic [ref=e477]: "34"
+                    - generic [ref=e478]:
+                      - generic [ref=e479]:
+                        - generic [ref=e480]: "2"
+                        - generic [ref=e488]:
+                          - generic [ref=e489]: Machina
+                          - generic [ref=e490]: 25-106R
+                      - generic [ref=e491]: "32"
+                    - generic [ref=e492]:
+                      - generic [ref=e493]:
+                        - generic [ref=e494]: "5"
+                        - generic [ref=e502]:
+                          - generic [ref=e503]: Vincent
+                          - generic [ref=e504]: 23-119R
+                      - generic [ref=e505]: "31"
+                    - generic [ref=e506]:
+                      - generic [ref=e507]:
+                        - generic [ref=e508]: "7"
+                        - generic [ref=e516]:
+                          - generic [ref=e517]: Amarant
+                          - generic [ref=e518]: 26-124R
+                      - generic [ref=e519]: "27"
+                    - generic [ref=e520]:
+                      - generic [ref=e521]:
+                        - generic [ref=e522]: "4"
+                        - generic [ref=e530]:
+                          - generic [ref=e531]: Red XIII
+                          - generic [ref=e532]: 25-107H
+                      - generic [ref=e533]: "10"
+                    - generic [ref=e534]:
+                      - generic [ref=e535]:
+                        - generic [ref=e536]: "7"
+                        - generic [ref=e544]:
+                          - generic [ref=e545]: Firion
+                          - generic [ref=e546]: 27-113R
+                      - generic [ref=e547]: "5"
+                  - generic [ref=e548]:
+                    - generic [ref=e549]: 1–8 of 8
+                    - generic [ref=e550]:
+                      - button "First page" [disabled] [ref=e551]
+                      - button "Previous page" [disabled] [ref=e555]
+                      - button "Next page" [disabled] [ref=e558]
+                      - button "Last page" [disabled] [ref=e561]
+          - generic [ref=e566]:
+            - heading "Variants" [level=2] [ref=e567]
+            - generic [ref=e569]:
+              - generic [ref=e571]:
+                - generic [ref=e572]:
+                  - heading "27-123S" [level=3] [ref=e573]
+                  - heading "Non-Foil" [level=2] [ref=e574]
+                - button "Choose variant" [ref=e577] [cursor=pointer]:
+                  - generic [ref=e578]: Switch variant (3)
+              - img "Zack - 27-123S - FFTCG card" [ref=e591]
+              - generic [ref=e592]:
+                - generic [ref=e594]:
+                  - generic [ref=e595]:
+                    - generic [ref=e596]: Market Price
+                    - generic [ref=e597]: $1.83
+                    - generic [ref=e598]: Sun Aug 23 2026
+                  - button "Buy" [ref=e599] [cursor=pointer]
+                - generic [ref=e604]:
+                  - generic [ref=e605]: Available from
+                  - link "Starter Set 2025 Vol. 1" [ref=e608] [cursor=pointer]:
+                    - /url: /en/products/229
+                - generic [ref=e611]:
+                  - generic [ref=e612]: Price History (USD)
+                  - generic [ref=e614]:
+                    - generic [ref=e615]:
+                      - button "Select time range" [ref=e617] [cursor=pointer]:
+                        - generic [ref=e618]: 30D
+                      - button "Select price series" [ref=e624] [cursor=pointer]:
+                        - generic [ref=e625]: Market
+                      - button "About price series" [ref=e630] [cursor=pointer]
+                    - generic [ref=e635]:
+                      - 'group "Current: The most recent recorded market price." [ref=e636]':
+                        - generic [ref=e637]: Current
+                        - generic [ref=e638]: $1.83
+                      - 'group "7d %: Percent change compared to the price 7 days ago." [ref=e640]':
+                        - generic [ref=e641]: 7d %
+                        - generic [ref=e642]: "-0.5%"
+                      - 'group "30d %: Percent change compared to the price 30 days ago." [ref=e647]':
+                        - generic [ref=e648]: 30d %
+                        - generic [ref=e649]: "-4.7%"
+                      - 'group "ATH: All-time high — the highest recorded market price." [ref=e654]':
+                        - generic [ref=e655]: ATH
+                        - generic [ref=e656]: $2.40
+                      - 'group "ATL: All-time low — the lowest recorded market price." [ref=e658]':
+                        - generic [ref=e659]: ATL
+                        - generic [ref=e660]: $1.80
+                      - 'group "7d Avg: Average market price over the last 7 days." [ref=e662]':
+                        - generic [ref=e663]: 7d Avg
+                        - generic [ref=e664]: $1.84
+                      - 'group "30d Avg: Average market price over the last 30 days." [ref=e666]':
+                        - generic [ref=e667]: 30d Avg
+                        - generic [ref=e668]: $1.89
+          - generic [ref=e671]:
+            - heading "Rules Q&A" [level=2] [ref=e672]
+            - link [ref=e675] [cursor=pointer]:
+              - /url: /en/rules-questions/ask?serial=27-123S
+              - generic [ref=e680]:
+                - paragraph [ref=e681]: Ask a rules question about this card
+                - paragraph [ref=e682]: Not sure how this card works in play? Ask the community and judges.
+          - generic [ref=e684]:
+            - heading "Searchable By" [level=2] [ref=e685]
+            - generic [ref=e686]:
+              - textbox "Search Text" [ref=e688]
+              - button "0" [ref=e690] [cursor=pointer]
+              - button "Reset" [ref=e695] [cursor=pointer]
+            - generic [ref=e702]:
+              - list [ref=e703]:
+                - generic [ref=e704]:
+                  - generic [ref=e706]:
+                    - link "Link to Jessie 29-084R details" [ref=e707] [cursor=pointer]:
+                      - /url: /cards/29-084R
+                    - img "Jessie - 29-084R - FFTCG card" [ref=e709]
+                  - generic [ref=e710]:
+                    - heading "Jessie" [level=3] [ref=e711]
+                    - generic [ref=e712]: 29-084R
+                - generic [ref=e714]:
+                  - generic [ref=e716]:
+                    - link "Link to Haudrale 27-042R details" [ref=e717] [cursor=pointer]:
+                      - /url: /cards/27-042R
+                    - img "Haudrale - 27-042R - FFTCG card" [ref=e719]
+                  - generic [ref=e720]:
+                    - heading "Haudrale" [level=3] [ref=e721]
+                    - generic [ref=e722]: 27-042R
+                - generic [ref=e724]:
+                  - generic [ref=e726]:
+                    - link "Link to Chaos, Walker of the Wheel 27-052H details" [ref=e727] [cursor=pointer]:
+                      - /url: /cards/27-052H
+                    - img "Chaos, Walker of the Wheel - 27-052H - FFTCG card" [ref=e729]
+                  - generic [ref=e730]:
+                    - heading "Chaos, Walker of the Wheel" [level=3] [ref=e731]
+                    - generic [ref=e732]: 27-052H
+                - generic [ref=e734]:
+                  - generic [ref=e736]:
+                    - link "Link to Elwin 26-004C details" [ref=e737] [cursor=pointer]:
+                      - /url: /cards/26-004C
+                    - img "Elwin - 26-004C - FFTCG card" [ref=e739]
+                  - generic [ref=e740]:
+                    - heading "Elwin" [level=3] [ref=e741]
+                    - generic [ref=e742]: 26-004C
+                - generic [ref=e744]:
+                  - generic [ref=e746]:
+                    - link "Link to Glenn 25-007R details" [ref=e747] [cursor=pointer]:
+                      - /url: /cards/25-007R
+                    - img "Glenn - 25-007R - FFTCG card" [ref=e749]
+                  - generic [ref=e750]:
+                    - heading "Glenn" [level=3] [ref=e751]
+                    - generic [ref=e752]: 25-007R
+                - generic [ref=e754]:
+                  - generic [ref=e756]:
+                    - link "Link to Cid Highwind 25-043H details" [ref=e757] [cursor=pointer]:
+                      - /url: /cards/25-043H
+                    - img "Cid Highwind - 25-043H - FFTCG card" [ref=e759]
+                  - generic [ref=e760]:
+                    - heading "Cid Highwind" [level=3] [ref=e761]
+                    - generic [ref=e762]: 25-043H
+                - generic [ref=e764]:
+                  - generic [ref=e766]:
+                    - link "Link to Angeal 22-004H details" [ref=e767] [cursor=pointer]:
+                      - /url: /cards/22-004H
+                    - img "Angeal - 22-004H - FFTCG card" [ref=e769]
+                  - generic [ref=e770]:
+                    - heading "Angeal" [level=3] [ref=e771]
+                    - generic [ref=e772]: 22-004H
+                - generic [ref=e774]:
+                  - generic [ref=e776]:
+                    - link "Link to Larsa 21-115C details" [ref=e777] [cursor=pointer]:
+                      - /url: /cards/21-115C
+                    - img "Larsa - 21-115C - FFTCG card" [ref=e779]
+                  - generic [ref=e780]:
+                    - heading "Larsa" [level=3] [ref=e781]
+                    - generic [ref=e782]: 21-115C
+                - generic [ref=e784]:
+                  - generic [ref=e786]:
+                    - link "Link to Shinryu 20-127L details" [ref=e787] [cursor=pointer]:
+                      - /url: /cards/20-127L
+                    - img "Shinryu - 20-127L - FFTCG card" [ref=e789]
+                  - generic [ref=e790]:
+                    - heading "Shinryu" [level=3] [ref=e791]
+                    - generic [ref=e792]: 20-127L
+                - generic [ref=e794]:
+                  - generic [ref=e796]:
+                    - link "Link to Lean 19-033C details" [ref=e797] [cursor=pointer]:
+                      - /url: /cards/19-033C
+                    - img "Lean - 19-033C - FFTCG card" [ref=e799]
+                  - generic [ref=e800]:
+                    - heading "Lean" [level=3] [ref=e801]
+                    - generic [ref=e802]: 19-033C
+                - generic [ref=e804]:
+                  - generic [ref=e806]:
+                    - link "Link to Meeth 18-014R details" [ref=e807] [cursor=pointer]:
+                      - /url: /cards/18-014R
+                    - img "Meeth - 18-014R - FFTCG card" [ref=e809]
+                  - generic [ref=e810]:
+                    - heading "Meeth" [level=3] [ref=e811]
+                    - generic [ref=e812]: 18-014R
+                - generic [ref=e814]:
+                  - generic [ref=e816]:
+                    - link "Link to Zhijie 18-042C details" [ref=e817] [cursor=pointer]:
+                      - /url: /cards/18-042C
+                    - img "Zhijie - 18-042C - FFTCG card" [ref=e819]
+                  - generic [ref=e820]:
+                    - heading "Zhijie" [level=3] [ref=e821]
+                    - generic [ref=e822]: 18-042C
+                - generic [ref=e824]:
+                  - generic [ref=e826]:
+                    - link "Link to Sherlotta 18-044R details" [ref=e827] [cursor=pointer]:
+                      - /url: /cards/18-044R
+                    - img "Sherlotta - 18-044R - FFTCG card" [ref=e829]
+                  - generic [ref=e830]:
+                    - heading "Sherlotta" [level=3] [ref=e831]
+                    - generic [ref=e832]: 18-044R
+                - generic [ref=e834]:
+                  - generic [ref=e836]:
+                    - link "Link to Leafkin 18-051C details" [ref=e837] [cursor=pointer]:
+                      - /url: /cards/18-051C
+                    - img "Leafkin - 18-051C - FFTCG card" [ref=e839]
+                  - generic [ref=e840]:
+                    - heading "Leafkin" [level=3] [ref=e841]
+                    - generic [ref=e842]: 18-051C
+                - generic [ref=e844]:
+                  - generic [ref=e846]:
+                    - link "Link to Basch 18-111L details" [ref=e847] [cursor=pointer]:
+                      - /url: /cards/18-111L
+                    - img "Basch - 18-111L - FFTCG card" [ref=e849]
+                  - generic [ref=e850]:
+                    - heading "Basch" [level=3] [ref=e851]
+                    - generic [ref=e852]: 18-111L
+                - generic [ref=e854]:
+                  - generic [ref=e856]:
+                    - link "Link to Noel 17-056L details" [ref=e857] [cursor=pointer]:
+                      - /url: /cards/17-056L
+                    - img "Noel - 17-056L - FFTCG card" [ref=e859]
+                  - generic [ref=e860]:
+                    - heading "Noel" [level=3] [ref=e861]
+                    - generic [ref=e862]: 17-056L
+                - generic [ref=e864]:
+                  - generic [ref=e866]:
+                    - link "Link to Cloud 16-005C details" [ref=e867] [cursor=pointer]:
+                      - /url: /cards/16-005C
+                    - img "Cloud - 16-005C - FFTCG card" [ref=e869]
+                  - generic [ref=e870]:
+                    - heading "Cloud" [level=3] [ref=e871]
+                    - generic [ref=e872]: 16-005C
+                - generic [ref=e874]:
+                  - generic [ref=e876]:
+                    - link "Link to Luso 16-020L details" [ref=e877] [cursor=pointer]:
+                      - /url: /cards/16-020L
+                    - img "Luso - 16-020L - FFTCG card" [ref=e879]
+                  - generic [ref=e880]:
+                    - heading "Luso" [level=3] [ref=e881]
+                    - generic [ref=e882]: 16-020L
+                - generic [ref=e884]:
+                  - generic [ref=e886]:
+                    - link "Link to Ezel 16-107R details" [ref=e887] [cursor=pointer]:
+                      - /url: /cards/16-107R
+                    - img "Ezel - 16-107R - FFTCG card" [ref=e889]
+                  - generic [ref=e890]:
+                    - heading "Ezel" [level=3] [ref=e891]
+                    - generic [ref=e892]: 16-107R
+                - generic [ref=e894]:
+                  - generic [ref=e896]:
+                    - link "Link to Lehko Habhoka 15-061H details" [ref=e897] [cursor=pointer]:
+                      - /url: /cards/15-061H
+                    - img "Lehko Habhoka - 15-061H - FFTCG card" [ref=e899]
+                  - generic [ref=e900]:
+                    - heading "Lehko Habhoka" [level=3] [ref=e901]
+                    - generic [ref=e902]: 15-061H
+                - generic [ref=e904]:
+                  - generic [ref=e906]:
+                    - link "Link to Alphinaud 12-004R details" [ref=e907] [cursor=pointer]:
+                      - /url: /cards/12-004R
+                    - img "Alphinaud - 12-004R - FFTCG card" [ref=e909]
+                  - generic [ref=e910]:
+                    - heading "Alphinaud" [level=3] [ref=e911]
+                    - generic [ref=e912]: 12-004R
+                - generic [ref=e914]:
+                  - generic [ref=e916]:
+                    - link "Link to Relm 12-106R details" [ref=e917] [cursor=pointer]:
+                      - /url: /cards/12-106R
+                    - img "Relm - 12-106R - FFTCG card" [ref=e919]
+                  - generic [ref=e920]:
+                    - heading "Relm" [level=3] [ref=e921]
+                    - generic [ref=e922]: 12-106R
+                - generic [ref=e924]:
+                  - generic [ref=e926]:
+                    - link "Link to Fiona 11-056R details" [ref=e927] [cursor=pointer]:
+                      - /url: /cards/11-056R
+                    - img "Fiona - 11-056R - FFTCG card" [ref=e929]
+                  - generic [ref=e930]:
+                    - heading "Fiona" [level=3] [ref=e931]
+                    - generic [ref=e932]: 11-056R
+                - generic [ref=e934]:
+                  - generic [ref=e936]:
+                    - link "Link to Tyro 11-072R details" [ref=e937] [cursor=pointer]:
+                      - /url: /cards/11-072R
+                    - img [ref=e940]:
+                      - generic [ref=e941]: Banned
+                      - generic [ref=e942]: 03/27/2026
+                    - img "Tyro - 11-072R - FFTCG card" [ref=e944]
+                  - generic [ref=e945]:
+                    - heading "Tyro" [level=3] [ref=e946]
+                    - generic [ref=e947]: 11-072R
+              - generic [ref=e950]:
+                - generic [ref=e951]: 1–24 of 36
+                - generic [ref=e952]:
+                  - button "First page" [disabled] [ref=e953]
+                  - button "Previous page" [disabled] [ref=e957]
+                  - button "Next page" [ref=e960] [cursor=pointer]
+                  - button "Last page" [ref=e963] [cursor=pointer]
+        - generic:
+          - status
+      - generic [ref=e195]:
+        - generic [ref=e196]: FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.
+        - generic [ref=e197]:
+          - link [ref=e198] [cursor=pointer]:
+            - /url: https://discord.gg/mAErry4jUf
+          - link [ref=e202] [cursor=pointer]:
+            - /url: https://x.com/materiahunter_
+          - link [ref=e205] [cursor=pointer]:
+            - /url: https://ko-fi.com/materiahunter
