@@ -25,13 +25,22 @@ pnpm test                                              # vitest
 pnpm typecheck                                         # tsc -b, all packages
 pnpm lint                                               # eslint .
 
-pnpm --filter @fftcg/cli hotseat --seed 1               # play a game in the terminal
-pnpm --filter @fftcg/cli selfplay --games 200 --seed 1   # random-vs-random fuzzer
-pnpm --filter @fftcg/cli deckorder --seed 1              # print a seeded deck order
+pnpm --filter @fftcg/cli hotseat --seed 1                              # play a game in the terminal
+pnpm --filter @fftcg/cli selfplay --games 200 --seed 1                 # random-vs-random fuzzer
+pnpm --filter @fftcg/cli selfplay --games 200 --seed 1 --p0 greedy --p1 random --fast   # greedy AI vs random
+pnpm --filter @fftcg/cli deckorder --seed 1                            # print a seeded deck order
 ```
 
 All three CLI commands accept `--seed N` and `--deck <path>` (default deck:
-`decks/starter-2025-vol2.txt`); `selfplay` also accepts `--games N`.
+`decks/starter-2025-vol2.txt`); `selfplay` also accepts:
+- `--games N` — number of games (default 200).
+- `--p0 <spec>`, `--p1 <spec>` — per-seat agent, one of `random` (default), `greedy`, or `greedy:N`
+  (`N` = 0, 1, or 2; pins that seat's lookahead depth regardless of `--depth`).
+- `--depth N` — lookahead depth (0, 1, or 2; default 1) applied to any `greedy` seat that didn't pin
+  its own depth via `greedy:N`.
+- `--fast` — skips the engine's `checkInvariants`/immutability assertions between commands (`strict:
+  false`), which meaningfully speeds up large tournaments; use the default (strict) mode when
+  debugging engine behaviour, `--fast` for win-rate measurement runs.
 
 ## Card data
 
@@ -51,6 +60,19 @@ endpoint's data, so they're hand-transcribed from the physical cards into
 the fetched data for any overlapping code. Card images are never fetched or committed.
 Card text and imagery are © Square Enix; this repo uses them only for personal, non-commercial
 play.
+
+## AI opponent
+
+`packages/ai`'s `GreedyAgent` plays by determinising the game (rebuilding a full, consistent
+`GameState` from the agent's own `PlayerView` plus both players' public deck lists, sampling
+unseen cards with a seeded RNG — never the ground-truth state), then, for each legal move,
+simulating a greedy lookahead (its own turn, and optionally the opponent's, at attack
+declarations) and scoring the result with a hand-tuned evaluation function. It is seeded and
+deterministic (same seed + same views ⇒ same decisions) and never sees hidden information beyond
+what a real player could infer from the deck list being public knowledge. Measured over 200
+seeded self-play games against `RandomAgent` (`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`'s
+appendix has the full breakdown): greedy wins 98.5–100 % of games regardless of seat or lookahead
+depth.
 
 ## Rules version
 
@@ -72,7 +94,7 @@ grep -rn MVP0-SIMPLIFICATION packages apps --include='*.ts' --exclude-dir=dist
 ```
 packages/engine   pure TS rules engine (state, commands, reducer, legal-move enumeration, views)
 packages/cards    Vol. 2 card data: fetch script + patches + normalisation
-packages/ai       Agent interface + RandomAgent
+packages/ai       Agent interface + RandomAgent + GreedyAgent (determinised greedy lookahead)
 apps/cli          hotseat / selfplay / deckorder CLI (tsx)
 decks/            deck list text files
 docs/superpowers/ design spec and implementation plans
