@@ -7,20 +7,26 @@ with Square Enix.
 Design spec and MVP ladder:
 [`docs/superpowers/specs/2026-08-25-fftcg-game-design.md`](docs/superpowers/specs/2026-08-25-fftcg-game-design.md).
 
-## Status: MVP0 — Bones
+## Status: rung B — playable in the browser against the AI
 
-The engine plays a full legal game of the Starter Set 2025 Vol. 2 deck (Earth/Lightning,
-Cloud) end to end via a hotseat CLI: setup and mulligan, turn phases, CP payment, casting
-Backups/Forwards/Summons, the attack/block/damage sequence, and win/loss conditions. Card
-abilities are not yet implemented — every card plays as if its text box were blank
-(Summons resolve with no effect). A random-vs-random self-play fuzzer exercises the engine
-for invariant violations. See the spec's MVP ladder for what comes next (MVP1: web hotseat
-UI).
+**You can sit down and play a full game against the AI in a browser**: first-player choice and
+mulligan, casting Backups/Forwards/Summons with CP paid for you, attacking and blocking, party
+damage, and win/loss. The engine (`packages/engine`) and the greedy AI (`packages/ai`) contain no
+`node:` imports, so the whole game — rules, opponent, and card database — runs client-side. There
+is no server.
+
+Card abilities are still not implemented: every card plays as if its text box were blank, and the
+game log says so in amber whenever a card with abilities hits the field, so the caveat is visible
+in play rather than a silent surprise. That is rung C.
+
+The same engine still plays in the terminal (hotseat) and under a self-play fuzzer.
 
 ## Running it
 
 ```sh
 pnpm install
+pnpm --filter @fftcg/web dev                           # play in a browser — open the URL it prints
+
 pnpm test                                              # vitest
 pnpm typecheck                                         # tsc -b, all packages
 pnpm lint                                               # eslint .
@@ -76,6 +82,24 @@ player could infer from the deck lists being public. Measured over 200 seeded se
 (`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`'s appendix has the full breakdown):
 greedy wins **≥ 98 % of games vs. the concrete-command random baseline** on 200-game seeded runs,
 regardless of seat or lookahead depth.
+
+## Card images
+
+The board renders real card art from the Square Enix CDN, cached locally:
+
+```sh
+pnpm --filter @fftcg/web fetch-images            # ~20 s for the 18 distinct codes
+pnpm --filter @fftcg/web fetch-images --dry-run  # list what it would fetch, zero network requests
+```
+
+Images land in `apps/web/public/cards/` and are **git-ignored** — never committed. The script is
+strictly serial with 1.1 s between requests and aborts on the first 403/429: the CDN sits behind a
+Cloudflare WAF that rate-limits hard, and roughly a dozen rapid requests will get your IP blocked
+for a long time (verified: a block was still in force 18 hours later, and it is IP-based, not a
+User-Agent filter). Re-running skips anything already on disk, so an aborted run resumes.
+
+**The app is fully playable with no images at all** — every card falls back to a styled text card
+showing name, cost, elements, type and power. Art is an enhancement, never a dependency.
 
 ## Rules version
 

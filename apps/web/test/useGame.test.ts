@@ -26,7 +26,7 @@ interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; com
  * choice `buildChoiceSet` offers. This is B-A1 (a game reaches a result), B-A2 (only UI-reachable commands are
  * used) and B-A4 (every applied command was in `legalCommands` at the time) without a browser.
  */
-function playFullGame(seed: number): PlayedGame {
+function playFullGame(seed: number, pickIndex: (n: number, step: number) => number = () => 0): PlayedGame {
   let state = newGame(seed)
   const agent: Agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
   const log: LogLine[] = []
@@ -45,7 +45,8 @@ function playFullGame(seed: number): PlayedGame {
     }
     const legal = legalCommands(state, HUMAN)
     const choices = buildChoiceSet(view, preferredChoices(view, legal))
-    const choice = choices.all.find((ch) => ch.command.type !== 'concede')
+    const usable = choices.all.filter((ch) => ch.command.type !== 'concede')
+    const choice = usable[Math.min(usable.length - 1, Math.max(0, pickIndex(usable.length, step)))]
     expect(choice, `no non-concede choice in ${view.phase}`).toBeDefined()
     // independent of the hook's own guard: the command really is in the legal set at this instant
     expect(legal.some((c) => sameCommand(c, choice!.command))).toBe(true)
@@ -135,6 +136,33 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
 
   it('is deterministic for a fixed seed', () => {
     expect(playFullGame(1).log.map((l) => l.text)).toEqual(played.log.map((l) => l.text))
+  })
+
+  it('B-A2: EVERY command type the engine can ask for is reachable from the choice set alone', () => {
+    // Taking the first choice every time is one narrow path through the game: the human never blocks (the
+    // no-block option is first), never splits party damage, and never fills a hand past the discard limit. So
+    // sweep seeds AND several human policies — first choice, last choice, and a couple of deterministic
+    // rotations — until every command type has been produced. If one never appears, the UI cannot reach it,
+    // which is exactly what B-A2 forbids.
+    const need = new Set<Command['type']>([
+      'chooseFirst', 'mulligan', 'castCharacter', 'castSummon',
+      'declareAttack', 'declareBlock', 'assignPartyDamage', 'discardToHandSize', 'pass',
+    ])
+    const policies: ((n: number, step: number) => number)[] = [
+      () => 0,
+      (n) => n - 1,
+      (n, step) => step % n,
+      (n, step) => (step * 7 + 3) % n,
+    ]
+    const seen = new Set<Command['type']>()
+    for (let seed = 1; seed <= 12 && seen.size < need.size; seed++) {
+      for (const policy of policies) {
+        for (const t of playFullGame(seed, policy).commandTypes) seen.add(t)
+        if (seen.size >= need.size) break
+      }
+    }
+    const missing = [...need].filter((t) => !seen.has(t))
+    expect(missing, `unreachable from the UI: ${missing.join(', ')}`).toEqual([])
   })
 })
 
