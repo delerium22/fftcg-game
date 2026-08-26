@@ -135,3 +135,12 @@ export interface Resolution {
 export const MAX_RESOLUTION_STEPS = 512
 
 export const EMPTY_RESOLUTION: Resolution = { active: null, queue: [], continuation: null, steps: 0 }
+
+/**
+ * Does the agenda still owe the engine anything? A `continuation` counts: it is work only `drainResolution`
+ * consumes, so settlement, `checkInvariants` and the AI's diagnostics that looked at `active`/`queue` alone
+ * would call a state with nothing but a continuation "settled" and strand it there permanently.
+ */
+export function hasResolutionWork(r: Resolution): boolean {
+  return r.active !== null || r.queue.length > 0 || r.continuation !== null
+}

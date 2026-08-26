@@ -15,6 +15,9 @@ import { viewFor } from '../src/view.js'
 import { applyChooseTargets, drainResolution, enqueueTrigger, targetCandidates } from '../src/resolve.js'
 import { IllegalCommandError } from '../src/errors.js'
 import { createGame } from '../src/setup.js'
+import { determinise } from '../src/determinise.js'
+import { seedRng } from '../src/rng.js'
+import type { Command } from '../src/commands.js'
 import { actingPlayer } from '../src/legal.js'
 import { deckOf, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
@@ -257,6 +260,39 @@ describe('choices suspend the frame and resume it (spec C1-3/C1-6)', () => {
     ;[s] = fire(s, src)
     expect(viewFor(s, 0).resolution).toEqual(s.resolution)
   })
+
+  it('C1-A6 proper: a live state and its DETERMINISATION resolve the same command identically', () => {
+    // The previous test only checked that `viewFor` copied `resolution` — it never called `determinise`, which
+    // is the function the whole "AST on CardDef, not an injected registry" decision exists to survive. If the
+    // AST failed to reach a determinised state, the AI would roll out a vanilla game while playing an ability
+    // game, and nothing here would have failed.
+    let { s, src } = setup([{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }])
+    let victim: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', 'V-F2')
+    ;[s] = fire(s, src)
+    expect(s.pending?.kind).toBe('chooseTargets')
+
+    // Derived from the state, not DEFAULT_DECK: withField/withHand MINT card instances, so the declared list
+    // must include them or `determinise` rejects a visible card it cannot account for.
+    const decks = ([0, 1] as const).map((p) => {
+      const q = s.players[p]
+      return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone]
+        .map((id) => s.cards[id]!.code)
+    }) as [string[], string[]]
+    const [det] = determinise({ view: viewFor(s, 0), decks, rng: seedRng(1) })
+    const before = JSON.stringify(det)
+
+    const answer: Command = { type: 'chooseTargets', player: 0, targets: [victim] }
+    const live = apply(s, answer)
+    const sim = apply(det, answer)
+
+    // The ability must have DONE something in both — a vanilla determinisation would leave the card active.
+    expect(fc(live.state, victim)?.status).toBe('dull')
+    expect(fc(sim.state, victim)?.status).toBe('dull')
+    expect(sim.events.map((e) => e.type)).toEqual(live.events.map((e) => e.type))
+    expect(sim.state.resolution).toEqual(live.state.resolution)
+    expect(JSON.stringify(det), 'apply must not mutate its input').toBe(before)
+  })
 })
 
 describe('an ability with no legal target is a no-op that logs (spec C1-7)', () => {
@@ -472,5 +508,52 @@ describe('§12.4.5: a Forward killed by ABILITY damage is broken', () => {
   it('leaves a Forward alive when the damage is not lethal', () => {
     const { state, victim } = castBurner(4000)
     expect(fc(state, victim)?.damage).toBe(4000)
+  })
+})
+
+
+describe('a frame is atomic across the commands that answer it (Codex HIGH)', () => {
+  // Ramuh may legally select BOTH "deal it 5000 damage" and "it gains Haste", and target the SAME Forward with
+  // each. The second prompt is raised while lethal damage is already on that Forward. `settle()` used to run
+  // rule processes on the way back in, breaking the target before the frame resumed, so the Haste silently
+  // applied to nothing. A frame must run to completion across its own prompts; rule processes go between frames.
+  const victimDef = makeDef({ code: 'T-VICTIM5', cost: 1, power: 5000 })
+  const twoModes = srcDef([{
+    kind: 'chooseModes', min: 2, max: 2,
+    modes: [
+      { label: 'damage', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 5000 }] }] },
+      { label: 'haste', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'grantKeyword', keyword: 'haste' }] }] },
+    ],
+  }], { cost: 0 })
+
+  it('grants the keyword to a target the earlier mode has already dealt lethal damage to', () => {
+    let s = makeGame({ defs: [...VANILLA_POOL, twoModes, victimDef] })
+    let victim: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', 'T-VICTIM5')
+    let src: CardId
+    ;[s, src] = withHand(s, 0, 'T-SRC')
+
+    let r = apply(s, { type: 'castCharacter', player: 0, card: src, payment: { dullBackups: [], discards: [] } })
+    const events: Event[] = [...r.events]
+    expect(r.state.pending?.kind, 'the mode choice must be raised').toBe('chooseMode')
+
+    r = apply(r.state, { type: 'chooseMode', player: 0, modes: [0, 1] })
+    events.push(...r.events)
+    expect(r.state.pending?.kind).toBe('chooseTargets')
+    expect(r.state.pending?.kind === 'chooseTargets' && r.state.pending.candidates).toContain(victim)
+
+    r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })   // 5000 damage — now lethal
+    events.push(...r.events)
+    // The SECOND prompt must still offer the target: the frame owns it until it finishes.
+    expect(r.state.pending?.kind, 'the haste prompt must still be raised').toBe('chooseTargets')
+    expect(r.state.pending?.kind === 'chooseTargets' && r.state.pending.candidates, 'a card the frame already chose must not be broken out from under it').toContain(victim)
+
+    r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })
+    events.push(...r.events)
+    expect(events.some((e) => e.type === 'keywordGranted'), 'the Haste must actually be granted, not silently skipped').toBe(true)
+    // …and only once the frame is done does §12.4.5 collect it.
+    expect(fc(r.state, victim)).toBeUndefined()
+    expect(r.state.players[1].breakZone).toContain(victim)
+    ok(r.state)
   })
 })

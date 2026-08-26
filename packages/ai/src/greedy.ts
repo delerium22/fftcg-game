@@ -126,8 +126,10 @@ export interface CandidateScore {
   resolutionQueued: number
 }
 
-/** Frames the agenda still owes: the active one plus the queue. Zero on any settled state. */
-const agendaSize = (s: GameState): number => (s.resolution.active ? 1 : 0) + s.resolution.queue.length
+/** Work the agenda still owes: the active frame, the queue, and a system continuation (which only
+ *  `drainResolution` consumes, so a state carrying nothing but one is NOT settled). Zero on a settled state. */
+const agendaSize = (s: GameState): number =>
+  (s.resolution.active ? 1 : 0) + s.resolution.queue.length + (s.resolution.continuation ? 1 : 0)
 
 /**
  * Score every top-level candidate independently (C1): each gets its own fresh `Budget` sized

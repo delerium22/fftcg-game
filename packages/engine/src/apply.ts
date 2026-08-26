@@ -1,6 +1,6 @@
 import { opponentOf } from './types.js'
 import type { GameState } from './state.js'
-import { EMPTY_RESOLUTION } from './abilities.js'
+import { EMPTY_RESOLUTION, hasResolutionWork } from './abilities.js'
 import type { Command } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
@@ -25,24 +25,30 @@ export interface ApplyResult { state: GameState; events: Event[] }
 function settle(state: GameState): [GameState, Event[]] {
   const events: Event[] = []
   let s = state
-  // The SETTLED exit must come after a rule-process pass. Testing it before the drain (rather than after)
-  // is what makes the loop run one more time once an ability finishes: previously the terminal break fired
-  // the instant the agenda emptied, with no trailing rule process, so a Forward killed by ability damage
-  // was never broken (§12.4.5) — Ramuh dealing 5000 to a 5000-power Forward left it standing.
+  // Rule processes belong BETWEEN frames, never inside one — `resolution.active` is exactly the flag for
+  // "a frame is mid-flight", so the loop runs them only when it is null. Three failures this ordering avoids,
+  // each of which the other two orderings caused:
   //
-  // The pending exit must NOT: rule processes between raising a choice and answering it can break a card
-  // that is already in `pending.candidates`, and the answer is then rejected as an illegal target.
+  //  - Run them only at the top and exit straight after a drain, and a Forward killed by ability damage is
+  //    never broken (§12.4.5): Ramuh dealing 5000 to a 5000-power Forward left it standing.
+  //  - Run them on EVERY pass, and they fire between a choice being raised and answered, breaking a card that
+  //    is already in `pending.candidates` so the answer is rejected as an illegal target.
+  //  - Run them before RESUMING a frame, and they break a card the frame already chose: Ramuh may legally
+  //    pick damage and Haste for the same Forward, and the Haste would silently skip a target the damage had
+  //    just killed. A frame must be atomic across the commands that answer its prompts.
   for (;;) {
-    const [ruled, ruleEvents] = runRuleProcesses(s)
-    s = ruled; events.push(...ruleEvents)
-    if (s.result) break
-    if (!s.resolution.active && s.resolution.queue.length === 0) break
+    if (!s.resolution.active) {
+      const [ruled, ruleEvents] = runRuleProcesses(s)
+      s = ruled; events.push(...ruleEvents)
+      if (s.result) break
+      if (!hasResolutionWork(s.resolution)) break   // settled, and rule processes have run
+    }
     const [drained, drainEvents] = drainResolution(s)
     s = drained; events.push(...drainEvents)
     if (s.result || s.pending) break
   }
   if (s.result) s = { ...s, resolution: EMPTY_RESOLUTION }   // nothing may stay queued after game over
-  else if (!s.pending && !s.resolution.active && !s.resolution.queue.length) s = { ...s, resolution: { ...s.resolution, steps: 0 } }
+  else if (!s.pending && !hasResolutionWork(s.resolution)) s = { ...s, resolution: { ...s.resolution, steps: 0 } }
   return [s, events]
 }
 
