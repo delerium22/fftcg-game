@@ -63,8 +63,10 @@ export function cachedCodes(outDir: string): Set<string> {
 export function retryAfterMs(header: string | null | undefined, now: number = Date.now()): number | null {
   const raw = header?.trim()
   if (!raw) return null
-  const secs = Number(raw)
-  if (Number.isFinite(secs)) return Math.max(0, secs * 1000)
+  // Digits only: RFC 9110 defines delta-seconds as 1*DIGIT, and `Number` would otherwise read forms the RFC
+  // does not define — '0x10' as 16 s, '1e3' as 1000 s, '-5' as a negative wait. An unparseable value must be
+  // ignored (fall through to the HTTP-date branch, then null), never reinterpreted.
+  if (/^\d+$/.test(raw)) return Number(raw) * 1000
   const at = Date.parse(raw)
   return Number.isNaN(at) ? null : Math.max(0, at - now)
 }

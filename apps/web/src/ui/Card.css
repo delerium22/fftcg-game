@@ -29,9 +29,14 @@
   transition: transform 140ms cubic-bezier(0.2, 0.8, 0.3, 1), filter 140ms ease;
 }
 
-.card--hand { --cw: 128px; --ch: 179px; }
-.card--field { --cw: 96px; --ch: 134px; }
-.card--small { --cw: 64px; --ch: 89px; }
+/* Card heights scale with the viewport so the board never has to clip a card. At the previous fixed sizes a
+ * 900px-tall laptop lost 54px off each seat's forwards row under `.table__seat`'s `overflow: hidden` — taking
+ * the opponent's name and its whole power readout with it, which is precisely what B-A5 promises stays legible
+ * when no art has been fetched, and what every attack and block decision is made on. Width follows from the
+ * real card aspect ratio (0.716) so nothing has to be kept in sync by hand. */
+.card--hand { --ch: clamp(112px, 16vh, 179px); --cw: calc(var(--ch) * 0.716); }
+.card--field { --ch: clamp(84px, 11.5vh, 134px); --cw: calc(var(--ch) * 0.716); }
+.card--small { --ch: clamp(56px, 7.5vh, 89px); --cw: calc(var(--ch) * 0.716); }
 
 .card__face {
   position: absolute;
@@ -267,7 +272,12 @@
   color: var(--ink-3);
 }
 
-.card--small .card__meta { display: none; }
+/* At `small` the meta row has no room for the type label, but power must never be the thing that gets
+ * dropped: it is the number every combat decision turns on. Backups (the only small cards today) have
+ * `power: null` and so render nothing here anyway — this keeps a small-size FORWARD honest if one is ever
+ * rendered, rather than silently hiding its power and damage. */
+.card--small .card__type { display: none; }
+.card--small .card__meta:not(:has(.card__power)) { display: none; }
 
 /* Damage as a bar across the foot of the art, sized to the fraction of power already dealt. */
 .card__damage {

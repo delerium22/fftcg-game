@@ -121,10 +121,14 @@ body {
  * for the log. Both seats flex; the prompt strip is the only auto row, so it stays a strip.
  */
 
-/* The hand gets its own row rather than living inside the player's seat: inside, the seat needed
- * forwards + backups + a 190px hand out of one `1fr` track and clipped its own zone labels on a
- * laptop viewport. As a sibling row it is sized by its content and the two field rows share what
- * is left, so nothing is cut off at any realistic height. */
+/* The hand gets its own row rather than living inside the player's seat: inside, the seat had to fit
+ * forwards + backups + the hand out of one `1fr` track and clipped its own zone labels on a laptop
+ * viewport. As a sibling row it is sized by its content and the two field rows share what is left.
+ *
+ * That alone was not enough — with fixed card heights a 900px viewport still lost 54px off each
+ * seat's forwards row under `overflow: hidden`. The card heights are `clamp(..., vh, ...)` in
+ * Card.css and the reserved row heights below track the same clamps, so the whole board scales to
+ * the viewport instead of being cropped by it. */
 .table {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--rail-w);
@@ -148,8 +152,11 @@ body {
   flex-direction: column;
   gap: var(--s3);
   min-height: 0;
-  padding: var(--s4) var(--s5);
-  overflow: hidden;
+  padding: var(--s3) var(--s5);
+  /* `auto`, never `hidden`: the clamps above are tuned so a >=900px-tall viewport needs no scrollbar, but on
+   * anything shorter the player must still be able to reach a forward's power — with `hidden` those pixels
+   * were silently gone, and attack/block decisions are made on exactly that number. */
+  overflow-y: auto;
 }
 
 /* The opponent reads top-down (status, backups, then forwards nearest the middle); the player
@@ -283,16 +290,19 @@ body {
 }
 
 /* Empty rows keep their height so the board never jumps as cards enter and leave. */
+/* Reserved heights track the same clamps Card.css sizes the cards with, so an empty row is exactly as tall as
+ * a full one and the board never jumps — without the fixed 138px that made the seat overflow its grid row on a
+ * short viewport. Keep these three in step with `.card--field` / `.card--small`. */
 .zone__cards {
   display: flex;
   align-items: flex-end;
   gap: var(--s3);
-  min-height: 138px;
+  min-height: calc(clamp(84px, 11.5vh, 134px) + 4px);
   padding-bottom: var(--s1);
 }
 
-/* Backup rows hold `small` cards (89px), so they do not need the forward row's reserved height. */
-.zone__cards--compact { min-height: 93px; }
+/* Backup rows hold `small` cards, so they do not need the forward row's reserved height. */
+.zone__cards--compact { min-height: calc(clamp(56px, 7.5vh, 89px) + 4px); }
 
 .zone__cards--empty::before {
   content: 'empty';
@@ -310,7 +320,7 @@ body {
   justify-content: center;
   align-items: flex-end;
   gap: var(--s2);
-  min-height: 190px;
+  min-height: calc(clamp(112px, 16vh, 179px) + 11px);
   padding: var(--s2) 0;
 }
 

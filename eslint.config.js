@@ -1,6 +1,6 @@
 import tseslint from 'typescript-eslint'
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', '.tsbuild/**'] },
   ...tseslint.configs.recommended,
   { rules: { '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }] } },
   // Tests reuse `let` bindings across repeated array-destructuring assignments (`;[s, f] = withField(...)`),
