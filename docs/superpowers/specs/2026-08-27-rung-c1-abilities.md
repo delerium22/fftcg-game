@@ -116,3 +116,25 @@ readonly, never `Map`/`Set`/closures — because self-play's strict mode detects
 - **The UI is named as a `powerOf` consumer** (C1-7); it currently reads printed power.
 - **Rung C4 added** for static/continuous and cost-modifying clauses, which had no home.
 - **C1-A5 reworded** — a required new `FieldCard` field cannot leave every existing assertion untouched.
+
+## Known deferrals into C2 (from the C1 code review)
+
+Recorded here rather than left implicit, because C1-8 claimed to build the trigger-discovery machinery
+*for* C2 and it is not yet right:
+
+- **`enqueueZoneTriggers` watches the card that MOVED, not the cards observing the move**
+  (`packages/engine/src/rules.ts:61`). Lightning's second clause belongs to a Forward watching an
+  *opponent's* card enter the Break Zone, so the current shape cannot express it — and it still loses
+  Lightning if both cards leave simultaneously, which is the exact hazard the plan-review raised. Direct
+  `breakCard` bypasses transitions entirely, and every transition currently records a null cause. C2 must
+  snapshot all pre-transition trigger SOURCES, match them against the whole transition batch, and route
+  direct breaks/returns and damage-caused moves through one source-aware pipeline. C1 has no zone-change
+  triggers, so nothing today depends on this being right.
+- **The budget-starved Ramuh mode policy can pick a provably redundant pair.** Modes are valued
+  independently and summed (`packages/ai/src/candidates.ts`), so against a lone strong Forward it ranks
+  damage+dull first even though both hit the same card, where damage+Haste kills it *and* unlocks an
+  attacker. Ramuh has at most seven mode subsets; ranking each jointly, with its nested target policy
+  applied in printed order, would make the interaction visible. Quality, not correctness.
+- **`evaluate` has no per-card `damage` term**, so chip damage is worth exactly 0 to the search while the
+  target policy prices it. The policy's factor is deliberately conservative to limit the disagreement; the
+  real fix is a damage term in `material()`.
