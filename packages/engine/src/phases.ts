@@ -5,6 +5,7 @@ import { HAND_SIZE_LIMIT, updatePlayer } from './state.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { runRuleProcesses } from './rules.js'
+import { enterAttackDeclaration } from './resolve.js'
 
 export function drawCards(state: GameState, p: PlayerId, n: number): [GameState, Event[]] {
   const ps = state.players[p]
@@ -46,11 +47,11 @@ export function applyPass(state: GameState, player: PlayerId): [GameState, Event
   if (state.priority !== player) throw new IllegalCommandError('you do not hold priority')
   if (state.phase === 'attack' && state.attack?.step !== 'declaration') throw new IllegalCommandError('cannot pass during this attack step')
   switch (state.phase) {
-    case 'main1': {
-      // §10.1.1 Attack Preparation Step — MVP0-SIMPLIFICATION: nothing can trigger here yet, so advance straight to declaration
-      const s: GameState = { ...state, phase: 'attack', attack: { step: 'declaration', attackers: [], blocker: null }, priority: player }
-      return [s, [{ type: 'phaseStarted', phase: 'attack', step: 'preparation' }, { type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]
-    }
+    case 'main1':
+      // §10.1.1 Attack Preparation Step — MVP0-SIMPLIFICATION: nothing triggers here in C1, so advance straight to
+      // declaration. C2's Cloud clause instead enqueues its trigger and sets `resolution.continuation` to
+      // 'enterAttackDeclaration', which drains to this exact transition.
+      return enterAttackDeclaration(state, player)
     case 'attack':   // declaration step, checked above; §10.1.4.6
       return [{ ...state, phase: 'main2', attack: null, priority: player }, [{ type: 'phaseStarted', phase: 'main2' }]]
     case 'main2':
@@ -83,13 +84,14 @@ export function applyDiscardToHandSize(state: GameState, player: PlayerId, cards
 }
 
 export function finishEndPhase(state: GameState): [GameState, Event[]] {
-  // §9.5.1.3.1 remove damage; §9.5.1.3.2 end "until end of turn" effects (granted keywords); reset per-turn flags
+  // §9.5.1.3.1 remove damage; §9.5.1.3.2 end EVERY "until end of turn" effect — granted keywords, `powerBonus`
+  // and the protection `flags` (spec C1-7) all expire together; reset per-turn flags
   let s = state
   for (const p of [0, 1] as const) {
     s = updatePlayer(s, p, (ps) => ({
       ...ps,
-      forwards: ps.forwards.map((c) => ({ ...c, damage: 0, attackedThisTurn: false, granted: [] })),
-      backups: ps.backups.map((c) => ({ ...c, granted: [] })),
+      forwards: ps.forwards.map((c) => ({ ...c, damage: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [] })),
+      backups: ps.backups.map((c) => ({ ...c, granted: [], powerBonus: 0, flags: [] })),
     }))
   }
   const [ruled, events] = runRuleProcesses(s)   // §9.5.1.4

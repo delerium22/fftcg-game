@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { actingPlayer, apply, createGame, determinise, legalCommands, seedRng, viewFor, type Command, type GameState } from '@fftcg/engine'
-import { GreedyAgent, greedyStep, pruneCandidates, resolveCombat, scoreCandidates } from '../src/greedy.js'
+import { SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, legalCommands, seedRng, viewFor, type Ability, type Command, type GameState } from '@fftcg/engine'
+import { GreedyAgent, greedyStep, pruneCandidates, resolveForcedDecisions, scoreCandidates } from '../src/greedy.js'
 import { candidateCommands } from '../src/candidates.js'
 import { DEFAULT_WEIGHTS, type Weights } from '../src/evaluate.js'
-import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 /** withField/withHand MINT extra card instances, so deck lists must be derived from the state under test, not DEFAULT_DECK. */
 const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
@@ -18,7 +18,7 @@ const hurt = (s: GameState, p: 0 | 1, n: number): GameState => {
   return { ...s, players }
 }
 const toAttackDeclaration = (s: GameState): GameState => apply(s, { type: 'pass', player: 0 }).state
-const ZERO_WEIGHTS: Weights = { damage: 0, forwardPower: 0, forwardPresence: 0, dullFactor: 0, backup: 0, hand: 0, handQuality: 0, deck: 0, threat: 0, terminal: 0 }
+const ZERO_WEIGHTS: Weights = { damage: 0, forwardPower: 0, forwardPresence: 0, dullFactor: 0, backup: 0, hand: 0, handQuality: 0, deck: 0, threat: 0, terminal: 0, haste: 0, brave: 0, protection: 0 }
 
 describe('GreedyAgent', () => {
   it('is deterministic per seed and never concedes', () => {
@@ -208,7 +208,7 @@ describe('GreedyAgent', () => {
       for (const c of cands) expect(usedFor(forward, c)).toBe(usedFor(backward, c))
     })
 
-    it('C4: resolveCombat scores a pending decision from the explicit perspective, not state.turnPlayer', () => {
+    it('C4: resolveForcedDecisions scores a pending decision from the explicit perspective, not state.turnPlayer', () => {
       // forwardPresence-only weights make the effect crisp: at aggression 0 the perspective player values ONLY
       // its own forward count. The attacker and blocker have equal power (mutual kill if blocked). The OLD
       // buggy formula (p === state.turnPlayer ? aggression : 1 - aggression) would use 1 - aggression = 1 for
@@ -223,18 +223,18 @@ describe('GreedyAgent', () => {
       s = toAttackDeclaration(s)
       s = apply(s, { type: 'declareAttack', player: 0, attackers: [attacker] }).state
       expect(s.pending).toEqual({ kind: 'declareBlock', player: 1 })
-      const result = resolveCombat(s, W, 0, 1)   // aggression 0 from the defender's (player 1) own perspective
+      const result = resolveForcedDecisions(s, W, 0, 1)   // aggression 0 from the defender's (player 1) own perspective
       expect(result.players[1].forwards.some((c) => c.id === blocker)).toBe(true)   // did NOT block — kept its own forward
     })
 
-    it('W1: resolveCombat never stops early on an exhausted budget — a just-declared attack still resolves to pending === null', () => {
+    it('W1: resolveForcedDecisions never stops early on an exhausted budget — a just-declared attack still resolves to pending === null', () => {
       let s = withHandSize(makeGame(), 0, 5); let a: number
       ;[s, a] = withField(s, 0, 'forwards', 'V-F1')
       ;[s] = withField(s, 1, 'forwards', 'V-F3')
       s = toAttackDeclaration(s)
       s = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
       expect(s.pending?.kind).toBe('declareBlock')
-      const result = resolveCombat(s, DEFAULT_WEIGHTS, 0.5, 1, { used: 999, cap: 1 })   // already exhausted
+      const result = resolveForcedDecisions(s, DEFAULT_WEIGHTS, 0.5, 1, { used: 999, cap: 1 })   // already exhausted
       expect(result.pending).toBeNull()
     })
 
@@ -270,7 +270,7 @@ describe('GreedyAgent', () => {
       s = toAttackDeclaration(s)
       s = apply(s, { type: 'declareAttack', player: 0, attackers: [a1, a2] }).state
       expect(s.pending?.kind).toBe('declareBlock')
-      const result = resolveCombat(s, DEFAULT_WEIGHTS, 0.5, 1)
+      const result = resolveForcedDecisions(s, DEFAULT_WEIGHTS, 0.5, 1)
       expect(result.pending).toBeNull()
       const strongFc = result.players[1].forwards.find((c) => c.id === strong)
       const weakFc = result.players[1].forwards.find((c) => c.id === weak)
@@ -297,7 +297,7 @@ describe('GreedyAgent', () => {
       // ran out on that apply, the loop exited with `pending: declareBlock` still set and `evaluate` priced a
       // state where the attack was declared but no damage dealt — which inverts an attack's value entirely
       // (Codex measured -14.7 for the snapshot vs +15.4 for the resolved state on an unblockable attacker).
-      // Start in MAIN 1, not at attack declaration: the top-level apply is already followed by resolveCombat,
+      // Start in MAIN 1, not at attack declaration: the top-level apply is already followed by resolveForcedDecisions,
       // so the bug only shows when the ROLLOUT walks into the attack phase and declares an attack itself.
       let s = withHandSize(makeGame(), 0, 5)
       ;[s] = withField(s, 0, 'forwards', 'V-F5')   // 7000 attacker
@@ -313,6 +313,108 @@ describe('GreedyAgent', () => {
           for (const sc of scores) expect(sc.pendingKind, `depth ${depth}, cap ${maxSimulations}, ${sc.command.type}`).toBeNull()
         }
       }
+    })
+  })
+
+  describe('C1: a scored state never has an unresolved ABILITY either (Codex MAJOR — R4 by a new route)', () => {
+    // `resolveCombat` drained only `declareBlock`/`assignPartyDamage`, so a `chooseMode → chooseTargets` chain
+    // reached `evaluate` with the ability UNRESOLVED: the cast is priced as a body that did nothing, exactly the
+    // way a declared attack used to be priced as a dulled Forward that dealt no damage.
+    const MODAL: Ability = {
+      id: 'T-ETB:etb', trigger: 'enterField',
+      text: 'When this Character enters the field, choose 1: dull 1 Forward opponent controls; or deal it 4000 damage.',
+      effects: [{
+        kind: 'chooseModes', min: 1, max: 1, modes: [
+          { label: 'Dull 1 Forward opponent controls', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] },
+          { label: 'Deal it 4000 damage', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 4000 }] }] },
+        ],
+      }],
+    }
+    const DEFS = [...VANILLA_POOL, makeDef({ code: 'T-ETB', cost: 2, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [MODAL] })]
+
+    it('resolveForcedDecisions drains the whole chain — even on an already-exhausted budget (W1)', () => {
+      let s = withHandSize(makeGame({ defs: DEFS }), 0, 0)
+      let src: number, victim: number
+      ;[s, src] = withField(s, 0, 'forwards', 'T-ETB')
+      ;[s, victim] = withField(s, 1, 'forwards', 'V-F5')
+      s = drainResolution(enqueueTrigger(s, src, 0, MODAL))[0]
+      expect(s.pending?.kind).toBe('chooseMode')
+      const out = resolveForcedDecisions(s, DEFAULT_WEIGHTS, 0.5, 0, { used: 999, cap: 1 })
+      expect(out.pending).toBeNull()
+      expect(out.resolution.active).toBeNull()
+      expect(out.resolution.queue).toHaveLength(0)
+      const after = out.players[1].forwards.find((c) => c.id === victim)
+      expect(after === undefined || after.status === 'dull' || after.damage > 0).toBe(true)   // the clause actually did something
+    })
+
+    it('scoreCandidates: sweeping the budget, no scored state owes a choice or holds an agenda frame', () => {
+      let s = withHandSize(makeGame({ defs: DEFS }), 0, 0)
+      ;[s] = withHand(s, 0, 'T-ETB')
+      for (let i = 0; i < 3; i++) [s] = withField(s, 0, 'backups', 'V-B1')   // CP for a cost-2 cast
+      ;[s] = withField(s, 1, 'forwards', 'V-F5')                            // something for the clause to target
+      expect(s.phase).toBe('main1')
+      const [det] = determinise({ view: viewFor(s, 0), decks: decksOf(s), rng: seedRng(1) })
+      const cands = candidateCommands(det, 0)
+      const cast = cands.find((c) => c.type === 'castCharacter')
+      expect(cast).toBeDefined()
+      expect(apply(det, cast as Command).state.pending?.kind).toBe('chooseMode')   // the fixture really does suspend
+      for (const depth of [1, 2] as const) {
+        for (let maxSimulations = 1; maxSimulations <= 40; maxSimulations++) {
+          const scores = scoreCandidates(det, cands, { me: 0, weights: DEFAULT_WEIGHTS, aggression: 0.5, depth, owner: det.turnPlayer, maxSimulations })
+          for (const sc of scores) {
+            expect(sc.pendingKind, `depth ${depth}, cap ${maxSimulations}, ${sc.command.type}`).toBeNull()
+            expect(sc.resolutionQueued, `depth ${depth}, cap ${maxSimulations}, ${sc.command.type}`).toBe(0)
+          }
+        }
+      }
+    })
+
+    it('C1-A4 proxy: a greedy mirror on an ability-bearing pool finishes every game and actually plays its abilities', () => {
+      // The real pool implements no clause yet (`packages/cards` is a separate lane), so the seed-1 gate cannot
+      // exercise any of this. A synthetic pool can: three clauses across the ETB and Summon paths, both target
+      // and mode choices, played end to end by the agent through `legalCommands` alone (spec C1-A3).
+      const dullClause: Ability = { id: 'V-F1:etb', trigger: 'enterField', text: 'ETB: dull up to 2 Forwards opponent controls.', effects: [{ kind: 'chooseTargets', min: 0, max: 2, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] }
+      const modalClause: Ability = {
+        id: 'V-F4:etb', trigger: 'enterField', text: 'ETB: choose 1 — Haste to 1 of your Forwards; or 1 of your Forwards gains +2000 power.',
+        effects: [{ kind: 'chooseModes', min: 1, max: 1, modes: [
+          { label: 'Haste', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'grantKeyword', keyword: 'haste' }] }] },
+          { label: '+2000', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'addPower', amount: 2000 }] }] },
+        ] }],
+      }
+      const summonClause: Ability = { id: 'V-S1:res', trigger: 'summonResolve', text: 'Deal 5000 damage to 1 Forward opponent controls.', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 5000 }] }] }
+      const clauses: Record<string, Ability> = { 'V-F1': dullClause, 'V-F4': modalClause, 'V-S1': summonClause }
+      const pool = VANILLA_POOL.map((d) => (clauses[d.code] ? { ...d, hasAbilities: true, abilityClauses: 1, abilities: [clauses[d.code] as Ability] } : d))
+      let triggered = 0, answered = 0
+      for (const seed of [1, 2, 3]) {
+        let s = makeGame({ seed, defs: pool })
+        const agents = [0, 1].map(() => new GreedyAgent({ seed: 11, decks: [DEFAULT_DECK, DEFAULT_DECK], maxSimulations: 40 }))
+        for (let step = 0; step < 800 && !s.result; step++) {
+          const p = actingPlayer(s)
+          if (p === null) break
+          const cmd = agents[p]!.decide(viewFor(s, p), [])
+          if (cmd.type === 'chooseTargets' || cmd.type === 'chooseMode') answered++
+          const r = apply(s, cmd)   // an illegal answer from the policy would throw here
+          s = r.state
+          triggered += r.events.filter((e) => e.type === 'abilityTriggered').length
+        }
+        expect(s.result, `seed ${seed} did not finish`).not.toBeNull()
+      }
+      expect(triggered).toBeGreaterThan(0)
+      expect(answered).toBeGreaterThan(0)
+    })
+
+    it('W4: the synthetic-id guard covers ability targets — decide answers a target choice with a real id', () => {
+      let s = withHandSize(makeGame({ defs: DEFS }), 0, 0)
+      let src: number
+      ;[s, src] = withField(s, 0, 'forwards', 'T-ETB')
+      ;[s] = withField(s, 1, 'forwards', 'V-F5')
+      s = drainResolution(enqueueTrigger(s, src, 0, MODAL))[0]
+      s = apply(s, candidateCommands(s, 0)[0] as Command).state   // answer the mode; a target choice follows
+      expect(s.pending?.kind).toBe('chooseTargets')
+      const cmd = agent(s).decide(viewFor(s, 0), legalCommands(s, 0))
+      expect(cmd.type).toBe('chooseTargets')
+      expect(() => apply(s, cmd)).not.toThrow()
+      for (const id of cmd.type === 'chooseTargets' ? cmd.targets : []) expect(id).toBeLessThan(SYNTHETIC_ID_BASE)
     })
   })
 })

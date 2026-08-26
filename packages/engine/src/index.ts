@@ -1,5 +1,6 @@
 export const ENGINE_VERSION = '0.0.0'
 export * from './types.js'
+export * from './abilities.js'   // Rung C1: the ability AST and the resolution agenda
 export * from './rng.js'
 export * from './state.js'
 export * from './commands.js'
@@ -16,4 +17,5 @@ export * from './apply.js'      // Task 9
 export * from './invariants.js' // Task 9
 export * from './session.js'    // Task 9
 export * from './view.js'       // Task 10
+export * from './resolve.js'    // Rung C1: the executor
 export * from './determinise.js'

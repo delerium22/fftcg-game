@@ -1,5 +1,5 @@
 import type { PlayerId } from './types.js'
-import type { CardId, GameState } from './state.js'
+import type { GameState } from './state.js'
 import { defOf } from './state.js'
 import type { Command } from './commands.js'
 import { enumeratePayments } from './cp.js'
@@ -11,7 +11,7 @@ export function actingPlayer(state: GameState): PlayerId | null {
   return state.pending?.player ?? state.priority
 }
 
-function combinations(items: CardId[], k: number): CardId[][] {
+function combinations<T>(items: T[], k: number): T[][] {
   if (k === 0) return [[]]
   return items.flatMap((x, i) => combinations(items.slice(i + 1), k - 1).map((rest) => [x, ...rest]))
 }
@@ -36,6 +36,20 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
         break
       case 'assignPartyDamage':
         for (const assignments of legalPartyDamageAssignments(state)) out.push({ type: 'assignPartyDamage', player, assignments })
+        break
+      case 'chooseTargets':
+        // Σ C(N, k) for k in min..max. `max` is the printed "up to N" (≤ 2 everywhere in the C1 pool) and N is
+        // one zone of one or both fields, so the bound is ~C(20,2) = 190 commands. A clause printing "up to 4"
+        // over a large Break Zone would need a candidate cap here — spec C1-6 flagged the combinatorics.
+        for (let k = pending.min; k <= pending.max; k++) {
+          for (const targets of combinations([...pending.candidates], k)) out.push({ type: 'chooseTargets', player, targets })
+        }
+        break
+      case 'chooseMode':
+        // Σ C(modes, k). `modes` is a printed list of 2–3, so this is a handful of commands.
+        for (let k = pending.min; k <= pending.max; k++) {
+          for (const modes of combinations(pending.labels.map((_, i) => i), k)) out.push({ type: 'chooseMode', player, modes })
+        }
         break
     }
     return out

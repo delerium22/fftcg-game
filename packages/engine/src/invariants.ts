@@ -1,5 +1,23 @@
-import type { GameState } from './state.js'
+import type { Frame } from './abilities.js'
+import { FIELD_FLAGS, MAX_RESOLUTION_STEPS } from './abilities.js'
+import type { FieldCard, GameState } from './state.js'
 import { MAX_BACKUPS } from './state.js'
+import { KEYWORDS } from './types.js'
+
+function checkFieldCard(problems: string[], where: string, c: FieldCard): void {
+  if (c.damage < 0) problems.push(`card ${c.id} has negative damage`)
+  if (!Number.isInteger(c.powerBonus) || !Number.isFinite(c.powerBonus)) problems.push(`card ${c.id} in ${where} has non-integral powerBonus ${c.powerBonus}`)
+  for (const f of c.flags) if (!FIELD_FLAGS.includes(f)) problems.push(`card ${c.id} has unknown flag ${String(f)}`)
+  if (new Set(c.flags).size !== c.flags.length) problems.push(`card ${c.id} has duplicate flags`)
+  for (const k of c.granted) if (!KEYWORDS.includes(k)) problems.push(`card ${c.id} has unknown granted keyword ${String(k)}`)
+}
+
+function checkFrame(problems: string[], where: string, f: Frame, state: GameState): void {
+  if (!state.cards[f.source]) problems.push(`${where} frame ${f.abilityId} has unknown source ${f.source}`)
+  if (f.path.some((i) => !Number.isInteger(i) || i < 0)) problems.push(`${where} frame ${f.abilityId} has a malformed program counter`)
+  if (new Set(f.chosen).size !== f.chosen.length) problems.push(`${where} frame ${f.abilityId} chose a duplicate target`)
+  if (new Set(f.modes).size !== f.modes.length) problems.push(`${where} frame ${f.abilityId} chose a duplicate mode`)
+}
 
 export function checkInvariants(state: GameState): string[] {
   const problems: string[] = []
@@ -14,7 +32,7 @@ export function checkInvariants(state: GameState): string[] {
     for (const zone of ['forwards', 'backups'] as const) {
       for (const c of ps[zone]) {
         note(c.id, `P${p} ${zone}`)
-        if (c.damage < 0) problems.push(`card ${c.id} has negative damage`)
+        checkFieldCard(problems, `P${p} ${zone}`, c)
         const inst = state.cards[c.id]
         if (!inst || !state.defs[inst.code]) problems.push(`field card ${c.id} has no definition`)
       }
@@ -26,5 +44,30 @@ export function checkInvariants(state: GameState): string[] {
   for (const id of all) if (!seen.has(id)) problems.push(`card ${id} is in no zone`)
   if ((state.attack !== null) !== (state.phase === 'attack')) problems.push(`attack state ${state.attack ? 'present' : 'absent'} in phase ${state.phase}`)
   if (state.result && state.pending) problems.push('pending decision after game over')
+
+  // --- the resolution agenda (spec C1-A7) ---
+  const r = state.resolution
+  if (!Number.isInteger(r.steps) || r.steps < 0) problems.push(`resolution.steps is ${r.steps}`)
+  if (r.steps > MAX_RESOLUTION_STEPS) problems.push(`resolution.steps ${r.steps} exceeds the ${MAX_RESOLUTION_STEPS} budget`)
+  if (state.result && (r.active || r.queue.length || r.continuation)) problems.push('resolution work queued after game over')
+  if (r.active) checkFrame(problems, 'active', r.active, state)
+  for (const f of r.queue) checkFrame(problems, 'queued', f, state)
+  // An ability pending and the active frame are two halves of one suspension — neither may exist alone.
+  const abilityPending = state.pending?.kind === 'chooseTargets' || state.pending?.kind === 'chooseMode'
+  if (abilityPending && !r.active) problems.push(`pending ${state.pending?.kind} with no active frame`)
+  if (r.active && !abilityPending) problems.push(`active frame ${r.active.abilityId} with no ability pending`)
+  if (abilityPending && r.active && state.pending && state.pending.player !== r.active.controller) {
+    problems.push(`pending ${state.pending.kind} is owed by P${state.pending.player} but the frame is controlled by P${r.active.controller}`)
+  }
+  if (state.pending?.kind === 'chooseTargets') {
+    const { min, max, candidates } = state.pending
+    if (new Set(candidates).size !== candidates.length) problems.push('chooseTargets candidates contain a duplicate')
+    if (!(min <= max && max <= candidates.length)) problems.push(`chooseTargets bounds ${min}..${max} over ${candidates.length} candidates`)
+    for (const id of candidates) if (!state.cards[id]) problems.push(`chooseTargets candidate ${id} is not a card`)
+  }
+  if (state.pending?.kind === 'chooseMode') {
+    const { min, max, labels } = state.pending
+    if (!(min <= max && max <= labels.length)) problems.push(`chooseMode bounds ${min}..${max} over ${labels.length} modes`)
+  }
   return problems
 }

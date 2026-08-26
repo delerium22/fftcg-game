@@ -61,7 +61,8 @@ export type Effect =
   | { readonly kind: 'moveToHand' }
 
 /** Until-end-of-turn protection that `granted: Keyword[]` cannot express (spec C1-7). */
-export type FieldFlag = 'cannotBeBroken'
+export const FIELD_FLAGS = ['cannotBeBroken'] as const
+export type FieldFlag = (typeof FIELD_FLAGS)[number]
 
 export interface AbilityMode {
   /** Stable identifier, and the text the UI shows on the button. Quote the printed wording. */

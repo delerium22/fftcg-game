@@ -42,6 +42,8 @@ export function describeCommand(v: PlayerView, c: Command): string {
       const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
       return `Cast ${name(v, c.card)} paying: ${pay.join(', ') || 'nothing'}`
     }
+    case 'chooseTargets': return c.targets.length ? `Target ${c.targets.map((id) => name(v, id)).join(', ')}` : 'Choose no targets'
+    case 'chooseMode': return c.modes.length ? `Choose mode ${c.modes.map((i) => i + 1).join(' + ')}` : 'Choose no modes'
     case 'declareAttack': return `Attack with ${c.attackers.map((id) => name(v, id)).join(' + ')}`
     case 'declareBlock': return c.blocker === null ? 'No block' : `Block with ${name(v, c.blocker)}`
     case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${name(v, a.target)}`).join(', ')}`

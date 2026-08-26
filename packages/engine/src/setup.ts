@@ -1,5 +1,6 @@
 import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
+import { EMPTY_RESOLUTION } from './abilities.js'
 import type { CardId, CardInstance, GameState, PlayerState } from './state.js'
 import { updatePlayer } from './state.js'
 import { nextInt, seedRng, shuffle } from './rng.js'
@@ -47,7 +48,8 @@ export function createGame(opts: CreateGameOptions): GameState {
   const [chooser, r2] = nextInt(rng, 2)     // §8.2.1.2
   return {
     rng: r2, turn: 0, turnPlayer: 0, firstPlayer: 0, phase: 'setup', attack: null, priority: chooser as PlayerId,
-    pending: { kind: 'chooseFirst', player: chooser as PlayerId }, players, cards, defs, result: null,
+    pending: { kind: 'chooseFirst', player: chooser as PlayerId }, resolution: EMPTY_RESOLUTION,
+    players, cards, defs, result: null,
   }
 }
 

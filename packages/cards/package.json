@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./data/cards.json": "./data/cards.json",
-    "./deck": "./src/deck.ts"
+    "./deck": "./src/deck.ts",
+    "./abilities": "./src/abilities.ts"
   },
   "scripts": {
     "fetch": "tsx scripts/fetch-cards.ts"

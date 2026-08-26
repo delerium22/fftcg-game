@@ -1,5 +1,6 @@
 import { useEffect, useState, type JSX } from 'react'
 import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
+import { fieldCardDisplay } from '../game/commands.js'
 import type { Choice, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card } from './Card.js'
@@ -18,6 +19,10 @@ function FieldCardView({ v, c, choices, selected, onPick, size }: {
   v: PlayerView; c: FieldCard; choices: Choice[]; selected: boolean; onPick: (id: CardId) => void; size: 'field' | 'small'
 }): JSX.Element {
   const d = defOf(v, c.id)
+  // Spec C1-7: `effectivePower` (via `fieldCardDisplay`) is the ONE power authority, and the board is a
+  // consumer of it. Passing printed `def.power` here would show a pumped Forward the wrong power AND the wrong
+  // damage ratio, because `Card` derives remaining power and the damage bar from whatever number it is given.
+  const shown = fieldCardDisplay(v, c)
   return (
     <Card
       code={d?.code ?? '?'}
@@ -25,7 +30,10 @@ function FieldCardView({ v, c, choices, selected, onPick, size }: {
       cost={d?.cost ?? 0}
       elements={d?.elements ?? []}
       type={d?.type ?? 'forward'}
-      power={d?.power ?? null}
+      power={shown.power}
+      powerBonus={shown.powerBonus}
+      granted={shown.granted}
+      flags={shown.flags}
       damage={c.damage}
       dull={c.status === 'dull'}
       selectable={choices.length > 0}

@@ -13,10 +13,10 @@ export interface GreedyOptions {
    * Soft cap on the number of `apply()` calls spent on the *rollout* portion of scoring one candidate. Each
    * candidate gets its own fresh budget, `perCandidate = max(1, floor(maxSimulations / candidates))`, so scoring
    * is invariant under candidate reordering (C1) — a shared budget would let early candidates starve later ones.
-   * The top-level apply and the full combat resolution that follows it (`resolveCombat`) are exempt from the cap
-   * — they always run to completion (W1) — but their applies still count against the budget, so the rollout loop
-   * that follows may already be over cap before it starts. `lastSimulations` sums `used` across all per-candidate
-   * budgets.
+   * The top-level apply and the forced-decision resolution that follows it (`resolveForcedDecisions` — combat and
+   * ability resolution alike) are exempt from the cap — they always run to completion (W1) — but their applies
+   * still count against the budget, so the rollout loop that follows may already be over cap before it starts.
+   * `lastSimulations` sums `used` across all per-candidate budgets.
    *
    * R3: this is a SOFT cap with no closed-form bound on `lastSimulations`. Budget-exempt combat resolution and
    * `greedyStep`'s always-score-the-first-candidate floor both overrun it by an amount that depends on the
@@ -33,17 +33,32 @@ interface Budget { used: number; cap: number }
 const within = (b: Budget | undefined): boolean => !b || b.used < b.cap
 
 /**
- * Fast-forward through a pending `declareBlock`/`assignPartyDamage` decision: while one is pending, the acting
- * player `p` answers with `greedyStep`, scored from `p === perspective ? aggression : 1 - aggression` (C4 — keyed
- * on the explicit `perspective` player, not `state.turnPlayer`, so the agent's own defensive decisions are scored
- * from its own viewpoint even though the attacker holds `turnPlayer`/priority throughout the Attack Phase). Never
- * exits early because the budget is exhausted (W1) — every apply here still counts against it, but combat
- * resolution itself always runs to completion. Terminates because both pending kinds strictly advance the attack
- * (a block decision, then optionally a party-damage split, then neither).
+ * The decisions that are part of finishing something already started, rather than a move of one's own: the two
+ * combat steps, and (rung C1) the choices a resolving ability suspends on. `evaluate` may never see a state
+ * owing one of these — a half-resolved attack prices an attack that dealt no damage (R4), and a half-resolved
+ * ability prices an ability that did nothing (the same defect class, arriving by the new route).
  */
-export function resolveCombat(state: GameState, weights: Weights, aggression: number, perspective: PlayerId, budget?: Budget): GameState {
+const isForcedDecision = (state: GameState): boolean => {
+  const kind = state.pending?.kind
+  return kind === 'declareBlock' || kind === 'assignPartyDamage' || kind === 'chooseTargets' || kind === 'chooseMode'
+}
+
+/**
+ * Fast-forward through every forced decision: while one is pending, the acting player `p` answers with
+ * `greedyStep`, scored from `p === perspective ? aggression : 1 - aggression` (C4 — keyed on the explicit
+ * `perspective` player, not `state.turnPlayer`, so the agent's own defensive decisions are scored from its own
+ * viewpoint even though the attacker holds `turnPlayer`/priority throughout the Attack Phase). Never exits early
+ * because the budget is exhausted (W1) — every apply here still counts against it, but a combat and an ability
+ * always run to completion.
+ *
+ * Terminates: the combat kinds strictly advance the attack (a block decision, then optionally a party-damage
+ * split, then neither), and an ability choice strictly advances its frame's program counter — `resolution.steps`
+ * persists across choices precisely so a clause that never finishes hits `MAX_RESOLUTION_STEPS` and throws
+ * (spec C1-5) rather than spinning here.
+ */
+export function resolveForcedDecisions(state: GameState, weights: Weights, aggression: number, perspective: PlayerId, budget?: Budget): GameState {
   let s = state
-  while (!s.result && (s.pending?.kind === 'declareBlock' || s.pending?.kind === 'assignPartyDamage')) {
+  while (!s.result && isForcedDecision(s)) {
     const p = actingPlayer(s)
     if (p === null) break
     const localAggression = p === perspective ? aggression : 1 - aggression
@@ -58,9 +73,9 @@ export function resolveCombat(state: GameState, weights: Weights, aggression: nu
 /**
  * Score every legal command for `player` and return the best one (ties keep the earlier candidate). Always
  * guarantees at least the first candidate is applied and scored, even with an exhausted budget (W1) — only
- * subsequent candidates are gated by `within(budget)`. Every candidate is scored on `resolveCombat(apply(state,
+ * subsequent candidates are gated by `within(budget)`. Every candidate is scored on `resolveForcedDecisions(apply(state,
  * c).state, weights, aggression, player, budget)` — `player` doubles as the perspective, so a nested call here
- * (e.g. scoring a `declareBlock` candidate from inside `resolveCombat`'s own loop) resolves that candidate's
+ * (e.g. scoring a `declareBlock` candidate from inside `resolveForcedDecisions`'s own loop) resolves that candidate's
  * combat all the way through (a party's damage split included, W2) before it is evaluated, not on the mid-combat
  * snapshot taken the instant it is applied. The recursion this creates is bounded: each pending kind strictly
  * advances the attack, so a block decision recurses into at most one further (party-damage) decision.
@@ -74,7 +89,7 @@ export function greedyStep(state: GameState, player: PlayerId, weights: Weights,
     i++
     const after = apply(state, c).state
     if (budget) budget.used++
-    const scored = resolveCombat(after, weights, aggression, player, budget)
+    const scored = resolveForcedDecisions(after, weights, aggression, player, budget)
     const score = evaluate(scored, player, weights, aggression)
     if (score > bestScore) { best = c; bestScore = score }
   }
@@ -104,14 +119,20 @@ export interface CandidateScore {
    *  a non-null value means `evaluate` priced a mid-combat snapshot (damage not yet dealt), which inverts the
    *  value of an attack. Exposed so the invariant is directly assertable rather than inferred from a score. */
   pendingKind: string | null
+  /** The C1 half of the same diagnostic: frames still on the resolution agenda (active + queued). MUST be 0 —
+   *  a scored state with an unfinished ability prices a clause that has not done its work yet. */
+  resolutionQueued: number
 }
+
+/** Frames the agenda still owes: the active one plus the queue. Zero on any settled state. */
+const agendaSize = (s: GameState): number => (s.resolution.active ? 1 : 0) + s.resolution.queue.length
 
 /**
  * Score every top-level candidate independently (C1): each gets its own fresh `Budget` sized
  * `max(1, floor(maxSimulations / cands.length))`, so the result — and therefore the argmax `decide` picks — is
  * invariant under the order `cands` is given in (a shared budget is not: early candidates would consume rollout
- * work that later ones then lack). For each candidate: apply it and fully resolve any combat it opens (both
- * exempt from the budget cap, W1); then, per `depth`, roll out greedily to the end of the acting turn owner's
+ * work that later ones then lack). For each candidate: apply it and fully resolve every forced decision it opens
+ * — combat and ability resolution alike (both exempt from the budget cap, W1); then, per `depth`, roll out greedily to the end of the acting turn owner's
  * turn (depth >= 1) and/or the following turn (depth >= 2), bounded by the budget. `turn` records the scored
  * state's turn number (for asserting where a rollout stopped); `used` is that candidate's own budget spend.
  */
@@ -121,24 +142,26 @@ export function scoreCandidates(det: GameState, cands: Command[], opts: Candidat
     const budget: Budget = { used: 0, cap: perCandidate }
     let s = apply(det, cand).state
     budget.used++   // floor: every candidate gets at least one apply regardless of budget
-    s = resolveCombat(s, opts.weights, opts.aggression, opts.me, budget)
+    s = resolveForcedDecisions(s, opts.weights, opts.aggression, opts.me, budget)
     const rollout = (until: (t: GameState) => boolean) => {
       while (!s.result && until(s) && within(budget)) {
         const p = actingPlayer(s)!
         const c = greedyStep(s, p, opts.weights, p === opts.me ? opts.aggression : 1 - opts.aggression, budget)
         if (!c) break
         s = apply(s, c).state; budget.used++
-        // R4: resolve any combat this command opened BEFORE the loop can exit on an exhausted budget. Without
+        // R4: resolve whatever this command opened BEFORE the loop can exit on an exhausted budget. Without
         // this, a rollout that declares an attack and then runs out of budget leaves `pending: declareBlock`
         // set, and `evaluate` prices a state where the attack was declared but no damage was dealt — which
-        // inverts an attack's value. Combat resolution is budget-exempt (W1) precisely so this always completes.
-        s = resolveCombat(s, opts.weights, opts.aggression, opts.me, budget)
+        // inverts an attack's value. C1 adds the same hazard by a second route: a cast that triggers an ETB
+        // clause leaves `pending: chooseMode`/`chooseTargets`, and the ability's effect is priced as nothing.
+        // Both are budget-exempt (W1) precisely so this always completes.
+        s = resolveForcedDecisions(s, opts.weights, opts.aggression, opts.me, budget)
       }
     }
     if (opts.depth >= 1) rollout((t) => t.turnPlayer === opts.owner)   // finish the current turn (mine, or the opponent's when I am blocking)
     if (opts.depth >= 2) rollout((t) => t.turnPlayer !== opts.owner)   // and the following turn
     const score = evaluate(s, opts.me, opts.weights, opts.aggression)
-    return { command: cand, score, turn: s.turn, used: budget.used, pendingKind: s.pending?.kind ?? null }
+    return { command: cand, score, turn: s.turn, used: budget.used, pendingKind: s.pending?.kind ?? null, resolutionQueued: agendaSize(s) }
   })
 }
 
@@ -150,7 +173,10 @@ function commandCardIds(c: Command): CardId[] {
     case 'declareBlock': return c.blocker === null ? [] : [c.blocker]
     case 'assignPartyDamage': return c.assignments.map((a) => a.target)
     case 'discardToHandSize': return c.cards
-    case 'chooseFirst': case 'mulligan': case 'pass': case 'concede': return []
+    // C1: ability targets are card ids like any other. `chooseMode` answers are indices into the pending's
+    // printed labels, not ids, so it has none to check.
+    case 'chooseTargets': return [...c.targets]
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }
 }
