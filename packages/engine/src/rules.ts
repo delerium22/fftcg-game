@@ -1,21 +1,30 @@
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
-import type { AbilityTrigger } from './abilities.js'
+import { EMPTY_RESOLUTION } from './abilities.js'
 import type { CardId, FieldCard, GameState } from './state.js'
 import { DAMAGE_TO_LOSE, defOf, powerOf, updatePlayer } from './state.js'
 import type { Event } from './events.js'
-import { enqueueTrigger } from './resolve.js'
+import type { DamageOccurrence } from './resolve.js'
+import { enqueueDamageTriggers, enqueueZoneChangeTriggers } from './resolve.js'
 
-export function dealPlayerDamage(state: GameState, victim: PlayerId, source: CardId | null): [GameState, Event[]] {
-  void source   // reserved for "deals damage to your opponent" triggers (MVP3+)
+/**
+ * §10.1.4.1. `sources` is EVERY card dealing this one point of damage — for an unblocked party, all of it, because
+ * attribution is by party MEMBERSHIP and never by array position (spec C2-8): `at.attackers` is sorted by card id,
+ * so singling out one member would make a Luso trigger or not depending on where its id happened to sort. The
+ * occurrences share the single point of damage, they do not multiply it. `null` means nothing is attributable.
+ */
+export function dealPlayerDamage(state: GameState, victim: PlayerId, sources: readonly DamageOccurrence[] | null): [GameState, Event[]] {
   const ps = state.players[victim]
   const top = ps.deck[0]
   if (top === undefined) {
     return [{ ...state, result: { winner: opponentOf(victim), reason: `player ${victim} took damage with an empty deck (§3.1.3)` } }, []]
   }
-  const s = updatePlayer(state, victim, (q) => ({ ...q, deck: q.deck.slice(1), damageZone: [...q.damageZone, top] }))
+  let s = updatePlayer(state, victim, (q) => ({ ...q, deck: q.deck.slice(1), damageZone: [...q.damageZone, top] }))
   const events: Event[] = [{ type: 'playerDamaged', player: victim, card: top }]
   if (defOf(s, top).exBurst) events.push({ type: 'exBurstSkipped', player: victim, card: top })   // MVP0-SIMPLIFICATION: §11.10 EX Burst not resolved
+  // Dispatched only once the damage has LANDED: the empty-deck branch above ends the game instead (§3.1.3), and
+  // `checkInvariants` forbids anything staying queued after game over.
+  if (sources) s = enqueueDamageTriggers(s, sources)
   return [s, events]
 }
 
@@ -27,10 +36,17 @@ export function dealPlayerDamage(state: GameState, victim: PlayerId, source: Car
  */
 export interface ZoneTransition {
   readonly card: CardId
+  /**
+   * The player whose field the card was on — the CONTROLLER. C1 called this field `owner`, which it never was:
+   * "a Forward OPPONENT CONTROLS" is a statement about the field array the card sat in (spec C2-2).
+   */
+  readonly controller: PlayerId
+  /** Real ownership, `CardInstance.owner` (§7.10) — where the card belongs, not who was playing it. */
   readonly owner: PlayerId
   readonly from: 'forwards' | 'backups'
   readonly to: 'breakZone'
-  readonly reason: 'zeroPower' | 'damage'
+  /** `ability` is a direct `breakCard`; the other two are the §12.4.4/§12.4.5 rule processes. */
+  readonly reason: 'zeroPower' | 'damage' | 'ability'
   /** The card whose ability caused the transition; null for a rule process, which has no source. */
   readonly cause: CardId | null
   readonly causeController: PlayerId | null
@@ -45,39 +61,35 @@ export function pendingBreakTransitions(state: GameState): ZoneTransition[] {
   const out: ZoneTransition[] = []
   for (const p of [0, 1] as const) {
     for (const c of state.players[p].forwards) {
+      const owner = state.cards[c.id]?.owner ?? p
+      const base = { card: c.id, controller: p, owner, from: 'forwards', to: 'breakZone', cause: null, causeController: null, snapshot: c } as const
       const power = powerOf(state, c)
-      if (power <= 0) out.push({ card: c.id, owner: p, from: 'forwards', to: 'breakZone', reason: 'zeroPower', cause: null, causeController: null, snapshot: c })
-      else if (power >= 1000 && c.damage >= power && !c.flags.includes('cannotBeBroken')) {
-        out.push({ card: c.id, owner: p, from: 'forwards', to: 'breakZone', reason: 'damage', cause: null, causeController: null, snapshot: c })
-      }
+      if (power <= 0) out.push({ ...base, reason: 'zeroPower' })
+      else if (power >= 1000 && c.damage >= power && !c.flags.includes('cannotBeBroken')) out.push({ ...base, reason: 'damage' })
     }
   }
   return out
 }
 
-/** C1 declares no zone-change trigger, so this matches nothing yet; C2 adds one to `AbilityTrigger` and it fires. */
-const ZONE_TRIGGERS: readonly AbilityTrigger[] = []
 
-function enqueueZoneTriggers(state: GameState, transitions: readonly ZoneTransition[]): GameState {
-  let s = state
-  for (const t of transitions) {
-    // The SNAPSHOT's def, looked up by id — the card has already left the field by the time this runs.
-    const code = state.cards[t.card]?.code
-    for (const ability of (code === undefined ? undefined : state.defs[code])?.abilities ?? []) {
-      if (ZONE_TRIGGERS.includes(ability.trigger)) s = enqueueTrigger(s, t.card, t.owner, ability)
-    }
-  }
-  return s
+/**
+ * §12.4.1 ends the game, and nothing resolves afterwards. `apply` skips `settle` entirely once `result` is set, so
+ * whatever a rule process queued on its way here — the seventh point of player damage triggers its dealer's
+ * `dealtDamage` clause like any other (spec C2-8) — would otherwise outlive game over and trip `checkInvariants`.
+ */
+function stopped(state: GameState): GameState {
+  return state.result ? { ...state, resolution: EMPTY_RESOLUTION } : state
 }
 
 export function runRuleProcesses(state: GameState): [GameState, Event[]] {
   const events: Event[] = []
   let s = state
-  if (s.result) return [s, events]
+  if (s.result) return [stopped(s), events]
   // §12.4.4 (zero power → break zone) and §12.4.5 (power ≥ 1000, damage ≥ power → broken), simultaneously, then re-check
   for (;;) {
     const transitions = pendingBreakTransitions(s)
     if (!transitions.length) break
+    const pre = s   // watchers must be read while `s` still holds every pre-removal field card (spec C2-4)
     const leaving = transitions.map((t) => t.card)
     for (const p of [0, 1] as const) {
       s = updatePlayer(s, p, (ps) => ({
@@ -92,11 +104,11 @@ export function runRuleProcesses(state: GameState): [GameState, Event[]] {
     for (const t of transitions) {
       if (t.reason === 'damage') events.push({ type: 'broken', card: t.card })
     }
-    s = enqueueZoneTriggers(s, transitions)
+    s = enqueueZoneChangeTriggers(pre, s, transitions)
   }
   // §12.4.1 seven damage; §3.3 simultaneous → draw
   const dead = ([0, 1] as const).filter((p) => s.players[p].damageZone.length >= DAMAGE_TO_LOSE)
   if (dead.length === 2) s = { ...s, result: { winner: null, reason: 'both players reached 7 damage (§3.3)' } }
   else if (dead.length === 1) s = { ...s, result: { winner: opponentOf(dead[0] as PlayerId), reason: `player ${dead[0]} has 7 damage (§12.4.1)` } }
-  return [s, events]
+  return [stopped(s), events]
 }

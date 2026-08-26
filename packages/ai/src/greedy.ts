@@ -1,4 +1,4 @@
-import { SYNTHETIC_ID_BASE, actingPlayer, apply, determinise, legalCommands, seedRng, type CardId, type Command, type GameState, type PlayerId, type PlayerView, type Rng } from '@fftcg/engine'
+import { SYNTHETIC_ID_BASE, actingPlayer, apply, determinise, hasResolutionWork, legalCommands, seedRng, type CardId, type Command, type GameState, type PlayerId, type PlayerView, type Rng } from '@fftcg/engine'
 import type { Agent } from './agent.js'
 import { candidateCommands } from './candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from './evaluate.js'
@@ -37,10 +37,20 @@ const within = (b: Budget | undefined): boolean => !b || b.used < b.cap
  * combat steps, and (rung C1) the choices a resolving ability suspends on. `evaluate` may never see a state
  * owing one of these — a half-resolved attack prices an attack that dealt no damage (R4), and a half-resolved
  * ability prices an ability that did nothing (the same defect class, arriving by the new route).
+ *
+ * C2-6 opens a THIRD route to the same defect and it is the reason for the second clause. `drainResolution` now
+ * completes ONE frame and yields, so `settle` interleaves §12.3 rule processes between frames — and a rule
+ * process can enqueue an observer trigger (spec C2-4) BEHIND a decision that is already on the table. Settlement
+ * then stops on a pending that is not one of the four, with frames still queued, and `evaluate` would price a
+ * board whose queued clause has not done its work. So: the four kinds are forced unconditionally, and every
+ * OTHER kind is forced exactly while the agenda still owes something. Setup choices (`mulligan`, `chooseFirst`)
+ * are unaffected — nothing is ever queued during setup — so they stay the agent's own move to score.
  */
 const isForcedDecision = (state: GameState): boolean => {
   const kind = state.pending?.kind
-  return kind === 'declareBlock' || kind === 'assignPartyDamage' || kind === 'chooseTargets' || kind === 'chooseMode'
+  if (kind === undefined) return false
+  if (kind === 'declareBlock' || kind === 'assignPartyDamage' || kind === 'chooseTargets' || kind === 'chooseMode') return true
+  return hasResolutionWork(state.resolution)
 }
 
 /**
@@ -54,7 +64,9 @@ const isForcedDecision = (state: GameState): boolean => {
  * Terminates: the combat kinds strictly advance the attack (a block decision, then optionally a party-damage
  * split, then neither), and an ability choice strictly advances its frame's program counter — `resolution.steps`
  * persists across choices precisely so a clause that never finishes hits `MAX_RESOLUTION_STEPS` and throws
- * (spec C1-5) rather than spinning here.
+ * (spec C1-5) rather than spinning here. The C2-6 clause of `isForcedDecision` adds no new way to spin: it only
+ * ever fires while the agenda is non-empty, and answering the pending lets `settle` drain a frame, so each pass
+ * either shrinks the agenda or hits the step cap.
  */
 export function resolveForcedDecisions(state: GameState, weights: Weights, aggression: number, perspective: PlayerId, budget?: Budget): GameState {
   let s = state
@@ -121,8 +133,10 @@ export interface CandidateScore {
    *  `discardToHandSize` show up on scored states in normal play (measured across 66,350 decisions) and are
    *  priced correctly. Exposed so the real invariant is directly assertable rather than inferred from a score. */
   pendingKind: string | null
-  /** The C1 half of the same diagnostic: frames still on the resolution agenda (active + queued). MUST be 0 —
-   *  a scored state with an unfinished ability prices a clause that has not done its work yet. */
+  /** The C1 half of the same diagnostic: work still on the resolution agenda (active + queued + continuation).
+   *  MUST be 0 — a scored state with an unfinished ability prices a clause that has not done its work yet.
+   *  C2-6 couples the two fields: the benign non-null `pendingKind`s above are benign ONLY at a zero agenda, and
+   *  `isForcedDecision`'s second clause is what keeps that true now that rule processes run between frames. */
   resolutionQueued: number
 }
 

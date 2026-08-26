@@ -1,4 +1,6 @@
-import type { Ability, Effect, Frame, TargetFilter, TargetSpec, TriggerEvent } from './abilities.js'
+import type { Ability, AbilityTrigger, Effect, Frame, TargetFilter, TargetSpec, TriggerEvent, TriggerWhose } from './abilities.js'
+// Type-only, so it is erased at compile time and creates no runtime cycle with rules.ts (which imports this module).
+import type { ZoneTransition } from './rules.js'
 import { MAX_RESOLUTION_STEPS } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending } from './state.js'
 import { findFieldCard, updatePlayer } from './state.js'
@@ -17,8 +19,13 @@ import { IllegalCommandError } from './errors.js'
  * `apply.ts` alternates `runRuleProcesses` and `drainResolution` until both are quiet.
  *
  * MVP0-SIMPLIFICATION (spec C1-4): there is no stack and no response window. A triggered clause resolves
- * immediately, in trigger order, and the opponent cannot answer it. Rule processes do not run *between* two
- * frames of one drain either; C1 can never enqueue two frames at once, so nothing observes it yet.
+ * immediately, in trigger order, and the opponent cannot answer it.
+ *
+ * C1's atomicity rule is REFINED by spec C2-6, not replaced: a frame is atomic WITHIN itself, across every
+ * prompt it raises; rule processes run BETWEEN frames. `drainResolution` therefore completes exactly one frame
+ * and yields while queued work remains, so `settle` gets its §12.3 pass in before the next frame starts.
+ * Without that yield, Luso's "break it" resolved BEFORE §12.4.5 had broken the Forward its own damage killed —
+ * backwards under CR §§12.3–12.4.5.
  */
 
 // ---------------------------------------------------------------------------
@@ -29,6 +36,59 @@ import { IllegalCommandError } from './errors.js'
 export function enqueueTrigger(state: GameState, source: CardId, controller: PlayerId, ability: Ability, triggerEvent: TriggerEvent | null = null): GameState {
   const frame: Frame = { abilityId: ability.id, source, controller, path: [], chosen: [], modes: [], triggerEvent }
   return { ...state, resolution: { ...state.resolution, queue: [...state.resolution.queue, frame] } }
+}
+
+/**
+ * One card dealing one lot of damage to one recipient — the SINGLE record combat damage (`attack.ts`) and the
+ * ability `damage` effect both produce, because the printed text says "deals damage", not "deals combat
+ * damage" (spec C2-7). Exactly one of `target`/`victim` is non-null.
+ *
+ * `sourceController` is passed in rather than derived: the source may be about to leave the field, and party
+ * attribution is by MEMBERSHIP, not array position (spec C2-8).
+ */
+export interface DamageOccurrence {
+  readonly source: CardId
+  readonly sourceController: PlayerId
+  readonly target: CardId | null
+  readonly victim: PlayerId | null
+  readonly amount: number
+}
+
+/**
+ * Queue the `dealtDamage` clauses of every damage source in `hits`, in hit order. Damage inside one batch is
+ * simultaneous (§10.1.4.2), so callers apply ALL of it first and dispatch once — a source that is about to be
+ * broken by the same batch still triggers, exactly as a zone-change watcher does (spec C2-4).
+ */
+export function enqueueDamageTriggers(state: GameState, hits: readonly DamageOccurrence[]): GameState {
+  let s = state
+  for (const h of hits) {
+    if (h.target === null && h.victim === null) continue
+    const to = h.target !== null ? 'forward' : 'player'
+    const code = state.cards[h.source]?.code
+    const event: TriggerEvent = { kind: 'damage', source: h.source, sourceController: h.sourceController, target: h.target, victim: h.victim, amount: h.amount }
+    for (const a of (code === undefined ? undefined : state.defs[code])?.abilities ?? []) {
+      if (a.trigger.kind !== 'dealtDamage' || a.trigger.to !== to) continue
+      // "deals damage to YOUR OPPONENT" (Luso, Prishe) is a real restriction, not decoration. It held only
+      // because today's single producer always damages the opponent; encoding it here means a future
+      // self-damage or redirect path cannot silently fire these on their own controller.
+      if (!damagedSideMatches(state, a.trigger.whose, h)) continue
+      s = enqueueTrigger(s, h.source, h.sourceController, a, event)
+    }
+  }
+  return s
+}
+
+
+/**
+ * Is the damaged side the one the clause names, relative to the SOURCE's controller (spec C2-10)?
+ * For damage to a Forward the side is that Forward's controller, looked up while it is still on the field —
+ * the pool's only `to: 'forward'` clause is unrestricted (`whose: 'any'`), so this is guarded, not exercised.
+ */
+function damagedSideMatches(state: GameState, whose: TriggerWhose, h: DamageOccurrence): boolean {
+  if (whose === 'any') return true
+  const damaged = h.victim !== null ? h.victim : h.target === null ? null : findFieldCard(state, h.target)?.owner ?? null
+  if (damaged === null) return true   // nothing attributable to compare against
+  return whose === 'self' ? damaged === h.sourceController : damaged === opponentOf(h.sourceController)
 }
 
 /** The clause a frame is executing, or null if the def no longer declares it (a hot-swapped card pool). */
@@ -52,6 +112,10 @@ function matchesFilter(state: GameState, source: CardId, id: CardId, filter: Tar
   const def = defFor(state, id)
   if (!def) return false
   if (filter.type !== undefined && def.type !== filter.type) return false
+  // "Character" is Forward, Backup OR Monster and never Summon (§7.2), which a single `type` cannot say — both
+  // Prishe's and Luso's Break-Zone retrievals need it (spec C2-9). `type` and `types` conjoin: a filter carrying
+  // both must satisfy both.
+  if (filter.types !== undefined && !filter.types.includes(def.type)) return false
   if (filter.element !== undefined && !def.elements.includes(filter.element)) return false
   if (filter.maxCost !== undefined && def.cost > filter.maxCost) return false
   if (filter.excludeSource && id === source) return false
@@ -224,25 +288,43 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         ctx.events.push({ type: 'dulled', card: id })
       }
       return
-    case 'damage':
+    case 'damage': {
+      const hits: DamageOccurrence[] = []
       for (const id of ctx.chosen) {
         const loc = findFieldCard(ctx.state, id)
         if (!loc || loc.zone !== 'forwards') continue   // only Forwards carry damage
         ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, damage: c.damage + eff.amount }))
         ctx.events.push({ type: 'abilityDamage', source: ctx.source, target: id, amount: eff.amount })
+        hits.push({ source: ctx.source, sourceController: ctx.controller, target: id, victim: null, amount: eff.amount })
       }
-      // §12.4.5 turns this into a break; `settle` runs the rule processes, which honour `cannotBeBroken`.
+      ctx.state = enqueueDamageTriggers(ctx.state, hits)   // ability damage triggers exactly as combat damage does (spec C2-7)
+      // §12.4.5 turns this into a break; `settle` runs the rule processes, which honour `cannotBeBroken`. Because
+      // `drainResolution` yields between frames (spec C2-6), that process resolves BEFORE the trigger just queued.
       return
-    case 'breakCard':
+    }
+    case 'breakCard': {
+      // An ability break is a field→Break Zone transition like any other, and Lightning's "when a Forward
+      // opponent controls is put from the field into the Break Zone" is cause-agnostic. This path used to do its
+      // own zone move and never produce a transition, so NO observer clause fired on an ability break —
+      // ~130 of ~220 ability breaks on the shipped gate had an eligible watcher standing, and every test,
+      // invariant and fuzzer run was green while it silently missed them.
+      const pre = ctx.state   // watchers are read PRE-move, so one that breaks itself here still triggers
+      const moved: ZoneTransition[] = []
       for (const id of ctx.chosen) {
         const loc = findFieldCard(ctx.state, id)
         if (!loc) continue
         if (loc.card.flags.includes('cannotBeBroken')) { ctx.events.push({ type: 'breakPrevented', card: id, flag: 'cannotBeBroken' }); continue }
-        const owner = loc.owner
-        ctx.state = updatePlayer(removeFromField(ctx.state, id), owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, id] }))
+        moved.push({
+          card: id, controller: loc.owner, owner: ctx.state.cards[id]?.owner ?? loc.owner,
+          from: loc.zone === 'backups' ? 'backups' : 'forwards', to: 'breakZone', reason: 'ability',
+          cause: ctx.source, causeController: ctx.controller, snapshot: loc.card,
+        })
+        ctx.state = updatePlayer(removeFromField(ctx.state, id), loc.owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, id] }))
         ctx.events.push({ type: 'brokenByAbility', card: id, source: ctx.source })
       }
+      ctx.state = enqueueZoneChangeTriggers(pre, ctx.state, moved)
       return
+    }
     case 'addPower':
       for (const id of ctx.chosen) {
         if (!findFieldCard(ctx.state, id)) continue
@@ -308,9 +390,14 @@ export function enterAttackDeclaration(state: GameState, player: PlayerId): [Gam
 }
 
 /**
- * Run agenda frames until a player must choose (the choice becomes `state.pending`, the frame stays `active`) or
- * the queue empties (then the system continuation, if any, runs). Never touches an existing `pending` — the
- * decision already on the table always comes first.
+ * Advance the agenda by exactly ONE frame: resume the active one, or start the next queued one, and run it until
+ * it finishes or a player must choose (the choice becomes `state.pending` and the frame stays `active`). Then
+ * YIELD — spec C2-6. `settle` in apply.ts owns the loop and runs §12.3 rule processes before the next frame
+ * starts, which is what puts §12.4.5's break ahead of the trigger that same damage queued. Draining the whole
+ * queue here instead would resolve Luso before the Forward it killed was broken.
+ *
+ * With the queue and the active frame both empty, the system continuation — if any — runs. Never touches an
+ * existing `pending`: the decision already on the table always comes first.
  *
  * `resolution.steps` is NOT reset here: `settle` in apply.ts resets it once the whole settlement is quiet, so a
  * rule-process ⇄ trigger cycle keeps accumulating and hits the cap instead of restarting the count every pass.
@@ -318,25 +405,26 @@ export function enterAttackDeclaration(state: GameState, player: PlayerId): [Gam
 export function drainResolution(state: GameState): [GameState, Event[]] {
   const events: Event[] = []
   let s = state
-  for (;;) {
-    if (s.result || s.pending) return [s, events]
-    let frame = s.resolution.active
-    if (!frame) {
-      const [next, ...rest] = s.resolution.queue
-      if (!next) break
+  if (s.result || s.pending) return [s, events]
+  let frame = s.resolution.active
+  if (!frame) {
+    const [next, ...rest] = s.resolution.queue
+    if (next) {
       frame = next
       const steps = s.resolution.steps + 1   // starting a frame is a step too, so a cycle of empty clauses is still capped
       if (steps > MAX_RESOLUTION_STEPS) throw new Error(`resolution exceeded ${MAX_RESOLUTION_STEPS} steps (spec C1-5) — trigger cycle?`)
       s = { ...s, resolution: { ...s.resolution, active: frame, queue: rest, steps } }
       events.push({ type: 'abilityTriggered', player: frame.controller, card: frame.source, abilityId: frame.abilityId })
     }
+  }
+  if (frame) {
     const r = runFrame(s, frame)
     s = r.state
     events.push(...r.events)
     s = r.pending
       ? { ...s, pending: r.pending, resolution: { ...s.resolution, active: r.frame, steps: r.steps } }
       : { ...s, resolution: { ...s.resolution, active: null, steps: r.steps } }
-    if (r.pending) return [s, events]
+    return [s, events]   // one frame per call; `settle` comes back with rule processes run
   }
   const continuation = s.resolution.continuation
   if (continuation === 'enterAttackDeclaration') {
@@ -406,4 +494,100 @@ export function applyChooseMode(state: GameState, player: PlayerId, modes: reado
   const ordered = [...modes].sort((a, b) => a - b)   // "select up to 2 of the 3 following" resolves in PRINTED order
   const active: Frame = { ...frame, modes: ordered, path: [...frame.path, 0, 0] }
   return [{ ...state, pending: null, resolution: { ...state.resolution, active } }, []]
+}
+
+// ---------------------------------------------------------------------------
+// Zone-change watcher dispatch (spec C2-3/C2-4). Lives here, not in rules.ts, because rules.ts already imports
+// this module — keeping dispatch in one place avoids a runtime import cycle.
+// ---------------------------------------------------------------------------
+/**
+ * One trigger occurrence: a (watcher, clause, matching transition) TRIPLE (spec C2-3). CR §11.8.6 — a Lightning
+ * watching two opponent Forwards broken at the same instant triggers TWICE, so this is deliberately not
+ * collapsed to one occurrence per batch.
+ */
+interface WatcherOccurrence {
+  readonly transition: ZoneTransition
+  readonly source: CardId
+  readonly controller: PlayerId
+  readonly ability: Ability
+}
+
+/** "Opponent controls" is relative to the WATCHER's controller, never the turn player (spec C2-10). */
+function watches(state: GameState, trigger: AbilityTrigger, watcher: PlayerId, t: ZoneTransition): boolean {
+  if (trigger.kind !== 'observesZoneChange') return false
+  if (trigger.to !== 'breakZone') return false   // `from: 'field'` covers both field arrays
+  // The moved card's TYPE, from its def — Lightning watches "a FORWARD … put into the Break Zone". Checking the
+  // transition's `from` array instead would be the same implicit restriction that made this safe only by accident.
+  const code = state.cards[t.card]?.code
+  if ((code === undefined ? undefined : state.defs[code])?.type !== trigger.of) return false
+  if (trigger.whose === 'self') return t.controller === watcher
+  if (trigger.whose === 'opponent') return t.controller === opponentOf(watcher)
+  return true
+}
+
+/**
+ * Snapshot the watchers of a whole simultaneous batch BEFORE any of it moves (spec C2-4). A Lightning broken in
+ * the SAME batch as its own victim must still trigger, and once removal has run its clause is no longer
+ * discoverable from the field at all; `Frame.source` already tolerates an off-field source (C1).
+ *
+ * Order is spec C2-11's total key — (occurrence index, AP/NAP controller, source zone, pre-event field index,
+ * ability index, source id) — produced by CONSTRUCTION rather than by sorting: transitions in batch order, then
+ * active before non-active player, then forwards before backups, then field-array index, then printed clause
+ * order. The final component, source id, can never actually break a tie, because (controller, zone, index)
+ * already names exactly one card; it is in the key so the key is total by inspection. Watchers are read from the
+ * FIELD ARRAYS only, never `state.cards`, because `determinise` preserves array order and not object-key order.
+ *
+ * MVP0-SIMPLIFICATION: fixed AP-first FIFO. CR §11.8.7 lets each controller order their OWN simultaneous
+ * triggers, with the non-turn player's placed on top of the turn player's. None of this pool's clauses has an
+ * outcome-sensitive AP/NAP conflict, so the deviation is unobservable — but it is a deviation.
+ */
+function collectWatchers(state: GameState, transitions: readonly ZoneTransition[]): WatcherOccurrence[] {
+  const out: WatcherOccurrence[] = []
+  // Local only, never on GameState. Guards against the SAME occurrence being discovered twice; two DISTINCT
+  // transitions matching one watcher stay two occurrences (spec C2-3).
+  const seen = new Set<string>()
+  const ap = state.turnPlayer
+  for (const t of transitions) {
+    for (const p of [ap, opponentOf(ap)]) {
+      for (const zone of ['forwards', 'backups'] as const) {
+        for (const c of state.players[p][zone]) {
+          const code = state.cards[c.id]?.code
+          for (const ability of (code === undefined ? undefined : state.defs[code])?.abilities ?? []) {
+            if (!watches(state, ability.trigger, p, t)) continue
+            const key = `${c.id} ${ability.id} ${t.card}`
+            if (seen.has(key)) continue
+            seen.add(key)
+            out.push({ transition: t, source: c.id, controller: p, ability })
+          }
+        }
+      }
+    }
+  }
+  return out
+}
+
+/** Enqueue the snapshotted occurrences AFTER movement, so a frame that looks at the field sees the post-batch one. */
+function enqueueZoneTriggers(state: GameState, occurrences: readonly WatcherOccurrence[]): GameState {
+  let s = state
+  for (const o of occurrences) {
+    const t = o.transition
+    const event: TriggerEvent = { kind: 'zoneChange', card: t.card, from: 'field', to: 'breakZone', controller: t.controller, owner: t.owner }
+    s = enqueueTrigger(s, o.source, o.controller, o.ability, event)
+  }
+  return s
+}
+/**
+ * Dispatch `observesZoneChange` clauses for one batch of field→Break Zone movement.
+ *
+ * `pre` is the state BEFORE the batch moved — watchers must be read from it, or a watcher that is itself in the
+ * batch is already gone (spec C2-4). `post` is the state the frames are queued onto.
+ *
+ * EVERY field→Break Zone path must call this, not just the §12.4.4/§12.4.5 rule processes. `breakCard` did its own
+ * zone move and skipped it, so no observer clause fired on an ability-caused break at all — measured on the
+ * shipped gate, ~130 of ~220 ability breaks had a Lightning standing on the watching side, so roughly 40% of the
+ * breaks its printed text names were silently missed, with every test, invariant and fuzzer run still green.
+ */
+export function enqueueZoneChangeTriggers(pre: GameState, post: GameState, transitions: readonly ZoneTransition[]): GameState {
+  if (!transitions.length) return post
+  return enqueueZoneTriggers(post, collectWatchers(pre, transitions))
 }

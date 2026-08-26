@@ -5,6 +5,8 @@ import { defOf, findFieldCard, keywordsOf, powerOf, updatePlayer } from './state
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { dealPlayerDamage, runRuleProcesses } from './rules.js'
+import type { DamageOccurrence } from './resolve.js'
+import { enqueueDamageTriggers } from './resolve.js'
 
 const IDLE: AttackState = { step: 'declaration', attackers: [], blocker: null }
 type Assignment = { target: CardId; amount: number }
@@ -141,24 +143,40 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
   let s = state
   // MVP0-SIMPLIFICATION: §15.2.3 First Strike not implemented — all battle damage is simultaneous
   if (at.blocker === null) {
-    const [t, e] = dealPlayerDamage(s, defender, at.attackers[0] ?? null)   // §10.1.4.1
+    // §10.1.4.1 — an unblocked party deals ONE point of damage, but every member of it is dealing that damage, so
+    // every member's `dealtDamage` clause triggers (spec C2-8). Controllers are captured here, from the field, for
+    // the same reason the blocked branch does it: attribution must not depend on `at.attackers`'s id sort (:54).
+    const party: DamageOccurrence[] = []
+    for (const a of at.attackers) {
+      const fc = findFieldCard(s, a)
+      if (fc) party.push({ source: a, sourceController: fc.owner, target: null, victim: defender, amount: 1 })
+    }
+    const [t, e] = dealPlayerDamage(s, defender, party)
     s = t; events.push(...e)
   } else {
     const blockerFc = findFieldCard(s, at.blocker)
     if (blockerFc) {
-      const hits: { source: CardId; target: CardId; amount: number }[] = []
+      // `findFieldCard().owner` is the field array the card sits in, i.e. its CONTROLLER — attackers are the turn
+      // player's, the blocker is the defender's. Captured per hit so a source broken by this same simultaneous
+      // batch still attributes correctly (spec C2-7/C2-8).
+      const hits: { source: CardId; sourceController: PlayerId; target: CardId; amount: number }[] = []
       for (const a of at.attackers) {
         const fc = findFieldCard(s, a)
-        if (fc) hits.push({ source: a, target: at.blocker, amount: powerOf(s, fc.card) })   // §10.1.4.2 each attacker deals its power to the blocker
+        if (fc) hits.push({ source: a, sourceController: fc.owner, target: at.blocker, amount: powerOf(s, fc.card) })   // §10.1.4.2 each attacker deals its power to the blocker
       }
-      if (at.attackers.length === 1) hits.push({ source: at.blocker, target: at.attackers[0] as CardId, amount: powerOf(s, blockerFc.card) })
-      else for (const x of blockerAssignments) hits.push({ source: at.blocker, target: x.target, amount: x.amount })
+      if (at.attackers.length === 1) hits.push({ source: at.blocker, sourceController: blockerFc.owner, target: at.attackers[0] as CardId, amount: powerOf(s, blockerFc.card) })
+      else for (const x of blockerAssignments) hits.push({ source: at.blocker, sourceController: blockerFc.owner, target: x.target, amount: x.amount })
+      const landed: DamageOccurrence[] = []
       for (const h of hits) {
         const loc = findFieldCard(s, h.target)
         if (!loc) continue
         s = updatePlayer(s, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === h.target ? { ...c, damage: c.damage + h.amount } : c)) }))
         events.push({ type: 'battleDamage', source: h.source, target: h.target, amount: h.amount })
+        landed.push({ source: h.source, sourceController: h.sourceController, target: h.target, victim: null, amount: h.amount })
       }
+      // §15.2.3 aside, battle damage is simultaneous: all of it lands, THEN every source's `dealtDamage` clause
+      // queues. Draining is `settle`'s job, so the §12.4.5 process below still runs first (spec C2-6).
+      s = enqueueDamageTriggers(s, landed)
     }
   }
   const [ruled, ruleEvents] = runRuleProcesses(s)

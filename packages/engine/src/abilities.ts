@@ -96,10 +96,19 @@ export type TriggerWhose = 'self' | 'opponent' | 'any'
 export type AbilityTrigger =
   | { readonly kind: 'enterField' }
   | { readonly kind: 'summonResolve' }
-  /** THIS card dealt damage — combat or ability alike (spec C2-7). */
-  | { readonly kind: 'dealtDamage'; readonly to: 'forward' | 'player' }
-  /** Some OTHER card moved, and this one was watching (spec C2-3/C2-4). */
-  | { readonly kind: 'observesZoneChange'; readonly from: 'field'; readonly to: 'breakZone'; readonly whose: TriggerWhose }
+  /**
+   * THIS card dealt damage — combat or ability alike (spec C2-7). `whose` is the DAMAGED side relative to
+   * this card's controller: Luso and Prishe both print "deals damage to **your opponent**", and without it the
+   * restriction lives nowhere in code and any future self-damage or redirect path fires them wrongly.
+   */
+  | { readonly kind: 'dealtDamage'; readonly to: 'forward' | 'player'; readonly whose: TriggerWhose }
+  /**
+   * Some OTHER card moved, and this one was watching (spec C2-3/C2-4). `of` is the moved card's TYPE:
+   * Lightning watches "a **Forward** … put from the field into the Break Zone", and leaving that restriction
+   * implicit in "the only producer happens to scan the forwards array" makes it fire on the first Backup a
+   * later rung breaks.
+   */
+  | { readonly kind: 'observesZoneChange'; readonly from: 'field'; readonly to: 'breakZone'; readonly whose: TriggerWhose; readonly of: CardType }
 
 /**
  * What the trigger was about, carried on the frame so `onSubject` can act on it and the log can narrate it.

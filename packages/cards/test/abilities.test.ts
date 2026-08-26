@@ -330,6 +330,130 @@ describe('20-103H Ramuh — "Select up to 2 of the 3 following actions." (the on
 })
 
 // ---------------------------------------------------------------------------
+// 22-068R Prishe and 27-125S Luso — the rung-C2 player-damage clauses
+// ---------------------------------------------------------------------------
+
+/** P0 attacks with `attackers`; P1 declines to block, so §10.1.4.1 puts one point of damage on P1. */
+function attackUnblocked(state: GameState, attackers: CardId[]) {
+  let s = apply(state, { type: 'pass', player: 0 }).state          // §10.1.1–2 into the declaration step
+  s = apply(s, { type: 'declareAttack', player: 0, attackers }).state
+  return apply(s, { type: 'declareBlock', player: 1, blocker: null })
+}
+
+describe('22-068R Prishe — "When Prishe deals damage to your opponent, choose 1 Character in your Break Zone. Add it to your hand."', () => {
+  function prisheHits() {
+    let s = makeGame(); let prishe: CardId, forward: CardId, summon: CardId, backup: CardId, theirs: CardId
+    ;[s, prishe] = withField(s, 0, 'forwards', '22-068R')   // earth 5000
+    ;[s, forward] = withBreakZone(s, 0, '27-127S')          // Lightning — a Forward
+    ;[s, summon] = withBreakZone(s, 0, '20-103H')           // Ramuh — a Summon, and so NOT a Character (§7.2)
+    ;[s, backup] = withBreakZone(s, 0, '18-064C')           // Geomancer — a Backup
+    ;[s, theirs] = withBreakZone(s, 1, '24-063H')           // "your Break Zone"
+    return { r: attackUnblocked(s, [prishe]), prishe, forward, summon, backup, theirs }
+  }
+
+  it('"1 Character" offers Forwards and Backups from your own Break Zone, never a Summon', () => {
+    const { r, prishe, forward, summon, backup, theirs } = prisheHits()
+    expect(r.events).toContainEqual({ type: 'abilityTriggered', player: 0, card: prishe, abilityId: '22-068R:damages-opponent' })
+    expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [forward, backup] })
+    const candidates = r.state.pending?.kind === 'chooseTargets' ? r.state.pending.candidates : []
+    expect(candidates.includes(summon), 'a Summon is not a Character').toBe(false)
+    expect(candidates.includes(theirs), '"your" Break Zone').toBe(false)
+    ok(r.state)
+  })
+
+  it('adds the chosen Character to its owner’s hand', () => {
+    const { r, backup, forward, summon } = prisheHits()
+    const t = apply(r.state, { type: 'chooseTargets', player: 0, targets: [backup] }).state
+    expect(t.players[0].hand).toContain(backup)
+    expect(t.players[0].breakZone).toEqual([forward, summon])
+    expect(t.pending).toBeNull()
+    ok(t)
+  })
+
+  it('keeps warning about its unimplemented "when chosen" clause (spec C2-13)', () => {
+    // "When Prishe is chosen by a Summon or an ability, …" must fire while a frame is already mid-flight
+    // choosing targets, and the agenda deliberately cannot preempt an active frame (spec C2-A9).
+    const r = cast(makeGame(), '22-068R', [EARTH_BACKUP, EARTH_BACKUP])
+    expect(r.events).toContainEqual({ type: 'unimplementedAbility', card: r.card, code: '22-068R', clauses: 1 })
+  })
+})
+
+describe('27-125S Luso — "When Luso deals damage to a Forward, break it." and its modal player-damage clause', () => {
+  it('c1: the Forward Luso damages in combat is broken, with no target choice of its own', () => {
+    let s = makeGame(); let luso: CardId, blocker: CardId
+    ;[s, luso] = withField(s, 0, 'forwards', '27-125S')      // 3000 power
+    ;[s, blocker] = withField(s, 1, 'forwards', '24-063H')   // Hugh Yurg 8000 — survives 3000, kills Luso back
+    s = apply(s, { type: 'pass', player: 0 }).state
+    s = apply(s, { type: 'declareAttack', player: 0, attackers: [luso] }).state
+    const r = apply(s, { type: 'declareBlock', player: 1, blocker })
+    expect(r.events).toContainEqual({ type: 'brokenByAbility', card: blocker, source: luso })
+    expect(r.state.players[1].breakZone).toContain(blocker)
+    expect(r.state.pending, '"break it" names its subject — never a choice (spec C2-5)').toBeNull()
+    ok(r.state)
+  })
+
+  function lusoHits() {
+    let s = makeGame(); let luso: CardId, theirs: CardId, backup: CardId, summon: CardId
+    ;[s, luso] = withField(s, 0, 'forwards', '27-125S')      // earth 3000
+    ;[s, theirs] = withField(s, 1, 'forwards', '24-063H')    // 8000 — 3000 is not lethal, so c1 does the breaking
+    ;[s, backup] = withBreakZone(s, 0, '18-064C')
+    ;[s, summon] = withBreakZone(s, 0, '20-103H')
+    return { r: attackUnblocked(s, [luso]), luso, theirs, backup, summon }
+  }
+
+  it('c2 raises "select up to 2 of the 2 following actions" with the printed wordings as its labels', () => {
+    const { r, luso } = lusoHits()
+    expect(r.events).toContainEqual({ type: 'abilityTriggered', player: 0, card: luso, abilityId: '27-125S:damages-opponent' })
+    expect(r.state.pending).toEqual({
+      kind: 'chooseMode', player: 0, min: 0, max: 2,
+      labels: ['Choose 1 Forward. Deal it 3000 damage.', 'Choose 1 Character in your Break Zone. Add it to your hand.'],
+    })
+    ok(r.state)
+  })
+
+  it('c2 both modes: the 3000 damage cascades into Luso’s OWN c1, and the retrieval takes a Character', () => {
+    const { r, luso, theirs, backup, summon } = lusoHits()
+    let t = apply(r.state, { type: 'chooseMode', player: 0, modes: [0, 1] })
+    // "Choose 1 Forward" is unrestricted — Luso may burn its own side.
+    expect(t.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [luso, theirs] })
+
+    t = apply(t.state, { type: 'chooseTargets', player: 0, targets: [theirs] })
+    expect(t.events).toContainEqual({ type: 'abilityDamage', source: luso, target: theirs, amount: 3000 })
+    // Mode 2's prompt belongs to the SAME frame, and only the Backup is a Character.
+    expect(t.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [backup] })
+
+    t = apply(t.state, { type: 'chooseTargets', player: 0, targets: [backup] })
+    expect(t.state.players[0].hand).toContain(backup)
+    expect(t.state.players[0].breakZone).toEqual([summon])
+    // Only once the frame finished: c1 resolves and breaks the Forward 3000 damage did not kill.
+    expect(t.events).toContainEqual({ type: 'abilityTriggered', player: 0, card: luso, abilityId: '27-125S:damages-forward' })
+    expect(t.events).toContainEqual({ type: 'brokenByAbility', card: theirs, source: luso })
+    expect(t.state.players[1].breakZone).toContain(theirs)
+    expect(t.state.pending).toBeNull()
+    expect(t.state.resolution.queue).toEqual([])
+    ok(t.state)
+  })
+
+  it('c2 "up to 2" means neither action is a legal answer', () => {
+    const { r, theirs, backup } = lusoHits()
+    const t = apply(r.state, { type: 'chooseMode', player: 0, modes: [] })
+    expect(fc(t.state, theirs)?.damage).toBe(0)
+    expect(t.state.players[0].breakZone).toContain(backup)
+    expect(t.state.pending).toBeNull()
+    ok(t.state)
+  })
+
+  it('C2-A10: Luso and Lightning warn about nothing; Prishe keeps its one deferred clause', () => {
+    // Lightning costs 7, which is more CP than five Backups (§7.7.4) can make, so its coverage is asserted on
+    // the tables rather than on a live cast.
+    const missing = (code: string) => (ABILITY_CLAUSES[code] as number) - (ABILITIES[code]?.length ?? 0)
+    expect([missing('27-125S'), missing('27-127S'), missing('22-068R')]).toEqual([0, 0, 1])
+    const r = cast(makeGame(), '27-125S', [EARTH_BACKUP])
+    expect(r.events.some((e) => e.type === 'unimplementedAbility')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // The database wiring
 // ---------------------------------------------------------------------------
 
@@ -341,11 +465,16 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the five clauses on, and only those five', () => {
+  it('loadCards merges the ten implemented clauses on, and only those ten', () => {
+    // Five from rung C1, five from C2 — three in stage 1 (Lightning ×2, Luso c1) and two in stage 2
+    // (Luso c2, Prishe c2). Any clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
-    expect(implemented).toEqual(['12-120C', '16-092C', '18-124C', '20-103H', '27-124S'])
-    expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort())
-      .toEqual(['12-120C:etb', '16-092C:etb', '18-124C:etb', '20-103H:summon', '27-124S:etb'])
+    expect(implemented).toEqual(['12-120C', '16-092C', '18-124C', '20-103H', '22-068R', '27-124S', '27-125S', '27-127S'])
+    expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
+      '12-120C:etb', '16-092C:etb', '18-124C:etb', '20-103H:summon', '22-068R:damages-opponent',
+      '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
+      '27-127S:etb', '27-127S:opponent-forward-broken',
+    ])
   })
 
   it('every ability id is `<code>:<slug>` for a card that exists, and quotes text the card really prints', () => {

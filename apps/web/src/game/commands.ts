@@ -36,6 +36,36 @@ function listNames(v: PlayerView, ids: readonly CardId[]): string {
 const modeLabel = (v: PlayerView, i: number): string => (v.pending?.kind === 'chooseMode' ? v.pending.labels[i] ?? `mode ${i + 1}` : `mode ${i + 1}`)
 
 // ---------------------------------------------------------------------------
+// Why a clause fired (rung C2)
+// ---------------------------------------------------------------------------
+
+/**
+ * The part of a `TriggerEvent` narration reads. A structural SUBSET of the engine's type, so a real
+ * `Frame.triggerEvent` is assignable to it (spec C2-5) — while the log, which reconstructs a cause from the
+ * event stream, is not forced to invent the fields it cannot know (`sourceController`, `from`/`to`, `owner`).
+ */
+export type TriggerCause =
+  | { readonly kind: 'damage'; readonly source: CardId; readonly target: CardId | null; readonly victim: PlayerId | null; readonly amount: number }
+  | { readonly kind: 'zoneChange'; readonly card: CardId; readonly controller: PlayerId }
+
+const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' : "the AI's")
+
+/**
+ * WHY a clause fired, as a phrase (spec C2-5). This is the whole point of C2's narration: an observer trigger
+ * belongs to a card the event did NOT happen to — Lightning's clause fires because a different Forward was
+ * broken — so "Lightning's ability triggers" alone leaves the player with no way to connect the prompt in
+ * front of them to the board. Lower-case initial: it is used both mid-sentence in the log and, capitalised,
+ * at the head of a prompt.
+ */
+export function describeTriggerCause(v: PlayerView, ev: TriggerCause): string {
+  if (ev.kind === 'zoneChange') return `${possessive(v, ev.controller)} ${name(v, ev.card)} was broken`
+  if (ev.victim !== null) return `${name(v, ev.source)} dealt damage to ${ev.victim === v.me ? 'you' : 'the AI'}`
+  return `${name(v, ev.source)} dealt ${ev.amount} damage to ${ev.target === null ? 'a Forward' : name(v, ev.target)}`
+}
+
+const capitalise = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}`
+
+// ---------------------------------------------------------------------------
 // Ability wording (rung C1)
 // ---------------------------------------------------------------------------
 
@@ -55,6 +85,18 @@ function activeAbility(v: PlayerView): { ability: Ability; frame: Frame } | null
 function sourced(v: PlayerView, text: string): string {
   const active = activeAbility(v)
   return active ? `${name(v, active.frame.source)}: ${text.charAt(0).toLowerCase()}${text.slice(1)}` : text
+}
+
+/**
+ * Lead an ability prompt with what it is REACTING to, read straight off the frame the agenda is suspended on
+ * (spec C2-5) — the authority, not a reconstruction. Cause first, then the ask: "The AI's Prishe was broken —
+ * Lightning: choose 1 Forward you control to give Haste" says why the prompt appeared before it says what to
+ * do. The dash is reserved for this: the strip's own trailing "click a highlighted card" hint uses "·".
+ * Empty for `enterField`/`summonResolve`, which are about the source itself and need no explaining.
+ */
+function caused(v: PlayerView, text: string): string {
+  const ev = v.resolution.active?.triggerEvent
+  return ev ? `${capitalise(describeTriggerCause(v, ev))} — ${text}` : text
 }
 
 /**
@@ -234,11 +276,11 @@ export function promptFor(v: PlayerView): string {
       case 'chooseTargets': {
         const { min, max, candidates } = v.pending
         const purpose = targetVerb(v, v.pending)?.purpose
-        return sourced(v, `Choose ${countPhrase(min, max)} ${candidateNoun(v, candidates, max !== 1)}${purpose ? ` ${purpose}` : ''}`)
+        return caused(v, sourced(v, `Choose ${countPhrase(min, max)} ${candidateNoun(v, candidates, max !== 1)}${purpose ? ` ${purpose}` : ''}`))
       }
       case 'chooseMode': {
         const { min, max, labels } = v.pending
-        return sourced(v, `Choose ${countPhrase(min, max)} of the ${labels.length} following effect${labels.length === 1 ? '' : 's'}`)
+        return caused(v, sourced(v, `Choose ${countPhrase(min, max)} of the ${labels.length} following effect${labels.length === 1 ? '' : 's'}`))
       }
     }
   }

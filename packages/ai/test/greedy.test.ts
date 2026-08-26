@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, legalCommands, seedRng, viewFor, type Ability, type Command, type GameState } from '@fftcg/engine'
+import { SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, hasResolutionWork, legalCommands, seedRng, viewFor, type Ability, type CardDef, type Command, type GameState } from '@fftcg/engine'
 import { GreedyAgent, greedyStep, pruneCandidates, resolveForcedDecisions, scoreCandidates } from '../src/greedy.js'
 import { candidateCommands } from '../src/candidates.js'
-import { DEFAULT_WEIGHTS, type Weights } from '../src/evaluate.js'
+import { DEFAULT_WEIGHTS, evaluate, type Weights } from '../src/evaluate.js'
 import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 /** withField/withHand MINT extra card instances, so deck lists must be derived from the state under test, not DEFAULT_DECK. */
@@ -416,5 +416,134 @@ describe('GreedyAgent', () => {
       expect(() => apply(s, cmd)).not.toThrow()
       for (const id of cmd.type === 'chooseTargets' ? cmd.targets : []) expect(id).toBeLessThan(SYNTHETIC_ID_BASE)
     })
+  })
+})
+
+/**
+ * Rung C2. Two things change for the agent. `drainResolution` now completes ONE frame and yields (spec C2-6), so
+ * settlement interleaves §12.3 rule processes between frames and a state can sit between them with work queued.
+ * And a trigger can belong to a card that is NOT the one the AI just moved (spec C2-3), so the agent's own play
+ * now hands the OPPONENT decisions and board quality in the middle of scoring its own candidate.
+ */
+describe('C2: observer triggers reach the agent', () => {
+  /** Lightning's `27-127S:opponent-forward-broken` as a shape, parameterised by whose Forwards it watches. */
+  const watcher = (code: string, whose: 'self' | 'opponent'): Ability => ({
+    id: `${code}:broken`,
+    trigger: { kind: 'observesZoneChange', from: 'field', to: 'breakZone', whose, of: 'forward' },
+    text: 'When a Forward is put from the field into the Break Zone, choose 1 Forward you control. It gains Haste until the end of the turn.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'grantKeyword', keyword: 'haste' }] }],
+  })
+  /** Lethal ability damage. (`breakCard` now records a transition too — that gap was the rung's HIGH.) */
+  const ZAP: Ability = {
+    id: 'T-ZAP:etb', trigger: { kind: 'enterField' },
+    text: 'When this Character enters the field, choose 1 Forward opponent controls. Deal it 9000 damage.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 9000 }] }],
+  }
+  const withAbility = (code: string, a: Ability, over: Partial<CardDef> = {}): CardDef =>
+    makeDef({ code, hasAbilities: true, abilityClauses: 1, abilities: [a], ...over })
+
+  it('the budget sweep holds across an observer trigger: nothing scored owes a choice or holds an agenda frame', () => {
+    // The C1 sweep's clause belonged to the card being cast. This one belongs to a card on the OPPONENT's field,
+    // fires from a §12.4.5 rule process rather than from the cast, and suspends on the OPPONENT'S choice — the
+    // whole of it inside one of my candidates. `evaluate` must still never see the half-finished board.
+    const defs = [...VANILLA_POOL, withAbility('T-ZAP', ZAP, { cost: 2, power: 3000 }), withAbility('T-WATCH', watcher('T-WATCH', 'self'), { cost: 2, power: 5000 })]
+    let s = withHandSize(makeGame({ defs }), 0, 0)
+    ;[s] = withHand(s, 0, 'T-ZAP')
+    for (let i = 0; i < 3; i++) [s] = withField(s, 0, 'backups', 'V-B1')   // CP for a cost-2 cast
+    ;[s] = withField(s, 1, 'forwards', 'T-WATCH')   // the opponent's watcher: my cast wakes THEIR clause
+    ;[s] = withField(s, 1, 'forwards', 'V-F5')      // 7000 — 9000 damage kills it and §12.4.5 makes the transition
+    expect(s.phase).toBe('main1')
+    const [det] = determinise({ view: viewFor(s, 0), decks: decksOf(s), rng: seedRng(1) })
+    const cands = candidateCommands(det, 0)
+    const cast = cands.find((c) => c.type === 'castCharacter')
+    expect(cast).toBeDefined()
+    // The fixture genuinely hands the opponent a decision inside my own candidate's resolution.
+    const resolved = resolveForcedDecisions(apply(det, cast as Command).state, DEFAULT_WEIGHTS, 0.5, 0)
+    expect(resolved.players[1].forwards.some((c) => c.granted.includes('haste'))).toBe(true)
+    expect(hasResolutionWork(resolved.resolution)).toBe(false)
+    for (const depth of [1, 2] as const) {
+      for (let maxSimulations = 1; maxSimulations <= 40; maxSimulations++) {
+        const scores = scoreCandidates(det, cands, { me: 0, weights: DEFAULT_WEIGHTS, aggression: 0.5, depth, owner: det.turnPlayer, maxSimulations })
+        for (const sc of scores) {
+          expect(sc.pendingKind, `depth ${depth}, cap ${maxSimulations}, ${sc.command.type}`).toBeNull()
+          expect(sc.resolutionQueued, `depth ${depth}, cap ${maxSimulations}, ${sc.command.type}`).toBe(0)
+        }
+      }
+    }
+  })
+
+  it('C2-6: a pending that is NOT a combat or ability choice is still fast-forwarded while the agenda owes work', () => {
+    const clause = watcher('T-WATCH', 'opponent')
+    let s = makeGame({ defs: [...VANILLA_POOL, withAbility('T-WATCH', clause, { cost: 2, power: 5000 })] })   // 6-card hand ⇒ an end-phase discard
+    let src: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-WATCH')
+    for (let i = 0; i < 3; i++) s = apply(s, { type: 'pass', player: 0 }).state   // main1 → attack → main2 → end
+    expect(s.pending?.kind).toBe('discardToHandSize')
+    // Narrowness first: with a QUIET agenda this is the agent's own move to score and must be left untouched.
+    expect(resolveForcedDecisions(s, DEFAULT_WEIGHTS, 0.5, 0)).toBe(s)
+    // Forged. Settlement does not currently strand a frame behind a discard — but C2-6 removed the structural
+    // reason it cannot: `drainResolution` yields between frames, so `settle` can stop on ANY pending with the
+    // queue non-empty, and `evaluate` would then price a clause that has not done its work (R4's defect class,
+    // by its third route). `isForcedDecision`'s second arm is what closes it.
+    const stranded = enqueueTrigger(s, src, 0, clause)
+    expect(hasResolutionWork(stranded.resolution)).toBe(true)
+    const out = resolveForcedDecisions(stranded, DEFAULT_WEIGHTS, 0.5, 0)
+    expect(out.pending).toBeNull()
+    expect(hasResolutionWork(out.resolution)).toBe(false)
+  })
+
+  it('the Haste an observer trigger hands the OPPONENT is priced — evaluate charges me for the trade that woke it', () => {
+    // The cost is real only on THEIR turn: `granted` expires at §9.5.1.3.2, so Haste handed over during my own
+    // turn is worth exactly nothing and `hasteUnlock` already returns 0 for it. Here I block on their turn, my
+    // blocker dies, their watcher wakes, and a Forward they cast this turn gets to attack.
+    const defs = [...VANILLA_POOL, withAbility('T-WATCH', watcher('T-WATCH', 'opponent'), { cost: 2, power: 5000 })]
+    let s = withHandSize(withHandSize(makeGame({ defs }), 0, 0), 1, 0)
+    let mine: number, attacker: number, fresh: number
+    ;[s, mine] = withField(s, 0, 'forwards', 'V-F1')                             // 3000 blocker: dies to the 7000
+    ;[s, attacker] = withField(s, 1, 'forwards', 'V-F5', { enteredTurn: 0 })
+    ;[s] = withField(s, 1, 'forwards', 'T-WATCH', { enteredTurn: 0 })
+    for (let i = 0; i < 3; i++) s = apply(s, { type: 'pass', player: 0 }).state
+    s = apply(s, { type: 'pass', player: 1 }).state                              // player 1's main1 → declaration
+    expect(s.turnPlayer).toBe(1)
+    ;[s, fresh] = withField(s, 1, 'forwards', 'V-F8', { enteredTurn: s.turn })   // entered THIS turn: Haste unlocks it
+    s = apply(s, { type: 'declareAttack', player: 1, attackers: [attacker] }).state
+    expect(s.pending?.kind).toBe('declareBlock')
+    const traded = resolveForcedDecisions(apply(s, { type: 'declareBlock', player: 0, blocker: mine }).state, DEFAULT_WEIGHTS, 0.5, 0)
+    expect(traded.players[0].breakZone).toContain(mine)                          // the trade happened…
+    expect(traded.players[1].forwards.find((c) => c.id === fresh)?.granted).toContain('haste')   // …and woke the watcher
+    expect(evaluate(traded, 0)).toBeLessThan(evaluate(traded, 0, { ...DEFAULT_WEIGHTS, haste: 0 }))
+  })
+
+  it('C2-A11 proxy: a greedy mirror on an observer-trigger pool terminates, fires the watchers, and never scores queued work', () => {
+    // The seed-1 gate covers the real pool; this covers the shapes densely, on cards the agent casts constantly.
+    // The watchers sit on BACKUPS as well as a Forward: a Backup is collected too (it never leaves the field, so
+    // it is the shape most likely to be watching when a rule process finally breaks something).
+    const clauses: Record<string, Ability> = {
+      'V-B1': watcher('V-B1', 'opponent'),
+      'V-B5': watcher('V-B5', 'self'),
+      'V-F1': watcher('V-F1', 'opponent'),
+      'V-F2': { id: 'V-F2:damages-forward', trigger: { kind: 'dealtDamage', to: 'forward', whose: 'any' }, text: 'When this Forward deals damage to a Forward, break it.', effects: [{ kind: 'onSubject', do: [{ kind: 'breakCard' }] }] },
+    }
+    const pool = VANILLA_POOL.map((d) => (clauses[d.code] ? { ...d, hasAbilities: true, abilityClauses: 1, abilities: [clauses[d.code] as Ability] } : d))
+    const BENIGN = [null, 'mulligan', 'chooseFirst', 'discardToHandSize']   // priced correctly, and only ever at a zero agenda
+    let observed = 0
+    for (const seed of [1, 2, 3]) {
+      let s = makeGame({ seed, defs: pool })
+      const agents = [0, 1].map(() => new GreedyAgent({ seed: 11, decks: [DEFAULT_DECK, DEFAULT_DECK], maxSimulations: 40 }))
+      for (let step = 0; step < 800 && !s.result; step++) {
+        const p = actingPlayer(s)
+        if (p === null) break
+        const cmd = agents[p]!.decide(viewFor(s, p), [])
+        for (const sc of agents[p]!.lastScores) {
+          expect(sc.resolutionQueued, `seed ${seed} step ${step} ${sc.command.type}`).toBe(0)
+          expect(BENIGN, `seed ${seed} step ${step} ${sc.command.type}`).toContain(sc.pendingKind)
+        }
+        const r = apply(s, cmd)   // an illegal answer from the policy would throw here
+        s = r.state
+        observed += r.events.filter((e) => e.type === 'abilityTriggered' && e.abilityId.endsWith(':broken')).length
+      }
+      expect(s.result, `seed ${seed} did not finish`).not.toBeNull()
+    }
+    expect(observed).toBeGreaterThan(0)   // measured 13 across the three seeds
   })
 })

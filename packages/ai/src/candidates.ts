@@ -85,14 +85,36 @@ function sideOf(state: GameState, id: CardId): PlayerId {
 }
 
 /**
+ * Does `source`'s own printed text break whatever it damages? Luso (`27-125S:damages-forward`) is the C2 case:
+ * a `dealtDamage` clause whose `onSubject` breaks the damaged Forward, so the break follows from ANY damage,
+ * however little power it leaves standing. Read off the AST — the same `state.defs` channel `determinise`
+ * carries — so this is a statement about the clause shape, never about a card code.
+ *
+ * Without it the policy prices Luso's "Deal it 3000 damage" mode by §12.4.5 alone and ranks the 3000-power
+ * Forward it can kill outright ABOVE the 9000-power one it also kills via the cascade — the head of the
+ * candidate list, and therefore the answer a budget-starved `greedyStep` plays.
+ */
+function breaksWhatItDamages(state: GameState, source: CardId): boolean {
+  const code = state.cards[source]?.code
+  for (const a of (code === undefined ? undefined : state.defs[code])?.abilities ?? []) {
+    if (a.trigger.kind !== 'dealtDamage' || a.trigger.to !== 'forward') continue
+    if (a.effects.some((e) => e.kind === 'onSubject' && e.do.some((d) => d.kind === 'breakCard'))) return true
+  }
+  return false
+}
+
+/**
  * How much better off the TARGET's own side is once `effects` resolve on it, in `evaluate`-ish units
  * (power/1000 and `cardValue`); harmful effects are negative. `targetScore` flips the sign for an opponent's
  * card, which is what turns one number into "how much I want to pick this".
  *
+ * `source` is the card whose ability this is: the value of an effect can depend on the source's OTHER clauses
+ * (`breaksWhatItDamages`), which is new in C2 — before it, every clause was self-contained.
+ *
  * Only the effects directly under the chooser are priced. A nested chooser's value is not knowable one ply out
  * and every C1 clause is flat, so unknown shapes contribute 0 rather than a guess.
  */
-function targetDelta(state: GameState, effects: readonly Effect[], id: CardId): number {
+function targetDelta(state: GameState, source: CardId, effects: readonly Effect[], id: CardId): number {
   const loc = findFieldCard(state, id)
   const def = defOf(state, id)
   const power = loc ? effectivePower(def, loc.card) : (def.power ?? 0)
@@ -107,8 +129,10 @@ function targetDelta(state: GameState, effects: readonly Effect[], id: CardId): 
       case 'damage': {
         if (!loc || loc.zone !== 'forwards') break   // only Forwards carry damage
         // §12.4.5: damage ≥ power breaks. Damage that actually breaks is worth the whole card; damage that does
-        // not is worth only the exposure it leaves behind.
-        const breaks = power >= 1000 && loc.card.damage + eff.amount >= power && !loc.card.flags.includes('cannotBeBroken')
+        // not is worth only the exposure it leaves behind. C2: a source that breaks what it damages (Luso) kills
+        // the target whatever its power — `cannotBeBroken` stops both routes (§12.4.5 and `breakCard` alike).
+        const lethal = power >= 1000 && loc.card.damage + eff.amount >= power
+        const breaks = (lethal || breaksWhatItDamages(state, source)) && !loc.card.flags.includes('cannotBeBroken')
         const kill = cardValue(def) + power / 1000
         if (breaks) { d -= kill; break }
         // Non-lethal damage was priced `eff.amount / 1000` — a constant, independent of the target and of the
@@ -132,7 +156,8 @@ function targetDelta(state: GameState, effects: readonly Effect[], id: CardId): 
         break
       case 'moveToHand':
         // From the field this is removal (that side loses a body and keeps the card); from the Break Zone it is
-        // retrieval — pure gain, priced by the card itself.
+        // retrieval — pure gain, priced by the card itself. `cardValue` is what makes C2-9's "Character"
+        // retrieval (Forward, Backup OR Monster in one candidate list) rank across types rather than within one.
         d += loc ? -(power / 1000) : cardValue(def)
         break
       case 'addPower':
@@ -149,14 +174,17 @@ function targetDelta(state: GameState, effects: readonly Effect[], id: CardId): 
           d += protectionValue(state, loc.card, loc.zone === 'forwards')
         }
         break
-      default: break   // chooseTargets / chooseModes / forEach: nested, deliberately unpriced
+      // chooseTargets / chooseModes / forEach: nested, deliberately unpriced. `onSubject` (C2-5) belongs here
+      // too but for a different reason — it acts on the TRIGGER EVENT's card, never on the one being chosen, so
+      // its value is independent of this ranking whatever it contains.
+      default: break
     }
   }
   return d
 }
 
-const targetScore = (state: GameState, me: PlayerId, effects: readonly Effect[], id: CardId): number =>
-  (sideOf(state, id) === me ? 1 : -1) * targetDelta(state, effects, id)
+const targetScore = (state: GameState, me: PlayerId, source: CardId, effects: readonly Effect[], id: CardId): number =>
+  (sideOf(state, id) === me ? 1 : -1) * targetDelta(state, source, effects, id)
 
 /** Descending score, ties broken by ascending id/index — a total order, so ranking is deterministic. */
 function rankBy(items: readonly number[], score: (x: number) => number): { ranked: number[]; scores: number[] } {
@@ -206,12 +234,12 @@ function effectsValue(state: GameState, me: PlayerId, source: CardId, controller
   let v = 0
   for (const eff of effects) {
     if (eff.kind === 'chooseTargets') {
-      const { scores } = rankBy(targetCandidates(state, source, controller, eff.from), (id) => targetScore(state, me, eff.then, id))
+      const { scores } = rankBy(targetCandidates(state, source, controller, eff.from), (id) => targetScore(state, me, source, eff.then, id))
       const max = Math.min(eff.max, scores.length)
       if (eff.min > scores.length) continue   // cannot legally resolve: the executor no-ops it
       for (let k = 0; k < bestSize(scores, Math.min(eff.min, max), max); k++) v += scores[k] as number
     } else if (eff.kind === 'forEach') {
-      for (const id of targetCandidates(state, source, controller, eff.from)) v += targetScore(state, me, eff.do, id)
+      for (const id of targetCandidates(state, source, controller, eff.from)) v += targetScore(state, me, source, eff.do, id)
     } else if (eff.kind === 'chooseModes') {
       const { scores } = rankBy(eff.modes.map((_, i) => i), (i) => effectsValue(state, me, source, controller, eff.modes[i]?.effects ?? []))
       const max = Math.min(eff.max, scores.length)
@@ -223,9 +251,10 @@ function effectsValue(state: GameState, me: PlayerId, source: CardId, controller
 }
 
 function chooseTargetsCandidates(state: GameState, player: PlayerId, pending: Extract<Pending, { kind: 'chooseTargets' }>): Command[] {
+  const frame = state.resolution.active
   const node = suspendedEffect(state)
-  if (node?.kind !== 'chooseTargets') return legalCommands(state, player).filter((c) => c.type === 'chooseTargets')
-  const { ranked, scores } = rankBy(pending.candidates, (id) => targetScore(state, player, node.then, id))
+  if (!frame || node?.kind !== 'chooseTargets') return legalCommands(state, player).filter((c) => c.type === 'chooseTargets')
+  const { ranked, scores } = rankBy(pending.candidates, (id) => targetScore(state, player, frame.source, node.then, id))
   const picks = policyChoices(ranked, scores, pending.min, Math.min(pending.max, ranked.length))
   // Sorted so the emitted command is structurally identical to the one `legalCommands` lists for the same set.
   // Target order is semantically irrelevant (`applyChooseTargets` is order-insensitive), but any consumer that

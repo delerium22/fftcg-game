@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type PlayerView,
+  type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type PlayerView, type TriggerEvent,
 } from '@fftcg/engine'
 import { GreedyAgent, preferredPayment } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
@@ -382,6 +382,58 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
     expect(promptFor(nestedView(1))).toBe('Noel: choose 1 Forward the AI controls to give Haste')
     expect(describeChoice(nestedView(0), targets([901]))).toBe('Dull Cloud')
     expect(describeChoice(nestedView(1), targets([901]))).toBe('Give Haste to Cloud')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Observer triggers (rung C2)
+// ---------------------------------------------------------------------------
+
+describe('a prompt raised by an observer trigger names its cause (spec C2-5)', () => {
+  /*
+   * The C2 shape, in fixture form: the clause belongs to a card the event did NOT happen to, so a prompt that
+   * says only "choose 1 Forward you control" leaves the player with no way to connect it to the board. The
+   * cause is read off `Frame.triggerEvent` — the authority, already in the view as plain data.
+   */
+  const HASTE_ON_BREAK: Ability = {
+    id: 'test:watch', trigger: { kind: 'observesZoneChange', from: 'field', to: 'breakZone', whose: 'opponent', of: 'forward' },
+    text: 'When a Forward opponent controls is put from the field into the Break Zone, choose 1 Forward you control. It gains Haste until the end of the turn.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'grantKeyword', keyword: 'haste' }] }],
+  }
+  const MINE: CardId = 901, THEIRS: CardId = 902
+
+  const watchView = (triggerEvent: TriggerEvent | null): PlayerView => {
+    const v = suspendedView(HASTE_ON_BREAK, NOEL)
+    instance(v, MINE, CLOUD, HUMAN)
+    instance(v, THEIRS, SPHENE, AI)
+    v.fields[HUMAN].forwards = [fieldCard(MINE)]
+    v.fields[AI].breakZone = [THEIRS]
+    v.resolution = { ...v.resolution, active: { ...v.resolution.active!, triggerEvent } }
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [MINE] }
+    return v
+  }
+  const ask = 'Noel: choose 1 Forward you control to give Haste'
+
+  it('leads with the cause, then the ask', () => {
+    const broken: TriggerEvent = { kind: 'zoneChange', card: THEIRS, from: 'field', to: 'breakZone', controller: AI, owner: AI }
+    expect(promptFor(watchView(broken))).toBe(`The AI's Sphene was broken — ${ask}`)
+  })
+
+  it('C2-10: reads "opponent" from the ability controller, so it flips with the seat', () => {
+    const mineBroken: TriggerEvent = { kind: 'zoneChange', card: MINE, from: 'field', to: 'breakZone', controller: HUMAN, owner: HUMAN }
+    expect(promptFor(watchView(mineBroken))).toBe(`Your Cloud was broken — ${ask}`)
+  })
+
+  it('names a damage cause, to a Forward or to a player', () => {
+    const onForward: TriggerEvent = { kind: 'damage', source: MINE, sourceController: HUMAN, target: THEIRS, victim: null, amount: 3000 }
+    expect(promptFor(watchView(onForward))).toBe(`Cloud dealt 3000 damage to Sphene — ${ask}`)
+    const onPlayer: TriggerEvent = { kind: 'damage', source: MINE, sourceController: HUMAN, target: null, victim: AI, amount: 1 }
+    expect(promptFor(watchView(onPlayer))).toBe(`Cloud dealt damage to the AI — ${ask}`)
+  })
+
+  it('says nothing extra for a clause about its own card', () => {
+    // `enterField`/`summonResolve` carry no trigger event: rung C1's wording is unchanged, to the character.
+    expect(promptFor(watchView(null))).toBe(ask)
   })
 })
 

@@ -249,3 +249,105 @@ describe('candidateCommands: the C1 one-ply target policy', () => {
     expect(candidateCommands(forgedModes, 0)).toEqual(legalCommands(forgedModes, 0).filter((c) => c.type === 'chooseMode'))
   })
 })
+
+/**
+ * Rung C2. The policy gains little new machinery — `targetDelta` already ranked damage by whether it breaks, and
+ * Break-Zone retrieval by `cardValue`. What IS new: a clause's value can depend on the source's OTHER clauses
+ * (Luso breaks what it damages), and one candidate list can span several card TYPES (spec C2-9).
+ */
+describe('candidateCommands: the C2 shapes', () => {
+  /** Luso's `27-125S:damages-forward` as a shape: any damage this card deals to a Forward breaks it (spec C2-5). */
+  const BREAKS_WHAT_IT_DAMAGES: Ability = {
+    id: 'T-LUSO:damages-forward', trigger: { kind: 'dealtDamage', to: 'forward', whose: 'any' },
+    text: 'When this Forward deals damage to a Forward, break it.',
+    effects: [{ kind: 'onSubject', do: [{ kind: 'breakCard' }] }],
+  }
+  const DEAL_3000 = clause('T-LUSO:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 3000 }] }])
+  const CHARACTER = { types: ['forward', 'backup', 'monster'] } as const
+
+  it('damage from a source that breaks what it damages takes the BIGGEST Forward, not the one 3000 kills by itself', () => {
+    // Luso's "Deal it 3000 damage" mode. §12.4.5 alone breaks only the 3000-power Forward; Luso's own damage
+    // trigger breaks whatever it hit, so the 9000 dies too — and it is worth far more.
+    const luso = makeDef({ code: 'T-LUSO', cost: 1, power: 3000, hasAbilities: true, abilityClauses: 2, abilities: [DEAL_3000, BREAKS_WHAT_IT_DAMAGES] })
+    const plain = makeDef({ code: 'T-PLAIN', cost: 1, power: 3000, hasAbilities: true, abilityClauses: 1, abilities: [DEAL_3000] })
+    const build = (def: CardDef): [GameState, CardId, CardId] => {
+      let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, def] }), 0, 0)
+      let src: number, small: number, big: number
+      ;[s, src] = withField(s, 0, 'forwards', def.code)
+      ;[s, small] = withField(s, 1, 'forwards', 'V-F1')   // 3000: 3000 damage breaks it under §12.4.5 alone
+      ;[s, big] = withField(s, 1, 'forwards', 'V-F8')     // 9000: only the cascade kills it — and it is worth more
+      return [arm(s, src, 0, DEAL_3000), small, big]
+    }
+    const [withCascade, , big] = build(luso)
+    expect(targetsOf(candidateCommands(withCascade, 0)[0])).toEqual([big])
+    // …and the cascade is real, not an assumption about the engine: play the pick out.
+    const resolved = apply(withCascade, candidateCommands(withCascade, 0)[0] as Command).state
+    expect(resolved.players[1].breakZone).toContain(big)
+    // Control: the SAME board with the second clause removed ranks the other way, so this is that clause's doing.
+    const [without, small] = build(plain)
+    expect(targetsOf(candidateCommands(without, 0)[0])).toEqual([small])
+  })
+
+  it('C2-9 "Character" retrieval ranks across TYPES by `cardValue`, and never offers the Summon', () => {
+    const a = clause('T-RET:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'breakZone', controller: 'self', filter: CHARACTER }, then: [{ kind: 'moveToHand' }] }])
+    const tiny = makeDef({ code: 'T-TINY', cost: 1, power: 1000 })   // cardValue 2.5 — BELOW a cost-1 Backup's 3.35
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, tiny, bearer('T-RET', a)] }), 0, 0)
+    let src: number, summon: number, backup: number, forward: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-RET')
+    ;[s, summon] = withBreakZone(s, 0, 'V-S2')    // not a Character (§7.2) — the engine must not even offer it
+    ;[s, forward] = withBreakZone(s, 0, 'T-TINY')
+    ;[s, backup] = withBreakZone(s, 0, 'V-B1')
+    s = arm(s, src, 0, a)
+    const offered = s.pending?.kind === 'chooseTargets' ? s.pending.candidates : []
+    expect(offered).toEqual([forward, backup])
+    expect(cardValue(defOf(s, backup))).toBeGreaterThan(cardValue(defOf(s, forward)))   // the fixture inverts type order
+    expect(targetsOf(candidateCommands(s, 0)[0])).toEqual([backup])                     // …and the policy follows value, not type
+    for (const cmd of candidateCommands(s, 0)) {
+      expect(targetsOf(cmd)).not.toContain(summon)
+      expect(() => apply(s, cmd)).not.toThrow()
+    }
+  })
+
+  it('Luso c2\'s "select up to 2 of the 2" — takes both modes when both pay, and plays the whole chain out', () => {
+    const a = clause('T-MODAL2:etb', [{
+      kind: 'chooseModes', min: 0, max: 2, modes: [
+        { label: 'Choose 1 Forward. Deal it 3000 damage.', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'damage', amount: 3000 }] }] },
+        { label: 'Choose 1 Character in your Break Zone. Add it to your hand.', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'breakZone', controller: 'self', filter: CHARACTER }, then: [{ kind: 'moveToHand' }] }] },
+      ],
+    }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-MODAL2', a)] }), 0, 0)
+    let src: number, victim: number, prize: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-MODAL2')
+    ;[s, victim] = withField(s, 1, 'forwards', 'V-F1')   // 3000: the damage mode kills it outright
+    ;[s, prize] = withBreakZone(s, 0, 'V-F8')
+    s = arm(s, src, 0, a)
+    expect(s.pending?.kind).toBe('chooseMode')
+    expect(modesOf(candidateCommands(s, 0)[0])).toEqual([0, 1])   // "up to 2" and both are worth taking
+    // Walk the cascade the way `resolveForcedDecisions` does: every answer is the policy's own first candidate.
+    let t = s
+    for (let i = 0; i < 4 && t.pending; i++) t = apply(t, candidateCommands(t, 0)[0] as Command).state
+    expect(t.pending).toBeNull()
+    expect(t.players[0].hand).toContain(prize)          // the retrieval mode ran
+    expect(t.players[1].breakZone).toContain(victim)    // …and so did the damage mode, through §12.4.5
+    // "1 Forward" is either side's; the policy must not shoot its own source to satisfy a min-1 choice.
+    expect(t.players[0].forwards.some((c) => c.id === src)).toBe(true)
+  })
+
+  it('an observer-trigger clause is ranked like any other: Haste goes to the Forward it actually unlocks', () => {
+    // Lightning's `27-127S:opponent-forward-broken`. The policy reads the frame's AST, never its trigger, so the
+    // new trigger kind must change nothing about how the clause's own choice is answered (spec C2-1).
+    const a: Ability = {
+      id: 'T-LIGHT:opponent-forward-broken', trigger: { kind: 'observesZoneChange', from: 'field', to: 'breakZone', whose: 'opponent', of: 'forward' },
+      text: 'When a Forward opponent controls is put from the field into the Break Zone, choose 1 Forward you control. It gains Haste until the end of the turn.',
+      effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'grantKeyword', keyword: 'haste' }] }],
+    }
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-LIGHT', a)] }), 0, 0)
+    let src: number, stale: number, fresh: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-LIGHT', { enteredTurn: 0 })
+    ;[s, stale] = withField(s, 0, 'forwards', 'V-F8', { enteredTurn: 0 })          // 9000, but already attack-eligible
+    ;[s, fresh] = withField(s, 0, 'forwards', 'V-F1', { enteredTurn: s.turn })     // 3000 that Haste actually unlocks
+    s = arm(s, src, 0, a)
+    expect(targetsOf(candidateCommands(s, 0)[0])).toEqual([fresh])
+    expect(stale).toBeGreaterThan(0)
+  })
+})

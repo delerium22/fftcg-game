@@ -36,6 +36,11 @@ function settle(state: GameState): [GameState, Event[]] {
   //  - Run them before RESUMING a frame, and they break a card the frame already chose: Ramuh may legally
   //    pick damage and Haste for the same Forward, and the Haste would silently skip a target the damage had
   //    just killed. A frame must be atomic across the commands that answer its prompts.
+  //
+  // Spec C2-6 REFINES that without disturbing any of the three: `drainResolution` now completes ONE frame and
+  // returns, so this loop gets a rule-process pass BETWEEN frames as well as before the first one. `active` is
+  // still the guard, so a suspended frame is still never interrupted — the fourth wrong ordering would be to
+  // resolve Luso's "break it" before §12.4.5 had broken the Forward Luso's own damage killed.
   for (;;) {
     if (!s.resolution.active) {
       const [ruled, ruleEvents] = runRuleProcesses(s)

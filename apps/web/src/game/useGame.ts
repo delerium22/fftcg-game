@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type Event, type FieldFlag, type GameState, type Keyword, type PlayerId, type PlayerView,
+  type AbilityTrigger, type CardId, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView,
 } from '@fftcg/engine'
 import { GreedyAgent, type Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { buildChoiceSet, describeChoice, preferredChoices, sameCommand } from './commands.js'
+import { buildChoiceSet, describeChoice, describeTriggerCause, preferredChoices, sameCommand, type TriggerCause } from './commands.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
 /** Spec B7: the agent decides in ~0.27 ms, far too fast to watch — one move per this many ms instead. */
@@ -44,8 +44,11 @@ function abilityText(v: PlayerView, card: number, abilityId: string): string | n
  * card it names has moved somewhere public (field, damage zone, break zone), so nothing here can name a card the
  * human may not see. `null` drops events the move line above them already states (`cast`, `attackDeclared`, the
  * CP that paid for them), keeping the log a narrative rather than a trace.
+ *
+ * `cause` is what fired an `abilityTriggered` (spec C2-5) — `eventLines` supplies it; it is ignored everywhere
+ * else. Callers narrating a single event out of context can leave it off.
  */
-export function describeEvent(v: PlayerView, e: Event): LogLine | null {
+export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | null = null): LogLine | null {
   switch (e.type) {
     case 'firstPlayerChosen': return { kind: 'phase', text: `${who(v, e.player)} take${e.player === v.me ? '' : 's'} the first turn` }
     case 'mulligan': return { kind: 'event', text: `${who(v, e.player)} ${whoDoes(v, e.player, e.redraw ? 'mulligan' : 'keep your hand', e.redraw ? 'mulligans' : 'keeps its hand')}` }
@@ -66,9 +69,14 @@ export function describeEvent(v: PlayerView, e: Event): LogLine | null {
     // --- ability resolution (rung C1). The choice itself is already a move line — the human's from `choose`,
     // the AI's from `stepAi` — so these narrate what triggered and what it DID, closing the loop between the
     // printed text box and the board state the player is looking at.
+    // C2: an OBSERVER trigger fires because of something that happened to a DIFFERENT card, so the cause goes
+    // in front of the printed text. "Lightning's ability triggers — the AI's Prishe was broken" is the only
+    // thing tying the prompt that follows to the board; and for a clause with no prompt at all (Luso's "break
+    // it") the log is the ONLY evidence the trigger happened.
     case 'abilityTriggered': {
       const text = abilityText(v, e.card, e.abilityId)
-      return { kind: 'event', text: `${name(v, e.card)}'s ability triggers${text ? `: "${text}"` : ''}` }
+      const why = cause ? ` — ${describeTriggerCause(v, cause)}` : ''
+      return { kind: 'event', text: `${name(v, e.card)}'s ability triggers${why}${text ? `: "${text}"` : ''}` }
     }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${name(v, e.card)}'s ability finds no legal target — nothing happens` }
     case 'dulled': return { kind: 'event', text: `${name(v, e.card)} is dulled` }
@@ -86,8 +94,114 @@ export function describeEvent(v: PlayerView, e: Event): LogLine | null {
   }
 }
 
-const eventLines = (v: PlayerView, events: Event[]): LogLine[] =>
-  events.map((e) => describeEvent(v, e)).filter((l): l is LogLine => l !== null)
+/** The clause an `abilityTriggered` names, from the AST on `CardDef` — its `trigger` says what fired it. */
+function triggerOf(v: PlayerView, card: CardId, abilityId: string): AbilityTrigger | null {
+  const code = v.cards[card]?.code
+  const def = code === undefined ? undefined : v.defs[code]
+  return def?.abilities?.find((a) => a.id === abilityId)?.trigger ?? null
+}
+
+/**
+ * §7.10 puts a broken card in its OWNER's Break Zone, which is where narration finds it once it has left the
+ * field. Owner and controller coincide for this pool — nothing in it changes control (rung C5) — so this is
+ * the controller the clause's `whose` is measured against.
+ */
+function holderOf(v: PlayerView, id: CardId): PlayerId {
+  for (const p of [0, 1] as const) if (v.fields[p].breakZone.includes(id)) return p
+  return v.cards[id]?.owner ?? v.me
+}
+
+interface Hit { readonly source: CardId; readonly target: CardId; readonly amount: number; used: boolean }
+interface PlayerHit { readonly victim: PlayerId; used: boolean }
+interface ZoneHit { readonly card: CardId; readonly controller: PlayerId; used: boolean }
+
+/**
+ * Pair one `abilityTriggered` with the event that fired it, consuming the candidate so the NEXT trigger of the
+ * same clause gets the next one (CR §11.8.6 / spec C2-A3: one Lightning watching two simultaneous breaks
+ * triggers twice, and the two lines must not both name the same Forward).
+ *
+ * `dealtDamage` is exact by construction: `enqueueDamageTriggers` hangs the clause off the DAMAGE SOURCE, so
+ * the watcher id IS the source to match on. `observesZoneChange` is matched on `whose` relative to the frame's
+ * own controller (`e.player`), never the turn player — spec C2-10, so the clause means the same from either
+ * seat. Anything unmatched returns null and the line simply loses its cause clause rather than gaining a
+ * wrong one.
+ */
+function causeOf(
+  v: PlayerView, e: Extract<Event, { type: 'abilityTriggered' }>,
+  hits: Hit[], playerHits: PlayerHit[], zoneHits: ZoneHit[],
+): TriggerCause | null {
+  const trigger = triggerOf(v, e.card, e.abilityId)
+  if (!trigger) return null
+  if (trigger.kind === 'dealtDamage') {
+    if (trigger.to === 'player') {
+      const hit = playerHits.find((h) => !h.used)
+      if (!hit) return null
+      hit.used = true
+      return { kind: 'damage', source: e.card, target: null, victim: hit.victim, amount: 1 }
+    }
+    const hit = hits.find((h) => !h.used && h.source === e.card)
+    if (!hit) return null
+    hit.used = true
+    return { kind: 'damage', source: hit.source, target: hit.target, victim: null, amount: hit.amount }
+  }
+  if (trigger.kind === 'observesZoneChange') {
+    const wants = (controller: PlayerId): boolean =>
+      trigger.whose === 'any' || (trigger.whose === 'self') === (controller === e.player)
+    const hit = zoneHits.find((h) => !h.used && wants(h.controller))
+    if (!hit) return null
+    hit.used = true
+    return { kind: 'zoneChange', card: hit.card, controller: hit.controller }
+  }
+  return null   // enterField/summonResolve are about the source itself — there is nothing to explain
+}
+
+/**
+ * Narrate one command's events, saying what each triggered clause was reacting to (spec C2-5).
+ *
+ * `queued` is the agenda queue as it stood BEFORE the command, and it is the exact answer wherever it reaches:
+ * those frames carry their own `triggerEvent`, `drainResolution` starts them FIFO, and starting a frame is what
+ * emits `abilityTriggered` — so the n-th trigger of the batch is `queued[n]`. That is what rescues a trigger
+ * whose cause happened in an EARLIER batch: a second Lightning occurrence sits in the queue across the prompt
+ * the first one raised, and by the time it starts, the break that fired it is long gone from the event stream.
+ *
+ * A frame both queued and drained inside THIS batch is in no queue anyone can see, so its cause is
+ * reconstructed from the events instead — `causeOf`. That is the common case (Luso's "break it" raises no
+ * prompt at all) and it is sound because the engine pushes a damage or break event before the trigger that
+ * event queues, transition-major (spec C2-11). Both routes are guarded: an unmatched trigger loses its cause
+ * clause rather than gaining a wrong one.
+ */
+export function eventLines(v: PlayerView, events: readonly Event[], queued: readonly Frame[] = []): LogLine[] {
+  const hits: Hit[] = []
+  const playerHits: PlayerHit[] = []
+  const zoneHits: ZoneHit[] = []
+  const lines: LogLine[] = []
+  let started = 0
+  for (const e of events) {
+    switch (e.type) {
+      // Combat and ability damage alike — the printed text says "deals damage" (spec C2-7).
+      case 'battleDamage':
+      case 'abilityDamage': hits.push({ source: e.source, target: e.target, amount: e.amount, used: false }); break
+      // `playerDamaged.card` is the card TAKEN as damage, not the dealer; the dealer is the watcher itself.
+      case 'playerDamaged': playerHits.push({ victim: e.player, used: false }); break
+      case 'broken':
+      case 'brokenByAbility':
+      case 'putIntoBreakZone': zoneHits.push({ card: e.card, controller: holderOf(v, e.card), used: false }); break
+      default: break
+    }
+    let cause: TriggerCause | null = null
+    if (e.type === 'abilityTriggered') {
+      const frame = queued[started++]
+      // The identity check is the guard on the FIFO assumption: mismatch means the queue is not what this
+      // trigger came from, so fall through to reconstruction rather than narrate another clause's subject.
+      cause = frame && frame.source === e.card && frame.abilityId === e.abilityId
+        ? frame.triggerEvent
+        : causeOf(v, e, hits, playerHits, zoneHits)
+    }
+    const line = describeEvent(v, e, cause)
+    if (line) lines.push(line)
+  }
+  return lines
+}
 
 /**
  * The view a command's events are narrated from: the state AFTER it, plus the cards that were public BEFORE.
@@ -114,7 +228,8 @@ export function stepAi(state: GameState, agent: Agent): { state: GameState; line
   const result = apply(state, command)
   // Label the move from the actor's own view, so a card only it can see still reads sensibly; everything after
   // is narrated from the human's view.
-  return { state: result.state, lines: [{ kind: 'ai', text: describeChoice(actorView, command) }, ...eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events)] }
+  const lines = eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, state.resolution.queue)
+  return { state: result.state, lines: [{ kind: 'ai', text: describeChoice(actorView, command) }, ...lines] }
 }
 
 const newGame = (seed: number): GameState => createGame({ seed, decks: DECKS, defs: CARD_DEFS })
@@ -152,7 +267,8 @@ export function useGame(seed?: number): GameApi {
     if (!legal.some((c) => sameCommand(c, choice.command))) throw new Error(`illegal command: ${choice.label}`)
     const before = viewFor(current, HUMAN)
     const result = apply(current, choice.command)
-    commit(result.state, [{ kind: 'human', text: describeChoice(before, choice.command) }, ...eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events)])
+    const lines = eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, current.resolution.queue)
+    commit(result.state, [{ kind: 'human', text: describeChoice(before, choice.command) }, ...lines])
   }, [commit])
 
   const restart = useCallback((): void => {

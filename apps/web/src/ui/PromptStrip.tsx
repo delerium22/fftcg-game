@@ -46,7 +46,10 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
   const text = view.result ? 'Game over'
     : aiThinking ? 'The AI is thinking'
     : !yours ? 'Waiting for the AI'
-    : cardOnly ? `${choices.prompt} — click a highlighted card`
+    // "·", not the em-dash the rest of the strip uses: rung C2 spends the dash on the trigger's CAUSE ("The
+    // AI's Luso was broken — Lightning: choose 1 Forward…"), and a second one would read as a third clause of
+    // the same sentence rather than as the standing instruction it is.
+    : cardOnly ? `${choices.prompt} · click a highlighted card`
     : choices.prompt
   return (
     <div className="prompt table__prompt">

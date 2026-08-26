@@ -1,15 +1,17 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type Ability, type CardDef, type CardId, type Command, type GameState, type PlayerView,
+  type Ability, type CardDef, type CardId, type Command, type Event, type FieldCard, type Frame, type GameState, type PlayerId, type PlayerView,
 } from '@fftcg/engine'
 import { GreedyAgent, type Agent } from '@fftcg/ai'
 import { withAbilities } from '@fftcg/cards'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { buildChoiceSet, describeChoice, preferredChoices, sameCommand } from '../src/game/commands.js'
-import { AI, HUMAN, type LogLine } from '../src/game/types.js'
-import { clickableChoices, orphanTargetIds } from '../src/ui/Board.js'
-import { describeEvent, narrator, stepAi } from '../src/game/useGame.js'
+import { AI, HUMAN, type ChoiceSet, type GameApi, type LogLine } from '../src/game/types.js'
+import { Board, clickableChoices, orphanTargetIds } from '../src/ui/Board.js'
+import { describeEvent, eventLines, narrator, stepAi } from '../src/game/useGame.js'
 
 const newGame = (seed: number, defs: CardDef[] = CARD_DEFS): GameState => createGame({ seed, decks: DECKS, defs })
 
@@ -83,8 +85,10 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
     commandTypes.add(choice!.command.type)
     const result = apply(state, choice!.command)
     log.push({ kind: 'human', text: describeChoice(view, choice!.command) })
-    const told = narrator(view, viewFor(result.state, HUMAN))
-    for (const e of result.events) { const line = describeEvent(told, e); if (line) log.push(line) }
+    // `eventLines`, not a per-event `describeEvent` map, and fed the pre-command agenda queue exactly as the
+    // hook feeds it: the C2 cause is threaded across the whole batch, so narrating one event at a time here
+    // would have silently tested a different log from the one the browser shows.
+    log.push(...eventLines(narrator(view, viewFor(result.state, HUMAN)), result.events, state.resolution.queue))
     state = result.state
     humanMoves++
   }
@@ -196,7 +200,11 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
         }
       }
     }
-    sweep(POLICIES, 12)
+    // 12 → 24. `assignPartyDamage` only ever comes from the BLIND policies: at a `declareBlock` decision there
+    // is no `assignPartyDamage` choice for `seeking` to steer at, so it falls back to index 0 — "don't block" —
+    // and the party split never happens. C2's clauses shortened games again (Luso and Lightning both remove a
+    // Forward), which pushed the first blind party split past seed 12. 20 is the smallest bound that passes.
+    sweep(POLICIES, 24)
     // Whatever the blind policies missed, go looking for on purpose.
     for (const type of need) if (!seen.has(type)) sweep([seeking(type)], 30)
     const missing = [...need].filter((t) => !seen.has(t))
@@ -421,5 +429,270 @@ describe('the shipped C1 clauses reach the UI (C1-A3)', () => {
     for (const r of results) expect(r).not.toBeNull()
     const missing = (['chooseTargets', 'chooseMode'] as const).filter((t) => !seen.has(t))
     expect(missing, `unreachable from the UI: ${missing.join(', ')}`).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Observer triggers (rung C2)
+// ---------------------------------------------------------------------------
+
+/*
+ * The shipped ASTs, not fixtures: `apps/web/src/deck.ts` already runs `withAbilities` over `cards.json`, so
+ * `CARD_DEFS` carries the real C2 clauses and these tests narrate the same clause the browser resolves.
+ */
+const LIGHTNING = '27-127S', LUSO = '27-125S', PRISHE = '22-068R', SPHENE = '27-126S'
+const LIGHTNING_ETB = '27-127S:etb'
+const LIGHTNING_WATCH = '27-127S:opponent-forward-broken'
+const LUSO_DAMAGES = '27-125S:damages-forward'
+
+const ids = { lightning: 900, sphene: 902, prishe: 901, luso: 903, victim: 904, aiLightning: 905, mine: 906 }
+
+/**
+ * A human view with the C2 cast already on the table: a Lightning per seat, the AI Forwards its clause watches
+ * sitting BROKEN in the AI's Break Zone — which is where narration has to find them, because they have left the
+ * field by the time the trigger resolves — and a Luso with a Forward it can damage.
+ */
+function c2View(): PlayerView {
+  const v = viewFor(newGame(1), HUMAN)
+  const put = (id: CardId, code: string, owner: PlayerId): CardId => { v.cards[id] = { id, code, owner }; return id }
+  put(ids.lightning, LIGHTNING, HUMAN)
+  put(ids.aiLightning, LIGHTNING, AI)
+  put(ids.prishe, PRISHE, AI)
+  put(ids.sphene, SPHENE, AI)
+  put(ids.luso, LUSO, HUMAN)
+  put(ids.victim, PRISHE, AI)
+  put(ids.mine, PRISHE, HUMAN)
+  v.fields[AI].breakZone = [ids.prishe, ids.sphene, ids.victim]
+  v.fields[HUMAN].breakZone = [ids.mine]
+  return v
+}
+
+const texts = (v: PlayerView, events: Event[]): string[] => eventLines(v, events).map((l) => l.text)
+const triggered = (player: PlayerId, card: CardId, abilityId: string): Event => ({ type: 'abilityTriggered', player, card, abilityId })
+
+describe('the log says WHY an observer trigger fired (spec C2-5)', () => {
+  it('names the card whose break fired it, not just the watcher', () => {
+    const out = texts(c2View(), [{ type: 'broken', card: ids.prishe }, triggered(HUMAN, ids.lightning, LIGHTNING_WATCH)])
+    expect(out[0]).toBe('Prishe is broken')
+    expect(out[1]).toContain("Lightning's ability triggers — the AI's Prishe was broken")
+    // the printed wording is still quoted after the cause — rung C1's contract, unchanged
+    expect(out[1]).toContain('It gains Haste until the end of the turn.')
+  })
+
+  it('C2-A3: two simultaneous breaks give two triggers that name DIFFERENT cards', () => {
+    const out = texts(c2View(), [
+      { type: 'broken', card: ids.prishe },
+      { type: 'broken', card: ids.sphene },
+      triggered(HUMAN, ids.lightning, LIGHTNING_WATCH),
+      triggered(HUMAN, ids.lightning, LIGHTNING_WATCH),
+    ])
+    expect(out[2]).toContain("the AI's Prishe was broken")
+    expect(out[3]).toContain("the AI's Sphene was broken")
+    expect(out[2]).not.toEqual(out[3])
+  })
+
+  it("C2-10: \"opponent controls\" is read from the WATCHER's seat, either way round", () => {
+    // Both sides lose a Forward in the same batch. The human's Lightning must name the AI's, the AI's must name
+    // the human's — a cause resolved against the turn player instead would give both lines the same card.
+    const out = texts(c2View(), [
+      { type: 'broken', card: ids.mine },
+      { type: 'broken', card: ids.prishe },
+      triggered(HUMAN, ids.lightning, LIGHTNING_WATCH),
+      triggered(AI, ids.aiLightning, LIGHTNING_WATCH),
+    ])
+    expect(out[2]).toContain("the AI's Prishe was broken")
+    expect(out[3]).toContain('your Prishe was broken')
+  })
+
+  it('leaves a self-trigger unexplained — there is nothing to explain', () => {
+    // Lightning's ETB is about Lightning. Its line keeps rung C1's exact wording, break in the batch or not.
+    const out = texts(c2View(), [{ type: 'broken', card: ids.prishe }, triggered(HUMAN, ids.lightning, LIGHTNING_ETB)])
+    expect(out[1]?.startsWith('Lightning\'s ability triggers: "EX BURST')).toBe(true)
+  })
+
+  it('recovers a cause from a frame that queued in an EARLIER batch', () => {
+    // CR §11.8.6's second occurrence waits in the agenda across the prompt the first one raised, so by the
+    // time it starts, the break that fired it is nowhere in this batch's events. The frame still carries its
+    // own `triggerEvent` (spec C2-5) — read it rather than let the line go bare.
+    const frame: Frame = {
+      abilityId: LIGHTNING_WATCH, source: ids.lightning, controller: HUMAN, path: [], chosen: [], modes: [],
+      triggerEvent: { kind: 'zoneChange', card: ids.sphene, from: 'field', to: 'breakZone', controller: AI, owner: AI },
+    }
+    const out = eventLines(c2View(), [triggered(HUMAN, ids.lightning, LIGHTNING_WATCH)], [frame]).map((l) => l.text)
+    expect(out[0]).toContain("the AI's Sphene was broken")
+  })
+
+  it('falls back to the events when the queue is not what this trigger came from', () => {
+    // A queue head belonging to another clause must never lend its subject: the identity check rejects it and
+    // the reconstruction takes over.
+    const other: Frame = {
+      abilityId: LUSO_DAMAGES, source: ids.luso, controller: HUMAN, path: [], chosen: [], modes: [],
+      triggerEvent: { kind: 'damage', source: ids.luso, sourceController: HUMAN, target: ids.victim, victim: null, amount: 3000 },
+    }
+    const out = eventLines(c2View(), [{ type: 'broken', card: ids.prishe }, triggered(HUMAN, ids.lightning, LIGHTNING_WATCH)], [other]).map((l) => l.text)
+    expect(out[1]).toContain("the AI's Prishe was broken")
+    expect(out[1]).not.toContain('damage')
+  })
+
+  it('drops the cause rather than inventing one when nothing matches', () => {
+    const bare = triggered(HUMAN, ids.lightning, LIGHTNING_WATCH)
+    expect(texts(c2View(), [bare])[0]).toBe(describeEvent(c2View(), bare)?.text)
+    expect(texts(c2View(), [bare])[0]).not.toContain('—')
+  })
+})
+
+describe('Luso has no prompt, so the log is the only evidence (spec C2-A5)', () => {
+  const abilityHit = (amount: number): Event => ({ type: 'abilityDamage', source: ids.luso, target: ids.victim, amount })
+  const combatHit = (amount: number): Event => ({ type: 'battleDamage', source: ids.luso, target: ids.victim, amount })
+
+  it('narrates the cause of a damage trigger, combat and ability alike (C2-7)', () => {
+    const v = c2View()
+    for (const hit of [abilityHit(3000), combatHit(3000)]) {
+      const out = texts(v, [hit, triggered(HUMAN, ids.luso, LUSO_DAMAGES)])
+      expect(out[1]).toContain("Luso's ability triggers — Luso dealt 3000 damage to Prishe")
+      expect(out[1]).toContain('When Luso deals damage to a Forward, break it.')
+    }
+  })
+
+  it('reads differently on lethal and non-lethal damage, which is the whole point', () => {
+    // Lethal: §12.4.5 broke it BEFORE the trigger resolved, so the break line comes first and Luso's own
+    // `breakCard` is a silent no-op. Non-lethal: the trigger does the breaking, and says so.
+    const lethal = texts(c2View(), [abilityHit(7000), { type: 'broken', card: ids.victim }, triggered(HUMAN, ids.luso, LUSO_DAMAGES)])
+    const survives = texts(c2View(), [abilityHit(3000), triggered(HUMAN, ids.luso, LUSO_DAMAGES), { type: 'brokenByAbility', card: ids.victim, source: ids.luso }])
+    const trigger = (out: string[]): number => out.findIndex((t) => t.includes('ability triggers'))
+    expect(trigger(lethal)).toBeGreaterThan(lethal.indexOf('Prishe is broken'))
+    expect(lethal.some((t) => t.includes('is broken by Luso'))).toBe(false)
+    expect(trigger(survives)).toBeLessThan(survives.findIndex((t) => t.includes('is broken by Luso')))
+    expect(lethal).not.toEqual(survives)
+  })
+
+  it('C2-8: picks its OWN hit out of a party, not whichever landed first', () => {
+    // A party's damage is simultaneous, and Luso may be second in field order. Pairing on position alone would
+    // put the other attacker's victim in Luso's line — the array-position bug C2-8 names, wearing a log line.
+    const out = texts(c2View(), [
+      { type: 'battleDamage', source: ids.mine, target: ids.sphene, amount: 5000 },
+      { type: 'battleDamage', source: ids.luso, target: ids.victim, amount: 3000 },
+      triggered(HUMAN, ids.luso, LUSO_DAMAGES),
+    ])
+    expect(out[2]).toContain('Luso dealt 3000 damage to Prishe')
+    expect(out[2]).not.toContain('Sphene')
+  })
+
+  it("does not steal a break trigger's cause, and is not stolen from", () => {
+    // Luso's damage trigger and Lightning's break trigger are queued from the SAME batch. Each has to take the
+    // candidate of its own KIND: pairing on position alone would cross them.
+    const out = texts(c2View(), [
+      abilityHit(7000), { type: 'broken', card: ids.victim },
+      triggered(HUMAN, ids.luso, LUSO_DAMAGES),
+      triggered(HUMAN, ids.lightning, LIGHTNING_WATCH),
+    ])
+    expect(out.find((t) => t.startsWith("Luso's"))).toContain('Luso dealt 7000 damage to Prishe')
+    expect(out.find((t) => t.startsWith("Lightning's"))).toContain("the AI's Prishe was broken")
+  })
+})
+
+describe('the C2 cascade reaches a real game (C2-A8/C2-A13)', () => {
+  // Sweep seeds and policies until the SHIPPED observer clauses fire in games that all reach a result.
+  const games: PlayedGame[] = []
+  const caused: string[] = []
+  for (let seed = 1; seed <= 24 && caused.length < 2; seed++) {
+    for (const policy of POLICIES) {
+      const played = playFullGame(seed, policy)
+      games.push(played)
+      for (const l of played.log) if (l.text.includes('ability triggers — ')) caused.push(l.text)
+      if (caused.length >= 2) break
+    }
+  }
+
+  it('drives every game to a result with the C2 clauses live', () => {
+    expect(games.length).toBeGreaterThan(0)
+    for (const g of games) expect(g.state.result, 'a C2 clause dead-ended the driver').not.toBeNull()
+  })
+
+  it('narrates an observer trigger with its cause in a real game log', () => {
+    expect(caused.length, 'no shipped C2 clause ever triggered — the narration is untested').toBeGreaterThan(0)
+    // cause first, printed contract after: both halves, on every such line.
+    for (const line of caused) expect(line).toMatch(/ability triggers — .+: ".+"/)
+  })
+
+  it('shows both shipped C2 clauses firing across the sweep', () => {
+    const all = games.flatMap((g) => g.log.map((l) => l.text))
+    expect(all.some((t) => t.includes("Luso's ability triggers — Luso dealt"))).toBe(true)
+    expect(all.some((t) => t.includes("Lightning's ability triggers — ") && t.includes('was broken'))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Every target stays clickable (spec B-A4 / C2-A13)
+// ---------------------------------------------------------------------------
+
+const fieldCard = (id: CardId): FieldCard =>
+  ({ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [] })
+
+/** What the board would really hand a mouse: its markup, and the buttons in it. */
+function renderBoard(view: PlayerView, choices: ChoiceSet): string {
+  const game: GameApi = { view, choices, log: [], aiThinking: false, choose: () => undefined, restart: () => undefined }
+  return renderToStaticMarkup(createElement(Board, { game }))
+}
+
+describe('a target the board draws in no named zone is still a real button', () => {
+  /*
+   * C1 dead-ended on exactly this: Billy Bob's Break-Zone target lived in `byCard` under an id no component
+   * rendered, so the strip offered Concede alone while telling the player to click a highlighted card. C2-9
+   * widens the class — "Character" is Forward, Backup OR Monster, and both Prishe's and Luso's retrieval reach
+   * for one — so a BACKUP in the Break Zone is the case to prove, not another Forward.
+   */
+  const REEVE = '20-105C'
+  const backup: CardId = 910, onField: CardId = 911
+  const setup = (): { v: PlayerView; choices: ChoiceSet } => {
+    const v = viewFor(newGame(1), HUMAN)
+    v.cards[backup] = { id: backup, code: REEVE, owner: HUMAN }
+    v.cards[onField] = { id: onField, code: PRISHE, owner: HUMAN }
+    v.fields[HUMAN].breakZone = [backup]
+    v.fields[HUMAN].forwards = [fieldCard(onField)]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [backup] }
+    const choices = buildChoiceSet(v, [
+      { type: 'chooseTargets', player: HUMAN, targets: [backup] },
+      { type: 'concede', player: HUMAN },
+    ])
+    return { v, choices }
+  }
+
+  it('is an orphan target, and every byCard key survives into the clickable set', () => {
+    const { v, choices } = setup()
+    expect(orphanTargetIds(v, choices)).toEqual([backup])
+    const clickable = new Set(clickableChoices(v, choices).map((c) => c.card))
+    for (const id of choices.byCard.keys()) expect(clickable.has(id)).toBe(true)
+  })
+
+  it('renders as a <button> the human can actually press', () => {
+    const { v, choices } = setup()
+    const html = renderBoard(v, choices)
+    expect(html).toContain('Choose a card')   // the orphan row exists at all
+    expect(html).toMatch(new RegExp(`<button[^>]*aria-label="${v.defs[REEVE]!.name}[^"]*"`))
+    // and the strip says so: this is the exact state that offered Concede alone in C1
+    expect(html).toContain('click a highlighted card')
+    // and it is not merely present: the Forward on the field is no candidate, so it stays a plain <div>
+    expect(html).toMatch(new RegExp(`<div[^>]*aria-label="${v.defs[PRISHE]!.name}[^"]*"`))
+  })
+
+  it('leaves no clickable choice off the board across a real game', () => {
+    // The sweep's guard asserted DIRECTLY, rather than inferred from the driver not getting stuck.
+    let state = newGame(3)
+    const agent = new GreedyAgent({ seed: 3, decks: DECKS, depth: 1 })
+    let checked = 0
+    for (let step = 0; step < 2000 && !state.result; step++) {
+      if (actingPlayer(state) === AI) { state = stepAi(state, agent).state; continue }
+      const view = viewFor(state, HUMAN)
+      const choices = buildChoiceSet(view, preferredChoices(view, legalCommands(state, HUMAN)))
+      const usable = clickableChoices(view, choices)
+      const clickable = new Set(usable.map((c) => c.card))
+      for (const id of choices.byCard.keys()) expect(clickable.has(id), `card ${id} is targetable but unreachable`).toBe(true)
+      checked++
+      const next = usable.find((c) => c.command.type !== 'concede')
+      if (!next) break
+      state = apply(state, next.command).state
+    }
+    expect(checked).toBeGreaterThan(20)
   })
 })
