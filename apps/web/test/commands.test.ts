@@ -189,17 +189,17 @@ function instance(v: PlayerView, id: CardId, code: string, owner = HUMAN): CardI
 }
 
 const DULL_UP_TO_2: Ability = {
-  id: 'test:dull2', trigger: 'enterField',
+  id: 'test:dull2', trigger: { kind: 'enterField' },
   text: 'When Noel enters the field, choose up to 2 Forwards opponent controls. Dull them.',
   effects: [{ kind: 'chooseTargets', min: 0, max: 2, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }],
 }
 const DULL_EXACTLY_1: Ability = {
-  id: 'test:dull1', trigger: 'enterField',
+  id: 'test:dull1', trigger: { kind: 'enterField' },
   text: 'When Noel enters the field, choose 1 Forward opponent controls. Dull it.',
   effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }],
 }
 const RETURN_FROM_BREAK: Ability = {
-  id: 'test:retrieve', trigger: 'enterField',
+  id: 'test:retrieve', trigger: { kind: 'enterField' },
   text: 'When Billy Bob enters the field, choose 1 Forward in your Break Zone. Return it to your hand.',
   effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'breakZone', controller: 'self' }, then: [{ kind: 'moveToHand' }] }],
 }
@@ -209,7 +209,7 @@ const MODE_LABELS = [
   'All the Forwards you control gain Haste until the end of the turn.',
 ]
 const THREE_MODES: Ability = {
-  id: 'test:modes', trigger: 'summonResolve',
+  id: 'test:modes', trigger: { kind: 'summonResolve' },
   text: 'Select up to 2 of the 3 following.',
   effects: [{ kind: 'chooseModes', min: 0, max: 2, modes: MODE_LABELS.map((label) => ({ label, effects: [] })) }],
 }
@@ -224,7 +224,7 @@ function suspendedView(ability: Ability, sourceCode: string): PlayerView {
   const source = instance(v, 900, sourceCode)
   v.defs[sourceCode] = { ...(v.defs[sourceCode] as CardDef), abilities: [ability] }
   v.resolution = {
-    active: { abilityId: ability.id, source, controller: HUMAN, path: [], chosen: [], modes: [] },
+    active: { abilityId: ability.id, source, controller: HUMAN, path: [], chosen: [], modes: [], triggerEvent: null },
     queue: [], continuation: null, steps: 1,
   }
   return v
@@ -356,7 +356,7 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
   // Both printed modes choose "1 Forward", so scanning the AST for a matching node is ambiguous by
   // construction. The program counter is what says WHICH one is running, and the wording must follow it.
   const NESTED: Ability = {
-    id: 'test:nested', trigger: 'enterField',
+    id: 'test:nested', trigger: { kind: 'enterField' },
     text: 'Select 1 of the 2 following actions.',
     effects: [{
       kind: 'chooseModes', min: 1, max: 1,

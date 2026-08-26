@@ -61,7 +61,7 @@ export const ABILITY_CLAUSES: Record<string, number> = {
  */
 const NOEL_ETB: Ability = {
   id: '16-092C:etb',
-  trigger: 'enterField',
+  trigger: { kind: 'enterField' },
   text: 'EX BURST When Noel enters the field, choose up to 2 Forwards opponent controls. Dull them.',
   effects: [{
     kind: 'chooseTargets', min: 0, max: 2,
@@ -81,7 +81,7 @@ const NOEL_ETB: Ability = {
  */
 const SHANTOTTO_ETB: Ability = {
   id: '12-120C:etb',
-  trigger: 'enterField',
+  trigger: { kind: 'enterField' },
   text: 'When Shantotto enters the field, select 1 of the 2 following actions.\n'
     + '"Choose 1 Forward other than Shantotto. It gains Haste until the end of the turn."\n'
     + '"Choose 1 Forward you control. It gains ‘This Forward cannot be broken’ until the end of the turn."',
@@ -118,7 +118,7 @@ const SHANTOTTO_ETB: Ability = {
  */
 const CLOUD_ETB: Ability = {
   id: '27-124S:etb',
-  trigger: 'enterField',
+  trigger: { kind: 'enterField' },
   text: 'When Cloud enters the field, until the end of the turn, all the Forwards you control gain 3000 power and Brave.',
   effects: [{
     kind: 'forEach',
@@ -137,7 +137,7 @@ const CLOUD_ETB: Ability = {
  */
 const BILLY_BOB_ETB: Ability = {
   id: '18-124C:etb',
-  trigger: 'enterField',
+  trigger: { kind: 'enterField' },
   text: 'When Billy Bob enters the field, choose 1 Forward other than Card Name Billy Bob in your Break Zone. Add it to your hand.',
   effects: [{
     kind: 'chooseTargets', min: 1, max: 1,
@@ -160,7 +160,7 @@ const BILLY_BOB_ETB: Ability = {
  */
 const RAMUH_SUMMON: Ability = {
   id: '20-103H:summon',
-  trigger: 'summonResolve',
+  trigger: { kind: 'summonResolve' },
   text: 'Select up to 2 of the 3 following actions.\n'
     + '"Choose 1 Forward. Dull it."\n'
     + '"Choose 1 Forward. Deal it 5000 damage."\n'

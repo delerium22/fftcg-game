@@ -5,7 +5,7 @@ import { cardValue } from '../src/cardValue.js'
 import { VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 /** A synthetic one-clause ability. The AI lane never depends on a real card: the policy reads the AST, not the code. */
-const clause = (id: string, effects: readonly Effect[]): Ability => ({ id, trigger: 'enterField', text: `synthetic clause ${id}`, effects })
+const clause = (id: string, effects: readonly Effect[]): Ability => ({ id, trigger: { kind: 'enterField' }, text: `synthetic clause ${id}`, effects })
 const bearer = (code: string, a: Ability): CardDef => makeDef({ code, hasAbilities: true, abilityClauses: 1, abilities: [a] })
 
 /** Put the clause on the agenda and run it until it asks its question — exactly the state `candidateCommands` meets in play. */

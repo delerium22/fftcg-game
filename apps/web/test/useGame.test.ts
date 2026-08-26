@@ -238,7 +238,7 @@ describe('viewFor hides the AI hand throughout (B-A3)', () => {
  * a bounded seed sweep instead of depending on which real clauses have landed and how often they get cast.
  */
 const DULL_TWO: Ability = {
-  id: 'ui-fixture:etb-dull', trigger: 'enterField',
+  id: 'ui-fixture:etb-dull', trigger: { kind: 'enterField' },
   text: 'When this Forward enters the field, choose up to 2 other Forwards. Dull them.',
   effects: [{
     kind: 'chooseTargets', min: 0, max: 2,
@@ -247,7 +247,7 @@ const DULL_TWO: Ability = {
   }],
 }
 const THREE_MODES: Ability = {
-  id: 'ui-fixture:summon-modes', trigger: 'summonResolve',
+  id: 'ui-fixture:summon-modes', trigger: { kind: 'summonResolve' },
   text: 'Select up to 2 of the 3 following. Deal 3000 damage to all the Forwards opponent controls. Choose 1 Forward. Dull it. All the Forwards you control gain Haste until the end of the turn.',
   effects: [{
     kind: 'chooseModes', min: 0, max: 2,

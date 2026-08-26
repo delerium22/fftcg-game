@@ -29,7 +29,7 @@ import { deckOf, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './
 const ID = 'T-SRC:etb'
 
 function srcDef(effects: readonly Effect[], over: Partial<CardDef> = {}): CardDef {
-  const ability: Ability = { id: ID, trigger: 'enterField', text: 'synthetic test clause', effects }
+  const ability: Ability = { id: ID, trigger: { kind: 'enterField' }, text: 'synthetic test clause', effects }
   return makeDef({ code: 'T-SRC', cost: 1, power: 1000, text: 'synthetic test clause', hasAbilities: true, abilityClauses: 1, abilities: [ability], ...over })
 }
 
@@ -419,7 +419,7 @@ describe('per-clause coverage warnings (spec C1-9)', () => {
   })
 
   it('a Summon with an implemented summonResolve clause resolves instead of reporting no effect', () => {
-    const ability: Ability = { id: 'T-SUM:resolve', trigger: 'summonResolve', text: 'Deal 2000 damage to all opponent Forwards.', effects: [{ kind: 'forEach', from: { zone: 'forwards', controller: 'opponent' }, do: [{ kind: 'damage', amount: 2000 }] }] }
+    const ability: Ability = { id: 'T-SUM:resolve', trigger: { kind: 'summonResolve' }, text: 'Deal 2000 damage to all opponent Forwards.', effects: [{ kind: 'forEach', from: { zone: 'forwards', controller: 'opponent' }, do: [{ kind: 'damage', amount: 2000 }] }] }
     const def = makeDef({ code: 'T-SUM', type: 'summon', cost: 1, power: null, hasAbilities: true, abilityClauses: 1, abilities: [ability], text: ability.text })
     let { s, bk, card } = castable(def); let victim: CardId
     ;[s, victim] = withField(s, 1, 'forwards', 'V-F8')
@@ -439,7 +439,7 @@ describe('per-clause coverage warnings (spec C1-9)', () => {
 const FUZZ_POOL: CardDef[] = VANILLA_POOL.map((d, i) => {
   if (d.type === 'forward' && i % 2 === 0) {
     return makeDef({ ...d, hasAbilities: true, abilityClauses: 2, abilities: [{
-      id: `${d.code}:etb`, trigger: 'enterField', text: 'synthetic modal ETB', effects: [
+      id: `${d.code}:etb`, trigger: { kind: 'enterField' }, text: 'synthetic modal ETB', effects: [
         { kind: 'chooseModes', min: 0, max: 2, modes: [
           { label: 'dull up to 2', effects: [{ kind: 'chooseTargets', min: 1, max: 2, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] },
           { label: 'pump the team', effects: [{ kind: 'forEach', from: { zone: 'forwards', controller: 'self' }, do: [{ kind: 'addPower', amount: 1000 }, { kind: 'grantKeyword', keyword: 'haste' }] }] },
@@ -450,7 +450,7 @@ const FUZZ_POOL: CardDef[] = VANILLA_POOL.map((d, i) => {
   }
   if (d.type === 'summon') {
     return makeDef({ ...d, hasAbilities: true, abilityClauses: 1, abilities: [{
-      id: `${d.code}:resolve`, trigger: 'summonResolve', text: 'synthetic summon effect', effects: [
+      id: `${d.code}:resolve`, trigger: { kind: 'summonResolve' }, text: 'synthetic summon effect', effects: [
         { kind: 'chooseTargets', min: 0, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'damage', amount: 7000 }, { kind: 'grantFlag', flag: 'cannotBeBroken' }] },
       ],
     }] })

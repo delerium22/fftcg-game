@@ -54,7 +54,7 @@ function warnUnimplemented(def: CardDef, card: CardId, events: Event[]): void {
 /** Queue every implemented clause with this trigger, in printed order (spec C1-4: no stack, they drain immediately). */
 function dispatch(state: GameState, def: CardDef, card: CardId, controller: PlayerId, trigger: AbilityTrigger): GameState {
   let s = state
-  for (const ability of def.abilities ?? []) if (ability.trigger === trigger) s = enqueueTrigger(s, card, controller, ability)
+  for (const ability of def.abilities ?? []) if (ability.trigger.kind === trigger.kind) s = enqueueTrigger(s, card, controller, ability)
   return s
 }
 
@@ -74,7 +74,7 @@ export function applyCastCharacter(state: GameState, player: PlayerId, card: Car
   events.push({ type: 'cast', player, card, cardType: def.type })
   warnUnimplemented(def, card, events)
   // `enterField`, not `cast`: C2's Hugh Yurg puts a Character onto the field without casting it (spec C1-2).
-  s = dispatch(s, def, card, player, 'enterField')
+  s = dispatch(s, def, card, player, { kind: 'enterField' })
   return [s, events]
 }
 
@@ -89,8 +89,8 @@ export function applyCastSummon(state: GameState, player: PlayerId, card: CardId
   let s = updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card), breakZone: [...ps.breakZone, card] }))
   events.push({ type: 'cast', player, card, cardType: 'summon' })
   warnUnimplemented(def, card, events)
-  const resolves = (def.abilities ?? []).some((a) => a.trigger === 'summonResolve')
-  s = dispatch(s, def, card, player, 'summonResolve')
+  const resolves = (def.abilities ?? []).some((a) => a.trigger.kind === 'summonResolve')
+  s = dispatch(s, def, card, player, { kind: 'summonResolve' })
   if (!resolves) events.push({ type: 'summonResolvedNoEffect', card })
   return [s, events]
 }

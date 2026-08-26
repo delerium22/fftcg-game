@@ -23,6 +23,11 @@ export type TargetController = 'self' | 'opponent' | 'any'
 
 export interface TargetFilter {
   readonly type?: CardType
+  /**
+   * Any of these types. "Character" is Forward, Backup OR Monster — never Summon — and a single `type`
+   * cannot say that, which both Prishe's and Luso's Break-Zone retrieval need (spec C2-9).
+   */
+  readonly types?: readonly CardType[]
   readonly element?: Element
   /** Inclusive printed-cost ceiling, e.g. Lightning's "cost 4 or less" (C2). */
   readonly maxCost?: number
@@ -59,6 +64,13 @@ export type Effect =
   | { readonly kind: 'grantKeyword'; readonly keyword: Keyword }
   | { readonly kind: 'grantFlag'; readonly flag: FieldFlag }
   | { readonly kind: 'moveToHand' }
+  /**
+   * Act on the card the TRIGGER EVENT is about — Luso's "break **it**" (spec C2-5). Binds `chosen` to the
+   * event's subject and runs `do`, so every existing effect works on it unchanged. Deliberately NOT a target
+   * choice: "it" is named by the printed text, and offering it as a choice would let the player retarget a
+   * printed effect. A no-op when the frame has no trigger event, or the subject is not a card.
+   */
+  | { readonly kind: 'onSubject'; readonly do: readonly Effect[] }
 
 /** Until-end-of-turn protection that `granted: Keyword[]` cannot express (spec C1-7). */
 export const FIELD_FLAGS = ['cannotBeBroken'] as const
@@ -70,11 +82,32 @@ export interface AbilityMode {
   readonly effects: readonly Effect[]
 }
 
+/** Which side of the watcher a moved/damaged card must be on, relative to the WATCHER's controller. */
+export type TriggerWhose = 'self' | 'opponent' | 'any'
+
 /**
- * When a clause fires. `enterField` covers casting AND being put onto the field by another ability
- * (C2's Hugh Yurg), which is why it is not keyed off the `cast` event.
+ * When a clause fires. The first two are "this card just did something" and are all C1 needed. The last two
+ * are C2's observer triggers: something happened, and this card was watching — which is why they carry a
+ * predicate rather than being bare strings.
+ *
+ * `enterField` covers casting AND being put onto the field by another ability (C3's Hugh Yurg), which is
+ * why it is not keyed off the `cast` event.
  */
-export type AbilityTrigger = 'enterField' | 'summonResolve'
+export type AbilityTrigger =
+  | { readonly kind: 'enterField' }
+  | { readonly kind: 'summonResolve' }
+  /** THIS card dealt damage — combat or ability alike (spec C2-7). */
+  | { readonly kind: 'dealtDamage'; readonly to: 'forward' | 'player' }
+  /** Some OTHER card moved, and this one was watching (spec C2-3/C2-4). */
+  | { readonly kind: 'observesZoneChange'; readonly from: 'field'; readonly to: 'breakZone'; readonly whose: TriggerWhose }
+
+/**
+ * What the trigger was about, carried on the frame so `onSubject` can act on it and the log can narrate it.
+ * Plain data: it rides on `GameState` through `structuredClone` like everything else.
+ */
+export type TriggerEvent =
+  | { readonly kind: 'damage'; readonly source: CardId; readonly sourceController: PlayerId; readonly target: CardId | null; readonly victim: PlayerId | null; readonly amount: number }
+  | { readonly kind: 'zoneChange'; readonly card: CardId; readonly from: 'field'; readonly to: 'breakZone'; readonly controller: PlayerId; readonly owner: PlayerId }
 
 export interface Ability {
   /**
@@ -106,6 +139,11 @@ export interface Frame {
   readonly controller: PlayerId
   readonly path: readonly number[]
   readonly chosen: readonly CardId[]
+  /**
+   * What fired this clause, for `onSubject` and for narration. Null for `enterField`/`summonResolve`, which
+   * are about the source itself. It must survive prompts and the source leaving the field (spec C2-5).
+   */
+  readonly triggerEvent: TriggerEvent | null
   /** Modes picked by an enclosing `chooseModes`, as indices into its `modes`. */
   readonly modes: readonly number[]
 }

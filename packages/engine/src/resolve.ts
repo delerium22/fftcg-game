@@ -1,4 +1,4 @@
-import type { Ability, Effect, Frame, TargetFilter, TargetSpec } from './abilities.js'
+import type { Ability, Effect, Frame, TargetFilter, TargetSpec, TriggerEvent } from './abilities.js'
 import { MAX_RESOLUTION_STEPS } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending } from './state.js'
 import { findFieldCard, updatePlayer } from './state.js'
@@ -26,8 +26,8 @@ import { IllegalCommandError } from './errors.js'
 // ---------------------------------------------------------------------------
 
 /** Push a triggered clause onto the agenda. The frame starts at path `[]` — the top of `ability.effects`. */
-export function enqueueTrigger(state: GameState, source: CardId, controller: PlayerId, ability: Ability): GameState {
-  const frame: Frame = { abilityId: ability.id, source, controller, path: [], chosen: [], modes: [] }
+export function enqueueTrigger(state: GameState, source: CardId, controller: PlayerId, ability: Ability, triggerEvent: TriggerEvent | null = null): GameState {
+  const frame: Frame = { abilityId: ability.id, source, controller, path: [], chosen: [], modes: [], triggerEvent }
   return { ...state, resolution: { ...state.resolution, queue: [...state.resolution.queue, frame] } }
 }
 
@@ -127,6 +127,8 @@ interface Ctx {
   path: number[]
   chosen: CardId[]
   modes: number[]
+  /** What fired this clause, for `onSubject` and narration; null for self-triggers (spec C2-5). */
+  triggerEvent: TriggerEvent | null
   /** The path the frame was suspended at; execution rejoins it instead of replaying the effects already run. */
   resume: readonly number[]
   suspend: Pending | null
@@ -197,6 +199,20 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         runEffects(ctx, eff.do, depth + 1, false)
         if (ctx.suspend) throw new Error(`ability ${ctx.abilityId}: forEach.do must not contain a suspending effect`)
       }
+      ctx.chosen = saved
+      return
+    }
+    case 'onSubject': {
+      // The card the trigger was ABOUT — Luso's "break it" (spec C2-5). Same fixed-binding shape as
+      // `forEach`, so `do` may not suspend: `Frame.chosen` holds one innermost binding and a prompt inside
+      // `do` could not restore the subject on resume. A trigger with no card subject is a no-op.
+      const ev = ctx.triggerEvent
+      const subject = ev === null ? null : ev.kind === 'damage' ? ev.target : ev.card
+      if (subject === null) return
+      const saved = ctx.chosen
+      ctx.chosen = [subject]
+      runEffects(ctx, eff.do, depth + 1, false)
+      if (ctx.suspend) throw new Error(`ability ${ctx.abilityId}: onSubject.do must not contain a suspending effect`)
       ctx.chosen = saved
       return
     }
@@ -271,6 +287,7 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
   const ctx: Ctx = {
     state, events: [], source: frame.source, controller: frame.controller, abilityId: frame.abilityId,
     path: [...frame.path], chosen: [...frame.chosen], modes: [...frame.modes],
+    triggerEvent: frame.triggerEvent,
     resume: frame.path, suspend: null, steps: state.resolution.steps,
   }
   runEffects(ctx, ability.effects, 0, frame.path.length > 0)

@@ -321,7 +321,7 @@ describe('GreedyAgent', () => {
     // reached `evaluate` with the ability UNRESOLVED: the cast is priced as a body that did nothing, exactly the
     // way a declared attack used to be priced as a dulled Forward that dealt no damage.
     const MODAL: Ability = {
-      id: 'T-ETB:etb', trigger: 'enterField',
+      id: 'T-ETB:etb', trigger: { kind: 'enterField' },
       text: 'When this Character enters the field, choose 1: dull 1 Forward opponent controls; or deal it 4000 damage.',
       effects: [{
         kind: 'chooseModes', min: 1, max: 1, modes: [
@@ -373,15 +373,15 @@ describe('GreedyAgent', () => {
       // The real pool implements no clause yet (`packages/cards` is a separate lane), so the seed-1 gate cannot
       // exercise any of this. A synthetic pool can: three clauses across the ETB and Summon paths, both target
       // and mode choices, played end to end by the agent through `legalCommands` alone (spec C1-A3).
-      const dullClause: Ability = { id: 'V-F1:etb', trigger: 'enterField', text: 'ETB: dull up to 2 Forwards opponent controls.', effects: [{ kind: 'chooseTargets', min: 0, max: 2, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] }
+      const dullClause: Ability = { id: 'V-F1:etb', trigger: { kind: 'enterField' }, text: 'ETB: dull up to 2 Forwards opponent controls.', effects: [{ kind: 'chooseTargets', min: 0, max: 2, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] }
       const modalClause: Ability = {
-        id: 'V-F4:etb', trigger: 'enterField', text: 'ETB: choose 1 — Haste to 1 of your Forwards; or 1 of your Forwards gains +2000 power.',
+        id: 'V-F4:etb', trigger: { kind: 'enterField' }, text: 'ETB: choose 1 — Haste to 1 of your Forwards; or 1 of your Forwards gains +2000 power.',
         effects: [{ kind: 'chooseModes', min: 1, max: 1, modes: [
           { label: 'Haste', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'grantKeyword', keyword: 'haste' }] }] },
           { label: '+2000', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'addPower', amount: 2000 }] }] },
         ] }],
       }
-      const summonClause: Ability = { id: 'V-S1:res', trigger: 'summonResolve', text: 'Deal 5000 damage to 1 Forward opponent controls.', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 5000 }] }] }
+      const summonClause: Ability = { id: 'V-S1:res', trigger: { kind: 'summonResolve' }, text: 'Deal 5000 damage to 1 Forward opponent controls.', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 5000 }] }] }
       const clauses: Record<string, Ability> = { 'V-F1': dullClause, 'V-F4': modalClause, 'V-S1': summonClause }
       const pool = VANILLA_POOL.map((d) => (clauses[d.code] ? { ...d, hasAbilities: true, abilityClauses: 1, abilities: [clauses[d.code] as Ability] } : d))
       let triggered = 0, answered = 0
