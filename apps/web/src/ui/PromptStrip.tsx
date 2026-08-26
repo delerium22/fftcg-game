@@ -22,11 +22,20 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
 }): JSX.Element {
   const yours = !view.result && (view.pending?.player ?? view.priority) === HUMAN
   const phase = `Turn ${view.turn} · ${PHASE_LABEL[view.phase] ?? view.phase}`
+  // Some decisions have no button of their own because every one of their commands names a card — discarding to
+  // hand size is the clearest case: the strip would otherwise offer nothing but Concede and read as a dead end
+  // until the player guesses that hand cards are clickable. Say it instead.
+  const cardOnly = yours && !shown.some((c) => c.command.type !== 'concede') && choices.byCard.size > 0
+  const text = view.result ? 'Game over'
+    : aiThinking ? 'The AI is thinking'
+    : !yours ? 'Waiting for the AI'
+    : cardOnly ? `${choices.prompt} — click a highlighted card`
+    : choices.prompt
   return (
     <div className="prompt table__prompt">
       <span className={yours ? 'prompt__phase prompt__phase--yours' : 'prompt__phase'}>{phase}</span>
       <span className="prompt__text">
-        {view.result ? 'Game over' : aiThinking ? 'The AI is thinking' : yours ? choices.prompt : 'Waiting for the AI'}
+        {text}
         {aiThinking && <span className="thinking" aria-hidden="true"><span /><span /><span /></span>}
       </span>
       <div className="prompt__actions">
