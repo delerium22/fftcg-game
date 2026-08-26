@@ -109,7 +109,22 @@ function targetDelta(state: GameState, effects: readonly Effect[], id: CardId): 
         // §12.4.5: damage ≥ power breaks. Damage that actually breaks is worth the whole card; damage that does
         // not is worth only the exposure it leaves behind.
         const breaks = power >= 1000 && loc.card.damage + eff.amount >= power && !loc.card.flags.includes('cannotBeBroken')
-        d -= breaks ? cardValue(def) + power / 1000 : eff.amount / 1000
+        const kill = cardValue(def) + power / 1000
+        if (breaks) { d -= kill; break }
+        // Non-lethal damage was priced `eff.amount / 1000` — a constant, independent of the target and of the
+        // damage already on it. That let a chip OUTRANK a kill: 5000 into a 1000-power Forward scored -5 while
+        // breaking it scored only -2.5, so the policy offered the survivor first and a budget-starved greedyStep
+        // (which scores only the first candidate) played it. Price it instead as the fraction of the target it
+        // actually removes, times what killing it would be worth — always strictly less than the kill, and
+        // monotone in both the damage dealt and the target's value.
+        // Denominator is FULL power, not remaining life: capping at remaining would score a hit on a
+        // `cannotBeBroken` Forward as a whole kill's worth, when that card cannot die at all this turn.
+        // The 0.25 factor is deliberately conservative because `evaluate` has no per-card damage term —
+        // chip damage is worth literally 0 to the search, so a policy that priced it richly would chase
+        // value the search then fails to confirm. It keeps a kill ahead of a chip across this pool's whole
+        // power range while still preferring a bigger dent to a smaller one.
+        const dealt = Math.min(eff.amount, Math.max(0, power - loc.card.damage))
+        d -= power > 0 ? (dealt / power) * kill * 0.25 : 0
         break
       }
       case 'breakCard':
