@@ -74,9 +74,38 @@ export function preferredPayment(state: GameState, player: PlayerId, card: CardI
 
   for (const s of [...sources].sort((a, b) => a.cost - b.cost)) { if (total >= def.cost) break; if (!chosen.has(s)) take(s, s.elements[0] as Element) }
   if (total < def.cost) return null
-  const payment: Payment = {
-    dullBackups: [...chosen].filter((s) => s.kind === 'backup').map((s) => s.id),
-    discards: [...chosen].filter((s) => s.kind === 'discard').map((s) => ({ card: s.id, element: declared.get(s.id) as Element })),
+
+  // R5: emit sources in the engine's own order — `enumeratePayments` lists dullBackups in field order and
+  // discards in hand order, so a payment built in *selection* order is the same payment but a different object,
+  // and any caller matching preferredPayment's result against legalCommands by value would spuriously miss it
+  // (which is most of them: the UI collapses a card's many legal payments down to this one). Canonical here,
+  // not at every call site.
+  const backupOrder = new Map(ps.backups.map((b, i) => [b.id, i]))
+  const handOrder = new Map(ps.hand.map((id, i) => [id, i]))
+  const build = (from: Iterable<Source>): Payment => {
+    const list = [...from]
+    return {
+      dullBackups: list.filter((s) => s.kind === 'backup').map((s) => s.id).sort((a, b) => (backupOrder.get(a) ?? 0) - (backupOrder.get(b) ?? 0)),
+      discards: list.filter((s) => s.kind === 'discard').map((s) => ({ card: s.id, element: declared.get(s.id) as Element }))
+        .sort((a, b) => (handOrder.get(a.card) ?? 0) - (handOrder.get(b.card) ?? 0)),
+    }
   }
-  return canPay(def.cost, elements, generateCp(state, player, payment, card)) ? payment : null
+  const pays = (from: Iterable<Source>): boolean => canPay(def.cost, elements, generateCp(state, player, build(from), card))
+
+  // R5: the two phases above are each greedy in isolation, so together they can over-spend — the required-element
+  // phase takes the cheapest source for the element (often a 1 CP backup), then the top-up phase adds a 2 CP
+  // discard to reach the cost, when that discard alone would have paid exactly. That matters twice over:
+  // `enumeratePayments` emits only MINIMAL payments, so a non-minimal result is not in `legalCommands` at all
+  // (measured: 40.2% of results over real games), which makes it unusable as a move for the UI and wasteful for
+  // the AI. Drop the most valuable redundant source until none can go, which is exactly enumeratePayments'
+  // minimality condition: removing any single remaining source must break the payment.
+  for (;;) {
+    const droppable = [...chosen].filter((s) => pays([...chosen].filter((o) => o !== s))).sort((a, b) => b.cost - a.cost)
+    const worst = droppable[0]
+    if (!worst) break
+    chosen.delete(worst)
+  }
+
+  const payment = build(chosen)
+  return pays(chosen) ? payment : null
 }

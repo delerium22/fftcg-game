@@ -98,7 +98,13 @@ export interface CandidateScoreOptions {
   maxSimulations: number
 }
 
-export interface CandidateScore { command: Command; score: number; turn: number; used: number }
+export interface CandidateScore {
+  command: Command; score: number; turn: number; used: number
+  /** R4 diagnostic: the pending kind of the state that was actually scored. MUST be null for a scored state —
+   *  a non-null value means `evaluate` priced a mid-combat snapshot (damage not yet dealt), which inverts the
+   *  value of an attack. Exposed so the invariant is directly assertable rather than inferred from a score. */
+  pendingKind: string | null
+}
 
 /**
  * Score every top-level candidate independently (C1): each gets its own fresh `Budget` sized
@@ -122,12 +128,17 @@ export function scoreCandidates(det: GameState, cands: Command[], opts: Candidat
         const c = greedyStep(s, p, opts.weights, p === opts.me ? opts.aggression : 1 - opts.aggression, budget)
         if (!c) break
         s = apply(s, c).state; budget.used++
+        // R4: resolve any combat this command opened BEFORE the loop can exit on an exhausted budget. Without
+        // this, a rollout that declares an attack and then runs out of budget leaves `pending: declareBlock`
+        // set, and `evaluate` prices a state where the attack was declared but no damage was dealt — which
+        // inverts an attack's value. Combat resolution is budget-exempt (W1) precisely so this always completes.
+        s = resolveCombat(s, opts.weights, opts.aggression, opts.me, budget)
       }
     }
     if (opts.depth >= 1) rollout((t) => t.turnPlayer === opts.owner)   // finish the current turn (mine, or the opponent's when I am blocking)
     if (opts.depth >= 2) rollout((t) => t.turnPlayer !== opts.owner)   // and the following turn
     const score = evaluate(s, opts.me, opts.weights, opts.aggression)
-    return { command: cand, score, turn: s.turn, used: budget.used }
+    return { command: cand, score, turn: s.turn, used: budget.used, pendingKind: s.pending?.kind ?? null }
   })
 }
 

@@ -290,4 +290,29 @@ describe('GreedyAgent', () => {
       expect(() => apply(s, cmd)).not.toThrow()
     })
   })
+
+  describe('R4: a scored state is never a mid-combat snapshot (Codex HIGH)', () => {
+    it('scoreCandidates resolves combat opened inside the rollout, even when the budget expires', () => {
+      // The rollout applied its chosen command WITHOUT resolving the combat that command opened. If the budget
+      // ran out on that apply, the loop exited with `pending: declareBlock` still set and `evaluate` priced a
+      // state where the attack was declared but no damage dealt — which inverts an attack's value entirely
+      // (Codex measured -14.7 for the snapshot vs +15.4 for the resolved state on an unblockable attacker).
+      // Start in MAIN 1, not at attack declaration: the top-level apply is already followed by resolveCombat,
+      // so the bug only shows when the ROLLOUT walks into the attack phase and declares an attack itself.
+      let s = withHandSize(makeGame(), 0, 5)
+      ;[s] = withField(s, 0, 'forwards', 'V-F5')   // 7000 attacker
+      ;[s] = withField(s, 1, 'forwards', 'V-F1')   // 3000 — blocks or not, combat must resolve either way
+      expect(s.phase).toBe('main1')
+      const [det] = determinise({ view: viewFor(s, 0), decks: decksOf(s), rng: seedRng(1) })
+      const cands = candidateCommands(det, 0)
+      // Sweep the caps: the bug appears only in the band where the budget expires mid-combat (measured at
+      // caps 10..40 on this fixture, 94 mid-combat states), so a single cap would miss it.
+      for (const depth of [1, 2] as const) {
+        for (let maxSimulations = 1; maxSimulations <= 40; maxSimulations++) {
+          const scores = scoreCandidates(det, cands, { me: 0, weights: DEFAULT_WEIGHTS, aggression: 0.5, depth, owner: det.turnPlayer, maxSimulations })
+          for (const sc of scores) expect(sc.pendingKind, `depth ${depth}, cap ${maxSimulations}, ${sc.command.type}`).toBeNull()
+        }
+      }
+    })
+  })
 })

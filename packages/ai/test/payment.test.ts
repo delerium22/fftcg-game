@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canPay, defOf, generateCp } from '@fftcg/engine'
+import { canPay, defOf, generateCp, legalCommands } from '@fftcg/engine'
 import { preferredPayment } from '../src/payment.js'
 import { VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
@@ -32,6 +32,44 @@ describe('preferredPayment', () => {
       ;[s, card] = withHand(s, 0, 'V-F2')                     // earth cost 2
       const p = preferredPayment(s, 0, card)!
       expect(p.discards.map((d) => defOf(s, d.card).code)).toEqual(['V-S2'])
+    }
+  })
+  it('R5: is MINIMAL — never spends a source the payment does not need (Codex counterexample)', () => {
+    // Earth cost-2 with one active Earth backup (1 CP) and one cheap Earth discard (2 CP). The required-element
+    // phase took the backup (cheapest source for earth), then the top-up phase added the discard to reach 2 CP —
+    // spending BOTH for a total of 3 CP, when the discard alone pays exactly. Worse, `enumeratePayments` only
+    // emits MINIMAL payments, so this non-minimal result is not in `legalCommands` at all: measured over real
+    // games, 40.2% of preferredPayment results were unusable as commands for that reason.
+    let s = withHandSize(makeGame(), 0, 0); let card: number
+    ;[s] = withField(s, 0, 'backups', 'V-B1')   // earth backup, 1 CP
+    ;[s] = withHand(s, 0, 'V-S2')                // earth summon cost 1 — cheap discard, 2 CP
+    ;[s, card] = withHand(s, 0, 'V-F2')          // earth cost 2
+    const p = preferredPayment(s, 0, card)!
+    expect(generateCp(s, 0, p, card)).toHaveLength(2)   // exactly the cost, not 3
+    expect(p.dullBackups).toEqual([])                    // the backup stays active
+    expect(p.discards).toHaveLength(1)
+  })
+  it('R5: every preferredPayment result is among the minimal payments legalCommands offers', () => {
+    // The property that makes preferredPayment usable as a UI/AI move generator at all: whatever it returns must
+    // be a command the engine would list. Checked across fixtures that exercise backups-only, discards-only,
+    // mixed, and multi-element costs.
+    const fixtures: (() => [ReturnType<typeof makeGame>, number])[] = [
+      () => { let s = withHandSize(makeGame(), 0, 0); let c: number
+        ;[s] = withField(s, 0, 'backups', 'V-B1'); ;[s] = withField(s, 0, 'backups', 'V-B3'); ;[s, c] = withHand(s, 0, 'V-F2'); return [s, c] },
+      () => { let s = withHandSize(makeGame(), 0, 0); let c: number
+        ;[s] = withField(s, 0, 'backups', 'V-B1'); ;[s] = withHand(s, 0, 'V-S2'); ;[s, c] = withHand(s, 0, 'V-F2'); return [s, c] },
+      () => { let s = withHandSize(makeGame(), 0, 0); let c: number
+        ;[s] = withHand(s, 0, 'V-S2'); ;[s] = withHand(s, 0, 'V-F6'); ;[s, c] = withHand(s, 0, 'V-F2'); return [s, c] },
+      () => { let s = withHandSize(makeGame(), 0, 0); let c: number
+        ;[s] = withField(s, 0, 'backups', 'V-B1'); ;[s] = withHand(s, 0, 'V-F6'); ;[s, c] = withHand(s, 0, 'V-F4'); return [s, c] },
+    ]
+    for (const [i, make] of fixtures.entries()) {
+      const [s, card] = make()
+      const p = preferredPayment(s, 0, card)
+      if (!p) continue
+      const legal = legalCommands(s, 0).filter((c) => (c.type === 'castCharacter' || c.type === 'castSummon') && c.card === card)
+      const match = legal.some((c) => JSON.stringify((c as { payment: unknown }).payment) === JSON.stringify(p))
+      expect(match, `fixture ${i}: ${JSON.stringify(p)} not among ${legal.length} legal payments`).toBe(true)
     }
   })
   it('satisfies multi-element requirements and returns null when unaffordable', () => {
