@@ -115,9 +115,11 @@ export interface CandidateScoreOptions {
 
 export interface CandidateScore {
   command: Command; score: number; turn: number; used: number
-  /** R4 diagnostic: the pending kind of the state that was actually scored. MUST be null for a scored state —
-   *  a non-null value means `evaluate` priced a mid-combat snapshot (damage not yet dealt), which inverts the
-   *  value of an attack. Exposed so the invariant is directly assertable rather than inferred from a score. */
+  /** R4 diagnostic: the pending kind of the state that was actually scored. It must never be a FORCED decision
+   *  (`isForcedDecision`) — that would mean `evaluate` priced a mid-combat snapshot or a half-resolved ability,
+   *  which inverts the value of an attack. It is routinely non-null otherwise: `mulligan`, `chooseFirst` and
+   *  `discardToHandSize` show up on scored states in normal play (measured across 66,350 decisions) and are
+   *  priced correctly. Exposed so the real invariant is directly assertable rather than inferred from a score. */
   pendingKind: string | null
   /** The C1 half of the same diagnostic: frames still on the resolution agenda (active + queued). MUST be 0 —
    *  a scored state with an unfinished ability prices a clause that has not done its work yet. */

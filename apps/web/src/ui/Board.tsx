@@ -1,7 +1,7 @@
 import { useEffect, useState, type JSX } from 'react'
 import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
 import { fieldCardDisplay } from '../game/commands.js'
-import type { Choice, GameApi } from '../game/types.js'
+import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card } from './Card.js'
 import { EventLog } from './EventLog.js'
@@ -78,6 +78,33 @@ function Seat({ v, p, active }: { v: PlayerView; p: PlayerId; active: boolean })
   )
 }
 
+/** The card ids the board draws in its named zones: both fields, and your hand. */
+export function boardCardIds(view: PlayerView): Set<CardId> {
+  return new Set<CardId>([
+    ...view.hand,
+    ...([0, 1] as const).flatMap((p) => [...view.fields[p].forwards, ...view.fields[p].backups].map((c) => c.id)),
+  ])
+}
+
+/** Targetable cards those zones do NOT draw — the Break Zone today, more hidden zones in C2/C3. */
+export function orphanTargetIds(view: PlayerView, choices: ChoiceSet): CardId[] {
+  const drawn = boardCardIds(view)
+  return [...choices.byCard.keys()].filter((id) => !drawn.has(id))
+}
+
+/**
+ * Every choice the board actually lets you click: the strip's loose buttons, plus the choices under any card it
+ * draws — named zones and the orphan row alike. Tests drive from THIS rather than from `choices.all`, because
+ * `choices.all` includes choices keyed to cards no component renders, which is exactly how Billy Bob's
+ * Break-Zone target shipped unanswerable while the sweep passed.
+ */
+export function clickableChoices(view: PlayerView, choices: ChoiceSet): Choice[] {
+  const reachable = new Set<CardId>([...boardCardIds(view), ...orphanTargetIds(view, choices)])
+  // Filter `all` rather than rebuilding from loose + byCard: that would put every strip button ahead of every
+  // card choice, and a caller taking "the first choice" would then only ever pass.
+  return choices.all.filter((c) => c.card === null || reachable.has(c.card))
+}
+
 export function Board({ game }: { game: GameApi }): JSX.Element {
   const { view, choices, log, aiThinking, choose, restart } = game
   const [selected, setSelected] = useState<CardId | null>(null)
@@ -106,6 +133,31 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
       <FieldCardView key={c.id} v={view} c={c} choices={choices.byCard.get(c.id) ?? []} selected={selected === c.id} onPick={pick} size={kind === 'backups' ? 'small' : 'field'} />
     ))
 
+  // Every clickable choice must be reachable, or the game dead-ends: Billy Bob's ETB targets your BREAK ZONE,
+  // which the board otherwise shows only as a count, so its answer lived entirely in `byCard` under an id no
+  // Card rendered — leaving Concede as the only button while the strip said "click a highlighted card".
+  // Rather than special-case the Break Zone, gather ANY targetable card the board does not already draw and
+  // give it a row. That closes the class (C2/C3 target more hidden zones) instead of this one instance.
+  const orphanTargets = orphanTargetIds(view, choices)
+  const orphanCards = orphanTargets.map((id) => {
+    const d = defOf(view, id)
+    return (
+      <Card
+        key={id}
+        code={d?.code ?? '?'}
+        name={d?.name ?? 'Unknown'}
+        cost={d?.cost ?? 0}
+        elements={d?.elements ?? []}
+        type={d?.type ?? 'forward'}
+        power={d?.power ?? null}
+        selectable
+        selected={selected === id}
+        size="small"
+        onClick={() => pick(id)}
+      />
+    )
+  })
+
   return (
     <div className="table">
       <section className="table__seat table__seat--opponent">
@@ -125,6 +177,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
       </section>
 
       <section className="table__hand">
+        {orphanCards.length > 0 && <Zone label="Choose a card" compact empty={false}>{orphanCards}</Zone>}
         <div className="hand">
           {view.hand.map((id) => {
             const d = defOf(view, id)

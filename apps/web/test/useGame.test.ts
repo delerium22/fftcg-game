@@ -8,6 +8,7 @@ import { withAbilities } from '@fftcg/cards'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { buildChoiceSet, describeChoice, preferredChoices, sameCommand } from '../src/game/commands.js'
 import { AI, HUMAN, type LogLine } from '../src/game/types.js'
+import { clickableChoices, orphanTargetIds } from '../src/ui/Board.js'
 import { describeEvent, narrator, stepAi } from '../src/game/useGame.js'
 
 const newGame = (seed: number, defs: CardDef[] = CARD_DEFS): GameState => createGame({ seed, decks: DECKS, defs })
@@ -20,7 +21,7 @@ function assertNoAiHandLeak(state: GameState, view: PlayerView): void {
   }
 }
 
-interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; commandTypes: Set<Command['type']> }
+interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; commandTypes: Set<Command['type']>; orphanStates: number }
 
 /**
  * Human policies for the sweeps below. Taking the first choice every time is one narrow path through the game;
@@ -56,6 +57,7 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
   const log: LogLine[] = []
   const commandTypes = new Set<Command['type']>()
   let humanMoves = 0
+  let orphanStates = 0
   for (let step = 0; step < 4000 && !state.result; step++) {
     const view = viewFor(state, HUMAN)
     assertNoAiHandLeak(state, view)
@@ -69,7 +71,11 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
     }
     const legal = legalCommands(state, HUMAN)
     const choices = buildChoiceSet(view, preferredChoices(view, legal))
-    const usable = choices.all.filter((ch) => ch.command.type !== 'concede')
+    // From the BOARD's click surface, not `choices.all`: `all` includes choices keyed to cards no component
+    // renders, which is how Billy Bob's Break-Zone target shipped unanswerable while this sweep passed. If the
+    // board ever stops drawing a targetable card, the surface shrinks, the game dead-ends, and this fails.
+    if (orphanTargetIds(view, choices).length) orphanStates++
+    const usable = clickableChoices(view, choices).filter((ch) => ch.command.type !== 'concede')
     const choice = usable[Math.min(usable.length - 1, Math.max(0, pick(usable, step)))]
     expect(choice, `no non-concede choice in ${view.phase}`).toBeDefined()
     // independent of the hook's own guard: the command really is in the legal set at this instant
@@ -82,7 +88,7 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
     state = result.state
     humanMoves++
   }
-  return { state, log, humanMoves, commandTypes }
+  return { state, log, humanMoves, commandTypes, orphanStates }
 }
 
 describe('stepAi', () => {
@@ -377,6 +383,26 @@ describe('the shipped C1 clauses reach the UI (C1-A3)', () => {
 
   it('carries at least one hand-written clause per C1 card', () => {
     expect(implemented.length).toBeGreaterThan(0)
+  })
+
+  it('C1-A3: a target the board does not draw in a named zone is still clickable (Billy Bob)', () => {
+    // Billy Bob's ETB targets your BREAK ZONE, which the board shows only as a count. Its answer therefore lived
+    // entirely in `byCard` under an id no Card rendered: the strip offered Concede alone while telling the player
+    // to "click a highlighted card", and the human game dead-ended. `min: 1` means there was not even a
+    // "choose no targets" button to escape with. The board now draws any such orphan target in its own row.
+    let orphanStates = 0
+    let sawOrphan = false
+    for (let seed = 1; seed <= 24 && !sawOrphan; seed++) {
+      for (const policy of POLICIES) {
+        const played = playFullGame(seed, policy, REAL_DEFS)
+        orphanStates += played.orphanStates
+        // Every game still reaches a result: a dead-end would strand the driver instead.
+        expect(played.state.result, `seed ${seed} did not finish`).not.toBeNull()
+        if (played.orphanStates > 0) { sawOrphan = true; break }
+      }
+    }
+    expect(sawOrphan, 'no game ever raised a target outside the board\'s named zones — the regression is untested').toBe(true)
+    expect(orphanStates).toBeGreaterThan(0)
   })
 
   it('offers those clauses choices the human can click, and drives to a result', () => {

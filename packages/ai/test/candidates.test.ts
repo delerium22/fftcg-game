@@ -84,8 +84,11 @@ describe('candidateCommands: the C1 one-ply target policy', () => {
     s = arm(s, src, 0, a)
     expect(s.pending?.kind).toBe('chooseTargets')
     const c = candidateCommands(s, 0)
-    expect(targetsOf(c[0])).toEqual([big, small])       // both active, ranked by power…
-    expect(targetsOf(c[0])).not.toContain(alreadyDull)   // …and the dull 9000 never makes the pick
+    // The SET, not the order: `chooseTargetsCandidates` emits ids sorted so the command is structurally
+    // identical to the one `legalCommands` lists (order is semantically irrelevant to `applyChooseTargets`).
+    // The policy's ranking still decides WHICH set is first, which is what this asserts.
+    expect([...targetsOf(c[0])].sort((x, y) => x - y)).toEqual([big, small].sort((x, y) => x - y))
+    expect(targetsOf(c[0])).not.toContain(alreadyDull)   // the dull 9000 never makes the pick
     for (const cmd of c) expect(() => apply(s, cmd)).not.toThrow()
     expect(candidateCommands(s, 0)).toEqual(c)      // deterministic
   })

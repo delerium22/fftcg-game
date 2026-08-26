@@ -212,7 +212,11 @@ function chooseTargetsCandidates(state: GameState, player: PlayerId, pending: Ex
   if (node?.kind !== 'chooseTargets') return legalCommands(state, player).filter((c) => c.type === 'chooseTargets')
   const { ranked, scores } = rankBy(pending.candidates, (id) => targetScore(state, player, node.then, id))
   const picks = policyChoices(ranked, scores, pending.min, Math.min(pending.max, ranked.length))
-  return picks.map((targets) => ({ type: 'chooseTargets', player, targets }))
+  // Sorted so the emitted command is structurally identical to the one `legalCommands` lists for the same set.
+  // Target order is semantically irrelevant (`applyChooseTargets` is order-insensitive), but any consumer that
+  // matches an AI command against `legalCommands` by deep equality — the web's `sameCommand` is the obvious one —
+  // would otherwise fail to find a perfectly legal answer, because the policy emits best-first.
+  return picks.map((targets) => ({ type: 'chooseTargets', player, targets: [...targets].sort((a, b) => a - b) }))
 }
 
 function chooseModeCandidates(state: GameState, player: PlayerId, pending: Extract<Pending, { kind: 'chooseMode' }>): Command[] {
