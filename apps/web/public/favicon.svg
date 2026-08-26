@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="FFTCG">
+  <!-- The cost gem from the card frame, standing alone: the app's one repeated mark. -->
+  <defs>
+    <linearGradient id="c" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0d79a" />
+      <stop offset="1" stop-color="#a8873f" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0f1a1e" />
+  <path d="M16 3 28.5 11.5 22 29H10L3.5 11.5Z" fill="url(#c)" />
+  <path d="M16 3 28.5 11.5 16 16.5 3.5 11.5Z" fill="#fff" fill-opacity=".32" />
+  <path d="M16 3 28.5 11.5 22 29H10L3.5 11.5Z" fill="none" stroke="#0f1a1e" stroke-opacity=".55" stroke-width="1.2" />
+</svg>

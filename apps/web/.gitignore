@@ -1,0 +1,6 @@
+# Spec B8: card art is a fetched cache, never committed. `pnpm --filter @fftcg/web fetch-images` refills it.
+public/cards/
+
+# Build output (vite) and `tsc -b` project output.
+dist/
+dist-tsc/

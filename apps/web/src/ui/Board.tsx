@@ -1,0 +1,154 @@
+import { useEffect, useState, type JSX } from 'react'
+import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
+import type { Choice, GameApi } from '../game/types.js'
+import { AI, HUMAN } from '../game/types.js'
+import { Card } from './Card.js'
+import { EventLog } from './EventLog.js'
+import { PromptStrip } from './PromptStrip.js'
+
+const MAX_DAMAGE = 7   // §12.2.2: a player with 7 damage loses
+
+function defOf(v: PlayerView, id: CardId) {
+  const inst = v.cards[id]
+  return inst ? v.defs[inst.code] : undefined
+}
+
+/** One card on a field, wired to whatever choices target it. */
+function FieldCardView({ v, c, choices, selected, onPick, size }: {
+  v: PlayerView; c: FieldCard; choices: Choice[]; selected: boolean; onPick: (id: CardId) => void; size: 'field' | 'small'
+}): JSX.Element {
+  const d = defOf(v, c.id)
+  return (
+    <Card
+      code={d?.code ?? '?'}
+      name={d?.name ?? 'Unknown'}
+      cost={d?.cost ?? 0}
+      elements={d?.elements ?? []}
+      type={d?.type ?? 'forward'}
+      power={d?.power ?? null}
+      damage={c.damage}
+      dull={c.status === 'dull'}
+      selectable={choices.length > 0}
+      selected={selected}
+      size={size}
+      onClick={choices.length ? () => onPick(c.id) : undefined}
+    />
+  )
+}
+
+function Zone({ label, children, empty, compact }: { label: string; children: JSX.Element[]; empty: boolean; compact?: boolean }): JSX.Element {
+  const cls = ['zone__cards', empty ? 'zone__cards--empty' : '', compact ? 'zone__cards--compact' : ''].filter(Boolean).join(' ')
+  return (
+    <div className="zone">
+      <div className="zone__label">{label}</div>
+      <div className={cls}>{children}</div>
+    </div>
+  )
+}
+
+function Seat({ v, p, active }: { v: PlayerView; p: PlayerId; active: boolean }): JSX.Element {
+  const f = v.fields[p]
+  const you = p === HUMAN
+  const damage = f.damageZone.length
+  return (
+    <div className={active ? 'seat seat--active' : 'seat'}>
+      <span className={you ? 'seat__name seat__name--you' : 'seat__name'}>{you ? 'You' : 'AI'}</span>
+      <div className="seat__stats">
+        <span className="stat"><span className="stat__label">Deck</span><span className="stat__value">{f.deckCount}</span></span>
+        <span className="stat"><span className="stat__label">Hand</span><span className="stat__value">{you ? v.hand.length : f.handCount}</span></span>
+        <span className="stat"><span className="stat__label">Break</span><span className="stat__value">{f.breakZone.length}</span></span>
+        <span className="stat">
+          <span className="stat__label">Damage</span>
+          <span className="damage-track" role="img" aria-label={`${damage} of ${MAX_DAMAGE} damage`}>
+            {Array.from({ length: MAX_DAMAGE }, (_, i) => (
+              <span key={i} className={i < damage ? 'damage-pip is-filled' : 'damage-pip'} />
+            ))}
+          </span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+export function Board({ game }: { game: GameApi }): JSX.Element {
+  const { view, choices, log, aiThinking, choose, restart } = game
+  const [selected, setSelected] = useState<CardId | null>(null)
+
+  // The choice set is rebuilt on every state change; a card selected under the old one may no longer be
+  // clickable (or may not exist), so drop the selection rather than leave a highlight pointing at nothing.
+  useEffect(() => { setSelected((id) => (id !== null && choices.byCard.has(id) ? id : null)) }, [choices])
+
+  const pick = (id: CardId): void => {
+    const forCard = choices.byCard.get(id) ?? []
+    // One way to use a card: just do it. Several (a cast with options, a party to attack with): select it and
+    // let the prompt strip show what they are, so a click is never a guess about which variant you got.
+    if (forCard.length === 1) { setSelected(null); choose(forCard[0] as Choice); return }
+    setSelected((cur) => (cur === id ? null : id))
+  }
+
+  // Concede is legal in every state (§2.1), so `legalCommands` puts it first — which would make it the leftmost,
+  // most-reachable button on the strip all game. Sort it to the end; nothing else changes order.
+  const order = (c: Choice) => (c.command.type === 'concede' ? 1 : 0)
+  const shown = (selected === null ? choices.loose : [...(choices.byCard.get(selected) ?? []), ...choices.loose])
+    .slice().sort((a, b) => order(a) - order(b))
+  // Backups render small: they are CP sources rather than combat units, and with auto-pay (spec B6) they are
+  // rarely a click target — which also buys the vertical room two full-size field rows per side would not fit in.
+  const field = (p: PlayerId, kind: 'forwards' | 'backups'): JSX.Element[] =>
+    view.fields[p][kind].map((c) => (
+      <FieldCardView key={c.id} v={view} c={c} choices={choices.byCard.get(c.id) ?? []} selected={selected === c.id} onPick={pick} size={kind === 'backups' ? 'small' : 'field'} />
+    ))
+
+  return (
+    <div className="table">
+      <section className="table__seat table__seat--opponent">
+        <Seat v={view} p={AI} active={view.priority === AI || view.pending?.player === AI} />
+        <Zone label="AI Backups" compact empty={!view.fields[AI].backups.length}>{field(AI, 'backups')}</Zone>
+        <Zone label="AI Forwards" empty={!view.fields[AI].forwards.length}>{field(AI, 'forwards')}</Zone>
+      </section>
+
+      <PromptStrip view={view} choices={choices} shown={shown} aiThinking={aiThinking} onChoose={(c) => { setSelected(null); choose(c) }} />
+
+      {/* `.table__seat--player` is column-reverse, so this list reads bottom-up on screen: the status bar sits
+          at the outer edge and forwards end up nearest the prompt strip, meeting the AI's across it. */}
+      <section className="table__seat table__seat--player">
+        <Seat v={view} p={HUMAN} active={view.priority === HUMAN || view.pending?.player === HUMAN} />
+        <Zone label="Your Backups" compact empty={!view.fields[HUMAN].backups.length}>{field(HUMAN, 'backups')}</Zone>
+        <Zone label="Your Forwards" empty={!view.fields[HUMAN].forwards.length}>{field(HUMAN, 'forwards')}</Zone>
+      </section>
+
+      <section className="table__hand">
+        <div className="hand">
+          {view.hand.map((id) => {
+            const d = defOf(view, id)
+            const forCard = choices.byCard.get(id) ?? []
+            return (
+              <Card
+                key={id}
+                code={d?.code ?? '?'}
+                name={d?.name ?? 'Unknown'}
+                cost={d?.cost ?? 0}
+                elements={d?.elements ?? []}
+                type={d?.type ?? 'forward'}
+                power={d?.power ?? null}
+                selectable={forCard.length > 0}
+                selected={selected === id}
+                size="hand"
+                onClick={forCard.length ? () => pick(id) : undefined}
+              />
+            )
+          })}
+        </div>
+      </section>
+
+      <aside className="table__rail"><EventLog log={log} /></aside>
+
+      {view.result && (
+        <div className="banner" role="alertdialog" aria-label="Game over">
+          <h2 className="banner__title">{view.result.winner === null ? 'Draw' : view.result.winner === HUMAN ? 'You win' : 'The AI wins'}</h2>
+          <p className="banner__reason">{view.result.reason}</p>
+          <button className="btn btn--primary" onClick={restart}>Play again</button>
+        </div>
+      )}
+    </div>
+  )
+}

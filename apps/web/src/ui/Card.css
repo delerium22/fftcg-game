@@ -1,0 +1,356 @@
+/*
+ * One card, three sizes, two faces.
+ *
+ * The FRAME is the card — an element-coloured edge, a cost gem, element pips and a name plate.
+ * Art is an INLAY that fades into the middle of that frame when it happens to load. That is what
+ * makes spec B-A5 hold: with zero images downloaded the board still shows eighteen designed cards,
+ * not eighteen broken-image boxes, because the art was never load-bearing.
+ *
+ * Element colours arrive as --el-a / --el-b set inline by Card.tsx (a dual-element card splits its
+ * frame between the two), so every rule below is element-agnostic.
+ */
+
+.card {
+  --cw: 96px;
+  --ch: 134px;
+  --el-a: var(--line-strong);
+  --el-b: var(--el-a);
+
+  position: relative;
+  flex: none;
+  width: var(--cw);
+  height: var(--ch);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.3, 1), filter 140ms ease;
+}
+
+.card--hand { --cw: 128px; --ch: 179px; }
+.card--field { --cw: 96px; --ch: 134px; }
+.card--small { --cw: 64px; --ch: 89px; }
+
+.card__face {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* Dull means the card is turned sideways (CR: a dull card is rotated 90°). The wrapper swaps its
+ * width and height so the row still lays out correctly, and only the face rotates inside it. */
+.card.is-dull {
+  width: var(--ch);
+  height: var(--cw);
+}
+
+.card.is-dull .card__face {
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  width: var(--cw);
+  height: var(--ch);
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+/* ---------------- frame ---------------- */
+
+.card__frame {
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  border-radius: var(--r-card);
+  background: linear-gradient(155deg, var(--el-a) 0%, var(--el-a) 42%, var(--el-b) 58%, var(--el-b) 100%);
+}
+
+.card__body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--surface-sunken);
+}
+
+.card__art {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(90% 70% at 50% 30%, color-mix(in srgb, var(--el-a) 26%, transparent), transparent 70%),
+    linear-gradient(180deg, #16212a, #0c1318);
+}
+
+/* The crystal stands in for missing art — an element-tinted cut stone, not an empty rectangle. Two
+ * facets (a lit crown, a shaded left flank) are enough to read as faceted at 40px wide. */
+.card__crystal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 38%;
+  aspect-ratio: 5 / 7;
+  transform: translate(-50%, -58%);
+  clip-path: polygon(50% 0%, 100% 34%, 72% 100%, 28% 100%, 0% 34%);
+  background: linear-gradient(155deg, var(--el-a), var(--el-b));
+  opacity: 0.5;
+}
+
+.card__crystal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(50% 0%, 50% 44%, 28% 100%, 0% 34%);
+  background: rgb(0 0 0 / 30%);
+}
+
+.card__crystal::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(50% 0%, 100% 34%, 50% 44%, 0% 34%);
+  background: rgb(255 255 255 / 36%);
+}
+
+.card__code {
+  position: absolute;
+  right: 4px;
+  bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  opacity: 0.75;
+}
+
+/* Art fades in over the text card, so a slow or failed load never shows an empty state. */
+.card__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.card__img.is-loaded { opacity: 1; }
+
+/* ---------------- cost gem: the signature mark ---------------- */
+
+.card__gem {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  transform: rotate(45deg);
+  background: linear-gradient(155deg, var(--el-a), color-mix(in srgb, var(--el-b) 60%, #0b1216));
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 55%), 0 2px 6px rgb(0 0 0 / 60%);
+}
+
+.card__gem span {
+  transform: rotate(-45deg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: #0b1216;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 28%);
+}
+
+.card--small .card__gem {
+  width: 20px;
+  height: 20px;
+}
+
+.card--small .card__gem span { font-size: 10px; }
+
+/* ---------------- element pips ---------------- */
+
+.card__pips {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  display: flex;
+  gap: 3px;
+}
+
+.pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 60%), 0 0 8px -1px currentcolor;
+  background: currentcolor;
+}
+
+.pip--fire { color: var(--el-fire); }
+.pip--ice { color: var(--el-ice); }
+.pip--wind { color: var(--el-wind); }
+.pip--earth { color: var(--el-earth); }
+.pip--lightning { color: var(--el-lightning); }
+.pip--water { color: var(--el-water); }
+.pip--light { color: var(--el-light); }
+.pip--dark { color: var(--el-dark); }
+
+/* ---------------- name plate ---------------- */
+
+.card__plate {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  padding: 4px 5px 5px;
+  border-top: 1px solid color-mix(in srgb, var(--el-a) 45%, transparent);
+  background: linear-gradient(180deg, rgb(10 16 20 / 92%), rgb(10 16 20 / 99%));
+}
+
+.card__name {
+  display: block;
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: 12px;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card--hand .card__name { font-size: 13px; }
+.card--small .card__name { font-size: 9px; }
+
+.card__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s1);
+  margin-top: 2px;
+}
+
+.card__type {
+  font-family: var(--font-condensed);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.card__power {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* A field card sits in a row already labelled "forwards" or "backups", so at that size the type
+ * word is redundant wherever power can take the space instead. In hand, where there is no such
+ * row, it always shows. */
+.card--field .card__meta:has(.card__power) .card__type { display: none; }
+
+/* A damaged forward shows what is left of its power first, with the printed total dimmed after it. */
+.card__power--hurt { color: #f08d7c; }
+
+.card__power em {
+  font-style: normal;
+  color: var(--ink-3);
+}
+
+.card--small .card__meta { display: none; }
+
+/* Damage as a bar across the foot of the art, sized to the fraction of power already dealt. */
+.card__damage {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(180deg, rgb(0 0 0 / 45%), rgb(0 0 0 / 45%));
+}
+
+.card__damage::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--dmg, 0%);
+  background: linear-gradient(180deg, #e0685a, #a8382f);
+  box-shadow: 0 0 10px -2px rgb(224 104 90 / 90%);
+}
+
+/* ---------------- face down ---------------- */
+
+.card__back {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-card);
+  background:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 3%) 0 6px, transparent 6px 12px),
+    linear-gradient(160deg, #23304a, #101725 60%, #0a0f18);
+  box-shadow: inset 0 0 0 1px rgb(217 184 116 / 22%), inset 0 0 0 5px rgb(0 0 0 / 35%), var(--shadow-card);
+}
+
+.card__back::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34%;
+  aspect-ratio: 3 / 4;
+  transform: translate(-50%, -50%);
+  clip-path: polygon(50% 0%, 100% 30%, 78% 100%, 22% 100%, 0% 30%);
+  background: linear-gradient(155deg, var(--gold), var(--gold-dim));
+  opacity: 0.5;
+}
+
+/* ---------------- states ----------------
+ * Three signals that must never be confused: selectable lifts, selected rings, focus outlines.
+ */
+
+.card.is-selectable {
+  cursor: pointer;
+}
+
+.card.is-selectable .card__face {
+  box-shadow: var(--shadow-card), 0 0 0 1px rgb(233 240 244 / 30%), 0 0 14px -4px rgb(233 240 244 / 45%);
+}
+
+.card.is-selectable:hover {
+  transform: translateY(-8px);
+  z-index: 3;
+}
+
+.card.is-selectable:hover .card__face {
+  box-shadow: var(--shadow-lift), 0 0 0 1px rgb(233 240 244 / 45%);
+}
+
+.card.is-selectable.is-dull:hover { transform: translateY(-4px); }
+
+/* Selected is persistent and unmistakable: a solid gold ring plus a warm bloom that survives being
+ * laid over full-bleed art, where a border alone would disappear into a bright illustration. */
+.card.is-selected .card__face {
+  box-shadow: var(--shadow-lift), 0 0 0 3px var(--gold), 0 0 26px -4px var(--gold-glow);
+}
+
+.card.is-selected .card__plate {
+  border-top-color: var(--gold);
+  background: linear-gradient(180deg, #241d0f, #17120a);
+}
+
+.card.is-selected { z-index: 4; }
+
+.card:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+  border-radius: var(--r-card);
+}
