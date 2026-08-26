@@ -846,3 +846,32 @@ list above stays a historically-accurate record of what was originally planned:
    it — a maintenance burden (LOW), deferred; `evaluate`'s `dullFactor` and `threat` weights both
    encode active-vs-dull forward power from different angles (LOW, tuning/design overlap) —
    deferred, no behavioural bug.
+5. **Re-review of the final fix wave** (2026-08-27, items R1–R3): the fix wave's own diff
+   (`d597fdc..6dcb2cf`) was reviewed against the branch before merge, since it landed unreviewed —
+   the session that produced it ended on a model limit immediately afterwards. Two behavioural
+   regressions the wave itself introduced, plus one false contract:
+   - **R1** (play strength): C2's bounded backtracking minimised `Source.cp` (CP generated) where the
+     greedy pass it replaced sorted by `Source.cost` (card value given up). Every discard generates 2 CP,
+     so `cp` cannot separate two discards and the choice silently fell through to hand order — measured
+     discarding a `V-F7` (8000-power forward, value 9.5) where a `V-S2` (cost-1 summon, value 1) paid the
+     same cost, purely because the forward was drawn first. Restored to `Source.cost`; the seed-1 gate
+     improved from 199/1 to **200/0** and 3/197 to **2/198**, so this was a real regression, not noise.
+   - **R2** (robustness): C6 replaced `decide`'s fallback `pool.find(c => c.type !== 'concede')` with
+     `pool[0]`, and `legalCommands` always puts concede first — so any future `candidateCommands` gap for
+     a player who IS acting would make the agent silently concede the game instead of erroring, reversing
+     `5e82a7e`'s explicit "fail loudly on a dead end instead of silently conceding" policy. Now throws
+     when `actingPlayer(det) === me`; the non-acting-player case still returns the genuine `[concede]`.
+   - **R3** (false contract): the `maxSimulations` doc comment and the F2 test both asserted
+     `lastSimulations <= maxSimulations + lastCandidates`. Budget-exempt combat resolution (W1) makes that
+     untrue — a declareAttack at `maxSimulations: 50` was measured at 107 applies against a claimed bound
+     of 66; the F2 fixture was simply too cheap to expose it. The comment now documents the cap honestly as
+     a soft one, and the test asserts what is actually guaranteed (equal per-candidate allocation, and more
+     search as the cap rises).
+   **Confirmed sound** in the same pass: C1's order-invariance guarantee holds empirically (583 real
+   decisions scored forward and reversed, zero argmax or score mismatches); C4's perspective flip composes
+   correctly through nested `resolveCombat`/`greedyStep`; the mutual recursion the wave introduced is
+   bounded (each pending kind strictly advances the attack); C3's Light/Dark exemption is correct but
+   **entirely unexercised by the Vol. 2 pool** (18 defs, zero Light/Dark cards), so it rests on its unit
+   tests alone. C2's backtracking is exhaustive over source-to-element assignments — trivial at the pool's
+   maximum of 2 required elements, but its cost is `P(sources, elements)`, so a future pool with genuinely
+   many-element costs would want memoisation.
