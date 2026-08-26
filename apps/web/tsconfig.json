@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist-tsc",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "resolveJsonModule": true,
+    "noEmit": false
+  },
+  "include": ["src", "test", "scripts", "vite.config.ts"],
+  "references": [{ "path": "../../packages/engine" }, { "path": "../../packages/cards" }, { "path": "../../packages/ai" }]
+}

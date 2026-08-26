@@ -1,11 +1,3 @@
-export function parseDeckFile(text: string): string[] {
-  const out: string[] = []
-  text.split('\n').forEach((raw, i) => {
-    const line = raw.trim()
-    if (!line || line.startsWith('#')) return
-    const m = /^(\d+)\s+(\S+)$/.exec(line)
-    if (!m) throw new Error(`deck line ${i + 1}: expected "<count> <code>", got "${line}"`)
-    for (let k = 0; k < Number(m[1]); k++) out.push(m[2] as string)
-  })
-  return out
-}
+// Moved to @fftcg/cards so the browser app can share it (it is pure string handling, no fs). Re-exported
+// here so the CLI's existing call sites and tests keep their import path.
+export { parseDeckFile } from '@fftcg/cards'

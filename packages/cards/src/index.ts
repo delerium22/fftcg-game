@@ -12,3 +12,5 @@ export function loadCards(): CardDef[] {
 export function cardDb(): Map<string, CardDef> {
   return new Map(loadCards().map((c) => [c.code, c]))
 }
+
+export { parseDeckFile } from './deck.js'
