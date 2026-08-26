@@ -4,7 +4,8 @@ import { cardValue } from './cardValue.js'
 interface Source { kind: 'backup' | 'discard'; id: CardId; elements: Element[]; cp: number; cost: number }
 
 /**
- * Find the cheapest way to cover every required element with one source each, via bounded backtracking (required
+ * Find the least valuable way to cover every required element with one source each (cheapest by `Source.cost` —
+ * see R1 below — not by CP generated), via bounded backtracking (required
  * elements ≤ 8 per CardDef, sources ≤ ~12 in practice — trivially small to search exhaustively). A single greedy
  * pass — even scarcest-element-first — can still strand a later element: spending a flexible source on an element
  * a less flexible (but pricier) source could also have covered, only to find nothing left for the element only
@@ -29,7 +30,12 @@ function assignRequiredElements(elements: Element[], sources: Source[], canSuppl
       const rest = rec(i + 1)
       used.delete(s)
       if (!rest) continue
-      const cost = s.cp + rest.cost
+      // R1: minimise `Source.cost` (what spending the source is WORTH giving up — 1 for a backup, 2 + cardValue
+      // for a discard), not `Source.cp` (how much CP it generates). Every discard generates 2 CP, so ranking by
+      // `cp` cannot separate two discards and silently falls back to hand order — which threw away an 8000-power
+      // forward where a cost-1 summon would do. `cost` also still prefers backups (1) over any discard (>= 2),
+      // which is why the pre-backtracking greedy pass sorted by it.
+      const cost = s.cost + rest.cost
       if (!best || cost < best.cost) {
         const assignment = new Map(rest.assignment)
         assignment.set(e, s)

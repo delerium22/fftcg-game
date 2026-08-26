@@ -72,14 +72,25 @@ describe('GreedyAgent', () => {
     expect(() => apply(s, cmd)).not.toThrow()
     expect(a.lastSimulations).toBeGreaterThan(0); expect(a.lastCandidates).toBeGreaterThan(0)
   })
-  it('F2: honours the documented simulation budget lastSimulations <= maxSimulations + lastCandidates', () => {
+  it('R3: maxSimulations allocates equally per candidate and scales total work — it is a soft cap, not a hard bound', () => {
+    // `maxSimulations` is NOT a hard bound on `lastSimulations`: combat resolution is budget-exempt (W1) and
+    // `greedyStep` always applies its first candidate, so a candidate can overrun its `perCandidate` share by an
+    // unbounded amount. The old assertion (`lastSimulations <= maxSimulations + lastCandidates`) only held on this
+    // one cheap fixture; real games break it (a declareAttack at cap 50 was measured at 107 applies against a
+    // claimed bound of 66). What IS guaranteed, and what the cap is for, is asserted here: every candidate gets the
+    // SAME budget (so scoring is order-invariant, see C1 below), and raising the cap buys proportionally more work.
     let s = withHandSize(makeGame(), 0, 5)
     ;[s] = withField(s, 0, 'forwards', 'V-F1')
     s = toAttackDeclaration(s)
-    const a = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1, maxSimulations: 6 })
-    a.decide(viewFor(s, 0), legalCommands(s, 0))
-    expect(a.lastDepth).toBe(2)
-    expect(a.lastSimulations).toBeLessThanOrEqual(6 + a.lastCandidates)
+    const tight = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1, maxSimulations: 6 })
+    const full = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1, maxSimulations: 2000 })
+    tight.decide(viewFor(s, 0), legalCommands(s, 0))
+    full.decide(viewFor(s, 0), legalCommands(s, 0))
+    expect(tight.lastDepth).toBe(2)
+    expect(tight.lastCandidates).toBe(full.lastCandidates)                       // same position, same candidate set
+    expect(full.lastSimulations).toBeGreaterThan(tight.lastSimulations)          // a bigger cap really does buy more search
+    const spread = (a: GreedyAgent) => Math.max(...a.lastScores.map((sc) => sc.used)) - Math.min(...a.lastScores.map((sc) => sc.used))
+    expect(spread(tight)).toBeLessThanOrEqual(Math.max(1, Math.floor(6 / tight.lastCandidates)))   // equal allocation, up to one apply
   })
   it('F2: prunes an oversized candidate list to maxSimulations, keeping pass among the candidates', () => {
     let s = withHandSize(makeGame(), 0, 5)
@@ -135,6 +146,17 @@ describe('GreedyAgent', () => {
     const legal = legalCommands(s, 1)
     expect(legal).toEqual([{ type: 'concede', player: 1 }])
     expect(a.decide(viewFor(s, 1), legal)).toEqual({ type: 'concede', player: 1 })
+  })
+  it('R2: throws rather than conceding when it IS the acting player but has no candidates', () => {
+    // A candidateCommands gap for a player who is genuinely acting is a bug in the agent, not a lost game.
+    // `legalCommands` always puts concede first, so falling back to `pool[0]` here would silently concede —
+    // exactly the behaviour 5e82a7e ("fail loudly on a self-play dead end instead of silently conceding")
+    // rejected. `end` is a phase candidateCommands generates nothing for, with player 0 holding priority.
+    const s: GameState = { ...makeGame(), phase: 'end', pending: null, priority: 0 }
+    expect(actingPlayer(s)).toBe(0)
+    expect(candidateCommands(s, 0)).toEqual([])
+    expect(legalCommands(s, 0)).toEqual([{ type: 'concede', player: 0 }])
+    expect(() => agent(s).decide(viewFor(s, 0), legalCommands(s, 0))).toThrow(/no candidate/)
   })
   it('C6: throws only when legal is genuinely empty (no fallback pool at all)', () => {
     const s = { ...makeGame(), result: { winner: 0 as const, reason: 'test' } }   // a finished game: legalCommands returns []

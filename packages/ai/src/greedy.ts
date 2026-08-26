@@ -16,9 +16,15 @@ export interface GreedyOptions {
    * The top-level apply and the full combat resolution that follows it (`resolveCombat`) are exempt from the cap
    * — they always run to completion (W1) — but their applies still count against the budget, so the rollout loop
    * that follows may already be over cap before it starts. `lastSimulations` sums `used` across all per-candidate
-   * budgets; the documented (loose) bound is `lastSimulations <= maxSimulations + lastCandidates` (the per-candidate
-   * floor plus the always-applied top-level apply account for the `+ lastCandidates` term; combat-resolution
-   * applies push some candidates further over their own cap, which the floor already tolerates).
+   * budgets.
+   *
+   * R3: this is a SOFT cap with no closed-form bound on `lastSimulations`. Budget-exempt combat resolution and
+   * `greedyStep`'s always-score-the-first-candidate floor both overrun it by an amount that depends on the
+   * position — a declareAttack at `maxSimulations: 50` was measured at 107 applies, so the bound this comment
+   * previously claimed (`<= maxSimulations + lastCandidates`) is false. What the cap does guarantee is EQUAL
+   * allocation across candidates (hence order-invariant scoring, C1) and proportionally more search as it rises.
+   * A tight bound would need the rollout and combat portions counted separately; not worth it while the A8
+   * budget (< 50 ms/decision) is met with ~200x headroom.
    */
   maxSimulations?: number | undefined
 }
@@ -162,10 +168,17 @@ export class GreedyAgent implements Agent {
     this.rng = rng
     let cands = candidateCommands(det, me)   // pass is last by contract
     if (!cands.length) {
+      // R2: conceding is only ever the right answer when we are NOT the acting player — then [concede] genuinely
+      // is the whole legal set (§2.1). When we ARE acting and candidate generation produced nothing, that is a gap
+      // in `candidateCommands` (which mirrors `legalCommands`'s switch rather than deriving from it), and
+      // `legalCommands` puts concede first — so falling back to `pool[0]` would silently throw the game rather
+      // than surface the bug. Fail loudly instead, per 5e82a7e's "fail loudly on a dead end, don't silently
+      // concede" policy; a genuine engine dead end is caught by self-play's strict invariant check.
+      if (actingPlayer(det) === me) {
+        throw new Error(`GreedyAgent.decide: no candidate commands while acting in ${det.phase}/${det.attack?.step ?? '-'}/${det.pending?.kind ?? '-'}`)
+      }
       // legal may be [] here (needsLegalCommands is false, so a caller may skip generating it on the hot
-      // path); compute it ourselves rather than relying on the argument, but reuse a non-empty one as-is. The
-      // true legal set for a non-acting player is just [concede] (§2.1) — C6: return it rather than searching
-      // for a non-concede move that cannot exist here.
+      // path); compute it ourselves rather than relying on the argument, but reuse a non-empty one as-is.
       const pool = legal.length ? legal : legalCommands(det, me)
       const fallback = pool[0]
       if (!fallback) throw new Error('GreedyAgent.decide: no legal command to choose or fall back to')

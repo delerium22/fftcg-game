@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canPay, generateCp } from '@fftcg/engine'
+import { canPay, defOf, generateCp } from '@fftcg/engine'
 import { preferredPayment } from '../src/payment.js'
 import { VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
@@ -21,6 +21,18 @@ describe('preferredPayment', () => {
     ;[s, card] = withHand(s, 0, 'V-F2')                  // earth cost 2
     const p = preferredPayment(s, 0, card)!
     expect(p.discards.map((d) => d.card)).toEqual([cheap]); expect(p.dullBackups).toEqual([])
+  })
+  it('R1: picks the lowest-VALUE discard for a required element regardless of hand order', () => {
+    // The test above happens to hold the cheap card first, so an implementation that ranks equal-CP sources by
+    // hand position still passes it. Both discards supply earth and both generate 2 CP, so only card value can
+    // separate them: reversing the hand must not change which one is thrown away.
+    for (const order of [['V-S2', 'V-F7'], ['V-F7', 'V-S2']]) {
+      let s = withHandSize(makeGame(), 0, 0); let card: number
+      for (const code of order) [s] = withHand(s, 0, code)   // V-S2 = earth summon cost 1 (low value), V-F7 = earth 8000 (high)
+      ;[s, card] = withHand(s, 0, 'V-F2')                     // earth cost 2
+      const p = preferredPayment(s, 0, card)!
+      expect(p.discards.map((d) => defOf(s, d.card).code)).toEqual(['V-S2'])
+    }
   })
   it('satisfies multi-element requirements and returns null when unaffordable', () => {
     let s = withHandSize(makeGame(), 0, 0); let dual: number, poor: number
