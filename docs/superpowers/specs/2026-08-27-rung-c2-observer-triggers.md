@@ -92,3 +92,31 @@ is a mechanic, not a clause.
 - **Total ordering key, AP-first labelled a deviation** (C2-11).
 - **The stale-candidate risk removed** — Codex traced it unreachable; replaced by C2-A9, which pins it.
 - **Work staged** (C2-12) so the machinery lands with the clauses that only need it.
+
+## What C2 actually built, and what C3 inherits (from the C2 code review)
+
+Recorded so C3 does not start from a false assumption, the way C2 nearly did:
+
+- **`ZoneTransition` covers field→Break Zone only.** C2-2 promised field→Break Zone *and* Break Zone→hand;
+  only the first was built. `toHand` removes from either the field or the Break Zone and emits no
+  transition, so `moveToHand` is invisible to observers. No C2 clause watches it, so nothing is wrong
+  today — but **Cloud's "cannot be returned to its owner's hand by your opponent's Summons or abilities"
+  has no observer source until it exists**, and that is a C3 clause. Build the transition-producing
+  primitive before Cloud, and keep `breakCard` distinct from a plain "put into the Break Zone": the latter
+  must bypass `cannotBeBroken`.
+- **Deck search cannot reuse the current target prompt as-is.** `Pending` carries raw `CardId`s and
+  `viewFor` copies them wholesale, while `determinise` mints replacement ids for hidden cards and then
+  copies the stale pending ids over. Deck-search candidates would be orphaned for the acting AI and could
+  leak private identifiers to the opponent. **Decide the private/revealed visibility model before adding
+  any deck target** — it is an information-model change, not a targeting change.
+- **The continuation slot alone cannot carry Cloud's Attack-Phase clause.** Passing Main Phase 1 enters
+  attack declaration in one step and `enterAttackDeclaration` emits preparation and declaration together,
+  so queueing Cloud before it would resolve the clause while the state still says Main Phase 1. Attack
+  entry has to split: preparation (set the phase, fire beginning-of-phase triggers) then a continuation
+  into declaration once they resolve.
+- **Haste targeting is power-blind to abilities.** `hasteUnlock` is `1 + power/1000`, so with an unblocked
+  9000 vanilla and a fresh 3000 Luso the AI hastes the 9000 — although both deal a single point of damage,
+  and Luso additionally breaks whatever it damages, so a blocker is *good* for it. Left unfixed
+  deliberately: the honest value is "what does this card do when it attacks", which is a bounded rollout,
+  and inventing a constant to out-weigh 9000 power would be tuning to one fixture. Needs the fixture
+  Codex gives (Lightning/Luso vs a higher-power vanilla) and a measured change, not a guess.

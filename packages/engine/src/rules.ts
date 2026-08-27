@@ -91,12 +91,15 @@ export function runRuleProcesses(state: GameState): [GameState, Event[]] {
     if (!transitions.length) break
     const pre = s   // watchers must be read while `s` still holds every pre-removal field card (spec C2-4)
     const leaving = transitions.map((t) => t.card)
+    // §12.4.4/§15.1.1.3: a broken card goes to its OWNER's Break Zone, which is not the same player as the
+    // controller whose field it was removed from. Owner and controller coincide for the whole MVP0 pool (nothing
+    // changes control yet), so this is unobservable today — but the transitions already carry both, and taking
+    // the controller here was the bug that made "capture owner properly" only half-done.
     for (const p of [0, 1] as const) {
-      s = updatePlayer(s, p, (ps) => ({
-        ...ps,
-        forwards: ps.forwards.filter((c) => !leaving.includes(c.id)),
-        breakZone: [...ps.breakZone, ...ps.forwards.filter((c) => leaving.includes(c.id)).map((c) => c.id)],
-      }))
+      s = updatePlayer(s, p, (ps) => ({ ...ps, forwards: ps.forwards.filter((c) => !leaving.includes(c.id)) }))
+    }
+    for (const t of transitions) {
+      s = updatePlayer(s, t.owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, t.card] }))
     }
     for (const t of transitions) {
       if (t.reason === 'zeroPower') events.push({ type: 'putIntoBreakZone', card: t.card, reason: 'zeroPower' })

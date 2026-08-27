@@ -61,4 +61,20 @@ describe('dealPlayerDamage', () => {
     const [, events] = dealPlayerDamage(s, 1, null)
     expect(events).toContainEqual({ type: 'exBurstSkipped', player: 1, card: id })
   })
+
+  it('§12.4.4/§15.1.1.3: a broken card goes to its OWNER’s break zone, not its controller’s', () => {
+    // Nothing in the MVP0 pool changes control, so owner and controller coincide in every real game and this
+    // is unobservable in play — which is exactly why it has to be asserted directly. The rule process removed
+    // the card from the controller's field and appended it to that same player's break zone, so the first
+    // control-changing effect would have silently stolen the card.
+    let s = makeGame({ defs: [...VANILLA_POOL, makeDef({ code: 'V-Z0', power: 0 })] })
+    let card: number
+    ;[s, card] = withField(s, 0, 'forwards', 'V-Z0')   // sitting on P0's field…
+    s = { ...s, cards: { ...s.cards, [card]: { ...s.cards[card]!, owner: 1 } } }   // …but owned by P1
+
+    const [t] = runRuleProcesses(s)
+    expect(t.players[0].forwards.some((c) => c.id === card), 'left the controller’s field').toBe(false)
+    expect(t.players[1].breakZone, 'went to the OWNER’s break zone').toContain(card)
+    expect(t.players[0].breakZone, 'and not the controller’s').not.toContain(card)
+  })
 })

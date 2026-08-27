@@ -314,12 +314,15 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         const loc = findFieldCard(ctx.state, id)
         if (!loc) continue
         if (loc.card.flags.includes('cannotBeBroken')) { ctx.events.push({ type: 'breakPrevented', card: id, flag: 'cannotBeBroken' }); continue }
+        // `loc.owner` is the field the card sat on — its CONTROLLER. Real ownership is `CardInstance.owner`, and
+        // §12.4.4/§15.1.1.3 sends a broken card to its OWNER's Break Zone. They coincide across the MVP0 pool.
+        const owner = ctx.state.cards[id]?.owner ?? loc.owner
         moved.push({
-          card: id, controller: loc.owner, owner: ctx.state.cards[id]?.owner ?? loc.owner,
+          card: id, controller: loc.owner, owner,
           from: loc.zone === 'backups' ? 'backups' : 'forwards', to: 'breakZone', reason: 'ability',
           cause: ctx.source, causeController: ctx.controller, snapshot: loc.card,
         })
-        ctx.state = updatePlayer(removeFromField(ctx.state, id), loc.owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, id] }))
+        ctx.state = updatePlayer(removeFromField(ctx.state, id), owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, id] }))
         ctx.events.push({ type: 'brokenByAbility', card: id, source: ctx.source })
       }
       ctx.state = enqueueZoneChangeTriggers(pre, ctx.state, moved)
