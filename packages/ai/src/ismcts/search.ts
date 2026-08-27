@@ -1,5 +1,5 @@
 import {
-  actingPlayer, apply, determinise, nextInt, seedRng,
+  actingPlayer, apply, determinise, nextInt, seedRng, visibleKnownBy,
   type CardId, type CardInstance, type Command, type FieldView, type GameState, type PlayerId, type PlayerView, type Rng,
 } from '@fftcg/engine'
 import { candidateCommands } from '../candidates.js'
@@ -223,7 +223,7 @@ export function searchView(state: GameState, me: PlayerId): PlayerView {
   return {
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
     pending: state.pending, resolution: state.resolution, result: state.result, hand: state.players[me].hand,
-    fields: [field(0), field(1)], cards, defs: state.defs, firstPlayer: state.firstPlayer,
+    fields: [field(0), field(1)], cards, knownBy: visibleKnownBy(state, cards), defs: state.defs, firstPlayer: state.firstPlayer,
     mulliganDecided: [state.players[0].mulliganDecided, state.players[1].mulliganDecided],
   }
 }

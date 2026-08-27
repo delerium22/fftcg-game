@@ -9,6 +9,16 @@ export interface PlayerView {
   /** Carried so `determinise` can rebuild the SAME agenda: the AI must simulate the ability game it is playing (spec C1-2/C1-A6). Every id in it is already public. */
   resolution: Resolution
   cards: Record<CardId, CardInstance>; defs: Record<string, CardDef>
+  /**
+   * Who knows what, for the cards this view can see at all (spec C9-5). Restricted to keys present in
+   * `cards`: a mask for a card whose id the viewer cannot see would be an id leak by itself.
+   *
+   * NOT yet able to express "the opponent knows their own top three, and you know that they do". That is
+   * POSITIONAL knowledge about cards this viewer cannot see, so it needs a per-deck-position projection
+   * rather than a per-id mask. It is deferred to the stage that lands Reeve, which is the first clause to
+   * create it — recorded here so the gap is a decision rather than an oversight.
+   */
+  knownBy: Record<CardId, number>
   firstPlayer: PlayerId /* meaningful once chooseFirst has been decided; before that it is the setup default 0 */
   mulliganDecided: [boolean, boolean]
 }
@@ -31,7 +41,24 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
   for (const id of visibleIds) { const inst = state.cards[id]; if (inst) cards[id] = inst }
   return structuredClone({
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
-    pending: state.pending, resolution: state.resolution, result: state.result, hand: state.players[me].hand, fields: [field(0), field(1)], cards, defs: state.defs,
+    pending: state.pending, resolution: state.resolution, result: state.result, hand: state.players[me].hand, fields: [field(0), field(1)], cards, knownBy: visibleKnownBy(state, cards), defs: state.defs,
     firstPlayer: state.firstPlayer, mulliganDecided: [state.players[0].mulliganDecided, state.players[1].mulliganDecided],
   })
+}
+
+/**
+ * The `knownBy` entries for cards this view actually carries. See `PlayerView.knownBy`.
+ *
+ * EXPORTED so `searchView` — the search's copy of this projection — calls it rather than reimplementing it.
+ * C7 added a zone to that copy's FieldView and not to its visible-cards loop, and the two silently diverged;
+ * one shared function is the fix that does not depend on remembering.
+ */
+export function visibleKnownBy(state: GameState, cards: Record<CardId, CardInstance>): Record<CardId, number> {
+  const out: Record<CardId, number> = {}
+  for (const key of Object.keys(cards)) {
+    const id = Number(key)
+    const mask = state.knownBy[id]
+    if (mask !== undefined && mask !== 0) out[id] = mask
+  }
+  return out
 }

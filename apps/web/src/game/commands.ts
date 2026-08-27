@@ -430,7 +430,7 @@ function stateShim(v: PlayerView): GameState {
   return {
     rng: seedRng(0), turn: v.turn, turnPlayer: v.turnPlayer, firstPlayer: v.firstPlayer, phase: v.phase,
     attack: v.attack, priority: v.priority, pending: v.pending, resolution: v.resolution, players: [side(0), side(1)],
-    cards: v.cards, defs: v.defs, result: v.result,
+    cards: v.cards, knownBy: v.knownBy, defs: v.defs, result: v.result,
   }
 }
 

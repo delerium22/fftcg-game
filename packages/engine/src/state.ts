@@ -55,6 +55,18 @@ export interface GameState {
   resolution: Resolution
   players: [PlayerState, PlayerState]
   cards: Record<CardId, CardInstance>
+  /**
+   * Who KNOWS what a hidden card is (spec C9-5) — a bitmask per card, bit `p` set when player `p` has
+   * legitimately seen it. Absent means nobody beyond the ordinary rules (your own hand is knowledge you have
+   * by holding it, and is not recorded here).
+   *
+   * This exists because knowledge OUTLIVES the moment it was gained. After Reeve looks at three cards and
+   * puts two on the bottom, its controller still knows what is down there, and no zone records that. It also
+   * has to express "unknown to me, known to them", which is what a root determinisation must preserve about
+   * an opponent who has looked at their own deck: the sampler may invent those cards freely, but it must not
+   * forget that the opponent is not guessing.
+   */
+  knownBy: Record<CardId, number>
   defs: Record<string, CardDef>
   result: GameResult | null
 }
@@ -101,4 +113,34 @@ export function updatePlayer(state: GameState, p: PlayerId, f: (ps: PlayerState)
   const players: [PlayerState, PlayerState] = [state.players[0], state.players[1]]
   players[p] = f(state.players[p])
   return { ...state, players }
+}
+
+/** The bit for one player in a `knownBy` mask. */
+export const knowsBit = (p: PlayerId): number => 1 << p
+
+/** Does `p` know what card `id` is? Cards in `p`'s OWN hand are known by holding them, not by this mask. */
+export function knows(state: GameState, p: PlayerId, id: CardId): boolean {
+  return ((state.knownBy[id] ?? 0) & knowsBit(p)) !== 0
+}
+
+/** Record that each of `ids` is now known to every player in `to`. Additive: knowledge is never lost. */
+export function learn(state: GameState, to: readonly PlayerId[], ids: readonly CardId[]): GameState {
+  if (!ids.length || !to.length) return state
+  const mask = to.reduce<number>((m, p) => m | knowsBit(p), 0)
+  const knownBy = { ...state.knownBy }
+  for (const id of ids) knownBy[id] = (knownBy[id] ?? 0) | mask
+  return { ...state, knownBy }
+}
+
+/**
+ * Forget everything anyone knew about `ids` — a shuffle destroys positional knowledge (§8.1.2).
+ *
+ * Deliberately NOT called when a card merely moves: knowing what a card IS survives it going to the bottom of
+ * the deck, which is the whole reason this mask exists rather than a per-zone flag.
+ */
+export function forget(state: GameState, ids: readonly CardId[]): GameState {
+  if (!ids.length) return state
+  const knownBy = { ...state.knownBy }
+  for (const id of ids) delete knownBy[id]
+  return { ...state, knownBy }
 }

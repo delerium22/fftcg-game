@@ -50,7 +50,7 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
   }
   const state: GameState = {
     rng: r, turn: view.turn, turnPlayer: view.turnPlayer, firstPlayer: view.firstPlayer, phase: view.phase, attack: view.attack,
-    priority: view.priority, pending: view.pending, resolution: view.resolution, players: [players[0]!, players[1]!], cards, defs: view.defs, result: view.result,
+    priority: view.priority, pending: view.pending, resolution: view.resolution, players: [players[0]!, players[1]!], cards, knownBy: view.knownBy, defs: view.defs, result: view.result,
   }
   return [structuredClone(state), r]
 }
