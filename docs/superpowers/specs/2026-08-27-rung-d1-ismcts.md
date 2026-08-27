@@ -113,6 +113,12 @@ off the tie stream), never by the tournament. **This is the rung's own thesis ap
 search still wins ~91 %, a fixed one winning ~90 % says nothing either way.** D-A2's unit tests are the
 evidence; D-A1 only rules out gross regression.
 
+**Re-measured at the merged HEAD**, after the code review's two HIGH fixes: **90.0 %** (108/120), CI95
+[0.842, 0.958], 0 failures — identical to the pre-fix run, so both fixes are strength-neutral, as expected
+for defects that were invisible to this number in the first place. A 24-game reading of 83.3 % taken
+between them was noise; the apply cap it appeared to implicate provably never binds (0 of 180 rollouts, and
+p99 is 1403 against a cap of 2048).
+
 **Not yet done:** the iteration budget is uncalibrated. 200 was chosen by the implementation as "clearly
 above greedy without being unusable headless", not tuned on development seeds as D-A1 asks. D2 needs a
 budget picked from browser measurement anyway, so calibration belongs there.
