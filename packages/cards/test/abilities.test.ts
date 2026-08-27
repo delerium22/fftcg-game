@@ -469,16 +469,17 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the sixteen implemented clauses on, and only those sixteen', () => {
-    // Five from rung C1, five from C2, six from C3's activated abilities. Any clause added without a test
-    // lands here first.
+  it('loadCards merges the seventeen implemented clauses on, and only those seventeen', () => {
+    // Five from rung C1, five from C2, six from C3's activated abilities, one from C4 (Odin's Summon). Any
+    // clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
-      '1-121C', '12-120C', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C', '20-103H',
-      '22-068R', '27-124S', '27-125S', '27-127S',
+      '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
+      '20-103H', '22-068R', '27-124S', '27-125S', '27-127S',
     ])
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
-      '1-121C:haste', '12-120C:etb', '16-092C:dull-all', '16-092C:etb', '18-064C:draw', '18-069C:draw',
+      '1-121C:haste', '12-120C:etb', '13-072R:summon', '16-092C:dull-all', '16-092C:etb', '18-064C:draw',
+      '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '20-074C:draw', '20-103H:summon', '22-068R:damages-opponent',
       '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken',
@@ -667,4 +668,71 @@ describe('C3 activated abilities, on the real defs', () => {
       expect(offered(s, onField, id)).toEqual([])
     })
   }
+})
+
+// ---------------------------------------------------------------------------
+// Rung C4 — 13-072R Odin's Summon clause
+// ---------------------------------------------------------------------------
+
+describe('13-072R Odin — "EX BURST Choose 1 Forward of cost 5 or less. Break it."', () => {
+  /** Odin cast for its full printed cost, with the resulting target prompt live. */
+  function castOdin(extra: (s: GameState) => GameState = (x) => x): { state: GameState; events: ReturnType<typeof apply>['events'] } {
+    let s = makeGame()
+    ;[s] = withCp(s, 0, Array<string>(5).fill(LIGHTNING_BACKUP))
+    s = extra(s)
+    let odin: CardId
+    ;[s, odin] = withHand(s, 0, '13-072R')
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castSummon' && c.card === odin)
+    expect(cast, 'Odin was not castable').toBeDefined()
+    return apply(s, cast!)
+  }
+
+  it('offers every Forward of printed cost 5 or less, on EITHER side, and nothing above it', () => {
+    let cheapMine: CardId; let cheapTheirs: CardId; let expensive: CardId
+    const r = castOdin((s0) => {
+      let s = s0
+      ;[s, cheapMine] = withField(s, 0, 'forwards', '19-052C')    // cost 1
+      ;[s, cheapTheirs] = withField(s, 1, 'forwards', '27-124S')  // cost 3
+      ;[s, expensive] = withField(s, 1, 'forwards', '16-092C')    // cost 5 — inclusive, so still legal
+      return s
+    })
+    expect(r.state.pending?.kind).toBe('chooseTargets')
+    const candidates = r.state.pending?.kind === 'chooseTargets' ? [...r.state.pending.candidates] : []
+    // "Choose 1 Forward" is unrestricted by controller, and "cost 5 or less" is inclusive.
+    expect(candidates.sort()).toEqual([cheapMine!, cheapTheirs!, expensive!].sort())
+  })
+
+  it('excludes a Forward whose PRINTED cost is above 5', () => {
+    // Lightning (27-127S) is the pool's only Forward above the ceiling, at cost 7; Noel is exactly 5, which
+    // "5 or less" includes. Both on the board, so the test distinguishes a working filter from an absent one.
+    let over: CardId; let atLimit: CardId
+    const r = castOdin((s0) => {
+      let s = s0
+      ;[s, over] = withField(s, 1, 'forwards', '27-127S')     // cost 7 — must NOT be offered
+      ;[s, atLimit] = withField(s, 1, 'forwards', '16-092C')  // cost 5 — must be offered
+      return s
+    })
+    const candidates = r.state.pending?.kind === 'chooseTargets' ? r.state.pending.candidates : []
+    expect(candidates).toContain(atLimit!)
+    expect(candidates).not.toContain(over!)
+  })
+
+  it('breaks the chosen Forward', () => {
+    let victim: CardId
+    const r = castOdin((s0) => {
+      let s = s0
+      ;[s, victim] = withField(s, 1, 'forwards', '27-124S')
+      return s
+    })
+    const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim!] })
+    expect(done.state.players[1].forwards.some((c) => c.id === victim!)).toBe(false)
+    expect(done.state.players[1].breakZone).toContain(victim!)
+    ok(done.state)
+  })
+
+  it('keeps warning about the cost-reduction clause it still does not have', () => {
+    // ABILITY_CLAUSES counts PRINTED clauses: Odin prints two and has one, so the cast must still say so.
+    expect(ABILITY_CLAUSES['13-072R']).toBe(2)
+    expect(ABILITIES['13-072R']?.length).toBe(1)
+  })
 })

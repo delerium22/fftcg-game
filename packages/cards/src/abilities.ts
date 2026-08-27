@@ -305,6 +305,32 @@ const PRISHE_DAMAGES_OPPONENT: Ability = {
   }],
 }
 
+/**
+ * Odin's Summon effect (spec C4). Structurally Lightning's ETB — a `maxCost` target then `breakCard` — with
+ * two differences worth reading off the printed text rather than assuming:
+ *
+ * - "Choose 1 Forward", not "a Forward opponent controls", so `controller: 'any'`. Breaking your own Forward
+ *   is legal and almost always bad, which is the card's business, not the engine's.
+ * - `maxCost: 5` is the PRINTED cost of the target. Odin's own first clause reduces the cost to CAST Odin;
+ *   neither that nor any other modifier is meant to move a target's printed cost, and `targetCandidates`
+ *   reads `def.cost` for exactly that reason.
+ *
+ * The `EX BURST` tag is quoted because it is printed, but EX Burst itself is not implemented: this clause
+ * fires on a NORMAL cast, which is what `summonResolve` means. That is the same treatment C1 gave Noel and
+ * Lightning, and `ABILITY_CLAUSES['13-072R']` stays at 2 so the card keeps warning about the clause it is
+ * still missing.
+ */
+const ODIN_SUMMON: Ability = {
+  id: '13-072R:summon',
+  trigger: { kind: 'summonResolve' },
+  text: 'EX BURST Choose 1 Forward of cost 5 or less. Break it.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any', filter: { maxCost: 5 } },
+    then: [{ kind: 'breakCard' }],
+  }],
+}
+
 // ---------------------------------------------------------------------------
 // Activated abilities (spec C3)
 // ---------------------------------------------------------------------------
@@ -411,6 +437,8 @@ const RED_MAGE_18_DRAW: Ability = {
 export const ABILITIES: Record<string, readonly Ability[]> = {
   '1-121C': [RED_MAGE_HASTE],
   '12-120C': [SHANTOTTO_ETB],
+  // The Summon effect only; the conditional cost reduction is the other printed clause.
+  '13-072R': [ODIN_SUMMON],
   // Printed order: the ETB is clause 1, the action clause 2.
   '16-092C': [NOEL_ETB, NOEL_DULL_ALL],
   '18-064C': [GEOMANCER_DRAW],
