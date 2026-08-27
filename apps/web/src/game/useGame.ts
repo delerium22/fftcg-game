@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
   type AbilityTrigger, type CardId, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView,
@@ -343,13 +343,18 @@ export function useGame(seed?: number): GameApi {
 
   const choose = useCallback((choice: Choice): void => {
     const current = stateRef.current
+    // Spec B-A4: prove the command is still legal before touching `apply`, so an illegal click is impossible
+    // rather than merely rejected by the engine after the fact.
+    //
+    // This check comes BEFORE the invalidation, and the order matters. Invalidating first meant a stale click
+    // that turned out to be illegal had already cancelled the AI's outstanding search on its way to throwing:
+    // state unchanged, nothing outstanding, and no reason for the state-keyed effect to request again — the
+    // AI simply stopped. Nothing happens between these two statements, so there is no window to protect.
+    const legal = legalCommands(current, HUMAN)
+    if (!legal.some((c) => sameCommand(c, choice.command))) throw new Error(`illegal command: ${choice.label}`)
     // D2-4: an external commit synchronously drops whatever the AI has outstanding. `concede` is legal even
     // when the human is NOT the acting player, so a click really can land in the middle of the AI's search.
     searchRef.current?.invalidate()
-    // Spec B-A4: prove the command is still legal before touching `apply`, so an illegal click is impossible
-    // rather than merely rejected by the engine after the fact.
-    const legal = legalCommands(current, HUMAN)
-    if (!legal.some((c) => sameCommand(c, choice.command))) throw new Error(`illegal command: ${choice.label}`)
     const before = viewFor(current, HUMAN)
     const result = apply(current, choice.command)
     const lines = eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, current.resolution.queue)
@@ -382,7 +387,10 @@ export function useGame(seed?: number): GameApi {
 
   // Unmount only. A worker outliving its hook is both a leak and a source of replies for a game nobody is
   // looking at any more (D2-4).
-  useEffect(() => () => { searchRef.current?.dispose() }, [])
+  // Layout, not passive: passive cleanup runs AFTER the DOM is gone, so a worker result queued in between
+  // would be processed — and could even schedule a zero-delay delivery — against an unmounted component.
+  // Disposal has to be synchronous with unmount, the same way every other invalidation here is.
+  useLayoutEffect(() => () => { searchRef.current?.dispose() }, [])
 
   return { view, choices, log, aiThinking, choose, restart }
 }

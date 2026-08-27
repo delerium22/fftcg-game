@@ -100,43 +100,63 @@ and hashed asset loading, MIME and base-path failures all live there. Hence D2-A
 - **Wire contract completed** — discriminated union, config at init, `requestId` on errors, plain strings.
 - **Pacing restated as a deadline** (D2-5).
 
-## Measurement (D2-A2 / D2-A6), taken 2026-08-27
+## Measurement (D2-A2 / D2-A6 / D2-A7), taken 2026-08-27
 
-Production preview (`vite build` + `vite preview`, port 5310), Chromium via Playwright, Apple Silicon
-(darwin 25.5.0), default budget **200 iterations**, `rolloutCommandCap` 24, `rolloutApplyCap` 2048.
-Three complete games driven end to end; the numbers below are the second and third, where a patched
-`Worker` constructor recorded every message.
+Revised after a Codex code review that found four claims here overstated. The corrections are kept visible
+rather than silently applied, because each one is a way this measurement could have flattered itself.
 
-| Quantity | Result |
-|---|---|
-| Worker asset actually served | `GET /assets/worker-DkZKnaJU.js → 200` (hashed production chunk, 52.8 kB) |
-| Searches posted / results received / worker errors | **33 / 33 / 0**, then **34 / 34 / 0** |
-| Worker round trip | **p50 152 ms, p95 240 ms, max 288 ms** |
-| Main-thread `longtask` entries during those searches | **0** (any reported entry would be ≥ 50 ms) |
-| Maximum `requestAnimationFrame` gap | **22 ms**, then **19 ms** |
-| Input delay, real trusted clicks (Event Timing, n = 12) | **0–1 ms** (`processingStart − startTime`) |
-| Search request serialized size | median **14.2 kB**, max 15.4 kB |
-| `postMessage` duration (main-thread cost of posting) | max **0.20 ms** |
-| Fallback warnings logged | **none** |
+Harness: `apps/web/scripts/measure-worker.js`, committed so the run is reproducible. Production preview
+(`vite build` + `vite preview --port 5310`), Chromium, Apple Silicon (darwin 25.5.0), **200 iterations**,
+`rolloutCommandCap` 24, `rolloutApplyCap` 2048. Two complete games, driven to a result.
 
-**Reading the numbers.** The frame gap is the load-bearing one: a 200-iteration search on the main thread
-would have shown a rAF gap of at least its own duration, so a max gap of 19–22 ms across whole games is
-direct evidence the search never ran there. Zero `longtask` entries says the same thing from the other side.
+| Quantity | Run A (page driver only) | Run B (+ real trusted clicks) |
+|---|---|---|
+| Searches posted / results received / **AI commands committed** | **36 / 36 / 36** | **40 / 40 / 40** |
+| Worker errors, search fallback warnings | 0, none | 0, none |
+| Worker round trip, p50 / p95 / max | **110 / 187 / 241 ms** | 265 / 541 / 577 ms |
+| `longtask` entries (each would be ≥ 50 ms) | **0** | **0** |
+| Max `requestAnimationFrame` gap | **22 ms** | 387 ms |
+| Input delay, real trusted clicks | not sampled | **max 1 ms**, n = 10 |
+| Search request serialized size, median / max | 14.6 / 15.7 kB | 14.7 / 15.9 kB |
+| `postMessage` main-thread cost, max | 0.20 ms | 0.20 ms |
 
-The *first* pass at input delay used synthetic `.click()` and reported a flat 0 ms — worthless, because a
-programmatic click dispatches synchronously and measures nothing. The table's figure is from real Playwright
-input observed through `PerformanceEventTiming`.
+The worker asset is served and executed: `GET /assets/worker-DkZKnaJU.js → 200`, the hashed 52.8 kB
+production chunk, one `Worker` constructed per game.
 
-**D2-2 resolved.** Leaving `defs` in the per-request view costs 14.2 kB and **0.20 ms** of main-thread
-posting. Revision 1 called this "negligible" without measuring; measured, it is in fact negligible, and
-`Omit<PlayerView,'defs'>` stays unnecessary.
+**Why the two runs disagree, which matters more than either number.** Run B's driver clicks the page through
+CDP while the game plays; that external automation is itself main-thread work, and it inflates both the round
+trips and the frame gap. Run A is the app measured undisturbed. The frame-gap metric is therefore only
+trustworthy when nothing outside the page is touching it — worth knowing before anyone reads a future 387 ms
+as a regression.
 
-**D2-6 / D2-A7 asserted positively.** Every AI decision in both instrumented games was a completed worker
-round trip (33/33, 34/34, zero errors, zero fallback warnings). This is the assertion the spec asked for —
-not "no warning appeared", which is only evidence of silence.
+**What the numbers support, stated no more strongly than that.** Zero `longtask` entries across **76 searches**
+means *no main-thread task of 50 ms or more was observed* — not that the main thread was never blocked. Since
+the search is synchronous and each one took 110–577 ms, running it on the main thread would certainly have
+registered long tasks and stretched the frame gap past its own duration; neither happened. That is strong
+evidence the search executed off-thread, and it is the claim being made.
 
-**D2-A6: the budget does not need reducing.** Round trips of p50 152 ms / p95 240 ms bracket D1's headless
-~254 ms per decision, so the browser affords the **same 200 iterations D1 measured**. The risk the spec
-raised — that the human would face a weaker opponent than the 90.0 % one — did not materialise: the browser
-opponent is the D1 opponent. The budget still has not been *strength*-calibrated (D1's caveat stands); what
-is now known is that the browser is not the thing forcing it down.
+**D2-A7 asserted positively, with commit correlation.** Posts and results alone cannot carry "ISMCTS played
+this game" — a result dropped as stale or refused as illegal still counts as received. Counting committed AI
+commands from the log closes that: **posted = received = committed** in both runs, with zero worker errors and
+zero fallback warnings. Every AI move in both games came from the search.
+
+**D2-2 measured, and correctly attributed.** 14.6 kB is the size of the **whole search request**, not the
+incremental cost of `defs`; attributing it to `defs` alone (as the previous revision did) overstates that
+field's cost. What is directly measured is the main-thread price of sending it: **0.20 ms**. That is
+negligible, so `Omit<PlayerView,'defs'>` stays unnecessary — and if the catalogue ever grows, the honest
+experiment is to measure again with the field removed.
+
+**D2-A6: the budget does not need reducing.** At 200 iterations a decision costs p50 110 ms undisturbed,
+comfortably inside the 600 ms pacing deadline. The risk the spec raised — that the browser would force a
+smaller budget and hand the human a weaker opponent than the 90.0 % one D1 measured — did not materialise.
+Note these round trips are **below** D1's headless ~254 ms/decision rather than bracketing it, with only Run
+B's contended maximum crossing that figure. The budget still has not been *strength*-calibrated (D1's caveat
+stands); what is now known is that the browser is not what would force it down.
+
+**Corrections made to this section after review:**
+- "the main thread was never blocked" → no task ≥ 50 ms was *observed*.
+- "bracket D1's ~254 ms" → the round trips are *below* it; only a contended maximum crosses it.
+- 14.2 kB attributed to `defs` → it is the whole request; the measured `defs`-related cost is the 0.20 ms post.
+- posts + results offered as proof ISMCTS played → replaced with posts = results = **commits**.
+- An earlier input-delay figure came from synthetic `.click()`, which dispatches synchronously and measures
+  nothing. It was discarded; the figure above is real input read through `PerformanceEventTiming`.

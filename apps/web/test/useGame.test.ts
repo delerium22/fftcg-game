@@ -886,9 +886,15 @@ describe('the hook drives the search worker (rung D2)', () => {
     const transport = h.transports[0]!
     transport.handlers.message(resultMessage(before, transport.searches[0]!.requestId, { type: 'concede', player: HUMAN }))
     h.clock.advance(AI_STEP_MS)
-    expect(h.commits).toHaveLength(0)
-    expect(h.state()).toBe(before)
+    // B-A4's guarantee is that the ILLEGAL command never commits — and it does not: the concede the worker
+    // sent would have ended the game, and the game is not over.
+    expect(h.state().result).toBeNull()
     expect(h.lines.some((l) => l.kind === 'warning' && l.text.includes('not legal'))).toBe(true)
+    // But refusing it is only half the job. Before, refusal ended the turn: no move was scheduled and the
+    // state never changed, so the state-keyed effect never re-requested and the AI sat there forever. The
+    // refusal must now be recovered from, so the game still moves.
+    expect(h.commits).toHaveLength(1)
+    expect(h.state()).not.toBe(before)
   })
 
   it('drops the outstanding request when a human commit lands mid-search (D2-4)', () => {

@@ -129,6 +129,9 @@ interface Target {
   readonly notBefore: number
 }
 
+/** How far the delivery escalation has already fallen. See `deliver`. */
+type Stage = 'primary' | 'lastResort'
+
 interface Outstanding extends Target {
   readonly requestId: number
   readonly cancelWatchdog: () => void
@@ -141,6 +144,13 @@ export class SearchCoordinator {
 
   private transport: SearchTransport | null = null
   private initialised = false
+  /**
+   * Set once the current transport has proved it is alive by answering anything at all. `starting` — "there
+   * was no transport before this request" — is not the same question: a request superseded before the worker
+   * ever replied would hand its replacement the SHORT watchdog while the module was still being fetched and
+   * evaluated, and condemn a worker that was merely slow to boot.
+   */
+  private responded = false
   private disposed = false
   /** Permanent for this game (D2-6): a worker that failed once is not retried mid-game. */
   private fallback = false
@@ -154,6 +164,20 @@ export class SearchCoordinator {
   private active: Outstanding | null = null
   private delivery: { readonly cancel: () => void; readonly target: Target } | null = null
   private greedy: Agent | null = null
+  /**
+   * The turn `request()` is currently setting up, live from BEFORE the transport is built until `active` is
+   * assigned. A transport that reports failure synchronously — by calling `failure()` rather than throwing —
+   * would otherwise reach `fail()` with `active`, `delivery` and the explicit target all null, be recorded as
+   * a permanent fallback, and schedule nothing. Native `Worker` dispatches errors asynchronously so no
+   * production transport does this, but the seam does not require that and the hole should not depend on it.
+   */
+  private pendingTarget: Target | null = null
+  /**
+   * Handlers to warn through when a failure arrives with no turn to rescue. Warning only through a live
+   * target means a failure that lands after the last AI decision of the game — or while the human is
+   * conceding — is never shown at all, which is the silent degradation D2-6 forbids.
+   */
+  private warnSink: SearchRequestHandlers | null = null
 
   constructor(opts: SearchCoordinatorOptions) {
     this.opts = opts
@@ -181,13 +205,26 @@ export class SearchCoordinator {
     this.emitWarning(handlers)
 
     const notBefore = this.clock.now() + this.opts.stepMs
+    const target: Target = { state, handlers, notBefore }
+    this.warnSink = handlers
     if (this.fallback) {
-      this.scheduleGreedy({ state, handlers, notBefore })
+      this.scheduleGreedy(target)
       return
     }
+    // Live from here until `active` is assigned, so a synchronous transport failure has a turn to recover.
+    this.pendingTarget = target
+    try {
+      this.post(target)
+    } finally {
+      this.pendingTarget = null
+    }
+  }
+
+  /** The part of `request()` that can fail. Split out so `pendingTarget` is always released. */
+  private post(target: Target): void {
+    const { state, handlers, notBefore } = target
 
     let transport = this.transport
-    const starting = transport === null
     if (!transport) {
       try {
         transport = this.createTransport({
@@ -200,6 +237,10 @@ export class SearchCoordinator {
         return
       }
       this.transport = transport
+      // A factory that reported failure synchronously (by calling `failure()` rather than throwing) has
+      // already been given up on and has already had a recovery scheduled from `pendingTarget`. Posting to it
+      // would be posting to a transport we just terminated.
+      if (this.fallback) return
     }
 
     const requestId = ++this.nextRequestId
@@ -231,9 +272,9 @@ export class SearchCoordinator {
 
     // A worker that is killed or simply hangs produces no correlated event at all, so the only way to notice
     // it is a deadline (D2-6).
-    const timeout = starting
-      ? this.opts.startupWatchdogMs ?? DEFAULT_STARTUP_WATCHDOG_MS
-      : this.opts.watchdogMs ?? DEFAULT_WATCHDOG_MS
+    const timeout = this.responded
+      ? this.opts.watchdogMs ?? DEFAULT_WATCHDOG_MS
+      : this.opts.startupWatchdogMs ?? DEFAULT_STARTUP_WATCHDOG_MS
     const cancelWatchdog = this.clock.after(timeout, () => {
       const outstanding = this.active
       if (!outstanding || outstanding.requestId !== requestId) return
@@ -269,6 +310,9 @@ export class SearchCoordinator {
 
   private onMessage(message: WorkerResponseMessage): void {
     if (this.disposed) return
+    // Anything at all, even an error, proves the module loaded and is running: from here the short watchdog
+    // is the right deadline for this transport.
+    this.responded = true
     if (message.type === 'error') {
       const outstanding = this.active
       // A typed error means the search itself threw, so the worker is no more use for this game whether or
@@ -316,14 +360,16 @@ export class SearchCoordinator {
     // delivery — the two places a live turn can be hiding when the error does not correlate with what is
     // outstanding. Returning early instead left the AI stalled forever with the spinner up and nothing in the
     // log: the silent degradation D2-6 exists to forbid, inverted into a silent hang.
-    const recover = target ?? this.active ?? this.delivery?.target ?? null
+    const recover = target ?? this.active ?? this.delivery?.target ?? this.pendingTarget ?? null
     this.invalidate()
     if (!this.fallback) this.failureReason = text
     this.fallback = true
     this.killTransport()
-    if (!recover) return   // genuinely nothing in flight: no turn to rescue, and no handlers to warn through
-    this.emitWarning(recover.handlers)
-    this.scheduleGreedy(recover)
+    // Warn even when there is no turn to rescue. Deferring the warning to "the next request" loses it
+    // entirely when there is no next request — the game just ended, or the human is conceding.
+    const handlers = recover?.handlers ?? this.warnSink
+    if (handlers) this.emitWarning(handlers)
+    if (recover) this.scheduleGreedy(recover)
   }
 
   private killTransport(): void {
@@ -331,6 +377,7 @@ export class SearchCoordinator {
     this.transport.terminate()
     this.transport = null
     this.initialised = false
+    this.responded = false
   }
 
   private emitWarning(handlers: SearchRequestHandlers): void {
@@ -352,19 +399,93 @@ export class SearchCoordinator {
   }
 
   /** D2-5: the deadline is `startedAt + stepMs`, so a 750 ms search applies at once — never 750 + 600. */
-  private schedule(target: Target, produce: () => Command): void {
+  private schedule(target: Target, produce: () => Command, stage: Stage = 'primary'): void {
     const cancel = this.clock.after(Math.max(0, target.notBefore - this.clock.now()), () => {
       this.delivery = null
       if (this.disposed) return
       // Re-checked here and not only at acceptance: the wait is itself a window in which a concede can land.
       if (this.opts.readState() !== target.state) return
       if (actingPlayer(target.state) !== AI) return
-      // Advance BEFORE the handler runs, and roll back if it rejects: a handler that commits and re-requests
-      // synchronously would otherwise reuse this decision's seed for the next position (D2-3).
-      const at = this.decisionIndex
-      this.decisionIndex++
-      if (!target.handlers.onCommand(produce(), target.state)) this.decisionIndex = at
+      this.deliver(target, produce, stage)
     })
     this.delivery = { cancel, target }
+  }
+
+  /**
+   * Produce a command and hand it over — and treat BOTH ways this can fail as something to recover from
+   * rather than a place to stop.
+   *
+   * Neither was handled before, and both ended identically: `delivery` is already cleared, no move is
+   * scheduled, and the caller's state never changes — so the state-keyed effect that would re-request never
+   * reruns. Permanent spinner, empty log. That is the same silent hang the failure funnel was repaired for,
+   * reached through the one path that funnel does not cover.
+   *
+   * - `produce()` THROWS. Not hypothetical: `GreedyAgent` throws by design when it cannot decide (the
+   *   deliberate "fail loudly" policy of 5e82a7e), so the *fallback itself* could kill the game.
+   * - `onCommand` RETURNS FALSE, rejecting the command as illegal for the captured state.
+   *
+   * `stage` bounds the escalation — worker → Greedy → last resort → loud stop — so a recovery that is itself
+   * rejected cannot recurse. It is carried through `schedule` rather than held in a field because the field
+   * would have to survive an async gap it does not span.
+   */
+  private deliver(target: Target, produce: () => Command, stage: Stage): void {
+    // Advance BEFORE the handler runs, and roll back if it rejects: a handler that commits and re-requests
+    // synchronously would otherwise reuse this decision's seed for the next position (D2-3).
+    const at = this.decisionIndex
+    this.decisionIndex++
+    let command: Command
+    try {
+      command = produce()
+    } catch (e) {
+      this.decisionIndex = at
+      this.recover(target, `the AI could not choose a move (${describeFailure(e)})`, stage)
+      return
+    }
+    let accepted = false
+    try {
+      accepted = target.handlers.onCommand(command, target.state)
+    } catch (e) {
+      this.decisionIndex = at
+      this.recover(target, `the AI's move was refused (${describeFailure(e)})`, stage)
+      return
+    }
+    if (!accepted) {
+      this.decisionIndex = at
+      this.recover(target, 'the AI proposed a move that was not legal', stage)
+    }
+  }
+
+  /**
+   * A command could not be produced or could not be committed. Fall to the next rung and try again for the
+   * SAME turn, so the game always moves.
+   */
+  private recover(target: Target, text: string, stage: Stage): void {
+    // The floor already failed. Stop — but stop where the player can see it, because a spinner that never
+    // resolves is the one outcome this whole funnel exists to prevent.
+    if (stage === 'lastResort') return this.emitStop(target, text)
+    // Still trusting the worker: demote to Greedy for the rest of the game exactly as a transport failure
+    // would, and let it answer this same turn.
+    if (!this.fallback) return this.fail(text, target)
+    // Greedy is what just failed, so there is no stronger agent left to ask. Play a legal move.
+    this.scheduleLastResort(target, text)
+  }
+
+  /**
+   * The floor. Pick a legal command directly, preferring the least committal one.
+   *
+   * `concede` is deliberately last: it is legal in every position and sorts FIRST out of `legalCommands`, so
+   * "just take the first legal command" would quietly throw the game away — a silent loss being precisely as
+   * bad as the silent hang.
+   */
+  private scheduleLastResort(target: Target, text: string): void {
+    const legal = legalCommands(target.state, AI)
+    const pick = legal.find((c) => c.type === 'pass') ?? legal.find((c) => c.type !== 'concede') ?? legal[0]
+    if (!pick) return this.emitStop(target, text)
+    this.schedule(target, () => pick, 'lastResort')
+  }
+
+  /** Tell the player the AI has stopped, rather than leaving them watching a spinner forever. */
+  private emitStop(target: Target, text: string): void {
+    target.handlers.onWarning(`The AI could not make a move and has stopped (${text})`)
   }
 }

@@ -119,6 +119,7 @@ interface Harness {
   readState(): GameState
   setState(state: GameState): void
   setCommit(v: boolean): void
+  setCommitThrows(message: string | null): void
 }
 
 function harness(opts: { seed?: number; factory?: SearchTransportFactory; onCreate?: (t: FakeTransport) => void } = {}): Harness {
@@ -128,9 +129,14 @@ function harness(opts: { seed?: number; factory?: SearchTransportFactory; onCrea
   const warnings: string[] = []
   let current = aiToAct(opts.seed ?? 11)
   let commits = true
+  let commitThrows: string | null = null
 
   const handlers: SearchRequestHandlers = {
-    onCommand: (command, forState) => { delivered.push({ command, state: forState }); return commits },
+    onCommand: (command, forState) => {
+      delivered.push({ command, state: forState })
+      if (commitThrows !== null) throw new Error(commitThrows)
+      return commits
+    },
     onWarning: (text) => { warnings.push(text) },
   }
   const factory: SearchTransportFactory = opts.factory ?? ((h) => {
@@ -158,6 +164,7 @@ function harness(opts: { seed?: number; factory?: SearchTransportFactory; onCrea
     readState: () => current,
     setState: (s) => { current = s },
     setCommit: (v) => { commits = v },
+    setCommitThrows: (m) => { commitThrows = m },
   }
 }
 
@@ -229,25 +236,170 @@ describe('SearchCoordinator: seeds are per POSITION (D2-3)', () => {
     const first = h.readState()
     h.coordinator.request(first, h.handlers)
     const t = h.transport()
+    expect(t.searches[0]?.seed).toBe(searchSeed(GAME_SEED, 0))
 
-    // A delivered-but-rejected command must NOT consume the position's seed.
+    // A delivered-but-rejected command must NOT consume the position's seed — not through any rung of the
+    // escalation a rejection now triggers (worker → Greedy → last resort), each of which delivers in turn.
+    // Read the seed off the coordinator rather than off a second posted search: a rejection also demotes the
+    // worker permanently, so there is no second search to read it from.
     h.setCommit(false)
     t.handlers.message(resultFor(first, t.searches[0]?.requestId ?? 0))
     h.clock.advance(STEP_MS)
-    expect(h.delivered).toHaveLength(1)
+    expect(h.delivered.length).toBeGreaterThanOrEqual(1)
+    expect(h.coordinator.nextSeed).toBe(searchSeed(GAME_SEED, 0))
 
-    h.coordinator.request(first, h.handlers)
-    expect(t.searches[1]?.seed).toBe(searchSeed(GAME_SEED, 0))
-
-    // Now let it commit, and the next position is a different question.
+    // Now let one commit, and the next position becomes a different question.
     h.setCommit(true)
-    t.handlers.message(resultFor(first, t.searches[1]?.requestId ?? 0))
-    h.clock.advance(STEP_MS)
-    expect(h.delivered).toHaveLength(2)
-
     h.coordinator.request(first, h.handlers)
-    expect(t.searches[2]?.seed).toBe(searchSeed(GAME_SEED, 1))
-    expect(t.searches[2]?.seed).not.toBe(searchSeed(GAME_SEED, 0))
+    h.clock.advance(STEP_MS)
+    expect(h.coordinator.nextSeed).toBe(searchSeed(GAME_SEED, 1))
+    expect(h.coordinator.nextSeed).not.toBe(searchSeed(GAME_SEED, 0))
+  })
+
+  // The worker is trusted until it is not: one rejected command demotes it for the rest of the game, the same
+  // way a transport error does. Otherwise a search that keeps proposing illegal commands is asked forever.
+  it('demotes the worker permanently when it proposes a command that will not commit', () => {
+    const h = harness()
+    const first = h.readState()
+    h.coordinator.request(first, h.handlers)
+    const t = h.transport()
+    h.setCommit(false)
+    t.handlers.message(resultFor(first, t.searches[0]?.requestId ?? 0))
+    h.clock.advance(STEP_MS)
+
+    expect(h.coordinator.usingFallback).toBe(true)
+    expect(h.warnings[0]).toContain('not legal')
+    // This harness rejects EVERY command, so the escalation runs to its floor: the worker is demoted, Greedy
+    // is refused too, and the last-resort legal move is refused as well. The point is where it ends up —
+    // announcing that it has stopped, rather than leaving a spinner turning with nothing in the log.
+    expect(h.delivered.length).toBeGreaterThanOrEqual(2)
+    expect(h.warnings).toHaveLength(2)
+    expect(h.warnings[1]).toContain('could not make a move and has stopped')
+  })
+})
+
+// Codex's D2 code review found both of these, and they are the SAME liveness bug as the one the failure
+// funnel was already repaired for, reached through the two paths that funnel did not cover. In each case the
+// old code cleared `delivery`, scheduled nothing, and left the caller's state untouched — so the state-keyed
+// effect that would re-request never reran. Spinner up, log empty, game over.
+// D2-A5 says each failure class must "still finish a game". The per-failure tests assert one warning and one
+// delivered command, which is not the same claim: a coordinator that answers once and then wedges passes them
+// all. This drives a real game to its result under each failure, committing every command for real.
+describe('SearchCoordinator: a failed worker still finishes a whole game (D2-A5)', () => {
+  const drive = (factory: SearchTransportFactory): { result: GameState; warnings: string[] } => {
+    const clock = new FakeClock()
+    const warnings: string[] = []
+    let current = aiToAct(11)
+    const greedy = new GreedyAgent({ seed: 7, decks: DECKS, depth: 1 })
+    const handlers: SearchRequestHandlers = {
+      // Commit for real, exactly as the hook does: re-check legality against the captured state, then apply.
+      onCommand: (command, forState) => {
+        if (forState !== current) return false
+        if (!legalCommands(forState, AI).some((c) => JSON.stringify(c) === JSON.stringify(command))) return false
+        current = apply(forState, command).state
+        return true
+      },
+      onWarning: (text) => { warnings.push(text) },
+    }
+    const coordinator = new SearchCoordinator({
+      decks: DECKS, gameSeed: GAME_SEED, readState: () => current, stepMs: STEP_MS,
+      iterations: 25, rolloutCommandCap: 8, explorationC: 1,
+      watchdogMs: WATCHDOG_MS, startupWatchdogMs: STARTUP_WATCHDOG_MS, createTransport: factory, clock,
+    })
+    for (let i = 0; i < 4000 && !current.result; i++) {
+      const actor = actorOf(current)
+      if (actor === null) break
+      if (actor === AI) {
+        const before = current
+        coordinator.request(current, handlers)
+        clock.advance(STEP_MS)
+        // A worker that simply never replies produces no correlated event, so the only thing that moves the
+        // game on is the watchdog deadline. Wait it out rather than assuming the pacing delay is enough.
+        if (current === before) clock.advance(STARTUP_WATCHDOG_MS + STEP_MS)
+        if (current === before) throw new Error('the AI made no progress on its turn')
+        continue
+      }
+      // The human seat is played by Greedy so the game actually progresses to a result.
+      current = apply(current, greedy.decide(viewFor(current, HUMAN), legalCommands(current, HUMAN))).state
+    }
+    coordinator.dispose()
+    return { result: current, warnings }
+  }
+
+  it('finishes when the worker cannot be constructed at all', () => {
+    const { result, warnings } = drive(() => { throw new Error('Worker is not defined') })
+    expect(result.result).not.toBeNull()
+    expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)
+  })
+
+  it('finishes when every post throws a clone error', () => {
+    const { result, warnings } = drive(() => ({
+      post: () => { throw new DOMException('could not be cloned', 'DataCloneError') },
+      terminate: () => {},
+    }))
+    expect(result.result).not.toBeNull()
+    expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)
+  })
+
+  it('finishes when the worker accepts requests and never replies', () => {
+    const { result, warnings } = drive(() => ({ post: () => {}, terminate: () => {} }))
+    expect(result.result).not.toBeNull()
+    expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)
+  })
+})
+
+describe('SearchCoordinator: delivery itself must not be able to end the game', () => {
+  it('recovers when the commit handler THROWS rather than returning false', () => {
+    const h = harness()
+    const first = h.readState()
+    h.coordinator.request(first, h.handlers)
+    const t = h.transport()
+    // A throw used to skip even the seed rollback, so the position was silently consumed on the way out.
+    h.setCommitThrows('the board blew up while applying')
+    t.handlers.message(resultFor(first, t.searches[0]?.requestId ?? 0))
+    h.clock.advance(STEP_MS)
+    expect(h.delivered.length).toBeGreaterThanOrEqual(1)
+
+    // It must be treated as a worker failure: warn, demote, and answer this same turn with Greedy.
+    expect(h.warnings[0]).toContain(FALLBACK_WARNING)
+    expect(h.coordinator.usingFallback).toBe(true)
+    expect(h.coordinator.nextSeed).toBe(searchSeed(GAME_SEED, 0))
+
+    // And once the board stops throwing, the recovered move commits for real.
+    h.setCommitThrows(null)
+    h.clock.advance(STEP_MS)
+    const last = h.delivered[h.delivered.length - 1]
+    if (!last) throw new Error('unreachable')
+    expect(legalCommands(last.state, AI).some((c) => c.type === last.command.type)).toBe(true)
+  })
+
+  it('recovers when the transport reports failure SYNCHRONOUSLY, before anything is outstanding', () => {
+    // Native `Worker` dispatches errors asynchronously, so no production transport does this — but the seam
+    // does not require it, and `active` is not assigned until after the posts return. `fail()` therefore used
+    // to find no target at all, record a permanent fallback, and schedule nothing.
+    const h = harness({
+      factory: (handlers) => {
+        handlers.failure('the transport gave up during construction')
+        return { post: () => {}, terminate: () => {} }
+      },
+    })
+    h.coordinator.request(h.readState(), h.handlers)
+    expectOneWarningAndACommand(h)
+    expect(h.warnings[0]).toContain('gave up during construction')
+  })
+
+  it('recovers when the transport reports failure synchronously from inside post()', () => {
+    let handlers: TransportHandlers | null = null
+    const h = harness({
+      factory: (hs) => {
+        handlers = hs
+        return { post: () => { hs.failure('the transport gave up while posting') }, terminate: () => {} }
+      },
+    })
+    h.coordinator.request(h.readState(), h.handlers)
+    expect(handlers).not.toBeNull()
+    expectOneWarningAndACommand(h)
+    expect(h.warnings[0]).toContain('gave up while posting')
   })
 })
 
@@ -550,8 +702,10 @@ describe('SearchCoordinator: fallback detection (D2-6)', () => {
     expect(h.delivered).toHaveLength(3)
   })
 
-  // A worker can die between decisions, when there is no handler to warn through. The warning must not be lost.
-  it('defers the warning to the next request when nothing was outstanding', () => {
+  // A worker can die between decisions, when nothing is outstanding to rescue. Deferring the warning to
+  // "the next request" loses it entirely when there is no next request — the game has just ended, or the
+  // human is conceding. It must be shown at once, and shown only once.
+  it('warns immediately when it fails with nothing outstanding, and does not warn twice', () => {
     const h = harness()
     const state = h.readState()
     h.coordinator.request(state, h.handlers)
@@ -561,13 +715,13 @@ describe('SearchCoordinator: fallback detection (D2-6)', () => {
     expect(h.delivered).toHaveLength(1)
 
     t.handlers.failure('the worker died between decisions')
-    expect(h.warnings).toHaveLength(0)
+    expect(h.warnings).toHaveLength(1)
+    expect(h.warnings[0]).toContain('died between decisions')
     expect(h.coordinator.usingFallback).toBe(true)
 
     h.coordinator.request(state, h.handlers)
     h.clock.advance(STEP_MS)
-    expect(h.warnings).toHaveLength(1)
-    expect(h.warnings[0]).toContain('died between decisions')
+    expect(h.warnings).toHaveLength(1)   // still one: the warning is per game, not per request
     expect(h.delivered).toHaveLength(2)
   })
 
