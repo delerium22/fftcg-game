@@ -540,3 +540,131 @@ describe('defOf sees the merged abilities', () => {
     expect(defOf(s, noel).abilities?.[0]?.id).toBe('16-092C:etb')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Rung C3 — the six ACTIVATED clauses, executed through the real command pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * The engine suite proves the activation transaction on synthetic cards; these prove the six hand-written
+ * ASTs do what their printed text says, driven end to end. Every one goes through `legalCommands` first, so
+ * reachability and behaviour are asserted together — an ability the engine would execute but never offer is
+ * as useless as one that does the wrong thing.
+ */
+describe('C3 activated abilities, on the real defs', () => {
+  /** The activation of `abilityId` on `source`, taken from `legalCommands` rather than hand-built. */
+  function offered(s: GameState, source: CardId, abilityId: string) {
+    return legalCommands(s, 0).filter((c) => c.type === 'activateAbility' && c.source === source && c.abilityId === abilityId)
+  }
+
+  it('1-121C Red Mage — "[Lightning][Dull]: Choose 1 Forward. It gains Haste until the end of the turn."', () => {
+    let s = makeGame()
+    let src: CardId; let target: CardId
+    ;[s, src] = withField(s, 0, 'backups', '1-121C')
+    ;[s] = withCp(s, 0, [LIGHTNING_BACKUP])   // the Lightning CP — NOT Red Mage itself
+    ;[s, target] = withField(s, 0, 'forwards', '27-124S')
+
+    const cmds = offered(s, src, '1-121C:haste')
+    expect(cmds.length).toBeGreaterThan(0)
+    // The source may never pay for itself (spec C3-5).
+    for (const c of cmds) if (c.type === 'activateAbility') expect(c.payment.dullBackups).not.toContain(src)
+    const pick = cmds.find((c) => c.type === 'activateAbility' && c.targets.includes(target))
+    expect(pick).toBeDefined()
+
+    const r = apply(s, pick!)
+    expect(fc(r.state, target)?.granted).toContain('haste')
+    expect(fc(r.state, src)?.status).toBe('dull')
+    ok(r.state)
+  })
+
+  it('16-092C Noel — "[Dull], put Noel into the Break Zone: Dull all the Forwards opponent controls."', () => {
+    let s = makeGame()
+    let src: CardId; let a: CardId; let b: CardId
+    ;[s, src] = withField(s, 0, 'forwards', '16-092C')
+    ;[s, a] = withField(s, 1, 'forwards', '27-124S')
+    ;[s, b] = withField(s, 1, 'forwards', '27-125S')
+
+    const cmds = offered(s, src, '16-092C:dull-all')
+    expect(cmds.length).toBe(1)   // no CP, no targets — exactly one way to do it
+    const r = apply(s, cmds[0]!)
+
+    expect(r.state.players[1].forwards.find((c) => c.id === a)?.status).toBe('dull')
+    expect(r.state.players[1].forwards.find((c) => c.id === b)?.status).toBe('dull')
+    // The cost removed Noel, and it was NOT a break.
+    expect(r.state.players[0].breakZone).toContain(src)
+    expect(r.events.some((e) => e.type === 'brokenByAbility')).toBe(false)
+    ok(r.state)
+  })
+
+  it('20-074C Miner — "[2][Dull], put Miner into the Break Zone: Draw 1 card."', () => {
+    let s = makeGame()
+    let src: CardId
+    ;[s, src] = withField(s, 0, 'backups', '20-074C')
+    ;[s] = withCp(s, 0, [EARTH_BACKUP, EARTH_BACKUP])   // a GENERIC [2]: any two CP will do
+    const before = s.players[0].hand.length
+
+    const cmds = offered(s, src, '20-074C:draw')
+    expect(cmds.length).toBeGreaterThan(0)
+    const r = apply(s, cmds[0]!)
+
+    expect(r.state.players[0].hand.length).toBe(before + 1)
+    expect(r.state.players[0].breakZone).toContain(src)
+    ok(r.state)
+  })
+
+  it('19-052C Undead Princess — "Put Undead Princess into the Break Zone: Choose 1 Forward. +4000 power."', () => {
+    let s = makeGame()
+    let src: CardId; let ally: CardId
+    ;[s, src] = withField(s, 0, 'forwards', '19-052C')
+    ;[s, ally] = withField(s, 0, 'forwards', '27-124S')
+    const base = powerOfId(s, ally)
+
+    const cmds = offered(s, src, '19-052C:pump')
+    // She is in the Break Zone by the time targets are validated, so she is never offered as her own target.
+    for (const c of cmds) if (c.type === 'activateAbility') expect(c.targets).not.toContain(src)
+    const pick = cmds.find((c) => c.type === 'activateAbility' && c.targets.includes(ally))
+    expect(pick).toBeDefined()
+
+    const r = apply(s, pick!)
+    expect(powerOfId(r.state, ally)).toBe(base + 4000)
+    expect(r.state.players[0].breakZone).toContain(src)
+    ok(r.state)
+  })
+
+  it('19-052C Undead Princess is illegal when she is the only Forward', () => {
+    // Nothing to pump once she has paid, so the activation must not be offered at all (§11.6.5).
+    let s = makeGame()
+    let src: CardId
+    ;[s, src] = withField(s, 0, 'forwards', '19-052C')
+    expect(offered(s, src, '19-052C:pump')).toEqual([])
+    expect(s.players[0].breakZone).not.toContain(src)
+  })
+
+  for (const [code, id, element] of [['18-064C', '18-064C:draw', EARTH_BACKUP], ['18-069C', '18-069C:draw', LIGHTNING_BACKUP]] as const) {
+    it(`${code} — "[Element], discard: Draw 1 card. You can only use this ability if it is in your hand."`, () => {
+      let s = makeGame()
+      let src: CardId
+      ;[s, src] = withHand(s, 0, code)
+      ;[s] = withCp(s, 0, [element])
+      const before = s.players[0].hand.length
+
+      const cmds = offered(s, src, id)
+      expect(cmds.length).toBeGreaterThan(0)
+      const r = apply(s, cmds[0]!)
+
+      // -1 for the discarded source, +1 for the draw.
+      expect(r.state.players[0].hand.length).toBe(before)
+      expect(r.state.players[0].hand).not.toContain(src)
+      expect(r.state.players[0].breakZone).toContain(src)
+      ok(r.state)
+    })
+
+    it(`${code} cannot use its hand-only ability from the field`, () => {
+      let s = makeGame()
+      let onField: CardId
+      ;[s, onField] = withField(s, 0, 'backups', code)
+      ;[s] = withCp(s, 0, [element])
+      expect(offered(s, onField, id)).toEqual([])
+    })
+  }
+})
