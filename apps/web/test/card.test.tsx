@@ -46,6 +46,23 @@ describe('Card', () => {
     expect(out).toContain('--dmg:28')
   })
 
+  it('shows ONLY the current power while undamaged — the printed max says nothing new', () => {
+    // Measured in the browser, "7000/7000" overflowed the name plate on every field card by 10px and every
+    // hand card by 29px, clipping the one number combat turns on. An undamaged card is at its printed power
+    // by definition, so the second half is spent saying the same number twice.
+    const out = html(cloud)
+    expect(out).toContain('7000')
+    expect(out).not.toContain('/7000')
+  })
+
+  it('carries the full label as a title, since the plate truncates long names', () => {
+    // "Undead Princess" renders as "Undea…" on a field card. The name is not recoverable from the plate, so
+    // it has to be recoverable from the element.
+    const princess = html({ code: '19-052C', name: 'Undead Princess', cost: 1, elements: ['earth'], type: 'forward', power: 2000 })
+    expect(princess).toContain('title="Undead Princess, cost 1, earth, forward, power 2000 of 2000"')
+    expect(html({ ...cloud, selectable: true })).toContain('title="Cloud, cost 3, earth, forward, power 7000 of 7000"')
+  })
+
   it('is a button only when selectable, and reports its selection', () => {
     expect(html({ ...cloud, selectable: true, selected: true })).toContain('<button type="button"')
     expect(html({ ...cloud, selectable: true, selected: true })).toContain('aria-pressed="true"')

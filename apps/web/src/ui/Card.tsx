@@ -122,7 +122,11 @@ export function Card(props: CardProps): JSX.Element {
             {remaining !== null && (
               <span className={damage > 0 ? 'card__power card__power--hurt' : 'card__power'}>
                 {remaining}
-                <em>/{power}</em>
+                {/* The printed maximum is shown only once it MATTERS. An undamaged card is at its printed
+                    power by definition, so "2000/2000" spends the widest thing on the plate saying the same
+                    number twice — and measured in the browser it overflowed the plate on every field card by
+                    10px and on every hand card by 29px, clipping the one number combat turns on. */}
+                {damage > 0 && <em>/{power}</em>}
               </span>
             )}
           </span>
@@ -143,13 +147,13 @@ export function Card(props: CardProps): JSX.Element {
   // all come from the element rather than from hand-rolled key handling.
   if (selectable) {
     return (
-      <button type="button" className={className} style={vars as CSSProperties} aria-label={label} aria-pressed={selected} onClick={onClick}>
+      <button type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label} aria-pressed={selected} onClick={onClick}>
         <span className="card__face">{face}</span>
       </button>
     )
   }
   return (
-    <div className={className} style={vars as CSSProperties} role="img" aria-label={label}>
+    <div className={className} style={vars as CSSProperties} title={label} role="img" aria-label={label}>
       <span className="card__face">{face}</span>
     </div>
   )

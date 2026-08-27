@@ -262,7 +262,22 @@
 /* A field card sits in a row already labelled "forwards" or "backups", so at that size the type
  * word is redundant wherever power can take the space instead. In hand, where there is no such
  * row, it always shows. */
-.card--field .card__meta:has(.card__power) .card__type { display: none; }
+/* Whenever a card shows power, the power gets the plate. The type label is inferable — a Forward is in the
+   Forwards row, and the full "Noel, cost 5, lightning, forward" is on the element's title and aria-label —
+   whereas the power is inferable from nothing. This was field-only, so hand cards kept the type and pushed
+   the power off the plate entirely. */
+.card__meta:has(.card__power) .card__type { display: none; }
+
+/* And the number has to fit at every size once a card is damaged and shows BOTH halves — the widest string
+   the plate ever carries. Sized from `--cw` like the rest of the card rather than by hand-picked per-size
+   values: measured in the browser, fixed sizes left the field card fitting by 0.9px and the small card
+   still clipping by 21px, which is tuning until the current pool happens to fit. */
+.card__power { font-size: clamp(7px, calc(var(--cw) * 0.115), 11px); }
+
+/* At the smallest size the current power is all there is room for. A small card is a Backup (no power) or a
+   Break Zone card (no damage), so both halves cannot arise there today — this makes that structural rather
+   than a fact about the pool that a later card could quietly falsify. */
+.card--small .card__power em { display: none; }
 
 /* A damaged forward shows what is left of its power first, with the printed total dimmed after it. */
 .card__power--hurt { color: #f08d7c; }
