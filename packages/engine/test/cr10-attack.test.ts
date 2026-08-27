@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { applyPass } from '../src/phases.js'
+import { apply } from '../src/apply.js'
 import { applyAssignPartyDamage, applyDeclareAttack, applyDeclareBlock, attackCheck, legalAttackSets, legalBlockers, legalPartyDamageAssignments } from '../src/attack.js'
 import { IllegalCommandError } from '../src/errors.js'
 import { makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
 
-/** turn 1, player 0 in the attack declaration step */
+/**
+ * Turn 1, player 0 in the attack declaration step.
+ *
+ * Goes through `apply` rather than `applyPass`: since C5 the Attack Phase is entered in two steps —
+ * preparation, then a continuation into declaration once any beginning-of-phase clause has drained — and it
+ * is `settle` inside `apply` that runs the continuation. `applyPass` alone now stops in preparation, which is
+ * correct and is what real play never sees.
+ */
 function inAttack() {
-  let s = makeGame()
-  ;[s] = applyPass(s, 0)
-  return s
+  return apply(makeGame(), { type: 'pass', player: 0 }).state
 }
 const IDLE = { step: 'declaration', attackers: [], blocker: null }
 
@@ -131,8 +136,8 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     // breaks normally via §12.4.5 once damage lands — isolating the party-damage-split dead end from the
     // separate (pre-existing, documented) "power < 1000 never breaks by damage" behavior in rules.ts.
     const defs = [...VANILLA_POOL, makeDef({ code: 'V-W5', power: 2500 })]
-    let s = makeGame({ defs })
-    ;[s] = applyPass(s, 0)
+    // Through `apply`, for the same reason `inAttack` does: entering the Attack Phase is two steps since C5.
+    let s = apply(makeGame({ defs }), { type: 'pass', player: 0 }).state
     let a1: number, a2: number, b: number
     ;[s, a1] = withField(s, 0, 'forwards', 'V-F1')   // 3000
     ;[s, a2] = withField(s, 0, 'forwards', 'V-F2')   // 5000

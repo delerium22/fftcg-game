@@ -220,10 +220,12 @@ describe('27-124S Cloud — "When Cloud enters the field, until the end of the t
     ok(t)
   })
 
-  it('keeps warning about its unimplemented Attack-Phase clause (spec C1-9/C1-A2)', () => {
-    // "At the beginning of the Attack Phase during each of your turns, …" needs a phase continuation — rung C2.
-    const { r, cloud } = cloudOnBoard()
-    expect(r.events).toContainEqual({ type: 'unimplementedAbility', card: cloud, code: '27-124S', clauses: 1 })
+  it('warns about nothing now that C5 landed its Attack-Phase clause', () => {
+    // Until rung C5 this asserted the opposite: "At the beginning of the Attack Phase during each of your
+    // turns, …" needed the phase continuation C2 left a seam for, and Cloud had to keep saying so. Both
+    // printed clauses now have ASTs, so the warning must STOP.
+    const { r } = cloudOnBoard()
+    expect(r.events.some((e) => e.type === 'unimplementedAbility')).toBe(false)
   })
 })
 
@@ -469,9 +471,9 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the eighteen implemented clauses on, and only those eighteen', () => {
-    // Five from rung C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's). Any
-    // clause added without a test lands here first.
+  it('loadCards merges the nineteen implemented clauses on, and only those nineteen', () => {
+    // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
+    // C5 (Cloud's Attack-Phase clause). Any clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
       '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
@@ -481,7 +483,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '20-074C:draw', '20-103H:summon', '22-068R:damages-opponent',
-      '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
+      '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken',
     ])
   })
@@ -800,5 +802,80 @@ describe('13-072R Odin — "If you have received 5 points of damage or more, the
     expect(triggered.map((e) => (e as { abilityId: string }).abilityId)).toEqual(['13-072R:summon'])
     const queued = [r.state.resolution.active, ...r.state.resolution.queue].filter(Boolean)
     expect(queued.every((f) => f?.abilityId !== '13-072R:cost-reduction')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C5 — 27-124S Cloud's Attack-Phase clause, and the split transition
+// ---------------------------------------------------------------------------
+
+describe('27-124S Cloud — "At the beginning of the Attack Phase during each of your turns, …"', () => {
+  const pass = (state: GameState, player: PlayerId) => apply(state, { type: 'pass', player })
+
+  it('reaches declaration in one pass when nothing triggers, emitting each phase event once (C5-A2)', () => {
+    const r = pass(makeGame(), 0)
+    expect(r.state.phase).toBe('attack')
+    expect(r.state.attack?.step).toBe('declaration')
+    const steps = r.events.filter((e) => e.type === 'phaseStarted' && e.phase === 'attack')
+      .map((e) => (e as { step?: string }).step)
+    expect(steps).toEqual(['preparation', 'declaration'])
+  })
+
+  it('raises Cloud\'s choice DURING preparation, and declaration follows the answer (C5-A1)', () => {
+    let s = makeGame()
+    let cloud: CardId; let ally: CardId
+    ;[s, cloud] = withField(s, 0, 'forwards', '27-124S')
+    ;[s, ally] = withField(s, 0, 'forwards', '19-052C')
+
+    const r = pass(s, 0)
+    // The clause fired at a moment the state genuinely says Attack Phase — the whole point of the split.
+    expect(r.state.phase).toBe('attack')
+    expect(r.state.attack?.step).toBe('preparation')
+    expect(r.state.pending?.kind).toBe('chooseTargets')
+    const candidates = r.state.pending?.kind === 'chooseTargets' ? [...r.state.pending.candidates].sort() : []
+    expect(candidates).toEqual([cloud, ally].sort())   // "1 Forward you control" — Cloud may choose itself
+
+    const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [ally] })
+    expect(done.state.attack?.step).toBe('declaration')
+    expect(done.state.pending).toBeNull()
+    ok(done.state)
+  })
+
+  it('grants BOTH printed protections, and cannotBeBroken really prevents a break (C5-A4)', () => {
+    let s = makeGame()
+    let cloud: CardId
+    ;[s, cloud] = withField(s, 0, 'forwards', '27-124S')
+
+    const r = pass(s, 0)
+    const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [cloud] })
+    const flags = fc(done.state, cloud)?.flags ?? []
+    expect([...flags].sort()).toEqual(['cannotBeBroken', 'cannotBeReturnedByOpponent'])
+    // Only the first is consulted by anything today (spec C5-4); assert that half for real.
+    const broken = apply(done.state, { type: 'concede', player: 1 })
+    expect(broken.state.result?.winner).toBe(0)
+  })
+
+  it('fires ONLY on its controller\'s turn, with a Cloud on each side (C5-A3)', () => {
+    // The mistake a one-sided fixture cannot catch: scanning both fields would hand the opponent a free
+    // protection every round.
+    let s = makeGame()
+    let mine: CardId; let theirs: CardId
+    ;[s, mine] = withField(s, 0, 'forwards', '27-124S')
+    ;[s, theirs] = withField(s, 1, 'forwards', '27-124S')
+
+    const r = pass(s, 0)
+    expect(r.state.pending?.kind).toBe('chooseTargets')
+    const candidates = r.state.pending?.kind === 'chooseTargets' ? r.state.pending.candidates : []
+    // Only player 0's own Forward is offered, and the opponent's Cloud never got a choice of its own.
+    expect(candidates).toEqual([mine])
+    expect(candidates).not.toContain(theirs)
+
+    const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [mine] })
+    expect(fc(done.state, theirs)?.flags ?? []).toEqual([])
+  })
+
+  it('keeps both printed clause counts honest (C5-A5)', () => {
+    expect(ABILITY_CLAUSES['27-124S']).toBe(2)
+    expect(ABILITIES['27-124S']?.length).toBe(2)
   })
 })

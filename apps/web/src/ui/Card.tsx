@@ -4,7 +4,7 @@ import { artUrl, isArtMissing, markArtMissing } from '../game/art.js'
 import './Card.css'
 
 const KEYWORD_LABEL: Record<Keyword, string> = { haste: 'Haste', brave: 'Brave', firstStrike: 'First Strike', backAttack: 'Back Attack' }
-const FLAG_LABEL: Record<FieldFlag, string> = { cannotBeBroken: 'Unbreakable' }
+const FLAG_LABEL: Record<FieldFlag, string> = { cannotBeBroken: 'Unbreakable', cannotBeReturnedByOpponent: 'Unreturnable' }
 
 /*
  * Until-end-of-turn modifiers ride as badges over the art. They are styled inline rather than in Card.css

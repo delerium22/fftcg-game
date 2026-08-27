@@ -26,7 +26,10 @@ const who = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'You' : 'The A
 const whoDoes = (v: PlayerView, p: PlayerId, mine: string, theirs: string): string => (p === v.me ? mine : theirs)
 
 const KEYWORD_LABEL: Record<Keyword, string> = { haste: 'Haste', brave: 'Brave', firstStrike: 'First Strike', backAttack: 'Back Attack' }
-const FLAG_LABEL: Record<FieldFlag, string> = { cannotBeBroken: 'cannot be broken this turn' }
+const FLAG_LABEL: Record<FieldFlag, string> = {
+  cannotBeBroken: 'cannot be broken this turn',
+  cannotBeReturnedByOpponent: "cannot be returned to its owner's hand by the opponent this turn",
+}
 
 /**
  * The printed wording of the clause that is resolving, quoted from the AST on `CardDef` (spec C1-1). Printed

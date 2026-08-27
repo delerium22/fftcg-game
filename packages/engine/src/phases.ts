@@ -5,7 +5,7 @@ import { HAND_SIZE_LIMIT, updatePlayer } from './state.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { runRuleProcesses } from './rules.js'
-import { enterAttackDeclaration } from './resolve.js'
+import { enqueueAttackPhaseTriggers, enterAttackPreparation } from './resolve.js'
 // Re-exported so every existing importer of `drawCards` from this module keeps working (spec C3-9).
 export { drawCards } from './draw.js'
 import { drawCards } from './draw.js'
@@ -41,10 +41,18 @@ export function applyPass(state: GameState, player: PlayerId): [GameState, Event
   if (state.phase === 'attack' && state.attack?.step !== 'declaration') throw new IllegalCommandError('cannot pass during this attack step')
   switch (state.phase) {
     case 'main1':
-      // §10.1.1 Attack Preparation Step — MVP0-SIMPLIFICATION: nothing triggers here in C1, so advance straight to
-      // declaration. C2's Cloud clause instead enqueues its trigger and sets `resolution.continuation` to
-      // 'enterAttackDeclaration', which drains to this exact transition.
-      return enterAttackDeclaration(state, player)
+      // §10.1.1 Attack Preparation Step, then §10.1.2 Declaration — the two-step transition C2 left the seam
+      // for (spec C5-1). Enter preparation, queue the beginning-of-phase clauses, and hand the move into
+      // declaration to the agenda's continuation. With nothing queued the continuation runs immediately, so a
+      // board with no such clause still reaches declaration in the same `pass`.
+      //
+      // Doing it in one hop, as this used to, would resolve any such trigger while the state still said Main
+      // Phase 1: the clause would fire at a moment its own printed text says it does not.
+      {
+        const [prepared, events] = enterAttackPreparation(state, player)
+        const queued = enqueueAttackPhaseTriggers(prepared, player)
+        return [{ ...queued, resolution: { ...queued.resolution, continuation: 'enterAttackDeclaration' } }, events]
+      }
     case 'attack':   // declaration step, checked above; §10.1.4.6
       return [{ ...state, phase: 'main2', attack: null, priority: player }, [{ type: 'phaseStarted', phase: 'main2' }]]
     case 'main2':

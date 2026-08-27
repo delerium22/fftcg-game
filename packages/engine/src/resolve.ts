@@ -4,7 +4,7 @@ import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
 import { MAX_RESOLUTION_STEPS } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending } from './state.js'
-import { findFieldCard, updatePlayer } from './state.js'
+import { defOf, findFieldCard, updatePlayer } from './state.js'
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event } from './events.js'
@@ -395,9 +395,40 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
 // ---------------------------------------------------------------------------
 
 /** §10.1.1 Attack Preparation Step, then §10.1.2 Declaration. Shared by `pass` and by the agenda continuation. */
+/**
+ * §10.1.1 Attack Preparation Step. Enters the Attack Phase and STOPS there, so anything that triggers "at the
+ * beginning of the Attack Phase" resolves while the state actually says Attack Phase (spec C5-1).
+ *
+ * The move into declaration is the agenda's `continuation`, not this function's job: Cloud's clause raises a
+ * target choice, and the player must answer it before declaration arrives.
+ */
+export function enterAttackPreparation(state: GameState, player: PlayerId): [GameState, Event[]] {
+  const s: GameState = { ...state, phase: 'attack', attack: { step: 'preparation', attackers: [], blocker: null }, priority: player }
+  return [s, [{ type: 'phaseStarted', phase: 'attack', step: 'preparation' }]]
+}
+
+/** §10.1.2 Declaration. Reached from preparation, either immediately or once the beginning-of-phase triggers drain. */
 export function enterAttackDeclaration(state: GameState, player: PlayerId): [GameState, Event[]] {
   const s: GameState = { ...state, phase: 'attack', attack: { step: 'declaration', attackers: [], blocker: null }, priority: player }
-  return [s, [{ type: 'phaseStarted', phase: 'attack', step: 'preparation' }, { type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]
+  return [s, [{ type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]
+}
+
+/**
+ * Queue every "at the beginning of the Attack Phase" clause the TURN PLAYER controls (spec C5-2).
+ *
+ * Only the turn player's: Cloud prints "during each of YOUR turns". Scanning both fields would hand the
+ * opponent a free protection every round, and a fixture with one Cloud on one side cannot tell the difference.
+ */
+export function enqueueAttackPhaseTriggers(state: GameState, player: PlayerId): GameState {
+  let s = state
+  const ps = s.players[player]
+  for (const c of [...ps.forwards, ...ps.backups]) {
+    for (const ability of defOf(s, c.id).abilities ?? []) {
+      if (ability.trigger.kind !== 'attackPhaseBegins') continue
+      s = enqueueTrigger(s, c.id, player, ability)
+    }
+  }
+  return s
 }
 
 /**

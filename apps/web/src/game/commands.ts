@@ -13,7 +13,10 @@ const PHASE_LABEL: Record<string, string> = {
 }
 
 const KEYWORD_LABEL: Record<Keyword, string> = { haste: 'Haste', brave: 'Brave', firstStrike: 'First Strike', backAttack: 'Back Attack' }
-const FLAG_PURPOSE: Record<FieldFlag, string> = { cannotBeBroken: 'to protect from being broken' }
+const FLAG_PURPOSE: Record<FieldFlag, string> = {
+  cannotBeBroken: 'to protect from being broken',
+  cannotBeReturnedByOpponent: "to protect from the opponent's return effects",
+}
 const signed = (n: number): string => (n >= 0 ? `+${n}` : `${n}`)
 const only = <T,>(s: Set<T>): T | null => (s.size === 1 ? ([...s][0] as T) : null)
 

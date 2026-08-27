@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { applyPass, applyDiscardToHandSize, drawCards, startTurn } from '../src/phases.js'
+import { apply } from '../src/apply.js'
+import type { GameState } from '../src/state.js'
+import type { PlayerId } from '../src/types.js'
 import { IllegalCommandError } from '../src/errors.js'
 import { makeGame, withField, withHandSize } from './helpers.js'
 
@@ -38,20 +41,29 @@ describe('§9.2 draw phase', () => {
   })
 })
 
+/**
+ * A pass as the GAME performs one: through `apply`, which settles afterwards.
+ *
+ * Since C5 the Attack Phase is entered in two steps — preparation, then a continuation into declaration once
+ * any beginning-of-phase clause has drained — and it is `settle` inside `apply` that runs the continuation.
+ * `applyPass` on its own now stops in preparation, which is correct and which real play never observes.
+ */
+const pass = (state: GameState, player: PlayerId): GameState => apply(state, { type: 'pass', player }).state
+
 describe('§9.3–9.5 passing through phases', () => {
   it('main1 → attack declaration → main2 → end → next turn', () => {
     let s = withHandSize(makeGame(), 0, 5)   // avoid the hand-size discard decision
     expect(s.phase).toBe('main1')
-    ;[s] = applyPass(s, 0)
+    s = pass(s, 0)
     expect(s.phase).toBe('attack'); expect(s.attack?.step).toBe('declaration'); expect(s.priority).toBe(0)
-    ;[s] = applyPass(s, 0)
+    s = pass(s, 0)
     expect(s.phase).toBe('main2'); expect(s.attack).toBeNull()
-    ;[s] = applyPass(s, 0)
+    s = pass(s, 0)
     expect(s.turn).toBe(2); expect(s.turnPlayer).toBe(1); expect(s.phase).toBe('main1'); expect(s.priority).toBe(1)
   })
   it('§9.5.1.2: with more than 5 cards in hand, the end phase asks for discards', () => {
     let s = makeGame()   // player 0 has 6 cards
-    ;[s] = applyPass(s, 0); [s] = applyPass(s, 0); [s] = applyPass(s, 0)
+    s = pass(pass(pass(s, 0), 0), 0)
     expect(s.phase).toBe('end')
     expect(s.pending).toEqual({ kind: 'discardToHandSize', player: 0, count: 1 })
     const victim = s.players[0].hand[0]!
@@ -63,14 +75,14 @@ describe('§9.3–9.5 passing through phases', () => {
   it('§9.5.1.3: damage on forwards and attacked flags are cleared at end of turn', () => {
     let s = withHandSize(makeGame(), 0, 5); let f: number
     ;[s, f] = withField(s, 0, 'forwards', 'V-F2', { damage: 3000, attackedThisTurn: true, granted: ['haste'] })
-    ;[s] = applyPass(s, 0); [s] = applyPass(s, 0); [s] = applyPass(s, 0)
+    s = pass(pass(pass(s, 0), 0), 0)
     const fc = s.players[0].forwards.find((c) => c.id === f)!
     expect(fc.damage).toBe(0); expect(fc.attackedThisTurn).toBe(false); expect(fc.granted).toEqual([])
   })
   it('pass and discard validate their preconditions', () => {
     let s = makeGame()
     expect(() => applyPass(s, 1)).toThrow(IllegalCommandError)                       // not the priority holder
-    ;[s] = applyPass(s, 0); [s] = applyPass(s, 0); [s] = applyPass(s, 0)             // → end phase, discard pending
+    s = pass(pass(pass(s, 0), 0), 0)             // → end phase, discard pending
     expect(() => applyPass(s, 0)).toThrow(IllegalCommandError)                       // decision pending
     expect(() => applyDiscardToHandSize(s, 1, [s.players[1].hand[0]!])).toThrow(IllegalCommandError)
     expect(() => applyDiscardToHandSize(s, 0, [])).toThrow(/exactly 1/)

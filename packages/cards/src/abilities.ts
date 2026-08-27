@@ -306,6 +306,33 @@ const PRISHE_DAMAGES_OPPONENT: Ability = {
 }
 
 /**
+ * Cloud's second clause (spec C5) — the pool's only ability that fires on a PHASE rather than on something
+ * happening to a card, and the only one that repeats: it goes off at the start of every one of its
+ * controller's Attack Phases.
+ *
+ * "during each of your turns" is enforced by the dispatch, which scans only the turn player's field, not by
+ * anything on this AST. Two protections are granted because the card prints two — but note that only
+ * `cannotBeBroken` is consulted by anything today: nothing in the pool returns a Forward from the field to
+ * hand, so `cannotBeReturnedByOpponent` is granted and shown and enforced by nobody (spec C5-4).
+ */
+const CLOUD_ATTACK_PHASE: Ability = {
+  id: '27-124S:attack-phase',
+  trigger: { kind: 'attackPhaseBegins' },
+  text: 'At the beginning of the Attack Phase during each of your turns, choose 1 Forward you control. '
+    + 'Until the end of the turn, it gains "This Forward cannot be broken." and '
+    + '"This Forward cannot be returned to its owner\'s hand by your opponent\'s Summons or abilities."',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    // "1 Forward you control" — Cloud itself is a legal choice, and often the right one.
+    from: { zone: 'forwards', controller: 'self' },
+    then: [
+      { kind: 'grantFlag', flag: 'cannotBeBroken' },
+      { kind: 'grantFlag', flag: 'cannotBeReturnedByOpponent' },
+    ],
+  }],
+}
+
+/**
  * Odin's first clause, and the rung's whole point: an ability that is never resolved. There is no frame, no
  * event and no agenda entry — `castRequirement` simply reads it while working out what Odin costs.
  *
@@ -465,7 +492,8 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   '20-074C': [MINER_DRAW],
   '20-103H': [RAMUH_SUMMON],
   '22-068R': [PRISHE_DAMAGES_OPPONENT],
-  '27-124S': [CLOUD_ETB],
+  // Printed order: the ETB is clause 1, the Attack-Phase clause 2.
+  '27-124S': [CLOUD_ETB, CLOUD_ATTACK_PHASE],
   '27-125S': [LUSO_DAMAGES_FORWARD, LUSO_DAMAGES_OPPONENT],
   '27-127S': [LIGHTNING_ETB, LIGHTNING_OPPONENT_BROKEN],
 }

@@ -78,7 +78,15 @@ export type Effect =
   | { readonly kind: 'onSubject'; readonly do: readonly Effect[] }
 
 /** Until-end-of-turn protection that `granted: Keyword[]` cannot express (spec C1-7). */
-export const FIELD_FLAGS = ['cannotBeBroken'] as const
+/**
+ * Until-end-of-turn protections that `granted: Keyword[]` cannot express (spec C1-7).
+ *
+ * `cannotBeReturnedByOpponent` is granted, rendered and tested, but NOTHING CONSULTS IT YET (spec C5-4):
+ * every `moveToHand` in the pool targets the Break Zone, so no effect returns a Forward from the field to
+ * hand. It exists because it is half of Cloud's printed clause, and it gets its enforcement point and its
+ * test the day a return effect arrives — until then it must not be described as protecting anything.
+ */
+export const FIELD_FLAGS = ['cannotBeBroken', 'cannotBeReturnedByOpponent'] as const
 export type FieldFlag = (typeof FIELD_FLAGS)[number]
 
 export interface AbilityMode {
@@ -114,6 +122,13 @@ export type AbilityTrigger =
    * later rung breaks.
    */
   | { readonly kind: 'observesZoneChange'; readonly from: 'field'; readonly to: 'breakZone'; readonly whose: TriggerWhose; readonly of: CardType }
+  /**
+   * The beginning of the Attack Phase, on the CONTROLLER's own turn (spec C5-2). Cloud prints "during each of
+   * your turns", and that restriction lives in the dispatch rather than on the card: a clause that fired on
+   * the opponent's turn too would hand them a free protection every round, which one Cloud on one side of a
+   * fixture cannot detect.
+   */
+  | { readonly kind: 'attackPhaseBegins' }
   /**
    * NOT a trigger at all: an ability the player chooses to use (spec C3-1). It lives in this union because
    * every dispatch site already switches on `kind`, so an activated ability is inertly ignored by trigger
