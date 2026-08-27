@@ -333,6 +333,22 @@ const CLOUD_ATTACK_PHASE: Ability = {
 }
 
 /**
+ * Moogle's colour fixing (spec C6) — a FIELD-scoped static, and the reason C4 made a static's scope explicit
+ * instead of assuming statics radiate from the field. Odin's reads while its card sits in hand; this one
+ * applies only while Moogle is on the field, which is exactly what "If Class Tenth Moogle is on the field"
+ * says.
+ *
+ * Moogle is printed Earth. The clause does not replace that: a dulled Moogle may count as EITHER Earth or
+ * Lightning, whichever the cost needs. One dull is still one CP.
+ */
+const MOOGLE_LIGHTNING_CP: Ability = {
+  id: '9-074C:lightning-cp',
+  trigger: { kind: 'static', effect: { kind: 'produceElement', element: 'lightning' } },
+  text: 'If Class Tenth Moogle is on the field, Class Tenth Moogle can produce Lightning CP.',
+  effects: [],   // a static makes something true; it has nothing to run
+}
+
+/**
  * Odin's first clause, and the rung's whole point: an ability that is never resolved. There is no frame, no
  * event and no agenda entry — `castRequirement` simply reads it while working out what Odin costs.
  *
@@ -478,6 +494,7 @@ const RED_MAGE_18_DRAW: Ability = {
 /** Implemented clauses by card code. A card absent from here has none — every clause it prints still warns. */
 export const ABILITIES: Record<string, readonly Ability[]> = {
   '1-121C': [RED_MAGE_HASTE],
+  '9-074C': [MOOGLE_LIGHTNING_CP],
   '12-120C': [SHANTOTTO_ETB],
   // Printed order: the static cost reduction is clause 1, the Summon effect clause 2.
   '13-072R': [ODIN_COST_REDUCTION, ODIN_SUMMON],

@@ -20,7 +20,8 @@ describe('§11.2 generating CP', () => {
   it('dulling an active backup gives 1 CP of its element; discarding gives 2', () => {
     const { s, b1, h1, target } = setup()
     expect(generateCp(s, 0, { dullBackups: [b1], discards: [{ card: h1, element: 'lightning' }] }, target))
-      .toEqual([{ element: 'earth', source: b1 }, { element: 'lightning', source: h1 }, { element: 'lightning', source: h1 }])
+      // C6: a dulled Backup carries the SET of Elements it may count as; a discard declares one and yields two.
+      .toEqual([{ elements: ['earth'], source: b1 }, { elements: ['lightning'], source: h1 }, { elements: ['lightning'], source: h1 }])
   })
   it('a dull backup cannot generate CP', () => {
     const { s, b2, target } = setup()
@@ -28,7 +29,7 @@ describe('§11.2 generating CP', () => {
   })
   it('a multi-element discard must declare one of its own elements', () => {
     const { s, h2, target } = setup()
-    expect(generateCp(s, 0, { dullBackups: [], discards: [{ card: h2, element: 'earth' }] }, target)[0]?.element).toBe('earth')
+    expect(generateCp(s, 0, { dullBackups: [], discards: [{ card: h2, element: 'earth' }] }, target)[0]?.elements).toEqual(['earth'])
     expect(() => generateCp(s, 0, { dullBackups: [], discards: [{ card: h2, element: 'fire' }] }, target)).toThrow(IllegalCommandError)
   })
   it('the card being cast cannot be discarded to pay for itself', () => {
@@ -38,7 +39,7 @@ describe('§11.2 generating CP', () => {
 })
 
 describe('§11.2.2 paying a cost', () => {
-  const E = (e: 'earth' | 'lightning', n = 1) => Array.from({ length: n }, (_, i) => ({ element: e, source: 100 + i }))
+  const E = (e: 'earth' | 'lightning', n = 1) => Array.from({ length: n }, (_, i) => ({ elements: [e], source: 100 + i }))
   it('needs at least one CP of the card\'s element', () => {
     expect(canPay(2, ['earth'], E('lightning', 2))).toBe(false)
     expect(canPay(2, ['earth'], [...E('earth'), ...E('lightning')])).toBe(true)
@@ -57,7 +58,7 @@ describe('§11.2.2 paying a cost', () => {
 })
 
 describe('required Elements are a MULTISET, not a set', () => {
-  const E = (e: 'earth' | 'lightning', n = 1) => Array.from({ length: n }, (_, i) => ({ element: e, source: 100 + i }))
+  const E = (e: 'earth' | 'lightning', n = 1) => Array.from({ length: n }, (_, i) => ({ elements: [e], source: 100 + i }))
 
   // `[Lightning][Lightning]` needs TWO Lightning CP. Under `elements.every(e => cp.some(...))` the same single
   // Lightning satisfied both entries, so one Lightning plus one Earth paid a doubled cost. No card in the

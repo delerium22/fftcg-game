@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { canPay, defOf, generateCp, legalCommands } from '@fftcg/engine'
-import { preferredPayment } from '../src/payment.js'
+import { canPay, defOf, enumeratePaymentsFor, generateCp, legalCommands } from '@fftcg/engine'
+import { preferredPayment, preferredPaymentFor } from '../src/payment.js'
 import { VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 describe('preferredPayment', () => {
@@ -138,5 +138,62 @@ describe('preferredPayment', () => {
     expect(p).not.toBeNull()
     expect(p!.discards).toEqual([])
     expect(canPay(2, [], generateCp(s, 0, p!, card))).toBe(true)
+  })
+})
+
+describe('C6: a Backup that can produce two Elements', () => {
+  // Synthetic, like the rest of this file: the machinery is what belongs here, and the real Moogle card is
+  // tested against its printed text in packages/cards.
+  //
+  // `preferredPaymentFor` builds its OWN element assignment, so it can drift from what `canPay` accepts — a
+  // previous rung shipped 40% of preferred payments outside `legalCommands`. These assert agreement rather
+  // than assume it, which is exactly why the spec called it out as a trap.
+  const FIXER = makeDef({
+    code: 'T-FIX', type: 'backup', elements: ['earth'], cost: 1, power: null,
+    hasAbilities: true, abilityClauses: 1, text: 'T-FIX can produce Lightning CP.',
+    abilities: [{
+      id: 'T-FIX:lightning-cp',
+      trigger: { kind: 'static', effect: { kind: 'produceElement', element: 'lightning' } },
+      text: 'T-FIX can produce Lightning CP.',
+      effects: [],
+    }],
+  })
+  const PLAIN = makeDef({ code: 'T-PLAIN', type: 'backup', elements: ['earth'], cost: 1, power: null })
+  const POOL = [...VANILLA_POOL, FIXER, PLAIN]
+  const game = () => makeGame({ defs: POOL })
+  const sameIds = (a: readonly number[], b: readonly number[]) =>
+    a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i])
+
+  it('is spent on the Element only IT can cover, and on a payment legalCommands offers', () => {
+    let s = game(); let fixer: number
+    ;[s, fixer] = withField(s, 0, 'backups', 'T-FIX')
+    const req = { amount: 1, requiredElements: ['lightning'] as const, excluded: [] as number[] }
+
+    const preferred = preferredPaymentFor(s, 0, req)
+    expect(preferred, 'the AI could not pay a Lightning cost with the fixer').not.toBeNull()
+    expect(preferred?.dullBackups).toEqual([fixer])
+    expect(enumeratePaymentsFor(s, 0, req).some((p) => sameIds(p.dullBackups, preferred!.dullBackups))).toBe(true)
+  })
+
+  it('backtracks rather than stranding a requirement, and still agrees with legalCommands', () => {
+    // Greedy in printed order gives Earth to the fixer and leaves the pure-Earth Backup on Lightning.
+    let s = game(); let fixer: number; let plain: number
+    ;[s, fixer] = withField(s, 0, 'backups', 'T-FIX')
+    ;[s, plain] = withField(s, 0, 'backups', 'T-PLAIN')
+    const req = { amount: 2, requiredElements: ['earth', 'lightning'] as const, excluded: [] as number[] }
+
+    const preferred = preferredPaymentFor(s, 0, req)
+    expect(preferred).not.toBeNull()
+    expect([...(preferred?.dullBackups ?? [])].sort()).toEqual([fixer, plain].sort())
+    expect(enumeratePaymentsFor(s, 0, req).some((p) => sameIds(p.dullBackups, preferred!.dullBackups))).toBe(true)
+  })
+
+  it('does not let a plain Backup cover the Element it cannot produce', () => {
+    // Hand emptied: a Lightning card discarded yields two Lightning CP, so with a hand there is a legal
+    // payment and the Backup is not what proves anything.
+    let s = withHandSize(game(), 0, 0); let plain: number
+    ;[s, plain] = withField(s, 0, 'backups', 'T-PLAIN')
+    void plain
+    expect(preferredPaymentFor(s, 0, { amount: 1, requiredElements: ['lightning'], excluded: [] })).toBeNull()
   })
 })

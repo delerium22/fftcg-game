@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { apply, applyChooseFirst, applyMulligan, castRequirement, checkInvariants, createGame, defOf, findFieldCard, legalCommands, powerOf } from '@fftcg/engine'
+import { apply, applyChooseFirst, applyMulligan, canPay, castRequirement, checkInvariants, createGame, defOf, findFieldCard, generateCp, legalCommands, powerOf } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -471,21 +471,24 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the nineteen implemented clauses on, and only those nineteen', () => {
+  it('loadCards merges the twenty implemented clauses on, and only those twenty', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
-    // C5 (Cloud's Attack-Phase clause). Any clause added without a test lands here first.
+    // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing). Any clause added without a
+    // test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
       '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
-      '20-103H', '22-068R', '27-124S', '27-125S', '27-127S',
-    ])
+      '20-103H', '22-068R', '27-124S', '27-125S', '27-127S', '9-074C',
+    ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
+      // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
+      // a hand-written order just makes the next insertion fail for the wrong reason.
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '20-074C:draw', '20-103H:summon', '22-068R:damages-opponent',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
-      '27-127S:etb', '27-127S:opponent-forward-broken',
-    ])
+      '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
+    ].sort())
   })
 
   // Spec C3-A6: `ABILITY_CLAUSES` counts PRINTED clauses, implemented or not, so landing a clause must NOT
@@ -895,5 +898,70 @@ describe('27-124S Cloud — "At the beginning of the Attack Phase during each of
   it('keeps both printed clause counts honest (C5-A5)', () => {
     expect(ABILITY_CLAUSES['27-124S']).toBe(2)
     expect(ABILITIES['27-124S']?.length).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C6 — 9-074C Class Tenth Moogle's colour fixing
+// ---------------------------------------------------------------------------
+
+describe('9-074C Class Tenth Moogle — "… can produce Lightning CP."', () => {
+  const EARTH_ONLY = '18-064C'   // Geomancer: printed Earth, no colour fixing
+
+  /** Can `player` cover `req` by dulling exactly `backups`? */
+  const covers = (state: GameState, backups: CardId[], amount: number, els: ('earth' | 'lightning')[]) =>
+    canPay(amount, els, generateCp(state, 0, { dullBackups: backups, discards: [] }, []))
+
+  it('a dulled Moogle counts as EITHER of its Elements (C6-A1)', () => {
+    let s = makeGame()
+    let moogle: CardId
+    ;[s, moogle] = withField(s, 0, 'backups', '9-074C')
+    expect(covers(s, [moogle], 1, ['lightning'])).toBe(true)
+    expect(covers(s, [moogle], 1, ['earth'])).toBe(true)   // its printed Element still works
+  })
+
+  it('is still only ONE CP, so it cannot cover a doubled requirement (C6-A2)', () => {
+    let s = makeGame()
+    let moogle: CardId
+    ;[s, moogle] = withField(s, 0, 'backups', '9-074C')
+    expect(covers(s, [moogle], 2, ['lightning', 'lightning'])).toBe(false)
+  })
+
+  it('does not fix colours for anyone else (C6-A3)', () => {
+    let s = makeGame()
+    let plain: CardId
+    ;[s, plain] = withField(s, 0, 'backups', EARTH_ONLY)
+    expect(covers(s, [plain], 1, ['lightning'])).toBe(false)
+    expect(covers(s, [plain], 1, ['earth'])).toBe(true)
+  })
+
+  it('is matched, not assigned greedily (C6-A4)', () => {
+    // The case a greedy pass gets wrong: taking the requirements in printed order gives Earth to Moogle
+    // first, stranding the pure-Earth Backup on Lightning. Only a search that backtracks finds the swap.
+    let s = makeGame()
+    let moogle: CardId; let plain: CardId
+    ;[s, moogle] = withField(s, 0, 'backups', '9-074C')
+    ;[s, plain] = withField(s, 0, 'backups', EARTH_ONLY)
+    expect(covers(s, [moogle, plain], 2, ['earth', 'lightning'])).toBe(true)
+    expect(covers(s, [moogle, plain], 2, ['lightning', 'earth'])).toBe(true)   // and in either order
+  })
+
+  it('applies only from the FIELD (C6-A5)', () => {
+    // "If Class Tenth Moogle is on the field" — in hand or the Break Zone it fixes nothing. This is why C4
+    // made a static's scope explicit rather than assuming statics radiate from the field.
+    let s = makeGame()
+    let inHand: CardId; let inBreak: CardId; let plain: CardId
+    ;[s, inHand] = withHand(s, 0, '9-074C')
+    ;[s, inBreak] = withBreakZone(s, 0, '9-074C')
+    ;[s, plain] = withField(s, 0, 'backups', EARTH_ONLY)
+    void inHand; void inBreak
+    // The only Backup on the field is pure Earth, so a Lightning cost is unpayable however many Moogles are
+    // sitting elsewhere.
+    expect(covers(s, [plain], 1, ['lightning'])).toBe(false)
+  })
+
+  it('keeps its printed clause count honest (C6-A7)', () => {
+    expect(ABILITY_CLAUSES['9-074C']).toBe(1)
+    expect(ABILITIES['9-074C']?.length).toBe(1)
   })
 })

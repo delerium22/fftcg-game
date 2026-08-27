@@ -161,6 +161,12 @@ export type StaticEffect =
    * Sphene's field-scoped static from being a rewrite.
    */
   | { readonly kind: 'costReduction'; readonly amount: number; readonly when: StaticCondition }
+  /**
+   * "<this card> can produce <Element> CP" — Moogle. The FIELD-scoped static C4 said would come: unlike
+   * `costReduction`, which its own card carries while sitting in hand, this one applies only while the card
+   * is on the field, which is what the printed text says. Read where CP is generated and nowhere else.
+   */
+  | { readonly kind: 'produceElement'; readonly element: Element }
 
 /**
  * When a static applies. Plain data, never a predicate function: card definitions travel through

@@ -1,7 +1,7 @@
 import type { CardDef, Element, PlayerId } from './types.js'
 import type { StaticCondition } from './abilities.js'
 import type { CardId, GameState } from './state.js'
-import { defOf, updatePlayer } from './state.js'
+import { defOf, findFieldCard, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
@@ -15,7 +15,14 @@ export function requiredElements(def: CardDef): Element[] {
   return def.elements
 }
 
-export interface GeneratedCp { element: Element; source: CardId }
+/**
+ * One CP, and the Elements it may count as (spec C6-1).
+ *
+ * A set, not a single Element: Moogle can produce Earth or Lightning, and the engine never has to commit to
+ * which — the only question anyone asks of a payment is whether it covers a cost. One dull is still ONE CP;
+ * the set is what that single CP may satisfy, never extra CP.
+ */
+export interface GeneratedCp { elements: readonly Element[]; source: CardId }
 
 /**
  * Validate the sources and compute the CP they generate. Throws IllegalCommandError on a bad source.
@@ -39,8 +46,7 @@ export function generateCp(state: GameState, player: PlayerId, payment: Payment,
     if (b.status !== 'active') throw new IllegalCommandError(`backup ${id} is already dull`)
     if (seen.has(id)) throw new IllegalCommandError(`backup ${id} used twice`)
     seen.add(id)
-    const def = defOf(state, id)
-    cp.push({ element: def.elements[0] as Element, source: id })   // MVP0-SIMPLIFICATION: multi-element backups produce their first element; none in pool
+    cp.push({ elements: backupElements(state, id), source: id })
   }
   for (const { card, element } of payment.discards) {
     if (forbidden.includes(card)) throw new IllegalCommandError('cannot discard the card being paid for')
@@ -50,7 +56,9 @@ export function generateCp(state: GameState, player: PlayerId, payment: Payment,
     const def = defOf(state, card)
     if (def.elements.includes('light') || def.elements.includes('dark')) throw new IllegalCommandError('Light/Dark cards cannot be discarded for CP (§11.2.1.1)')
     if (!def.elements.includes(element)) throw new IllegalCommandError(`${card} cannot produce ${element} CP`)
-    cp.push({ element, source: card }, { element, source: card })
+    // A discard declares its Element on the `Payment` and yields TWO CP of it. That really is a choice with
+    // consequences, unlike a dulled Backup, so it stays declared rather than becoming a set.
+    cp.push({ elements: [element], source: card }, { elements: [element], source: card })
   }
   return cp
 }
@@ -70,10 +78,11 @@ export function generateCp(state: GameState, player: PlayerId, payment: Payment,
 export function canPay(cost: number, elements: readonly Element[], cp: GeneratedCp[]): boolean {
   if (cost === 0) return cp.length === 0   // §11.2.2.4 / §11.2.2.1 last sentence
   if (cp.length < cost) return false
-  const need = new Map<Element, number>()
-  for (const e of elements) need.set(e, (need.get(e) ?? 0) + 1)
-  for (const [e, n] of need) if (cp.filter((c) => c.element === e).length < n) return false
-  return true   // §11.2.2.1–2
+  // Each REQUIREMENT needs its own distinct source that can produce it (§11.2.2.1–2). With flexible sources
+  // that is a matching problem, not a count: assigning greedily can strand a later requirement on a source an
+  // earlier one took, when swapping the two works. Requirements are 1–3 and sources single digits, so a plain
+  // backtracking search is the right size of tool.
+  return assignable([...elements], cp, new Set())
 }
 
 /**
@@ -197,4 +206,36 @@ export function pay(state: GameState, player: PlayerId, payment: Payment): [Game
   const cp = [...payment.dullBackups.map((id) => defOf(state, id).elements[0] as Element), ...payment.discards.flatMap((d) => [d.element, d.element])]
   events.unshift({ type: 'cpGenerated', player, cp })
   return [s, events]
+}
+
+/** Every Element a dulled Backup may produce: its printed one, plus any granted by a field static (spec C6-3). */
+export function backupElements(state: GameState, id: CardId): Element[] {
+  const def = defOf(state, id)
+  // A Backup printed with two Elements still produces only its first, and there is still none such in the
+  // pool; the C6 change is that a STATIC can add one. When a printed multi-Element Backup arrives it becomes
+  // a set here too.
+  const out: Element[] = [def.elements[0] as Element]
+  // Field-scoped: the card must actually be on the field for its static to apply, which is what Moogle prints.
+  if (!findFieldCard(state, id)) return out
+  for (const ability of def.abilities ?? []) {
+    if (ability.trigger.kind !== 'static') continue
+    const { effect } = ability.trigger
+    if (effect.kind !== 'produceElement') continue
+    if (!out.includes(effect.element)) out.push(effect.element)
+  }
+  return out
+}
+
+/** Can every remaining requirement be given its own distinct source? Backtracking over a handful of each. */
+function assignable(need: readonly Element[], cp: readonly GeneratedCp[], used: Set<number>): boolean {
+  const [first, ...rest] = need
+  if (first === undefined) return true
+  for (let i = 0; i < cp.length; i++) {
+    if (used.has(i)) continue
+    if (!(cp[i] as GeneratedCp).elements.includes(first)) continue
+    used.add(i)
+    if (assignable(rest, cp, used)) { used.delete(i); return true }
+    used.delete(i)
+  }
+  return false
 }

@@ -1,4 +1,4 @@
-import { canPay, castRequirement, defOf, generateCp, type CardId, type CpRequirement, type Element, type GameState, type Payment, type PlayerId } from '@fftcg/engine'
+import { backupElements, canPay, castRequirement, defOf, generateCp, type CardId, type CpRequirement, type Element, type GameState, type Payment, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 
 interface Source { kind: 'backup' | 'discard'; id: CardId; elements: Element[]; cp: number; cost: number }
@@ -67,7 +67,10 @@ export function preferredPaymentFor(state: GameState, player: PlayerId, req: CpR
   const sources: Source[] = []
   for (const b of ps.backups) {
     if (b.status !== 'active' || card.includes(b.id)) continue
-    sources.push({ kind: 'backup', id: b.id, elements: defOf(state, b.id).elements, cp: 1, cost: 1 })
+    // The Elements this Backup may COUNT AS, from the engine, not from the printed def — since C6 a static
+    // can add one (Moogle produces Lightning as well as its printed Earth). Reading `def.elements` here is
+    // what would let the AI's assignment drift from what `canPay` accepts.
+    sources.push({ kind: 'backup', id: b.id, elements: backupElements(state, b.id), cp: 1, cost: 1 })
   }
   for (const id of ps.hand) {
     if (card.includes(id)) continue
@@ -79,7 +82,8 @@ export function preferredPaymentFor(state: GameState, player: PlayerId, req: CpR
   const declared = new Map<CardId, Element>()
   let total = 0
   const take = (s: Source, element: Element) => { chosen.add(s); total += s.cp; if (s.kind === 'discard') declared.set(s.id, element) }
-  const canSupply = (s: Source, e: Element) => (s.kind === 'backup' ? s.elements[0] === e : s.elements.includes(e))   // backups produce elements[0] only (cp.ts)
+  // Both kinds now carry the exact set they may count as, so the rule is the same for each (spec C6-1).
+  const canSupply = (s: Source, e: Element) => s.elements.includes(e)
 
   // §11.2.2.1 / §11.2.1.1: at least one CP of each required element (requiredElements exempts pure Light/Dark).
   const elements = req.requiredElements
