@@ -1,79 +1,93 @@
 # Rung D1 — ISMCTS: a search-based opponent, headless
 
+> Revision 2 (2026-08-27), after a Codex plan-review that found four blockers. Changelog at the end; the
+> review is `docs/superpowers/plans/2026-08-27-rung-d1-ismcts.codex-review.md`. **Two of revision 1's
+> blockers would have produced a search that looked fine and was silently broken**, which is the failure
+> mode this rung is most exposed to.
+
 ## Context
 
-The standing mandate names the AI progression explicitly: **heuristic then ISMCTS**. The heuristic
-(`GreedyAgent`) is merged and beats `RandomAgent` 200/0 on the seed-1 gate. Rung A built
-`determinise()` and `evaluate()` *for this rung* and they have since been proved through two ability
-rungs. This is the rung they were for.
-
-**Why now, ahead of more ability clauses.** Thirteen of eighteen cards still play as vanilla, and that is
-the more *visible* gap — but it is a long tail of three more C rungs, while D is one, and the AI opponent
-is what the mandate puts first. `GreedyAgent` at depth 1 is a competent-but-shallow player: it never sees
-that a trade it likes now loses the race two turns out. Against a human that is the difference between an
-opponent and a puzzle. Abilities resume at C3 straight after.
-
-**Scope discipline.** This rung is **headless only** — the CLI gains an `ismcts` agent and the measurement
-harness proves it is stronger than greedy. Wiring it into the browser needs a Web Worker (see D-3 below)
-and is **rung D2**. Splitting there keeps both halves small and keeps a search-quality regression separate
-from a UI-threading regression.
-
-## What the research says (and what we already have)
-
-Cowling, Powley & Whitehouse's ISMCTS, and the way Forge and the Hearthstone simulators apply it:
-
-- **Determinise per iteration, share the tree.** Each iteration samples one consistent world from the
-  information set and descends the *same* tree. Nodes are information sets, not states — which is what
-  makes the search sound under hidden information instead of cheating.
-- **UCB1 with availability counts** (SO-ISMCTS). Different determinisations make different moves legal, so
-  a move's UCB must divide by how often it was *available*, not by how often the parent was visited.
-  Getting this wrong silently biases toward moves that are rarely legal.
-- **Cheap rollouts, good evaluation.** A heuristic rollout beats a random one; a heuristic *evaluation* at
-  a depth cap beats rolling to terminal. We already have both.
-
-Everything the search needs already exists and is battle-tested: `determinise({view, decks, rng})`,
-`candidateCommands()` (bounded, deterministic, `pass` last), `evaluate()`, and — the one C2 made
-essential — `resolveForcedDecisions()`, which drains combat and ability work so a node is only ever
-created at a genuine decision point.
+The standing mandate names the AI progression: **heuristic then ISMCTS**. `GreedyAgent` is merged and
+beats `RandomAgent` 200/0. Rung A built `determinise()` and `evaluate()` *for this rung*; C2 added
+`resolveForcedDecisions`. This rung is **headless only** — the browser half needs a Web Worker and is D2,
+but D1 must define the worker-safe seam so D2 does not rewrite the search core.
 
 ## Decisions
 
 | # | Decision | Ruling (and why) |
 |---|---|---|
-| D-1 | **SO-ISMCTS with UCB1-availability** | Single-observer: the tree is built from the searching player's information set; the opponent's hidden cards come from the per-iteration determinisation. Availability counts are non-negotiable — without them the bandit is biased by how often a move happened to be legal. |
-| D-2 | **Nodes live at genuine decision points only** | Every state entering the tree is first run through `resolveForcedDecisions`. A node owing a block, a party split or an ability target is not a decision the searching player is choosing at — that is the same class of error as R4 and C1's `chooseMode` chain, and it has now arrived three times. |
-| D-3 | **Deterministic and seeded** | Same seed + same views ⇒ same move, exactly as `GreedyAgent`. Self-play compares runs; the fuzzer's mutation check is unforgiving. All randomness through the engine's `Rng`. |
-| D-4 | **Budget is iterations, not wall-clock** | Wall-clock makes the agent non-reproducible and the tests flaky. `iterations` is the knob; the CLI reports ms/decision so the browser budget can be chosen from measurement in D2. |
-| D-5 | **Rollouts use the greedy policy, capped** | `greedyStep` for both players to a depth cap, then `evaluate()`. Random rollouts in a game with this much board state are mostly noise. |
-| D-6 | **`GreedyAgent` is untouched** | It stays the baseline, the rollout policy, and the fallback. A new `IsmctsAgent` implements the same `Agent` interface (`decide(view, legal)`, `needsLegalCommands = false`), so the CLI, the web app and every harness take it with no changes. |
-| D-7 | **Not in scope** | The browser (D2 — needs a Web Worker: `decide` is synchronous with no deadline, and search will run 100–1000× a greedy decision), opening-book or learned weights, and any change to `evaluate`'s weights. |
+| D-1 | **SO-ISMCTS**, tree keyed on the root player's information set | Nodes are `(parent history, ActionKey, ObservationKey)`. No state transpositions initially. |
+| D-2 | **Node identity is semantic, never by `CardId`** | This is the crux of the rung. `Command` embeds `CardId` throughout, and each determinisation assigns fresh sequential synthetic ids — so the same numeric id can mean **different cards in different worlds** (false matches) and the same semantic card can get **different ids** (false splits). `ActionKey` encodes: public zone + position for field and Break-Zone cards; **card code + occurrence** for private-hand casts and discards; normalised (sorted) sets for attackers, payments, targets and assignments. `ObservationKey` is a canonical `PlayerView` digest with every id — including in `attack`, `pending` and `resolution` — replaced by a canonical reference. Keys are decoded against the *current* determinisation; the real root `Command` is what gets returned. |
+| D-3 | **Every `Pending` is a tree ply, whoever owns it** | Revision 1 said nodes exist only where `pending === null`, draining forced decisions first. That is backwards and dangerous: blocks, party-damage splits and ability mode/target prompts are genuine player decisions, and **at the search root, draining would have had `greedyStep` consume the very command `decide` was called to choose**. `settle()` already runs all system-only work to idle-or-prompt, so the state `apply` returns *is* the next decision boundary. Determinisation chooses hidden cards and deck order — **never a player action**. Greedy answers prompts only *past the expansion frontier*, in rollout. |
+| D-4 | **UCB1 with availability, stated exactly** | `UCB(s,a) = mean(s,a) + C · sqrt( log A(s,a) / N(s,a) )`, where `N` is times selected and `A` is visits to `s` on which that canonical action was present in `candidateCommands`. **Availability is incremented for every compatible sibling on backpropagation**, not just the selected one; `N`/`W` only along the selected path. Revision 1 said "divide by availability", which is simply wrong — availability replaces the parent-visit count *inside the logarithm*. A win-rate gate cannot detect this being wrong, so it gets a deterministic toy test with one always-available and one rarely-available action. |
+| D-5 | **Bounded, actor-aware rewards** | `evaluate` returns ±100,000 at terminals on an arbitrary material scale; with `C ≈ 1` one terminal rollout swamps exploration. Backpropagate a **bounded root reward**: terminal `1/0/½`, and `tanh(evaluate / scale)` at the depth cap. At root-controlled nodes maximise the mean; at **opponent-controlled nodes maximise its negation** — otherwise the search builds a cooperative opponent. `C`, the expansion rule, the final root choice (**highest visit count**) and tie-breaking are all specified, not left to the implementation. |
+| D-6 | **Rollouts are greedy and hard-bounded** | `greedyStep` for both players past the frontier, with an explicit **cap on rollout commands**, not just a depth description — ability cascades make "depth" a poor proxy for work. Then `evaluate`. |
+| D-7 | **A pure, serialisable search core** | `searchIsmcts(input): { command, diagnostics }` — synchronous, no callbacks, no timing dependencies, inputs and results structured-cloneable — plus a thin stateful `IsmctsAgent` wrapper implementing `Agent`. The D2 worker protocol is **defined now**: one-time init for decks and definitions, then `{ requestId, view, seed/decisionIndex, iterations }` requests with generation-checked results. D2 then owns cancellation and React changes only. |
+| D-8 | **Determinism comes from bookkeeping, not the RNG** | The engine RNG is already explicit. The real risks are child insertion order depending on the first determinisation, object-reference keys, floating UCB ties, and `Map` insertion order. Rebuild the tree per `decide`; canonical string keys with a **total** comparator; **separate RNG streams** for world sampling, expansion and tie-breaking. |
+| D-9 | **Fairness is a non-interference contract** | Not "simulations never inspect hidden cards" — they necessarily do, that is what a determinisation is. The requirement is that **every simulated state derives only from `PlayerView` + the two declared deck lists**, never from the live `GameState`. No search entry point may accept a `GameState`. Deck lists are semantically a **multiset**, so copy and sort before sampling — `determinise` currently preserves caller array order. |
+| D-10 | Not in scope | The browser (D2), learned weights or an opening book, and any change to `evaluate`'s weights. |
 
 ## Acceptance criteria
 
-- **D-A1** `IsmctsAgent` beats `GreedyAgent` **≥ 60 %** over 200 seeded games, both seats, at a stated
-  iteration budget — the bar that says search is actually buying something over one-ply lookahead.
-- **D-A2** It still beats `RandomAgent` ≥ 95 %, i.e. the search never regresses below the heuristic floor.
-- **D-A3** Determinism: same seed and same views produce an identical decision trace, asserted over a
-  whole game, and a determinised state and a live one search identically (the C1-A6 shape).
-- **D-A4** **Fairness**: the search only ever reads `PlayerView` plus the two public deck lists. Asserted,
-  not inspected — the same test shape that pins `viewFor` not leaking the opponent's hand.
-- **D-A5** Every state a node is created at satisfies `pending === null` and an empty resolution agenda
-  (D-2), asserted by a diagnostic like `CandidateScore.resolutionQueued` rather than inferred.
-- **D-A6** The strict fuzzer passes with `ismcts` on both seats; no illegal state, no dead end, no
-  unbounded search.
-- **D-A7** The CLI reports iterations/decision and ms/decision, so D2 can pick a browser budget from
-  measurement rather than a guess.
-- **D-A8** `pnpm test`, `pnpm typecheck`, `pnpm lint` green.
+- **D-A1 (strength)** **200 held-out seed pairs = 400 games**, roles swapped on each identical game seed.
+  Draws score ½; a harness failure counts as a loss. Require **point score ≥ 55 %** with a paired-bootstrap
+  95 % lower bound above 50 %, reported per seat. Revision 1's "≥ 60 % over 200 games, both seats" was
+  statistically fine (Wilson 53.0–66.6 %) but methodologically weak: the harness pins agents to seats for a
+  whole run, and the existing "both seats" test uses *different seed ranges* rather than mirrored games.
+  The iteration budget is calibrated on **separate development seeds** and reported on the held-out ones.
+- **D-A2 (correctness, where the real risk is)** Targeted unit tests, because **a tournament gate cannot
+  detect a broken bandit** — a biased search still plays legal, plausible moves and still beats random:
+  - canonical keys: same numeric id / different card code across worlds must **not** match; same semantic
+    action / different id **must** match;
+  - availability counters, on the deterministic toy bandit;
+  - opponent nodes minimise the root's reward;
+  - a node exists for every `Pending` kind, with the expected owner;
+  - rollouts respect the command cap;
+  - fairness (D-9): two live states with identical `PlayerView` and deck multisets but different hidden
+    hands, deck order and live RNG must produce identical traces.
+- **D-A3 (determinism)** Two fresh same-seed agents over an identical full view trace produce identical
+  commands and identical non-timing diagnostics.
+- **D-A4 (cost)** Counters for determinisations, tree applies, rollout applies, evaluations, nodes and max
+  command depth, reported by the CLI — so D2 picks a browser budget from measurement.
+- **D-A5 (no regression)** A **smoke** run against `RandomAgent`, not a 200-game gate: greedy already wins
+  200/0 and the search reuses its policy and evaluation, so the large random tournament buys almost nothing.
+- **D-A6** Strict fuzzer passes with `ismcts` on both seats. `pnpm test`, `pnpm typecheck`, `pnpm lint` green.
+
+## Cost, measured rather than assumed
+
+Codex profiled this codebase: **~107 µs per `determinise()`, of which ~103 µs is the final
+`structuredClone`**; isolated `apply` and `evaluate` are **under 1 µs**. Revision 1's premise that "apply
+clones on every command" was wrong — `apply` does immutable structural updates. So:
+
+- shallow iterations are **determinisation-bound** (~107 ms floor for 1000 iterations);
+- deep greedy rollouts become dominated by repeated candidate generation and `apply` instead.
+
+**Order of work:** add the counters, profile, then narrow or remove the redundant final clone in
+`determinise` (build alias-free arrays while sharing readonly definitions). **Only then** consider world
+reuse — and it is *not* the default. Reusing `K` worlds searches the empirical distribution of those
+worlds; with `K = 1` it degenerates toward perfect-information UCT, and small `K` leaves availability
+estimates biased no matter how many iterations run. If adopted: round-robin over `K`, `K` growing with the
+budget, benchmarked at `K = {1, 8, 32, iterations}` at equal wall time, reporting strength **and**
+action-availability coverage.
 
 ## Risks
 
-- **The availability-count subtlety is easy to get wrong and invisible when wrong** — a biased bandit
-  still plays legal, plausible moves and still beats random. D-A1's ≥ 60 % over *greedy* is the only gate
-  that would notice; a weaker bar would let a broken search through.
-- **Search depth vs. the ability agenda.** C2 made triggers cascade. A node created mid-cascade would
-  search a position the player never actually chooses at (D-2).
-- **Time.** Greedy is ~0.3 ms/decision; ISMCTS at a useful budget will be orders of magnitude more. That
-  is affordable headless and is precisely why the browser half is a separate rung.
-- **Determinisation cost.** One `determinise()` per iteration, each `structuredClone`-ing a full state, may
-  dominate the budget. If so, the fix is to sample fewer worlds and reuse each across several iterations —
-  a documented deviation from pure ISMCTS, and one to measure before adopting rather than assume.
+- **Every blocker in this rung is invisible to a win-rate gate.** A wrongly-keyed tree, a mis-incremented
+  availability counter, a cooperative opponent node — each still produces legal, plausible play that beats
+  random. This is why D-A2 exists and why D-A1 alone is not sufficient evidence.
+- **The root prompt trap.** `decide` is frequently called *while a `Pending` is outstanding*. Any code path
+  that "drains" before searching answers the question it was asked.
+- **Determinisation cost may force a design change**; measure before adopting one.
+
+## Changelog vs revision 1
+
+- **Node identity is semantic** (D-2). Raw `Command`/move-sequence keys are unsound across determinisations.
+- **Every `Pending` is a tree ply** (D-3), replacing revision 1's "nodes only where `pending === null`",
+  which would have had the rollout policy consume the root decision.
+- **The UCB formula is stated correctly** (D-4) — revision 1's "divide by availability" was wrong.
+- **Rewards bounded and actor-aware** (D-5); revision 1 left opponent nodes and reward scale unspecified.
+- **A pure serialisable search seam is defined now** (D-7) so D2 does not rewrite the core.
+- **Fairness restated as non-interference** (D-9), plus sorting the declared deck multiset.
+- **Gate is 200 mirrored seed pairs at ≥ 55 % with a confidence bound** (D-A1), not 60 % over 200 fixed-seat
+  games; correctness moves into targeted unit tests (D-A2), and the random tournament shrinks to a smoke run.
+- **Cost section replaced with measurements**, and world reuse demoted from "fallback" to "benchmark first".
