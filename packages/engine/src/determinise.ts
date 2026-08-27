@@ -34,7 +34,9 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
   const players: PlayerState[] = []
   for (const p of [0, 1] as const) {
     const f = view.fields[p]
-    const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...(p === view.me ? view.hand : [])]
+    // Removed cards are public and gone. Leaving them out of `visibleIds` would leave their codes in the
+    // unseen multiset, and the search would deal them back into a deck — reasoning about a 51-card game.
+    const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...f.removedFromGame, ...(p === view.me ? view.hand : [])]
     const visibleCodes = visibleIds.map((id) => { const c = view.cards[id]; if (!c) throw new Error(`view lacks visible card ${id}`); return c.code })
     const unseen = removeVisible(decks[p], visibleCodes, p)
     const [order, r2] = shuffle(r, unseen); r = r2
@@ -44,7 +46,7 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     if (p === view.me) { hand = view.hand; deck = order.map(mint) }
     else { hand = order.slice(0, f.handCount).map(mint); deck = order.slice(f.handCount).map(mint) }
     if (deck.length !== f.deckCount || hand.length !== f.handCount) throw new Error(`deck list for player ${p} is inconsistent with the view (unseen ${unseen.length}, expected hand ${f.handCount} + deck ${f.deckCount})`)
-    players.push({ deck, hand, forwards: f.forwards, backups: f.backups, damageZone: f.damageZone, breakZone: f.breakZone, mulliganDecided: view.mulliganDecided[p] })
+    players.push({ deck, hand, forwards: f.forwards, backups: f.backups, damageZone: f.damageZone, breakZone: f.breakZone, removedFromGame: f.removedFromGame, mulliganDecided: view.mulliganDecided[p] })
   }
   const state: GameState = {
     rng: r, turn: view.turn, turnPlayer: view.turnPlayer, firstPlayer: view.firstPlayer, phase: view.phase, attack: view.attack,

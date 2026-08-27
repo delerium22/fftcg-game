@@ -421,7 +421,7 @@ function stateShim(v: PlayerView): GameState {
   const side = (p: PlayerId): PlayerState => ({
     deck: [], hand: p === v.me ? [...v.hand] : [],
     forwards: v.fields[p].forwards, backups: v.fields[p].backups,
-    damageZone: v.fields[p].damageZone, breakZone: v.fields[p].breakZone,
+    damageZone: v.fields[p].damageZone, breakZone: v.fields[p].breakZone, removedFromGame: v.fields[p].removedFromGame,
     mulliganDecided: v.mulliganDecided[p],
   })
   return {

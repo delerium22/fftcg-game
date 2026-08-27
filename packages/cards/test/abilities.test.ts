@@ -471,10 +471,10 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty implemented clauses on, and only those twenty', () => {
+  it('loadCards merges the twenty-one implemented clauses on, and only those twenty-one', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
-    // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing). Any clause added without a
-    // test lands here first.
+    // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
+    // removal). Any clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
       '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
@@ -485,7 +485,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       // a hand-written order just makes the next insertion fail for the wrong reason.
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
-      '18-124C:etb', '19-052C:pump', '20-074C:draw', '20-103H:summon', '22-068R:damages-opponent',
+      '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-103H:summon', '22-068R:damages-opponent',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
     ].sort())
@@ -493,16 +493,19 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
 
   // Spec C3-A6: `ABILITY_CLAUSES` counts PRINTED clauses, implemented or not, so landing a clause must NOT
   // change it. Reducing Miner from 2 to 1 would silently hide the deck-reveal clause it still does not have.
-  it('landing six clauses did not change any printed-clause count', () => {
+  it('landing a clause never changes a printed-clause count', () => {
     expect(ABILITY_CLAUSES['20-074C']).toBe(2)   // action landed; the ETB deck reveal is still missing
-    expect(ABILITY_CLAUSES['19-052C']).toBe(2)   // pump landed; remove-from-game is still missing
+    expect(ABILITY_CLAUSES['19-052C']).toBe(2)   // BOTH clauses land as of C7, and the count still does not move
     expect(ABILITY_CLAUSES['1-121C']).toBe(1)
     expect(ABILITY_CLAUSES['18-064C']).toBe(1)
     // And the cards with a clause still missing must still say so.
-    for (const code of ['20-074C', '19-052C']) {
+    for (const code of ['20-074C']) {
       const def = DEFS.find((d) => d.code === code)
       expect((def?.abilityClauses ?? 0) - (def?.abilities?.length ?? 0)).toBe(1)
     }
+    // Undead Princess is complete as of C7, so she must now warn about nothing.
+    const princess = DEFS.find((d) => d.code === '19-052C')
+    expect((princess?.abilityClauses ?? 0) - (princess?.abilities?.length ?? 0)).toBe(0)
   })
 
   it('every ability id is `<code>:<slug>` for a card that exists, and quotes text the card really prints', () => {
@@ -976,5 +979,69 @@ describe('9-074C Class Tenth Moogle — "… can produce Lightning CP."', () => 
   it('keeps its printed clause count honest (C6-A7)', () => {
     expect(ABILITY_CLAUSES['9-074C']).toBe(1)
     expect(ABILITIES['9-074C']?.length).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C7 — 19-052C Undead Princess's remove-from-game clause
+// ---------------------------------------------------------------------------
+
+describe('19-052C Undead Princess — "Remove Undead Princess in the Break Zone from the game: …"', () => {
+  const EARTH_FORWARD = '19-052C'      // Undead Princess herself is Earth
+  const LIGHTNING_FORWARD = '27-127S'  // Lightning
+
+  const offered = (state: GameState, source: CardId) =>
+    legalCommands(state, 0).filter((c) => c.type === 'activateAbility' && c.source === source && c.abilityId === '19-052C:remove')
+
+  it('is offered only from the Break Zone, with an Earth Forward to target (C7-A1)', () => {
+    let s = makeGame()
+    let inBreak: CardId; let onField: CardId
+    ;[s, inBreak] = withBreakZone(s, 0, '19-052C')
+    ;[s, onField] = withField(s, 0, 'forwards', EARTH_FORWARD)
+
+    expect(offered(s, inBreak).length).toBeGreaterThan(0)
+    // The same card sitting on the FIELD cannot use a Break-Zone ability.
+    expect(offered(s, onField)).toEqual([])
+  })
+
+  it('is not offered with no Earth Forward on the board (C7-A1)', () => {
+    let s = makeGame()
+    let inBreak: CardId
+    ;[s, inBreak] = withBreakZone(s, 0, '19-052C')
+    ;[s] = withField(s, 0, 'forwards', LIGHTNING_FORWARD)
+    expect(offered(s, inBreak)).toEqual([])
+  })
+
+  it('offers an Earth Forward on EITHER side, and never a non-Earth one (C7-A3)', () => {
+    let s = makeGame()
+    let inBreak: CardId; let mine: CardId; let theirs: CardId; let wrongElement: CardId
+    ;[s, inBreak] = withBreakZone(s, 0, '19-052C')
+    ;[s, mine] = withField(s, 0, 'forwards', EARTH_FORWARD)
+    ;[s, theirs] = withField(s, 1, 'forwards', EARTH_FORWARD)
+    ;[s, wrongElement] = withField(s, 1, 'forwards', LIGHTNING_FORWARD)
+
+    const targets = offered(s, inBreak).flatMap((c) => (c.type === 'activateAbility' ? [...c.targets] : []))
+    expect([...new Set(targets)].sort()).toEqual([mine, theirs].sort())
+    expect(targets).not.toContain(wrongElement)
+  })
+
+  it('removes her from the game and pumps the chosen Forward (C7-A2/C7-A6)', () => {
+    let s = makeGame()
+    let inBreak: CardId; let target: CardId
+    ;[s, inBreak] = withBreakZone(s, 0, '19-052C')
+    ;[s, target] = withField(s, 0, 'forwards', EARTH_FORWARD)
+    const base = powerOfId(s, target)
+
+    const cmd = offered(s, inBreak).find((c) => c.type === 'activateAbility' && c.targets.includes(target))
+    expect(cmd).toBeDefined()
+    const r = apply(s, cmd!)
+
+    expect(r.state.players[0].removedFromGame).toContain(inBreak)
+    expect(r.state.players[0].breakZone).not.toContain(inBreak)
+    expect(powerOfId(r.state, target)).toBe(base + 2000)
+    // Removal is neither a break nor a discard.
+    expect(r.events.some((e) => e.type === 'removedFromGame')).toBe(true)
+    expect(r.events.some((e) => e.type === 'brokenByAbility' || e.type === 'discarded')).toBe(false)
+    ok(r.state)   // C7-A4: still exactly one place for every card
   })
 })

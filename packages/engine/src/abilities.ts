@@ -208,6 +208,13 @@ export interface AbilityCost {
   readonly selfToBreakZone?: true
   /** "discard <this card>", from hand. */
   readonly selfDiscard?: true
+  /**
+   * "Remove <this card> … from the game" — Undead Princess, paid from the Break Zone (spec C7-2).
+   *
+   * Not a break and not a discard: it produces no `ZoneTransition` (a transition is `to: 'breakZone'` by
+   * construction) and emits its own event, so nothing counting breaks or discards counts this.
+   */
+  readonly selfRemoveFromGame?: true
 }
 
 /**
@@ -323,5 +330,6 @@ export function describeAbilityCost(cost: AbilityCost): string {
   const prose: string[] = []
   if (cost.selfToBreakZone) prose.push('put into the Break Zone')
   if (cost.selfDiscard) prose.push('discard')
+  if (cost.selfRemoveFromGame) prose.push('remove from the game')
   return [icons, ...prose].filter(Boolean).join(', ') || '[0]'
 }

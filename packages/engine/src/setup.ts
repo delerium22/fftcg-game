@@ -23,7 +23,7 @@ export function validateDeck(defs: Record<string, CardDef>, codes: string[]): st
 }
 
 function emptyPlayer(): PlayerState {
-  return { deck: [], hand: [], forwards: [], backups: [], damageZone: [], breakZone: [], mulliganDecided: false }
+  return { deck: [], hand: [], forwards: [], backups: [], damageZone: [], breakZone: [], removedFromGame: [], mulliganDecided: false }
 }
 
 export function createGame(opts: CreateGameOptions): GameState {

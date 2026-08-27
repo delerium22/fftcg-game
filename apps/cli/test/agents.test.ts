@@ -139,8 +139,13 @@ describe('activated abilities reach the agents (C3-A1)', () => {
     expect(chosen.size, 'no agent ever used an activated ability — they are legal but unreachable').toBeGreaterThan(0)
   })
 
-  it('every activation it chose is one of the six C3 clauses', () => {
-    const C3 = ['1-121C:haste', '16-092C:dull-all', '18-064C:draw', '18-069C:draw', '19-052C:pump', '20-074C:draw']
-    for (const id of chosen.keys()) expect(C3).toContain(id)
+  it('every activation it chose is a real activated clause', () => {
+    // Grows as rungs land: C3 shipped six, C7 added Undead Princess's removal. The point of the assertion is
+    // that the agent never invents an id, not that the list is frozen at six.
+    const ACTIVATED = [
+      '1-121C:haste', '16-092C:dull-all', '18-064C:draw', '18-069C:draw',
+      '19-052C:pump', '19-052C:remove', '20-074C:draw',
+    ]
+    for (const id of chosen.keys()) expect(ACTIVATED).toContain(id)
   })
 })

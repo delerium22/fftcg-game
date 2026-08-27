@@ -455,6 +455,30 @@ const MINER_DRAW: Ability = {
  * field when targets are computed, so she cannot pump herself, and if she is the only Forward the activation
  * is illegal rather than a cost paid for nothing (§11.6.5).
  */
+/**
+ * Undead Princess's second clause (spec C7) — her afterlife: already spent once, she pays her own removal
+ * from the Break Zone for a smaller version of the same effect.
+ *
+ * The printed timing text needs no code. "Only during your Main Phase" is C3-11's global rule for every
+ * activated ability, and "if Undead Princess is in the Break Zone" is `sourceZone: 'breakZone'` — a member
+ * C3's union has carried since activated abilities landed, with no card using it until now.
+ *
+ * "1 Earth Forward" is the first live use of `TargetFilter.element`, and it is unrestricted by controller:
+ * the printed text says Earth, not yours.
+ */
+const UNDEAD_PRINCESS_REMOVE: Ability = {
+  id: '19-052C:remove',
+  trigger: { kind: 'activated', sourceZone: 'breakZone', cost: { selfRemoveFromGame: true } },
+  text: 'Remove Undead Princess in the Break Zone from the game: Choose 1 Earth Forward. It gains +2000 power '
+    + 'until the end of the turn. You can only use this ability during your Main Phase and if Undead Princess '
+    + 'is in the Break Zone.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any', filter: { element: 'earth' } },
+    then: [{ kind: 'addPower', amount: 2000 }],
+  }],
+}
+
 const UNDEAD_PRINCESS_PUMP: Ability = {
   id: '19-052C:pump',
   trigger: { kind: 'activated', sourceZone: 'field', cost: { selfToBreakZone: true } },
@@ -503,8 +527,8 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   '18-064C': [GEOMANCER_DRAW],
   '18-069C': [RED_MAGE_18_DRAW],
   '18-124C': [BILLY_BOB_ETB],
-  // Clause 1 only; the "remove from the Break Zone from the game" clause is C4.
-  '19-052C': [UNDEAD_PRINCESS_PUMP],
+  // Printed order: the self-break pump is clause 1, the remove-from-game clause 2.
+  '19-052C': [UNDEAD_PRINCESS_PUMP, UNDEAD_PRINCESS_REMOVE],
   // The card's SECOND printed clause, landing first — its ETB deck reveal is C6.
   '20-074C': [MINER_DRAW],
   '20-103H': [RAMUH_SUMMON],

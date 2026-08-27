@@ -20,6 +20,11 @@ export interface PlayerState {
   backups: FieldCard[]
   damageZone: CardId[]
   breakZone: CardId[]
+  /**
+   * Removed from the game (spec C7-1). PUBLIC and inert: both players see it, nothing returns from it, and
+   * no rule reads it. Unlike the deck it needs no information model, which is what makes it cheap.
+   */
+  removedFromGame: CardId[]
   mulliganDecided: boolean
 }
 export type Phase = 'setup' | 'active' | 'draw' | 'main1' | 'attack' | 'main2' | 'end'

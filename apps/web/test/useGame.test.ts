@@ -51,9 +51,24 @@ const POLICIES: Policy[] = [
  * produce a given command is luck — and rung C1 halved game length, which silently cost them `castSummon`.
  * Reachability is what B-A2 actually asserts, so seek the type rather than hoping a rotation lands on it.
  */
+/**
+ * Steer toward one command type: take it when offered, otherwise take the choice most likely to LEAD to it.
+ *
+ * The fallback used to be index 0 unconditionally, which made `assignPartyDamage` unreachable by seeking at
+ * all: a party split only happens after a BLOCK, and at a `declareBlock` decision there is no
+ * `assignPartyDamage` option to steer at — so it fell back to "don't block", which is always index 0. Only
+ * the blind policies ever stumbled into it, and every rung that shortened games pushed the first stumble
+ * further out, so the seed bound had to be raised again and again. Steering at the precondition instead makes
+ * this robust to trajectory changes rather than needing a bigger number each time.
+ */
 const seeking = (type: Command['type']): Policy => (u) => {
   const i = u.findIndex((c) => c.command.type === type)
-  return i >= 0 ? i : 0
+  if (i >= 0) return i
+  if (type === 'assignPartyDamage') {
+    const block = u.findIndex((c) => c.command.type === 'declareBlock' && c.command.blocker !== null)
+    if (block >= 0) return block
+  }
+  return 0
 }
 
 /**
@@ -214,10 +229,13 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
     // Forward), which pushed the first blind party split past seed 12. 20 is the smallest bound that passes.
     sweep(POLICIES, 24)
     // Whatever the blind policies missed, go looking for on purpose.
-    for (const type of need) if (!seen.has(type)) sweep([seeking(type)], 30)
+    // Fewer seeds than the blind sweep on purpose: a steering policy that actually steers should find its
+    // target in the first game or two, so a wide bound here only buys slow failures.
+    for (const type of need) if (!seen.has(type)) sweep([seeking(type)], 12)
     const missing = [...need].filter((t) => !seen.has(t))
     expect(missing, `unreachable from the UI: ${missing.join(', ')}`).toEqual([])
-  })
+    // An exhaustive sweep over dozens of full games; it is legitimately the slowest test in the suite.
+  }, 30_000)
 })
 
 describe('viewFor hides the AI hand throughout (B-A3)', () => {

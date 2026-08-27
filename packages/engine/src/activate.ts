@@ -125,6 +125,7 @@ export function activationCheck(
     }
   }
   if (cost.selfToBreakZone && !findFieldCard(state, source)) return 'only a card on the field can be put into the Break Zone'
+  if (cost.selfRemoveFromGame && !state.players[player].breakZone.includes(source)) return 'only a card in your Break Zone can be removed from the game'
   if (cost.selfDiscard && !state.players[player].hand.includes(source)) return 'only a card in your hand can be discarded'
 
   // Validate the DECLARED targets against the state as it will be once the costs are paid (§11.6.5). Post-cost
@@ -216,6 +217,15 @@ function applyCosts(
       s = updatePlayer(removeFromField(s, source), owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, source] }))
       events.push({ type: 'paidToBreakZone', player, card: source })
     }
+  }
+  if (cost.selfRemoveFromGame) {
+    // Out of the Break Zone and out of the game. No `ZoneTransition`: a transition is `to: 'breakZone'` by
+    // construction, and nothing in the pool watches removal — Sphene's static will get its own observer
+    // rather than being retrofitted onto the break watcher (spec C7-3).
+    const owner = s.cards[source]?.owner ?? player
+    s = updatePlayer(s, player, (ps) => ({ ...ps, breakZone: ps.breakZone.filter((id) => id !== source) }))
+    s = updatePlayer(s, owner, (ps) => ({ ...ps, removedFromGame: [...ps.removedFromGame, source] }))
+    events.push({ type: 'removedFromGame', player, card: source })
   }
   if (cost.selfDiscard) {
     const owner = s.cards[source]?.owner ?? player

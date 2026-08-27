@@ -13,7 +13,10 @@ const DECKS: [string[], string[]] = [DEFAULT_DECK, DEFAULT_DECK]
 
 function codesOf(s: GameState, p: PlayerId): string[] {
   const q = s.players[p]
-  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone].map((id) => s.cards[id]!.code).sort()
+  // `removedFromGame` included since C7: a helper that enumerates "every zone" and quietly skips one turns
+  // the tests built on it into tests of a subset, and a card lost from the accounting is exactly what they
+  // exist to catch.
+  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame].map((id) => s.cards[id]!.code).sort()
 }
 
 /** random-walk `n` steps from setup and return the state */
@@ -117,5 +120,41 @@ describe('determinise', () => {
     const mintedIds = [...det.players[1].hand, ...det.players[0].deck, ...det.players[1].deck]
     expect(mintedIds.length).toBeGreaterThan(0)
     expect(mintedIds.every((id) => id > highId)).toBe(true)
+  })
+})
+
+describe('a removed card stays removed (spec C7-A5)', () => {
+  /** Move one card of P0's from the Break Zone out of the game, by hand. */
+  function withRemoved(state: GameState): { s: GameState; removed: number } {
+    const ps = state.players[0]
+    const removed = ps.deck[0] as number
+    const players = [state.players[0], state.players[1]] as typeof state.players
+    players[0] = { ...ps, deck: ps.deck.slice(1), removedFromGame: [...ps.removedFromGame, removed] }
+    return { s: { ...state, players }, removed }
+  }
+
+  it('is reproduced in the removed zone and NOT dealt back into a deck', () => {
+    const { s, removed } = withRemoved(makeGame({ defs: VANILLA_POOL, decks: DECKS }))
+    const view = viewFor(s, 0)
+    const [det] = determinise({ view, decks: DECKS, rng: seedRng(7) })
+
+    expect(det.players[0].removedFromGame).toEqual([removed])
+    // The counting assertion: a duplicated card is exactly what a green suite otherwise misses. The removed
+    // card's CODE must appear once across all of player 0's zones, not twice.
+    const code = s.cards[removed]!.code
+    const before = codesOf(s, 0).filter((c) => c === code).length
+    const after = codesOf(det, 0).filter((c) => c === code).length
+    expect(after).toBe(before)
+    expect(codesOf(det, 0)).toHaveLength(codesOf(s, 0).length)
+    expect(checkInvariants(det)).toEqual([])
+  })
+
+  it('is visible to BOTH players, being public', () => {
+    const { s, removed } = withRemoved(makeGame({ defs: VANILLA_POOL, decks: DECKS }))
+    for (const seat of [0, 1] as const) {
+      const v = viewFor(s, seat)
+      expect(v.fields[0].removedFromGame).toContain(removed)
+      expect(v.cards[removed], `seat ${seat} cannot see the removed card`).toBeDefined()
+    }
   })
 })

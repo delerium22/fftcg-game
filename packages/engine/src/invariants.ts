@@ -29,6 +29,9 @@ export function checkInvariants(state: GameState): string[] {
     ps.hand.forEach((id) => note(id, `P${p} hand`))
     ps.damageZone.forEach((id) => note(id, `P${p} damage`))
     ps.breakZone.forEach((id) => note(id, `P${p} break`))
+    // A zone added to `viewFor` but not here fails silently — `note` is what proves every card is in exactly
+    // one place, and the fuzzer runs it after every command under --strict (spec C7-5).
+    ps.removedFromGame.forEach((id) => note(id, `P${p} removed`))
     for (const zone of ['forwards', 'backups'] as const) {
       for (const c of ps[zone]) {
         note(c.id, `P${p} ${zone}`)

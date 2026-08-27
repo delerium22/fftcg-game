@@ -204,7 +204,7 @@ export function selectKey(node: SearchNode, available: readonly ActionKey[], roo
 export function searchView(state: GameState, me: PlayerId): PlayerView {
   const field = (p: PlayerId): FieldView => {
     const ps = state.players[p]
-    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, deckCount: ps.deck.length, handCount: ps.hand.length }
+    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, deckCount: ps.deck.length, handCount: ps.hand.length }
   }
   const cards: Record<CardId, CardInstance> = {}
   const see = (id: CardId): void => { const inst = state.cards[id]; if (inst) cards[id] = inst }
