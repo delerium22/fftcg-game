@@ -1,10 +1,48 @@
-# Rung C9 (DEFERRED) — Looking at your own deck: the information model
+# Rung C9 — Looking at your own deck: the information model
 
-> **Status: deferred, deliberately, after its own Codex plan-review found four blockers.** Revision 1 was
-> written as the next rung; the review is
-> `docs/superpowers/plans/2026-08-27-rung-c3-deck-knowledge.codex-review.md`. Everything below is revision 1
-> as reviewed — kept intact because the analysis is sound and this rung will be built eventually. What changed
-> is only *when*.
+> **Revision 2 (2026-08-28): un-deferred, and most of the cost removed by one design change.** Revision 1 was
+> reviewed and found to have four blockers; it was deferred while eight cheaper clauses were built. Returning
+> to it with the rest of rung C done, three of those four blockers turn out to be consequences of a single
+> decision revision 1 made without noticing it was a decision — that a deck choice is answered by naming a
+> **card**. Answering by **index** instead dissolves them.
+>
+> Sections below are: the new design (C9-1..), then revision 1's own analysis and the four blockers, kept
+> intact because the analysis is sound and because the record of what was wrong is worth more than a tidy
+> document.
+
+## The design change: answer by index, not by card
+
+Every deck clause in the pool has the same shape — *expose N cards, take one, put the rest back*:
+
+| | Miner (20-074C) | Reeve (20-105C) | Hugh Yurg (24-063H) |
+|---|---|---|---|
+| Sees | **reveal** top 5 — public | **look at** top 3 — private | **search** the whole deck — private |
+| Takes | 1 **Backup** → hand | 1 **card** → hand | 1 **Earth Forward of cost 1** → **the field** |
+| Rest | bottom of deck | bottom of deck | shuffle |
+
+Revision 1 proposed materialising the candidates as `CardId`s in a `chooseTargets` pending. That is what
+forces everything else: ids the opponent must not see, ids `determinise` invalidates by re-minting, and an
+`ActionKey` that names a card the searcher cannot know.
+
+**`chooseMode` already shows the other way.** Its pending carries `labels: readonly string[]` and its command
+answers with `modes: readonly number[]` — indices, never ids (`state.ts:43`, `commands.ts:17`). A deck choice
+is the same kind of question.
+
+| # | Decision | Ruling (and why) |
+|---|---|---|
+| C9-1 | **A deck choice is answered by INDEX into an exposed set** | `{ kind: 'chooseFromDeck'; player; min; max; count; }` answered by `{ type: 'chooseFromDeck'; player; picks: readonly number[] }`. The pending carries a COUNT, never ids. |
+| C9-2 | **Which cards those indices name is a fact of the VIEW, not the pending** | The exposed cards are the top `count` of the player's deck (or, for a search, the whole deck). `viewFor` shows their identities to viewers entitled to see them and nothing to anyone else. There is no redaction to do on the pending, because the pending never held ids. |
+| C9-3 | **`determinise` needs no reconstruction step** | Blocker 2 dissolves: a pending holding a count is valid in any world, and the indices resolve against whatever deck that world sampled. The `PendingState`/`PendingView` split revision 1's review required is not needed. |
+| C9-4 | **The action key is the index, and is world-independent by construction** | Blocker 3 dissolves, and correctly rather than by luck: `chooseFromDeck:2` means the same question in every determinisation, while the concrete card it lands on differs per world — which is exactly the information-set semantics ISMCTS wants. No collapsed key, no random opponent policy, no second identity. |
+| C9-5 | **Durable knowledge is still needed, and is still the real work** | Blocker 1 stands: after Reeve bottoms two cards its controller still knows them, and a root determinisation must preserve *"unknown to me, known to them"*. `GameState.knownBy: Record<CardId, number>` — a bitmask, one bit per player — projected per viewer, and `determinise` pins what the viewer knows while still sampling what only the opponent knows. |
+| C9-6 | **Narration follows from the view** | Blocker 4 shrinks to a consequence: an index-answered command has no card to name, so `describeChoice` cannot leak one. What remains is making the deck's exposed cards render only for viewers entitled to them. |
+| C9-7 | **Staging, per revision 1's own review** | Substrate with no cards; then **Reeve** alone (private, take one, bottom the rest) to prove pinning and non-interference; then **Miner** (public, plus the known-opponent-hand case); then **Hugh Yurg's search**, which additionally puts a card onto the field and so calls C8's `enqueueEnterFieldTriggers`. |
+
+**What this does not make cheap.** The knowledge model is still a real change to `GameState`, `viewFor` and
+`determinise`, and it is still the part that can silently give the AI information a player would not have.
+Three blockers dissolving does not make the fourth smaller.
+
+
 
 ## Why this is deferred, and what it would cost
 
