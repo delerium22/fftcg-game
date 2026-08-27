@@ -323,6 +323,14 @@ export function promptFor(v: PlayerView): string {
         const { min, max, labels } = v.pending
         return caused(v, sourced(v, `Choose ${countPhrase(min, max)} of the ${labels.length} following effect${labels.length === 1 ? '' : 's'}`))
       }
+      // Without this the strip fell through to the PHASE line and told the player to "cast, attack, or pass"
+      // while the only legal answers were deck picks — a prompt instructing a move the engine would reject.
+      case 'chooseFromDeck': {
+        const { min, max, count, to } = v.pending
+        const what = to === 'field' ? 'to play onto the field' : 'to add to your hand'
+        const among = `among the ${count} card${count === 1 ? '' : 's'} you looked at`
+        return caused(v, sourced(v, `Choose ${countPhrase(min, max)} card${max === 1 ? '' : 's'} ${among} ${what}`))
+      }
     }
   }
   switch (v.phase) {

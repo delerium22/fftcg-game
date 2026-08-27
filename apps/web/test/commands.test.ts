@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type Payment, type PlayerId, type PlayerView, type TriggerEvent,
+  type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type Payment, type Pending, type PlayerId, type PlayerView, type TriggerEvent,
 } from '@fftcg/engine'
 import { GreedyAgent, preferredPayment } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
@@ -491,6 +491,28 @@ describe('activated abilities on the board (C3-A7)', () => {
     const b = act(src, '1-121C:haste', { dullBackups: [8], discards: [] })
     expect(sameCommand(a, b)).toBe(false)
     expect(sameCommand(a, act(src, '1-121C:haste', { dullBackups: [7], discards: [] }))).toBe(true)
+  })
+})
+
+describe('the prompt strip says what a deck choice is (rung C9)', () => {
+  // Codex's C9 finding 5: `promptFor` had no `chooseFromDeck` branch, so it fell through to the PHASE line and
+  // told the player to "cast, attack, or pass" while the only legal answers were deck picks.
+  const withPending = (over: Partial<Extract<Pending, { kind: 'chooseFromDeck' }>>): PlayerView => {
+    const v = viewFor(dealtGame(1), HUMAN)
+    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 1, max: 1, count: 3, to: 'hand', ...over }
+    return v
+  }
+
+  it('names the choice instead of falling through to the phase', () => {
+    const line = promptFor(withPending({}))
+    expect(line).not.toMatch(/cast, attack, or pass/)
+    expect(line).toMatch(/^Choose /)
+    expect(line).toContain('3 cards')
+  })
+
+  it('says where the card is going, because a search does not add it to hand', () => {
+    expect(promptFor(withPending({ to: 'field', min: 0, count: 40 }))).toContain('play onto the field')
+    expect(promptFor(withPending({ to: 'hand' }))).toContain('add to your hand')
   })
 })
 

@@ -31,7 +31,7 @@ function assertNoAiHandLeak(state: GameState, view: PlayerView): void {
   }
 }
 
-interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; commandTypes: Set<Command['type']>; orphanStates: number; leaks: string[]; deckChoices: number; deckLabels: string[] }
+interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; commandTypes: Set<Command['type']>; orphanStates: number; leaks: string[]; deckChoices: number; deckLabels: { text: string; allPublic: boolean }[] }
 
 /**
  * Human policies for the sweeps below. Taking the first choice every time is one narrow path through the game;
@@ -115,7 +115,7 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
   let humanMoves = 0
   let orphanStates = 0
   const leaks: string[] = []
-  const deckLabels: string[] = []
+  const deckLabels: { text: string; allPublic: boolean }[] = []
   let deckChoices = 0
   for (let step = 0; step < 4000 && !state.result; step++) {
     const view = viewFor(state, HUMAN)
@@ -130,8 +130,16 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
       expect(stepped.state).not.toBe(before)   // stepAi applies exactly one command
       // The AI's move LABEL is the line the leak hid in, and a text scan cannot police it: this pool has 18
       // codes across 50 cards, so almost every name is also on something public and a name-based check passes
-      // no matter what. The label itself is what has to be pinned.
-      if (deckPick !== null) { deckChoices++; deckLabels.push(stepped.lines[0]?.text ?? '') }
+      // no matter what. The label itself is what has to be pinned — against what the human could see of the
+      // picked slots BEFORE the command, since answering it is what moves them.
+      if (deckPick !== null) {
+        deckChoices++
+        // Public iff the human can see EVERY exposed slot — true of Miner's reveal, false of Reeve's and
+        // Hugh Yurg's looks. That splits the pool exactly, without needing the command the agent chose.
+        const slots = viewFor(before, HUMAN).fields[deckPick.player].deck.slice(0, deckPick.count)
+        const allPublic = slots.length > 0 && slots.every((sl) => sl.card !== null)
+        deckLabels.push({ text: stepped.lines[0]?.text ?? '', allPublic })
+      }
       const secret = leakableNames(viewFor(before, HUMAN), viewFor(stepped.state, HUMAN), before)
       for (const line of stepped.lines) for (const n of secret) if (line.text.includes(n)) leaks.push(`${line.text} — names ${n}`)
       state = stepped.state
@@ -237,14 +245,16 @@ describe('the AI\'s own log lines never name a card the human was not shown (B-A
     expect(played.reduce((n, g) => n + g.deckChoices, 0)).toBeGreaterThan(0)
   })
 
-  it("labels every AI deck pick with a COUNT, because the human was shown none of those cards", () => {
-    // Reeve and Hugh Yurg are both `audience: 'self'`, so for every deck choice the AI makes in these games
-    // the human's view holds no id for any exposed slot — and the only honest label is therefore the count
-    // form. A label naming a card here IS the leak, whatever the card happens to be called.
+  it('labels an AI deck pick with a COUNT unless the human legitimately saw those cards', () => {
+    // Reeve and Hugh Yurg are `audience: 'self'`, so the human holds no id for the exposed slots and the only
+    // honest label is the count form — a label naming a card there IS the leak. Miner is `audience: 'all'`,
+    // so the human DID see those five, and naming them is not merely allowed but better. The distinction is
+    // what the human's own view holds at the picked slots, which is exactly what the redaction keys on.
     const labels = played.flatMap((g) => g.deckLabels)
     expect(labels.length, 'no AI deck pick was labelled at all').toBeGreaterThan(0)
     const redacted = /^(Take nothing|Find nothing|Take \d+ cards?|Play \d+ cards? onto the field)$/
-    expect(labels.filter((l) => !redacted.test(l))).toEqual([])
+    const leaked = labels.filter((l) => !l.allPublic && !redacted.test(l.text))
+    expect(leaked).toEqual([])
   })
 })
 
@@ -285,6 +295,66 @@ describe("the narrator is wired to the events the ENGINE really emits (rung C9)"
       }
     })
   }
+})
+
+describe("an AI move label reads the pending it ANSWERED, not the one that replaced it", () => {
+  /**
+   * Codex's C9 finding 4, and a regression from the leak fix above: `narrateApply` labels the move from the
+   * post-apply view, and `describeChoice` reads `v.pending` (for the deck destination, and via `targetVerb`
+   * for a target's printed verb) and `v.fields[...].deck` (for the picked cards). By the time the label is
+   * written, the pending it answered is gone and the deck has already moved.
+   */
+  it('labels a search as PLAY, not as a take, when the AI answers it', () => {
+    const labels: string[] = []
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      let state = newGame(seed)
+      for (let i = 0; i < 400 && !state.result; i++) {
+        const p = actingPlayer(state)
+        if (p === null) break
+        const legal = legalCommands(state, p)
+        const cmd = new GreedyAgent({ seed: seed + i, decks: DECKS, depth: 1 }).decide(viewFor(state, p), legal)
+        // Only a SEARCH pending (`to: 'field'`) answered by the AI is in scope.
+        const searching = state.pending?.kind === 'chooseFromDeck' && state.pending.to === 'field' && p === AI
+        if (searching) labels.push(stepAi(state, new GreedyAgent({ seed: seed + i, decks: DECKS, depth: 1 })).lines[0]?.text ?? '')
+        state = apply(state, cmd).state
+      }
+    }
+    expect(labels.length, 'no AI search was answered — the assertion would prove nothing').toBeGreaterThan(0)
+    for (const l of labels) expect(l).toMatch(/^(Play \d+ cards? onto the field|Find nothing)$/)
+  })
+})
+
+describe("a searched-out Forward explains the trigger it causes (rung C9)", () => {
+  /**
+   * Codex's C9 finding 6. `eventLines` recorded `cast` as an arrival but not `playedFromDeck`, so when Hugh
+   * Yurg searched out a cost-1 Forward, his OWN watcher clause fired with no cause and the log said only that
+   * an ability triggered — for a clause whose entire meaning is that something arrived.
+   */
+  it('names the card that entered, not just that a clause triggered', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      let state = newGame(seed)
+      for (let i = 0; i < 400 && !state.result; i++) {
+        const p = actingPlayer(state)
+        if (p === null) break
+        const legal = legalCommands(state, p)
+        const cmd = new GreedyAgent({ seed: seed + i, decks: DECKS, depth: 1 }).decide(viewFor(state, p), legal)
+        const before = viewFor(state, HUMAN)
+        const r = apply(state, cmd)
+        if (r.events.some((e) => e.type === 'playedFromDeck')) {
+          const lines = eventLines(narrator(before, viewFor(r.state, HUMAN)), r.events, state.resolution.queue)
+          const triggered = lines.filter((l) => l.text.includes("ability triggers"))
+          // The watcher clause fires in the same batch; whichever lines are there must carry a cause.
+          const watcher = triggered.find((l) => l.text.includes('When a Forward of cost 1 enters your field'))
+          if (watcher) {
+            expect(watcher.text, 'the searched-out arrival was not named as the cause').toMatch(/ — .*entered the field/)
+            return
+          }
+        }
+        state = r.state
+      }
+    }
+    throw new Error('no game reached a searched-out Forward triggering the watcher — the assertion proved nothing')
+  })
 })
 
 describe('a look and a reveal in the log (rung C9)', () => {

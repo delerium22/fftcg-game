@@ -1,4 +1,4 @@
-import { ELEMENTS, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type TriggerEvent } from '@fftcg/engine'
+import { ELEMENTS, matchesDefFilter, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type TriggerEvent } from '@fftcg/engine'
 
 /**
  * Canonical, cross-determinisation identity for search (spec D-2). **This is the crux of the rung.**
@@ -162,6 +162,15 @@ function buildIndex(view: PlayerView, root: PlayerId): RefIndex {
     f.damageZone.forEach((id, i) => put(id, `d${p}:${i}`))
     f.breakZone.forEach((id, i) => put(id, `z${p}:${i}`))
   }
+  // Deck slots this viewer has LOOKED at, by code and by owner. A deck position is an artefact of one world
+  // exactly as a hand position is — `determinise` samples every slot the viewer does not know — so a card the
+  // viewer HAS seen must be named by what it is, like a hand card, and one it has not stays unnameable.
+  for (const p of [0, 1] as const) {
+    for (const sl of view.fields[p].deck) {
+      const code = sl.card === null ? undefined : view.cards[sl.card]?.code
+      if (sl.card !== null && code !== undefined) put(sl.card, `d${p}:${code}`)
+    }
+  }
   // The root's own hand is the only private zone it can name, and it names it by CODE: a hand position is an
   // artefact of one world, and `determinise` is free to hand the same numeric id to a different code in the next.
   if (root === view.me) {
@@ -229,11 +238,19 @@ export function actionKey(view: PlayerView, command: Command): ActionKey {
     case 'chooseMode':
       // Mode answers are indices into the pending's printed `labels`, not ids — already world-independent.
       return `${head}${FIELD}${[...command.modes].sort((a, b) => a - b).join(',')}`
-    case 'chooseFromDeck':
-      // Likewise, and this is the design's whole payoff: the key is the index. It asks the same question in
-      // every determinisation while the card it lands on differs per world, which is exactly the
-      // information-set semantics — no canonicalisation, no second identity, nothing to collapse.
-      return `${head}${FIELD}${[...command.picks].sort((a, b) => a - b).join(',')}`
+    case 'chooseFromDeck': {
+      // The CARD, not the position — the same rule the rest of this file follows, and for the same reason.
+      //
+      // Keys are built from the ACTOR's view (see `searchTree`), justified there by every command in this pool
+      // having a public effect. A PRIVATE deck pick is the one that does not, and keying it by index made the
+      // actor's own choice meaningless across worlds: `chooseFromDeck|p1|0` is Cloud in a world that sampled
+      // Cloud on top and Undead Princess in the next (a false match), while "take the Cloud" is index 0 in one
+      // and index 1 in the other (a false split). The chooser has always LOOKED at these cards before being
+      // asked — `lookAtDeck` learns them for the controller before it suspends — so the actor's view can
+      // always name them, and copies of one code are interchangeable exactly as they are in hand.
+      const slots = view.fields[command.player].deck
+      return `${head}${FIELD}${joinRefs(command.picks.map((i) => { const c = slots[i]?.card; return c == null ? OPAQUE : r(c) }))}`
+    }
     case 'activateAbility': {
       // `abilityId` is a printed-clause identity, already world-independent — unlike a card id, it needs no
       // canonicalisation. The source and every CP source do, exactly as for a cast.
@@ -288,12 +305,29 @@ const DECODERS: Record<Command['type'], Decoder> = {
     const v = args[0]
     return v === 'redraw' || v === 'keep' ? { type: 'mulligan', player, redraw: v === 'redraw' } : null
   },
-  chooseFromDeck: ({ player, args, pendingIs }) => {
-    if (!pendingIs('chooseFromDeck')) return null
+  chooseFromDeck: ({ player, args, pendingIs, view, ids }) => {
+    const pending = pendingIs('chooseFromDeck')
+    if (!pending || pending.player !== player) return null
     const raw = args[0] ?? ''
-    if (raw === '') return { type: 'chooseFromDeck', player, picks: [] }
-    const picks = raw.split(',').map(Number)
-    if (picks.some((n) => !Number.isInteger(n) || n < 0)) return null
+    if (raw === '') return pending.min === 0 ? { type: 'chooseFromDeck', player, picks: [] } : null
+    // Contract 5 is "legal in THIS determinisation, or null" — so every check `applyChooseFromDeck` makes has
+    // to be made here too. It used to make none of them: an index past the exposed slice, a repeat, more picks
+    // than `max`, or a card the printed filter does not allow all decoded happily and threw inside `apply`.
+    const wanted = ids(raw)
+    if (wanted === null) return null
+    const slots = view.fields[player].deck.slice(0, pending.count)
+    const picks: number[] = []
+    for (const id of wanted) {
+      const i = slots.findIndex((sl, k) => sl.card === id && !picks.includes(k))
+      if (i < 0) return null
+      picks.push(i)
+    }
+    if (!distinct(picks) || picks.length < pending.min || picks.length > pending.max) return null
+    for (const i of picks) {
+      const code = slots[i]?.card == null ? undefined : view.cards[slots[i]!.card as CardId]?.code
+      const def = code === undefined ? undefined : view.defs[code]
+      if (!def || !matchesDefFilter(def, pending.filter)) return null
+    }
     return { type: 'chooseFromDeck', player, picks }
   },
   castCharacter: (ctx) => decodeCast(ctx, 'castCharacter'),
@@ -442,7 +476,10 @@ function fieldDigest(view: PlayerView, p: PlayerId): string {
   // across determinisations, because a known slot is pinned rather than sampled. One it does not know digests
   // as the mask alone, so "the opponent knows their top three" is a different information set from "they do
   // not", while never naming a card the viewer cannot see.
-  const slot = (sl: { card: CardId | null; knownBy: number }): string => (sl.card !== null ? code(sl.card) : `?${sl.knownBy}`)
+  // The mask travels in BOTH branches. It used to be dropped whenever the card was visible, so a top card the
+  // root alone knows and the same card the OPPONENT also knows digested identically — two positions the root
+  // can plainly tell apart, and which imply different things about what the opponent will do next.
+  const slot = (sl: { card: CardId | null; knownBy: number }): string => `${sl.card !== null ? code(sl.card) : '?'}${sl.knownBy}`
   return [
     `dk[${f.deck.map(slot).join(',')}]`, `hd${f.handCount}`,
     `fw[${f.forwards.map(card).join(',')}]`, `bk[${f.backups.map(card).join(',')}]`,

@@ -109,10 +109,13 @@ function defFor(state: GameState, id: CardId) {
   return code === undefined ? undefined : state.defs[code]
 }
 
-function matchesFilter(state: GameState, source: CardId, id: CardId, filter: TargetFilter | undefined): boolean {
+/**
+ * The half of a `TargetFilter` that depends only on the card's DEFINITION, split out so the search's decoder
+ * can ask the same question of a `PlayerView` (spec C9). The other half — `excludeSource`/`excludeSourceName`
+ * — needs the source instance and stays in `matchesFilter`, which delegates here rather than restating this.
+ */
+export function matchesDefFilter(def: CardDef, filter: TargetFilter | undefined): boolean {
   if (!filter) return true
-  const def = defFor(state, id)
-  if (!def) return false
   if (filter.type !== undefined && def.type !== filter.type) return false
   // "Character" is Forward, Backup OR Monster and never Summon (§7.2), which a single `type` cannot say — both
   // Prishe's and Luso's Break-Zone retrievals need it (spec C2-9). `type` and `types` conjoin: a filter carrying
@@ -122,6 +125,14 @@ function matchesFilter(state: GameState, source: CardId, id: CardId, filter: Tar
   if (filter.maxCost !== undefined && def.cost > filter.maxCost) return false
   // EXACT, not a ceiling: a cost-3 Forward must not satisfy Hugh Yurg's "of cost 1" (spec C8-3).
   if (filter.cost !== undefined && def.cost !== filter.cost) return false
+  return true
+}
+
+function matchesFilter(state: GameState, source: CardId, id: CardId, filter: TargetFilter | undefined): boolean {
+  if (!filter) return true
+  const def = defFor(state, id)
+  if (!def) return false
+  if (!matchesDefFilter(def, filter)) return false
   if (filter.excludeSource && id === source) return false
   if (filter.excludeSourceName) {
     const src = defFor(state, source)

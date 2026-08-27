@@ -432,6 +432,82 @@ function richView(): { view: PlayerView; ids: Record<string, CardId> } {
   return { view, ids: { a1, a2, d1, b1, z1 } }
 }
 
+describe('chooseFromDeck keys name the CARD, not the position (rung C9)', () => {
+  /**
+   * Codex's C9 findings 1, 2 and 7. The key tests could not reach a deck prompt at all — `VANILLA_POOL` has no
+   * abilities, so no trace produces one, and the synthetic prompt fixture covered only targets and modes. So
+   * every property below was unasserted, and the index-based key and the unvalidated decoder both survived.
+   *
+   * A deck prompt is built directly here. That is the right level: these are key tests, not engine tests.
+   */
+  const CODES = ['V-F1', 'V-F2', 'V-B1'] as const
+
+  /** A view where `chooser`'s top three are `order`, all known to `chooser`, with a deck prompt owed. */
+  function deckPrompt(order: readonly string[], chooser: PlayerId = 0, filter?: { type?: string }): PlayerView {
+    const base = viewFor(makeGame(), 0)
+    const ids = order.map((_, i) => 8000 + i)
+    const cards = { ...base.cards }
+    order.forEach((code, i) => { cards[ids[i] as CardId] = { id: ids[i] as CardId, code, owner: chooser } })
+    const fields = [base.fields[0], base.fields[1]] as PlayerView['fields']
+    fields[chooser] = {
+      ...fields[chooser],
+      deck: [...ids.map((id) => ({ card: id as CardId, knownBy: 1 << chooser })), ...fields[chooser].deck.slice(order.length)],
+    }
+    return {
+      ...base, cards, fields,
+      pending: { kind: 'chooseFromDeck', player: chooser, min: 0, max: 1, count: order.length, to: 'hand',
+        ...(filter ? { filter: filter as never } : {}) },
+    }
+  }
+
+  const pick = (player: PlayerId, picks: number[]): Command => ({ type: 'chooseFromDeck', player, picks })
+
+  it('keys the same CARD identically however the world happened to order the deck', () => {
+    // The false-SPLIT half. Two determinisations of one information set that sampled the chooser's deck
+    // differently: taking the V-F2 is position 1 in one and position 0 in the other.
+    const a = deckPrompt([CODES[0], CODES[1], CODES[2]])
+    const b = deckPrompt([CODES[1], CODES[0], CODES[2]])
+    expect(actionKey(a, pick(0, [1]))).toBe(actionKey(b, pick(0, [0])))
+  })
+
+  it('keys DIFFERENT cards differently even when they sit in the same position', () => {
+    // The false-MATCH half, and the one that actually poisons statistics: `…|0` used to mean whatever the
+    // world had put on top, so two unrelated moves shared an edge.
+    const a = deckPrompt([CODES[0], CODES[1], CODES[2]])
+    const b = deckPrompt([CODES[1], CODES[0], CODES[2]])
+    expect(actionKey(a, pick(0, [0]))).not.toBe(actionKey(b, pick(0, [0])))
+  })
+
+  it('round-trips through the decoder into a command legal in THIS world', () => {
+    const a = deckPrompt([CODES[0], CODES[1], CODES[2]])
+    const b = deckPrompt([CODES[1], CODES[0], CODES[2]])
+    const key = actionKey(a, pick(0, [1]))
+    // Decoded against the OTHER world it must land on that world's copy of the same card, not on position 1.
+    expect(decodeAction(b, key)).toEqual(pick(0, [0]))
+    expect(decodeAction(a, key)).toEqual(pick(0, [1]))
+  })
+
+  it('decodes the empty answer only when declining is legal', () => {
+    const v = deckPrompt([CODES[0]])
+    expect(decodeAction(v, `chooseFromDeck|p0|`)).toEqual(pick(0, []))
+    const mustTake = { ...v, pending: { ...v.pending, min: 1 } } as PlayerView
+    expect(decodeAction(mustTake, `chooseFromDeck|p0|`)).toBeNull()
+  })
+
+  it('returns null rather than an illegal answer — contract 5', () => {
+    const v = deckPrompt([CODES[0], CODES[1], CODES[2]])
+    const one = actionKey(v, pick(0, [0]))
+    // A card this world does not have in those slots.
+    expect(decodeAction(deckPrompt(['V-F5', 'V-F7', 'V-B2']), one)).toBeNull()
+    // More picks than `max` allows.
+    expect(decodeAction(v, actionKey(v, pick(0, [0, 1])))).toBeNull()
+    // A card the printed filter excludes — the decoder must apply it, exactly as `applyChooseFromDeck` does.
+    const backupsOnly = deckPrompt([CODES[0], CODES[1], CODES[2]], 0, { type: 'backup' })
+    expect(decodeAction(backupsOnly, actionKey(backupsOnly, pick(0, [0])))).toBeNull()
+    expect(decodeAction(backupsOnly, actionKey(backupsOnly, pick(0, [2])))).toEqual(pick(0, [2]))
+  })
+})
+
 describe('observationKey (contract 6)', () => {
   it('hides every id — a wholesale renumbering produces the identical key', () => {
     const { view, ids } = richView()
@@ -497,6 +573,15 @@ describe('observationKey (contract 6)', () => {
     // sets, and the digest must say so — a bare count could not.
     differs({ ...view, fields: [{ ...f0, deck: [{ card: null, knownBy: 1 }, ...f0.deck.slice(1)] }, view.fields[1]] }, 'my top card is known to me')
     differs({ ...view, fields: [f0, { ...view.fields[1], deck: [{ card: null, knownBy: 2 }, ...view.fields[1].deck.slice(1)] }] }, 'opponent knows their top card')
+    // ...and the mask still counts when the card IS visible. A card only I know, versus the same card the
+    // opponent knows too, are different positions — the digest dropped the mask in that branch until Codex's
+    // C9 review, collapsing them.
+    {
+      const known = { card: f0.deck[0]?.card ?? ids.d1!, knownBy: 1 }
+      const shared = { ...known, knownBy: 3 }
+      const withSlot = (sl: typeof known): PlayerView => ({ ...view, fields: [{ ...f0, deck: [sl, ...f0.deck.slice(1)] }, view.fields[1]] })
+      expect(observationKey(withSlot(known)), 'the mask on a VISIBLE slot was dropped').not.toBe(observationKey(withSlot(shared)))
+    }
     differs({ ...view, fields: [f0, { ...view.fields[1], handCount: 99 }] }, "opponent's hand size")
     differs({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, damage: 3000 } : c)) }, view.fields[1]] }, 'damage on a forward')
     differs({ ...view, fields: [{ ...f0, forwards: [...f0.forwards].reverse() }, view.fields[1]] }, 'field order (it is what positional refs mean)')

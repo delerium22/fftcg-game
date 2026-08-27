@@ -138,6 +138,12 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
   }
 }
 
+/** A card's printed TYPE from the view, for events that carry only its id. */
+function defTypeOf(v: PlayerView, card: CardId): CardType | null {
+  const code = v.cards[card]?.code
+  return (code === undefined ? undefined : v.defs[code]?.type) ?? null
+}
+
 /** The clause an `abilityTriggered` names, from the AST on `CardDef` — its `trigger` says what fired it. */
 function triggerOf(v: PlayerView, card: CardId, abilityId: string): AbilityTrigger | null {
   const code = v.cards[card]?.code
@@ -242,8 +248,17 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
       case 'abilityDamage': hits.push({ source: e.source, target: e.target, amount: e.amount, used: false }); break
       // `playerDamaged.card` is the card TAKEN as damage, not the dealer; the dealer is the watcher itself.
       case 'playerDamaged': playerHits.push({ victim: e.player, used: false }); break
-      // A card ARRIVING (spec C8). `cast` is the only producer today; a future put-into-play path adds its own.
+      // A card ARRIVING (spec C8). `cast` was the only producer until C9's search; the comment here said a
+      // future put-into-play path would have to add its own, and this is it. Without it, Hugh Yurg finding a
+      // cost-1 Forward left his OWN watcher clause with no cause, so the log said the ability triggered and
+      // never said what arrived — for a clause whose whole point is that something arrived.
       case 'cast': enterHits.push({ card: e.card, controller: e.player, type: e.cardType, used: false }); break
+      case 'playedFromDeck': {
+        // The card is on the field by the time this is narrated, so the view can name its type.
+        const type = defTypeOf(v, e.card)
+        if (type) enterHits.push({ card: e.card, controller: e.player, type, used: false })
+        break
+      }
       case 'broken':
       case 'brokenByAbility':
       case 'putIntoBreakZone': zoneHits.push({ card: e.card, controller: holderOf(v, e.card), reason: 'ability', used: false }); break
@@ -299,7 +314,14 @@ function narrateApply(
   // cannot name what the human was not shown, and the public-before union keeps every other label intact.
   const view = narrator(before, viewFor(result.state, HUMAN))
   const lines = eventLines(view, result.events, state.resolution.queue)
-  return { state: result.state, lines: [{ kind: 'ai', text: describeChoice(view, command) }, ...lines] }
+  // The EVENTS are narrated from the post-apply view; the move LABEL is not, and must not be. `describeChoice`
+  // reads the pending the command ANSWERED — for a deck pick's destination, and through `targetVerb` for a
+  // target's printed verb — and reads the deck those indices point into. By the time the events exist, that
+  // pending has been replaced and the deck has already moved, so a search labelled itself "Take 1 card" for a
+  // card it had just put onto the field. Pre-command view, post-command cards: the cards union is the only
+  // part that has to look forward, so a cast can still name the card it just made public.
+  const label = describeChoice({ ...before, cards: view.cards }, command)
+  return { state: result.state, lines: [{ kind: 'ai', text: label }, ...lines] }
 }
 
 /**
