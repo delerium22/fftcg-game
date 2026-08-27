@@ -1,5 +1,5 @@
 import {
-  actingPlayer, apply, deckSlotsFor, determinise, nextInt, seedRng, visibleKnownBy,
+  actingPlayer, apply, deckSlotsFor, determinise, knows, nextInt, seedRng, visibleKnownBy,
   type CardId, type CardInstance, type Command, type FieldView, type GameState, type PlayerId, type PlayerView, type Rng,
 } from '@fftcg/engine'
 import { candidateCommands } from '../candidates.js'
@@ -219,6 +219,11 @@ export function searchView(state: GameState, me: PlayerId): PlayerView {
     // without this made `searchView` name a card that `view.cards` had no instance for — and `determinise`
     // throws "view lacks visible card" on precisely that.
     for (const id of ps.removedFromGame) see(id)
+    // And deck cards this viewer has looked at (spec C9-5) — the SAME omission, one rung later, on the zone
+    // C9 added. `deckSlotsFor` above already puts their ids on the FieldView, so leaving them out of `cards`
+    // makes every one of them digest as `?` in a key and re-opens the `determinise` throw above. Reeve's two
+    // unpicked cards go to the BOTTOM and stay known for the rest of the game, so this is not a corner.
+    for (const id of ps.deck) if (knows(state, me, id)) see(id)
   }
   return {
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,

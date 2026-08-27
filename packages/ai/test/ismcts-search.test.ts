@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, drainResolution, enqueueTrigger, legalCommands, seedRng, shuffle, viewFor,
+  SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, drainResolution, enqueueTrigger, learn, legalCommands, seedRng, shuffle, viewFor,
   type Ability, type CardDef, type CardId, type Command, type Effect, type GameState, type PlayerId, type PlayerView,
 } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
@@ -129,17 +129,35 @@ describe('searchView', () => {
    * So the zones are covered explicitly first, by construction, before the trace runs.
    */
   it('projects every zone viewFor does, including ones a vanilla trace cannot reach', () => {
+    // C7 patched this by naming ONE zone — `removedFromGame` — and C9 then walked through the same hole with
+    // deck knowledge: `deckSlotsFor` put known ids on the FieldView while the visible-cards loop ignored them,
+    // so every looked-at card digested as `?` and `determinise` had a "view lacks visible card" throw waiting.
+    // So the fixture now stands a card in EVERY zone that can hold one a viewer is entitled to see, and the
+    // assertion is whole-view equality — the next zone is covered by adding it here, not by remembering to.
     let s = makeGame()
     const ps = s.players[0]
-    const moved = ps.deck[0] as CardId
+    const removed = ps.deck[0] as CardId
+    const looked = ps.deck.slice(1, 4) as CardId[]           // as if seat 0 had looked at its own top three
     const players = [s.players[0], s.players[1]] as typeof s.players
-    players[0] = { ...ps, deck: ps.deck.slice(1), removedFromGame: [...ps.removedFromGame, moved] }
-    s = { ...s, players }
+    players[0] = { ...ps, deck: ps.deck.slice(1), removedFromGame: [...ps.removedFromGame, removed] }
+    s = learn({ ...s, players }, [0], looked)
 
     for (const p of [0, 1] as const) {
       expect(searchView(s, p)).toEqual(viewFor(s, p))
-      expect(searchView(s, p).cards[moved], `seat ${p} lost the removed card`).toBeDefined()
+      expect(searchView(s, p).cards[removed], `seat ${p} lost the removed card`).toBeDefined()
     }
+    // Seat 0 looked, so it must be able to NAME them; seat 1 did not, so it must not.
+    for (const id of looked) {
+      expect(searchView(s, 0).cards[id], 'the looker cannot name what it looked at').toBeDefined()
+      expect(searchView(s, 1).cards[id], 'the opponent can name a card it never saw').toBeUndefined()
+    }
+    // And the failure it actually caused downstream: `observationKey` digests a known deck slot as its CODE,
+    // via `view.cards` — so a slot missing from `cards` collapsed to the opaque marker, and two positions the
+    // looker can plainly tell apart became one information set. Looking at a DIFFERENT top three must key
+    // differently for the looker, and identically for the seat that saw neither.
+    const other = learn({ ...s, knownBy: {} }, [0], s.players[0].deck.slice(4, 7) as CardId[])
+    expect(observationKey(searchView(s, 0))).not.toBe(observationKey(searchView(other, 0)))
+    expect(observationKey(searchView(s, 0))).toBe(observationKey(viewFor(s, 0)))
   })
 
   it('produces byte-identical keys to viewFor across a self-play trace', () => {
