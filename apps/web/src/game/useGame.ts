@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type AbilityTrigger, type CardId, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView,
+  type AbilityTrigger, type CardId, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView,
 } from '@fftcg/engine'
-import { GreedyAgent, type Agent } from '@fftcg/ai'
+import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
 import { buildChoiceSet, describeChoice, describeTriggerCause, preferredChoices, sameCommand, type TriggerCause } from './commands.js'
+import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
 /** Spec B7: the agent decides in ~0.27 ms, far too fast to watch — one move per this many ms instead. */
@@ -213,16 +214,14 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
 export const narrator = (before: PlayerView, after: PlayerView): PlayerView => ({ ...after, cards: { ...before.cards, ...after.cards } })
 
 /**
- * Apply exactly ONE command for whoever is currently acting, chosen by `agent`, and return the resulting state
- * with the lines it produced. Pure and React-free so the whole driver is testable headlessly (spec B-A7). The
- * membership check is spec B-A4 held to both seats: `apply` is never reached by a command outside `legalCommands`.
+ * Narrate and apply one already-chosen command. Split out of `stepAi` because the browser's opponent no longer
+ * comes from an `Agent` at all — it comes back from a worker (spec D2) — and both paths must produce the same
+ * log. The membership check is spec B-A4 held to both seats: `apply` is never reached by a command outside
+ * `legalCommands`.
  */
-export function stepAi(state: GameState, agent: Agent): { state: GameState; lines: LogLine[] } {
-  const p = actingPlayer(state)
-  if (p === null) return { state, lines: [] }
-  const actorView = viewFor(state, p)
-  const legal = legalCommands(state, p)
-  const command = agent.decide(actorView, legal)
+function narrateApply(
+  state: GameState, actorView: PlayerView, legal: readonly Command[], command: Command,
+): { state: GameState; lines: LogLine[] } {
   if (!legal.some((c) => sameCommand(c, command))) throw new Error(`agent chose an illegal command: ${command.type}`)
   const before = viewFor(state, HUMAN)
   const result = apply(state, command)
@@ -232,10 +231,89 @@ export function stepAi(state: GameState, agent: Agent): { state: GameState; line
   return { state: result.state, lines: [{ kind: 'ai', text: describeChoice(actorView, command) }, ...lines] }
 }
 
+/**
+ * Apply exactly ONE command for whoever is currently acting, chosen by `agent`, and return the resulting state
+ * with the lines it produced. Pure and React-free so the whole driver is testable headlessly (spec B-A7).
+ */
+export function stepAi(state: GameState, agent: Agent): { state: GameState; lines: LogLine[] } {
+  const p = actingPlayer(state)
+  if (p === null) return { state, lines: [] }
+  const actorView = viewFor(state, p)
+  const legal = legalCommands(state, p)
+  return narrateApply(state, actorView, legal, agent.decide(actorView, legal))
+}
+
+// --- the browser's opponent: SO-ISMCTS in a worker (spec D2) -----------------------------------------------
+
+/** Everything the AI wiring needs from React. Named so the wiring below is drivable without a DOM. */
+export interface AiSink {
+  commit(state: GameState, lines: LogLine[]): void
+  log(line: LogLine): void
+}
+
+/**
+ * The hook's side of the coordinator contract. Every race — staleness, pacing, worker death, the fallback — is
+ * the coordinator's, so what is left here is only the shape the hook already had: re-check the command against
+ * the exact state it was chosen for, narrate it, commit it.
+ */
+export function aiHandlers(sink: AiSink): SearchRequestHandlers {
+  return {
+    onCommand: (command, forState) => {
+      const legal = legalCommands(forState, AI)
+      // `false` is load-bearing beyond skipping the commit: it is what stops the per-position seed advancing,
+      // so the next search of this same board asks the identical question (D2-3). Refuse rather than throw —
+      // this runs from a timer, where an uncaught throw would take the page down instead of the move.
+      if (!legal.some((c) => sameCommand(c, command))) {
+        sink.log({ kind: 'warning', text: `The AI chose ${command.type}, which is not legal in this position — the move was discarded` })
+        return false
+      }
+      const stepped = narrateApply(forState, viewFor(forState, AI), legal, command)
+      sink.commit(stepped.state, stepped.lines)
+      return true
+    },
+    // D2-6, and the reason the rung has a visible warning at all: an opponent quietly a tenth as strong is
+    // exactly the degradation that survives a rung unnoticed. The coordinator emits this at most once a game.
+    onWarning: (text) => { sink.log({ kind: 'warning', text }) },
+  }
+}
+
+/** Test seams. The hook passes none of them; the browser gets a real worker and a real clock. */
+export type SearchSeams = Pick<SearchCoordinatorOptions, 'createTransport' | 'clock' | 'iterations'>
+
+export interface AiSearch {
+  request(state: GameState, handlers: SearchRequestHandlers): void
+  /** Effect cleanup, and any commit the coordinator did not itself make. Synchronous, per D2-4. */
+  invalidate(): void
+  /** A new game under `seed`. */
+  restart(seed: number): void
+  dispose(): void
+}
+
+/**
+ * One `SearchCoordinator` per GAME. Throwing it away is how a restart resets the two things that are per-game
+ * facts and would otherwise leak across one: the committed-decision index the search seed is derived from
+ * (D2-3), and the permanently-Greedy latch a dead worker sets (D2-6).
+ *
+ * Built lazily, and rebuilt after `dispose`, because StrictMode's mount→unmount→mount tears the coordinator
+ * down without re-rendering — a one-shot construction in the render body would leave the second mount holding
+ * a terminated worker and no AI at all.
+ */
+export function createAiSearch(readState: () => GameState, seed: number, seams: SearchSeams = {}): AiSearch {
+  let gameSeed = seed
+  let coordinator: SearchCoordinator | null = null
+  const drop = (): void => { coordinator?.dispose(); coordinator = null }
+  const live = (): SearchCoordinator => (coordinator ??= new SearchCoordinator({
+    decks: DECKS, gameSeed, readState, stepMs: AI_STEP_MS, ...seams,
+  }))
+  return {
+    request: (state, handlers) => { live().request(state, handlers) },
+    invalidate: () => { coordinator?.invalidate() },
+    restart: (next) => { gameSeed = next; drop() },
+    dispose: drop,
+  }
+}
+
 const newGame = (seed: number): GameState => createGame({ seed, decks: DECKS, defs: CARD_DEFS })
-/** Spec B4 + the B-risks open-deck-list note: `GreedyAgent` determinises with BOTH lists, and in a mirror starter
- *  matchup both are public — so passing `DECKS` twice leaks nothing a real opponent would not already know. */
-const newAgent = (seed: number): Agent => new GreedyAgent({ seed, decks: DECKS, depth: 1 })
 
 const openingLog = (): LogLine[] => [{ kind: 'phase', text: 'New game — you are P0, the AI is P1' }]
 
@@ -245,8 +323,9 @@ export function useGame(seed?: number): GameApi {
   // the authority `choose` reads, so two clicks inside one render can't both apply to the same stale state.
   const [state, setState] = useState<GameState>(() => newGame(seedRef.current))
   const stateRef = useRef<GameState>(state)
-  const agentRef = useRef<Agent | null>(null)
-  agentRef.current ??= newAgent(seedRef.current)   // lazy: `useRef(newAgent(...))` would build one every render
+  const searchRef = useRef<AiSearch | null>(null)
+  // Lazy for the same reason the game itself is: `useRef(createAiSearch(...))` would build one every render.
+  searchRef.current ??= createAiSearch(() => stateRef.current, seedRef.current)
   const [log, setLog] = useState<LogLine[]>(openingLog)
   const [aiThinking, setAiThinking] = useState(false)
 
@@ -256,11 +335,17 @@ export function useGame(seed?: number): GameApi {
     if (lines.length) setLog((prev) => [...prev, ...lines])
   }, [])
 
+  const appendLog = useCallback((line: LogLine) => { setLog((prev) => [...prev, line]) }, [])
+  const handlers = useMemo(() => aiHandlers({ commit, log: appendLog }), [commit, appendLog])
+
   const view = useMemo(() => viewFor(state, HUMAN), [state])
   const choices = useMemo(() => buildChoiceSet(view, preferredChoices(view, legalCommands(state, HUMAN))), [state, view])
 
   const choose = useCallback((choice: Choice): void => {
     const current = stateRef.current
+    // D2-4: an external commit synchronously drops whatever the AI has outstanding. `concede` is legal even
+    // when the human is NOT the acting player, so a click really can land in the middle of the AI's search.
+    searchRef.current?.invalidate()
     // Spec B-A4: prove the command is still legal before touching `apply`, so an illegal click is impossible
     // rather than merely rejected by the engine after the fact.
     const legal = legalCommands(current, HUMAN)
@@ -276,26 +361,28 @@ export function useGame(seed?: number): GameApi {
     const next = ++seedRef.current
     const game = newGame(next)
     stateRef.current = game
-    agentRef.current = newAgent(next)
+    // D2-3: a new coordinator, so the committed-decision index the search seed is derived from restarts at 0.
+    searchRef.current?.restart(next)
     setState(game)
     setLog(openingLog())
     setAiThinking(false)
   }, [])
 
-  // Spec B7: one AI move per tick until the human is on the clock again or the game ends. Re-running on every
-  // `state` change is what makes it a loop. The cleanup both clears the timer and latches `cancelled`, so
-  // StrictMode's mount→unmount→mount double-invoke discards the first timer instead of stepping the AI twice.
+  // Spec B7 + D2: one AI move per decision, searched off the main thread. Re-running on every `state` change is
+  // what makes it a loop, and one accepted request per state is what stops two AI moves overlapping. The
+  // cleanup invalidates synchronously, so StrictMode's mount→unmount→mount double-invoke discards the first
+  // request rather than stepping the AI twice.
   useEffect(() => {
     if (state.result || actingPlayer(state) !== AI) { setAiThinking(false); return }
     setAiThinking(true)
-    let cancelled = false
-    const timer = setTimeout(() => {
-      if (cancelled) return
-      const stepped = stepAi(stateRef.current, agentRef.current as Agent)
-      commit(stepped.state, stepped.lines)
-    }, AI_STEP_MS)
-    return () => { cancelled = true; clearTimeout(timer) }
-  }, [state, commit])
+    const search = searchRef.current as AiSearch
+    search.request(state, handlers)
+    return () => { search.invalidate() }
+  }, [state, handlers])
+
+  // Unmount only. A worker outliving its hook is both a leak and a source of replies for a game nobody is
+  // looking at any more (D2-4).
+  useEffect(() => () => { searchRef.current?.dispose() }, [])
 
   return { view, choices, log, aiThinking, choose, restart }
 }

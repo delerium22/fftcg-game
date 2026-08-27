@@ -5,13 +5,21 @@ import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
   type Ability, type CardDef, type CardId, type Command, type Event, type FieldCard, type Frame, type GameState, type PlayerId, type PlayerView,
 } from '@fftcg/engine'
-import { GreedyAgent, type Agent } from '@fftcg/ai'
+import { GreedyAgent, type Agent, type SearchDiagnostics, type SearchResult } from '@fftcg/ai'
 import { withAbilities } from '@fftcg/cards'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { buildChoiceSet, describeChoice, preferredChoices, sameCommand } from '../src/game/commands.js'
 import { AI, HUMAN, type ChoiceSet, type GameApi, type LogLine } from '../src/game/types.js'
 import { Board, clickableChoices, orphanTargetIds } from '../src/ui/Board.js'
-import { describeEvent, eventLines, narrator, stepAi } from '../src/game/useGame.js'
+import {
+  FALLBACK_WARNING, searchSeed,
+  type Clock, type SearchTransport, type SearchTransportFactory, type TransportHandlers,
+} from '../src/game/search/coordinator.js'
+import type { WorkerRequestMessage, WorkerResponseMessage, WorkerSearchRequest } from '../src/game/search/protocol.js'
+import {
+  AI_STEP_MS, aiHandlers, createAiSearch, describeEvent, eventLines, narrator, stepAi,
+  type AiSearch, type AiSink,
+} from '../src/game/useGame.js'
 
 const newGame = (seed: number, defs: CardDef[] = CARD_DEFS): GameState => createGame({ seed, decks: DECKS, defs })
 
@@ -694,5 +702,206 @@ describe('a target the board draws in no named zone is still a real button', () 
       state = apply(state, next.command).state
     }
     expect(checked).toBeGreaterThan(20)
+  })
+})
+
+// -----------------------------------------------------------------------------------------------------------
+// Rung D2: the AI half of the hook. There is no DOM in this suite, so what is driven here is the React-FREE
+// seam the effect installs — `createAiSearch` + `aiHandlers` — which is the whole of the hook's AI behaviour
+// minus React's own scheduling. The races behind it are asserted against the coordinator itself in
+// search-coordinator.test.ts; what these cover is what the HOOK adds: narration, the legality re-check, the
+// seed reset a restart performs, and the fallback being visible in the log a player is actually reading.
+// -----------------------------------------------------------------------------------------------------------
+
+const EMPTY_DIAGNOSTICS: SearchDiagnostics = {
+  determinisations: 1, treeApplies: 1, rolloutApplies: 1, evaluations: 1, nodes: 1, maxCommandDepth: 1, rootChildren: [],
+}
+
+/** Fast-forward to a position the AI actually owns — the only kind the hook ever asks about. */
+function aiToAct(seed: number): GameState {
+  let state = newGame(seed)
+  const agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
+  for (let i = 0; i < 400; i++) {
+    const p = actingPlayer(state)
+    if (p === null) break
+    if (p === AI) return state
+    state = apply(state, agent.decide(viewFor(state, p), legalCommands(state, p))).state
+  }
+  throw new Error(`seed ${seed} never reached an AI decision`)
+}
+
+class TestClock implements Clock {
+  private t = 0
+  private seq = 0
+  private readonly timers = new Map<number, { at: number; fn: () => void }>()
+
+  now(): number { return this.t }
+
+  after(ms: number, fn: () => void): () => void {
+    const id = ++this.seq
+    this.timers.set(id, { at: this.t + ms, fn })
+    return () => { this.timers.delete(id) }
+  }
+
+  advance(ms: number): void {
+    const target = this.t + ms
+    for (;;) {
+      let next: { id: number; at: number; fn: () => void } | null = null
+      for (const [id, timer] of this.timers) if (timer.at <= target && (!next || timer.at < next.at)) next = { id, ...timer }
+      if (!next) break
+      this.timers.delete(next.id)
+      this.t = next.at
+      next.fn()
+    }
+    this.t = target
+  }
+}
+
+class TestTransport implements SearchTransport {
+  readonly sent: WorkerRequestMessage[] = []
+  terminations = 0
+  constructor(readonly handlers: TransportHandlers) {}
+
+  post(message: WorkerRequestMessage): void { this.sent.push(message) }
+  terminate(): void { this.terminations++ }
+
+  get searches(): WorkerSearchRequest[] {
+    return this.sent.filter((m): m is WorkerSearchRequest => m.type === 'search')
+  }
+}
+
+/** A worker reply carrying a command that really is legal there, so nothing downstream of the wire is faked. */
+function resultMessage(state: GameState, requestId: number, command?: Command): WorkerResponseMessage {
+  const chosen = command ?? legalCommands(state, AI)[0]
+  if (!chosen) throw new Error('no legal AI command')
+  const result: SearchResult = { command: chosen, diagnostics: EMPTY_DIAGNOSTICS }
+  return { type: 'result', requestId, result }
+}
+
+interface AiHarness {
+  readonly clock: TestClock
+  readonly search: AiSearch
+  readonly transports: TestTransport[]
+  readonly lines: LogLine[]
+  readonly commits: GameState[]
+  readonly handlers: ReturnType<typeof aiHandlers>
+  state(): GameState
+  setState(next: GameState): void
+  /** The engine narrates `unimplementedAbility` as a warning too, so the fallback line is found by its text. */
+  fallbacks(): LogLine[]
+}
+
+function aiHarness(seed: number, factory?: SearchTransportFactory): AiHarness {
+  const clock = new TestClock()
+  const transports: TestTransport[] = []
+  const lines: LogLine[] = []
+  const commits: GameState[] = []
+  let current = aiToAct(seed)
+  const sink: AiSink = {
+    commit: (next, produced) => { current = next; commits.push(next); lines.push(...produced) },
+    log: (line) => { lines.push(line) },
+  }
+  const createTransport: SearchTransportFactory = factory ?? ((h) => {
+    const t = new TestTransport(h)
+    transports.push(t)
+    return t
+  })
+  return {
+    clock, transports, lines, commits,
+    handlers: aiHandlers(sink),
+    search: createAiSearch(() => current, seed, { clock, createTransport }),
+    state: () => current,
+    setState: (next) => { current = next },
+    fallbacks: () => lines.filter((l) => l.kind === 'warning' && l.text.includes(FALLBACK_WARNING)),
+  }
+}
+
+describe('the hook drives the search worker (rung D2)', () => {
+  it('narrates and commits a delivered result on the pacing deadline (D2-5)', () => {
+    const h = aiHarness(11)
+    const before = h.state()
+    h.search.request(before, h.handlers)
+    const transport = h.transports[0]!
+    h.clock.advance(50)
+    transport.handlers.message(resultMessage(before, transport.searches[0]!.requestId))
+    expect(h.commits).toHaveLength(0)   // the search was fast; the board is still showing 600 ms of thinking
+    h.clock.advance(AI_STEP_MS - 50)
+    expect(h.commits).toHaveLength(1)
+    expect(h.state()).not.toBe(before)
+    expect(h.lines[0]?.kind).toBe('ai')
+    expect(h.lines[0]?.text.length).toBeGreaterThan(0)
+  })
+
+  it('surfaces the fallback as exactly one warning and keeps playing (D2-6)', () => {
+    const h = aiHarness(11, () => { throw new Error('this browser does not support Web Workers') })
+    h.search.request(h.state(), h.handlers)
+    h.clock.advance(AI_STEP_MS)
+    expect(h.fallbacks()).toHaveLength(1)
+    expect(h.fallbacks()[0]!.text).toContain('this browser does not support Web Workers')
+    expect(h.commits).toHaveLength(1)   // a warning, not a stop: Greedy played on the same deadline
+    for (let i = 0; i < 6 && actingPlayer(h.state()) === AI; i++) {
+      h.search.request(h.state(), h.handlers)
+      h.clock.advance(AI_STEP_MS)
+    }
+    expect(h.commits.length).toBeGreaterThan(1)
+    expect(h.fallbacks()).toHaveLength(1)
+  })
+
+  it('does not apply an in-flight result once the game has restarted (D2-4)', () => {
+    const h = aiHarness(11)
+    const stale = h.state()
+    h.search.request(stale, h.handlers)
+    const transport = h.transports[0]!
+    const inFlight = transport.searches[0]!.requestId
+    h.search.restart(99)
+    h.setState(aiToAct(99))
+    transport.handlers.message(resultMessage(stale, inFlight))
+    h.clock.advance(10 * AI_STEP_MS)
+    expect(h.commits).toHaveLength(0)
+    expect(h.lines).toHaveLength(0)
+    expect(transport.terminations).toBe(1)
+  })
+
+  it('restarts the decision index the search seed comes from (D2-3)', () => {
+    const h = aiHarness(11)
+    const first = h.state()
+    h.search.request(first, h.handlers)
+    const transport = h.transports[0]!
+    transport.handlers.message(resultMessage(first, transport.searches[0]!.requestId))
+    h.clock.advance(AI_STEP_MS)
+    expect(h.commits).toHaveLength(1)
+    h.search.request(h.state(), h.handlers)
+    expect(transport.searches[0]!.seed).toBe(searchSeed(11, 0))
+    expect(transport.searches[1]!.seed).toBe(searchSeed(11, 1))
+    h.search.restart(99)
+    h.setState(aiToAct(99))
+    h.search.request(h.state(), h.handlers)
+    expect(h.transports[1]!.searches[0]!.seed).toBe(searchSeed(99, 0))
+  })
+
+  it('refuses a command that is not legal in the state it was chosen for (B-A4)', () => {
+    const h = aiHarness(11)
+    const before = h.state()
+    h.search.request(before, h.handlers)
+    const transport = h.transports[0]!
+    transport.handlers.message(resultMessage(before, transport.searches[0]!.requestId, { type: 'concede', player: HUMAN }))
+    h.clock.advance(AI_STEP_MS)
+    expect(h.commits).toHaveLength(0)
+    expect(h.state()).toBe(before)
+    expect(h.lines.some((l) => l.kind === 'warning' && l.text.includes('not legal'))).toBe(true)
+  })
+
+  it('drops the outstanding request when a human commit lands mid-search (D2-4)', () => {
+    const h = aiHarness(11)
+    const before = h.state()
+    h.search.request(before, h.handlers)
+    const transport = h.transports[0]!
+    // What `choose` does: invalidate, then apply. Concede is legal off-turn, so this really can happen.
+    h.search.invalidate()
+    h.setState(apply(before, { type: 'concede', player: HUMAN }).state)
+    transport.handlers.message(resultMessage(before, transport.searches[0]!.requestId))
+    h.clock.advance(10 * AI_STEP_MS)
+    expect(h.commits).toHaveLength(0)
+    expect(h.lines).toHaveLength(0)
   })
 })
