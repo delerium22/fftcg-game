@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { dealPlayerDamage, runRuleProcesses } from '../src/rules.js'
+import { checkInvariants } from '../src/invariants.js'
 import { makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
 
 describe('§12.4 rule processes', () => {
@@ -76,5 +77,11 @@ describe('dealPlayerDamage', () => {
     expect(t.players[0].forwards.some((c) => c.id === card), 'left the controller’s field').toBe(false)
     expect(t.players[1].breakZone, 'went to the OWNER’s break zone').toContain(card)
     expect(t.players[0].breakZone, 'and not the controller’s').not.toContain(card)
+    // C10's turn history follows the card, for the same reason (spec C10-2). This fixture is the only place
+    // owner and controller differ, so keying the history by `controller` instead of `owner` was invisible
+    // everywhere else: the card would sit in P1's Break Zone while P0's history claimed it.
+    expect(t.players[1].putIntoBreakZoneFromFieldThisTurn, 'the history followed the controller, not the card').toContain(card)
+    expect(t.players[0].putIntoBreakZoneFromFieldThisTurn).not.toContain(card)
+    expect(checkInvariants(t)).toEqual([])
   })
 })

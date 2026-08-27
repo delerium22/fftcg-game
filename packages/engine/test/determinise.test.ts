@@ -7,7 +7,7 @@ import { viewFor } from '../src/view.js'
 import { determinise, SYNTHETIC_ID_BASE } from '../src/determinise.js'
 import { knows, learn } from '../src/state.js'
 import { nextInt, seedRng } from '../src/rng.js'
-import type { CardId, GameState, PlayerId } from '../src/index.js'
+import type { Ability, CardId, GameState, PlayerId } from '../src/index.js'
 import { DEFAULT_DECK, VANILLA_POOL, deckOf, makeGame } from './helpers.js'
 
 const DECKS: [string[], string[]] = [DEFAULT_DECK, DEFAULT_DECK]
@@ -182,17 +182,44 @@ describe('deck knowledge survives determinisation (spec C9-5)', () => {
     // A simulated world that forgot what its own Break Zone did this turn offers, or refuses, an ability the
     // real game would not. Seeded non-empty on purpose: with the array empty this passes even if
     // `determinise` drops the field entirely.
-    const base = makeGame({ defs: VANILLA_POOL, decks: DECKS })
+    // `V-F1` gets a real `oncePerTurn` ability for this fixture: `checkInvariants` rejects a `usedThisTurn`
+    // marker naming an ability the card does not have, which is exactly the corruption it exists to catch —
+    // so a fixture that plants an invented marker is testing its own invalidity, not the round-trip.
+    const ONCE: Ability = {
+      id: 'V-F1:once',
+      trigger: { kind: 'activated', sourceZone: 'field', cost: {}, oncePerTurn: true },
+      text: '[0]: nothing, once per turn.',
+      effects: [],
+    }
+    const pool = VANILLA_POOL.map((d) => (d.code === 'V-F1' ? { ...d, abilities: [ONCE] } : d))
+    const base = makeGame({ defs: pool, decks: DECKS })
     const moved = base.players[0].deck[0] as CardId
     const p0 = base.players[0]
     const s: GameState = { ...base, players: [
       { ...p0, deck: p0.deck.slice(1), breakZone: [...p0.breakZone, moved], putIntoBreakZoneFromFieldThisTurn: [moved] },
       base.players[1],
     ] }
-    const view = viewFor(s, 0)
+    // Moved out of the DECK rather than minted: `withField` creates an instance the declared list does not
+    // contain, and `determinise`'s conservation check rightly rejects that.
+    const spent = base.players[0].deck.find((id) => base.cards[id]?.code === 'V-F1') as CardId
+    expect(spent, 'the fixture found no V-F1 to spend').toBeDefined()
+    const q = s.players[0]
+    const withSpent: GameState = { ...s, players: [
+      {
+        ...q,
+        deck: q.deck.filter((id) => id !== spent),
+        forwards: [...q.forwards, { id: spent, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: ['V-F1:once'] }],
+      },
+      s.players[1],
+    ] }
+    const view = viewFor(withSpent, 0)
     expect(view.fields[0].putIntoBreakZoneFromFieldThisTurn).toEqual([moved])
+    expect(view.fields[0].forwards.find((c) => c.id === spent)?.usedThisTurn, 'the fixture planted no marker').toEqual(['V-F1:once'])
     const [det] = determinise({ view, decks: DECKS, rng: seedRng(11) })
     expect(det.players[0].putIntoBreakZoneFromFieldThisTurn).toEqual([moved])
+    // ...and the per-turn ability usage, which rides on the FieldCard. A world that forgot it would offer a
+    // second activation of a once-per-turn ability the real game has already spent.
+    expect(det.players[0].forwards.find((c) => c.id === spent)?.usedThisTurn).toEqual(['V-F1:once'])
     expect(checkInvariants(det)).toEqual([])
   })
 

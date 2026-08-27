@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { findFieldCard, forget, keywordsOf, knows, learn, powerOf, type CardId } from '../src/state.js'
 import { viewFor } from '../src/view.js'
-import { makeGame, withField } from './helpers.js'
+import { makeGame, withField, VANILLA_POOL } from './helpers.js'
+import { checkInvariants } from '../src/invariants.js'
+import type { Ability } from '../src/abilities.js'
+import type { GameState } from '../src/state.js'
 
 describe('state helpers', () => {
   it('findFieldCard locates a forward and a backup', () => {
@@ -91,5 +94,60 @@ describe('knownBy: who knows what a hidden card is (spec C9-5)', () => {
     expect(v.knownBy[visible]).toBeDefined()
     expect(v.knownBy[hidden]).toBeUndefined()
     expect(Object.keys(v.knownBy).every((k) => v.cards[Number(k)] !== undefined)).toBe(true)
+  })
+})
+
+describe('checkInvariants catches the C10 bookkeeping it was added for', () => {
+  /**
+   * These branches are only reachable from a CORRUPT state, so every other test — which passes clean states —
+   * leaves them deletable. Codex's C10 code review flagged exactly that: an invariant with no negative test
+   * is an invariant that can be removed without anything going red.
+   */
+  const ONCE: Ability = {
+    id: 'V-F1:once',
+    trigger: { kind: 'activated', sourceZone: 'field', cost: {}, oncePerTurn: true },
+    text: '[0]: nothing, once per turn.',
+    effects: [],
+  }
+  const POOL = VANILLA_POOL.map((d) => (d.code === 'V-F1' ? { ...d, abilities: [ONCE] } : d))
+
+  /** A clean state with one V-F1 on P0's field and one card in P0's Break Zone. */
+  function fixture(): { s: GameState; card: CardId; inBz: CardId } {
+    let s = makeGame({ defs: POOL })
+    let card: CardId
+    ;[s, card] = withField(s, 0, 'forwards', 'V-F1')
+    const inBz = s.players[0].deck[0] as CardId
+    const p0 = s.players[0]
+    s = { ...s, players: [{ ...p0, deck: p0.deck.slice(1), breakZone: [...p0.breakZone, inBz] }, s.players[1]] }
+    expect(checkInvariants(s), 'the fixture was not clean to begin with').toEqual([])
+    return { s, card, inBz }
+  }
+
+  const withP0 = (s: GameState, over: Partial<GameState['players'][0]>): GameState =>
+    ({ ...s, players: [{ ...s.players[0], ...over }, s.players[1]] })
+
+  it('a tracked Break Zone arrival that is not in the Break Zone', () => {
+    const { s } = fixture()
+    const stray = s.players[0].deck[0] as CardId
+    expect(checkInvariants(withP0(s, { putIntoBreakZoneFromFieldThisTurn: [stray] })))
+      .toEqual([`card ${stray} is recorded as put into P0's Break Zone this turn but is not in it`])
+  })
+
+  it('a duplicated Break Zone arrival', () => {
+    const { s, inBz } = fixture()
+    expect(checkInvariants(withP0(s, { putIntoBreakZoneFromFieldThisTurn: [inBz, inBz] })))
+      .toContain('P0 recorded a duplicate Break Zone arrival')
+  })
+
+  it('a duplicated per-turn ability use', () => {
+    const { s, card } = fixture()
+    const dup = withP0(s, { forwards: s.players[0].forwards.map((c) => (c.id === card ? { ...c, usedThisTurn: ['V-F1:once', 'V-F1:once'] } : c)) })
+    expect(checkInvariants(dup)).toContain(`card ${card} in P0 forwards used an ability twice in one turn`)
+  })
+
+  it('a per-turn marker naming an ability the card does not have', () => {
+    const { s, card } = fixture()
+    const bogus = withP0(s, { forwards: s.players[0].forwards.map((c) => (c.id === card ? { ...c, usedThisTurn: ['V-F1:nonexistent'] } : c)) })
+    expect(checkInvariants(bogus)).toContain(`card ${card} in P0 forwards recorded unknown ability V-F1:nonexistent as used`)
   })
 })

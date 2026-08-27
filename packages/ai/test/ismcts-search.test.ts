@@ -152,19 +152,21 @@ describe('searchView', () => {
     // `makeGame()` starts with an EMPTY Break Zone, so the assertion written to prove the fields are carried
     // never executed once. Unconditional, and the card is put there by the fixture rather than hoped for.
     const bz0 = s.players[0].deck[9] as CardId
+    // `makeGame()` has no field cards, so mapping over `forwards` to plant a marker inserts NOTHING — the
+    // first two attempts at this assertion were vacuous in exactly that way. Put the card there, then assert
+    // the precondition before asserting the property.
+    let marked: CardId
+    ;[s, marked] = withField(s, 0, 'forwards', 'V-F1', { usedThisTurn: ['V-F1:once'] })
     const p0 = s.players[0]
     s = { ...s, players: [
-      {
-        ...p0,
-        deck: p0.deck.filter((id) => id !== bz0),
-        breakZone: [...p0.breakZone, bz0],
-        putIntoBreakZoneFromFieldThisTurn: [bz0],
-        forwards: p0.forwards.map((c, i) => (i === 0 ? { ...c, usedThisTurn: ['X:once'] } : c)),
-      },
+      { ...p0, deck: p0.deck.filter((id) => id !== bz0), breakZone: [...p0.breakZone, bz0], putIntoBreakZoneFromFieldThisTurn: [bz0] },
       s.players[1],
     ] }
+    expect(s.players[0].forwards.find((c) => c.id === marked)?.usedThisTurn, 'the fixture planted no marker').toEqual(['V-F1:once'])
+
     for (const p of [0, 1] as const) {
       expect(searchView(s, p).fields[0].putIntoBreakZoneFromFieldThisTurn, `seat ${p} lost the Break Zone history`).toEqual([bz0])
+      expect(searchView(s, p).fields[0].forwards.find((c) => c.id === marked)?.usedThisTurn, `seat ${p} lost the per-turn usage`).toEqual(['V-F1:once'])
       expect(searchView(s, p)).toEqual(viewFor(s, p))
     }
 
