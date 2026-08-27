@@ -22,6 +22,10 @@ export type Event =
   | { type: 'cast'; player: PlayerId; card: CardId; cardType: CardType }
   /** An activated ability was used (spec C3-1) — activated, NOT triggered; the log must not conflate them. */
   | { type: 'abilityActivated'; player: PlayerId; card: CardId; abilityId: string }
+  /** Cards exposed off the top of a deck (spec C9). `audience` is who learned them, never which cards. */
+  | { type: 'deckExposed'; player: PlayerId; count: number; audience: 'self' | 'all' }
+  /** A card taken from an exposure into its owner's hand. */
+  | { type: 'addedToHand'; player: PlayerId; card: CardId }
   /** A card removed from the game (spec C7-3). Distinct from breaking and from discarding. */
   | { type: 'removedFromGame'; player: PlayerId; card: CardId }
   /**

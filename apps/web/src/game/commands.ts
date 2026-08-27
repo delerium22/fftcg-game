@@ -260,6 +260,17 @@ export function describeChoice(v: PlayerView, c: Command): string {
       const verb = v.pending?.kind === 'chooseTargets' ? targetVerb(v, v.pending) : null
       return `${verb?.imperative ?? 'Target'} ${listNames(v, c.targets)}`
     }
+    /**
+     * Names the cards ONLY if this viewer can see them — and that is the whole of blocker 4, solved by the
+     * view rather than by narration logic. The player who looked has the ids in their own deck slots; the
+     * opponent has `card: null` there, so the same code physically cannot name a card it must not reveal.
+     */
+    case 'chooseFromDeck': {
+      if (!c.picks.length) return 'Take nothing'
+      const exposed = v.fields[v.me].deck
+      const named = c.picks.map((i) => exposed[i]?.card).filter((id): id is CardId => id !== null && id !== undefined)
+      return named.length === c.picks.length ? `Take ${listNames(v, named)}` : `Take ${c.picks.length} card${c.picks.length === 1 ? '' : 's'}`
+    }
     // A mode has no card subject, so its button IS the printed wording — never a paraphrase of it.
     case 'chooseMode': return c.modes.length ? c.modes.map((i) => modeLabel(v, i)).join(' + ') : 'None of these'
     // The printed cost is part of the label: a player choosing to spend a card needs to see what it costs
@@ -331,8 +342,9 @@ function subjectsOf(c: Command): CardId[] {
     // An activation is an action taken BY a card, so its subject is the source — clicking the card is how you
     // use it. The CP sources are deliberately not subjects: they are payment, chosen for you.
     case 'activateAbility': return [c.source]
-    // `chooseMode` has no card subject at all: its options are printed wordings, so they are strip buttons.
-    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'pass': case 'concede': return []
+    // `chooseMode` and `chooseFromDeck` have no card subject at all — indices, not board cards — so they
+    // are strip buttons.
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }
 }
@@ -391,6 +403,7 @@ export function sameCommand(a: Command, b: Command): boolean {
     case 'discardToHandSize': return sameIds(a.cards, (b as typeof a).cards)
     case 'chooseTargets': return sameIds([...a.targets], [...(b as typeof a).targets])
     case 'chooseMode': return sameIds([...a.modes], [...(b as typeof a).modes])
+    case 'chooseFromDeck': return sameIds([...a.picks], [...(b as typeof a).picks])
     case 'activateAbility': {
       const o = b as typeof a
       return a.source === o.source && a.abilityId === o.abilityId && samePayment(a.payment, o.payment)

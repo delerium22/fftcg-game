@@ -41,6 +41,23 @@ export type Pending =
   | { kind: 'chooseTargets'; player: PlayerId; min: number; max: number; candidates: readonly CardId[] }
   /** `labels` are the printed mode wordings, in listed order; an answer is a set of indices into them. */
   | { kind: 'chooseMode'; player: PlayerId; min: number; max: number; labels: readonly string[] }
+  /**
+   * Pick from cards exposed off the top of your own deck (spec C9-1), answered by INDEX — never by card id.
+   *
+   * That is the decision the whole rung turns on. A pending naming CARDS would have to be redacted for the
+   * opponent, rebuilt by `determinise` after it re-mints hidden ids, and keyed by a card the searcher cannot
+   * know. Carrying a COUNT instead makes it valid in every world at once, exactly as `chooseMode` carries
+   * labels and is answered by index.
+   *
+   * `count` is how many are exposed; `eligible` are the indices a filter allows. Which CARDS those indices
+   * name is a fact of the view, and the view shows them only to whoever is entitled to see them.
+   *
+   * LIMIT worth stating: `eligible` is itself a hint — "indices 0 and 2 are Backups" says something about
+   * cards a non-audience viewer cannot see. No clause in the pool is both PRIVATE and FILTERED (Reeve is
+   * private and unfiltered, Miner is filtered and public), so nothing leaks today. A private filtered look
+   * would need `eligible` redacted per viewer.
+   */
+  | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; eligible: readonly number[] }
 export interface GameResult { winner: PlayerId | null; reason: string }   // winner null = draw
 export interface GameState {
   rng: Rng

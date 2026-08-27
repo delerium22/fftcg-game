@@ -45,6 +45,12 @@ export function describeCommand(v: PlayerView, c: Command): string {
     }
     case 'chooseTargets': return c.targets.length ? `Target ${c.targets.map((id) => name(v, id)).join(', ')}` : 'Choose no targets'
     case 'chooseMode': return c.modes.length ? `Choose mode ${c.modes.map((i) => i + 1).join(' + ')}` : 'Choose no modes'
+    case 'chooseFromDeck': {
+      if (!c.picks.length) return 'Take nothing'
+      const exposed = v.fields[v.me].deck
+      const named = c.picks.map((i) => exposed[i]?.card).filter((id): id is CardId => id !== null && id !== undefined)
+      return named.length === c.picks.length ? `Take ${named.map((id) => name(v, id)).join(', ')}` : `Take ${c.picks.length} card(s)`
+    }
     case 'declareAttack': return `Attack with ${c.attackers.map((id) => name(v, id)).join(' + ')}`
     case 'declareBlock': return c.blocker === null ? 'No block' : `Block with ${name(v, c.blocker)}`
     case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${name(v, a.target)}`).join(', ')}`

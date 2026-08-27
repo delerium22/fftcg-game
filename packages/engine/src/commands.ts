@@ -16,6 +16,14 @@ export type Command =
   /** Answers a `chooseMode` pending: indices into the pending's `labels`. Chosen modes run in listed order. */
   | { type: 'chooseMode'; player: PlayerId; modes: readonly number[] }
   /**
+   * Answers a `chooseFromDeck` pending: INDICES into the exposed cards, never ids (spec C9-1).
+   *
+   * World-independent by construction, which is what makes the search key trivial: `chooseFromDeck:2` asks
+   * the same question in every determinisation while the card it lands on differs per world — precisely the
+   * information-set semantics ISMCTS wants.
+   */
+  | { type: 'chooseFromDeck'; player: PlayerId; picks: readonly number[] }
+  /**
    * Use an activated ability (spec C3-1).
    *
    * `targets` answers the ability's leading `chooseTargets` and is DECLARED HERE, before any cost is paid.

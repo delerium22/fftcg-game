@@ -72,6 +72,20 @@ export type Effect =
    */
   | { readonly kind: 'draw'; readonly count: number }
   /**
+   * "Look at / reveal the top N of your deck. Add one among them to your hand, and return the rest to the
+   * bottom" — Reeve and Miner (spec C9). One effect for both: they differ in `count`, in `take.filter`, and
+   * in `audience`, which is the whole of the private/public distinction.
+   */
+  | {
+      readonly kind: 'lookAtDeck'
+      readonly count: number
+      /** `self` is a LOOK (private to the controller); `all` is a REVEAL (both players learn the cards). */
+      readonly audience: 'self' | 'all'
+      readonly take: { readonly min: number; readonly max: number; readonly filter?: TargetFilter }
+      /** Where the ones not taken go. Only the bottom, for now: no clause in the pool puts them back on top. */
+      readonly rest: 'bottom'
+    }
+  /**
    * Act on the card the TRIGGER EVENT is about — Luso's "break **it**" (spec C2-5). Binds `chosen` to the
    * event's subject and runs `do`, so every existing effect works on it unchanged. Deliberately NOT a target
    * choice: "it" is named by the printed text, and offering it as a choice would let the player retarget a
@@ -281,6 +295,8 @@ export interface Frame {
   readonly triggerEvent: TriggerEvent | null
   /** Modes picked by an enclosing `chooseModes`, as indices into its `modes`. */
   readonly modes: readonly number[]
+  /** Indices answered to a `chooseFromDeck` (spec C9-1). Separate from `modes`: a different question. */
+  readonly picks?: readonly number[]
   /**
    * How this frame came to exist. Absent means `'triggered'`, which every C1/C2 frame is.
    *

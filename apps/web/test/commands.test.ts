@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type Payment, type PlayerView, type TriggerEvent,
+  type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type Payment, type PlayerId, type PlayerView, type TriggerEvent,
 } from '@fftcg/engine'
 import { GreedyAgent, preferredPayment } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
@@ -491,5 +491,34 @@ describe('activated abilities on the board (C3-A7)', () => {
     const b = act(src, '1-121C:haste', { dullBackups: [8], discards: [] })
     expect(sameCommand(a, b)).toBe(false)
     expect(sameCommand(a, act(src, '1-121C:haste', { dullBackups: [7], discards: [] }))).toBe(true)
+  })
+})
+
+describe('a private deck look cannot be narrated by the wrong seat (rung C9)', () => {
+  // Blocker 4 of the C9 review — "the browser log leaks the private choice outright" — solved by the VIEW
+  // rather than by narration logic. The opponent's view has `card: null` in those slots, so the same code
+  // physically cannot name a card it was not shown: there is no id there to name.
+  function lookedView(seat: PlayerId): PlayerView {
+    const v = viewFor(dealtGame(1), seat)
+    const own = v.fields[HUMAN]
+    // Three slots the HUMAN knows; from the AI's seat the same slots carry the mask and no id.
+    const ids = [901, 902, 903]
+    ids.forEach((id, i) => { v.cards[id] = { id, code: CLOUD, owner: HUMAN }; own.deck[i] = { card: seat === HUMAN ? id : null, knownBy: 1 } })
+    return v
+  }
+
+  it('names the cards for the player who looked', () => {
+    const label = describeChoice(lookedView(HUMAN), { type: 'chooseFromDeck', player: HUMAN, picks: [1] })
+    expect(label).toMatch(/^Take /)
+    expect(label).not.toBe('Take 1 card')
+  })
+
+  it('says only how many for anyone else', () => {
+    expect(describeChoice(lookedView(AI), { type: 'chooseFromDeck', player: HUMAN, picks: [1] })).toBe('Take 1 card')
+    expect(describeChoice(lookedView(AI), { type: 'chooseFromDeck', player: HUMAN, picks: [0, 2] })).toBe('Take 2 cards')
+  })
+
+  it('says so plainly when nothing is taken', () => {
+    expect(describeChoice(lookedView(HUMAN), { type: 'chooseFromDeck', player: HUMAN, picks: [] })).toBe('Take nothing')
   })
 })

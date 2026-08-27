@@ -11,7 +11,7 @@ import { applyDiscardToHandSize, applyPass } from './phases.js'
 import { applyCastCharacter, applyCastSummon } from './cast.js'
 import { applyAssignPartyDamage, applyDeclareAttack, applyDeclareBlock } from './attack.js'
 import { runRuleProcesses } from './rules.js'
-import { applyChooseMode, applyChooseTargets, drainResolution } from './resolve.js'
+import { applyChooseFromDeck, applyChooseMode, applyChooseTargets, drainResolution } from './resolve.js'
 
 export interface ApplyResult { state: GameState; events: Event[] }
 
@@ -75,6 +75,7 @@ export function apply(state: GameState, command: Command): ApplyResult {
       case 'discardToHandSize': [s, events] = applyDiscardToHandSize(state, command.player, command.cards); break
       case 'chooseTargets': [s, events] = applyChooseTargets(state, command.player, command.targets); break
       case 'chooseMode': [s, events] = applyChooseMode(state, command.player, command.modes); break
+      case 'chooseFromDeck': [s, events] = applyChooseFromDeck(state, command.player, command.picks); break
       case 'activateAbility':
         [s, events] = applyActivateAbility(state, command.player, command.source, command.abilityId, command.payment, command.targets); break
       case 'pass': [s, events] = applyPass(state, command.player); break

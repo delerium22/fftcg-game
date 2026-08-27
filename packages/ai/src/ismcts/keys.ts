@@ -229,6 +229,11 @@ export function actionKey(view: PlayerView, command: Command): ActionKey {
     case 'chooseMode':
       // Mode answers are indices into the pending's printed `labels`, not ids — already world-independent.
       return `${head}${FIELD}${[...command.modes].sort((a, b) => a - b).join(',')}`
+    case 'chooseFromDeck':
+      // Likewise, and this is the design's whole payoff: the key is the index. It asks the same question in
+      // every determinisation while the card it lands on differs per world, which is exactly the
+      // information-set semantics — no canonicalisation, no second identity, nothing to collapse.
+      return `${head}${FIELD}${[...command.picks].sort((a, b) => a - b).join(',')}`
     case 'activateAbility': {
       // `abilityId` is a printed-clause identity, already world-independent — unlike a card id, it needs no
       // canonicalisation. The source and every CP source do, exactly as for a cast.
@@ -282,6 +287,14 @@ const DECODERS: Record<Command['type'], Decoder> = {
     if (!pendingIs('mulligan')) return null
     const v = args[0]
     return v === 'redraw' || v === 'keep' ? { type: 'mulligan', player, redraw: v === 'redraw' } : null
+  },
+  chooseFromDeck: ({ player, args, pendingIs }) => {
+    if (!pendingIs('chooseFromDeck')) return null
+    const raw = args[0] ?? ''
+    if (raw === '') return { type: 'chooseFromDeck', player, picks: [] }
+    const picks = raw.split(',').map(Number)
+    if (picks.some((n) => !Number.isInteger(n) || n < 0)) return null
+    return { type: 'chooseFromDeck', player, picks }
   },
   castCharacter: (ctx) => decodeCast(ctx, 'castCharacter'),
   castSummon: (ctx) => decodeCast(ctx, 'castSummon'),
@@ -484,6 +497,10 @@ function pendingDigest(view: PlayerView, pending: Pending | null): string {
     case 'chooseMode':
       // Labels are printed wording, and JSON-quoted so a label containing a separator cannot forge one.
       return `${head}/${pending.min}-${pending.max}/${pending.labels.map((l) => JSON.stringify(l)).join(',')}`
+    case 'chooseFromDeck':
+      // Counts and indices only — the pending never held card ids, so there is nothing here to canonicalise
+      // and nothing that could differ between two determinisations of the same position.
+      return `${head}/${pending.min}-${pending.max}/n${pending.count}/e${[...pending.eligible].join(',')}`
     default: { const _exhaustive: never = pending; return _exhaustive }
   }
 }

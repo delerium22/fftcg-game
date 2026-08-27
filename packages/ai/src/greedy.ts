@@ -196,7 +196,8 @@ function commandCardIds(c: Command): CardId[] {
     case 'chooseTargets': return [...c.targets]
     // C3: the activation names its source AND every CP source it spends; all are ids that must be real.
     case 'activateAbility': return [c.source, ...c.payment.dullBackups, ...c.payment.discards.map((d) => d.card)]
-    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'pass': case 'concede': return []
+    // `chooseFromDeck` answers with INDICES, so like `chooseMode` it carries no card id to check.
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }
 }

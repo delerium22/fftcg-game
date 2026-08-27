@@ -56,7 +56,10 @@ export function checkInvariants(state: GameState): string[] {
   if (r.active) checkFrame(problems, 'active', r.active, state)
   for (const f of r.queue) checkFrame(problems, 'queued', f, state)
   // An ability pending and the active frame are two halves of one suspension — neither may exist alone.
-  const abilityPending = state.pending?.kind === 'chooseTargets' || state.pending?.kind === 'chooseMode'
+  // Every kind an ABILITY can suspend on. A new one must be added here or the invariant reports the frame as
+  // orphaned — which is what it did, correctly, the moment C9 added `chooseFromDeck`.
+  const ABILITY_PENDINGS = ['chooseTargets', 'chooseMode', 'chooseFromDeck'] as const
+  const abilityPending = ABILITY_PENDINGS.some((k) => state.pending?.kind === k)
   if (abilityPending && !r.active) problems.push(`pending ${state.pending?.kind} with no active frame`)
   if (r.active && !abilityPending) problems.push(`active frame ${r.active.abilityId} with no ability pending`)
   if (abilityPending && r.active && state.pending && state.pending.player !== r.active.controller) {

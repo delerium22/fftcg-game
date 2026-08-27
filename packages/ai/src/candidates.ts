@@ -288,6 +288,9 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
       case 'assignPartyDamage': return legalPartyDamageAssignments(state).map((assignments) => ({ type: 'assignPartyDamage' as const, player, assignments }))
       case 'chooseTargets': return chooseTargetsCandidates(state, player, pending)
       case 'chooseMode': return chooseModeCandidates(state, player, pending)
+      // Indices, so the candidate list is world-independent and needs no card reasoning at all — the whole
+      // point of answering a deck choice by index (spec C9-1).
+      case 'chooseFromDeck': return legalCommands(state, player).filter((c) => c.type === 'chooseFromDeck')
       // W3: exhaustive — a new Pending kind must fail to compile here rather than silently falling through to phase generation.
       default: { const _exhaustive: never = pending; return _exhaustive }
     }

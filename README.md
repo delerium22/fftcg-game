@@ -20,8 +20,8 @@ while it thinks (rung D2). It beats the heuristic agent **90.0 %** over 120 mirr
 worker fails for any reason the game falls back to the heuristic agent permanently and says so in
 the log, in amber — a weaker opponent is never silent.
 
-Card abilities are **partly** implemented: **22 of the starter deck's 28 printed ability clauses,
-across 16 of its 19 cards**. Every unimplemented clause plays as if its text box were blank, and the
+Card abilities are **partly** implemented: **23 of the starter deck's 28 printed ability clauses,
+across 17 of its 19 cards**. Every unimplemented clause plays as if its text box were blank, and the
 game log says so in amber whenever such a card hits the field, so the caveat is visible in play
 rather than a silent surprise.
 

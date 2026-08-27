@@ -46,6 +46,13 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
           for (const targets of combinations([...pending.candidates], k)) out.push({ type: 'chooseTargets', player, targets })
         }
         break
+      case 'chooseFromDeck':
+        // Σ C(eligible, k) over min..max. The pool's clauses are "add 1 among 3" and "add 1 among 5", so this
+        // is a handful of commands; a future "up to 3 of 5" would want the same cap `chooseTargets` has.
+        for (let k = pending.min; k <= pending.max; k++) {
+          for (const picks of combinations([...pending.eligible], k)) out.push({ type: 'chooseFromDeck', player, picks })
+        }
+        break
       case 'chooseMode':
         // Σ C(modes, k). `modes` is a printed list of 2–3, so this is a handful of commands.
         for (let k = pending.min; k <= pending.max; k++) {

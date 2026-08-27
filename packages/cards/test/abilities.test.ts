@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, defOf, findFieldCard, generateCp, legalCommands, powerOf } from '@fftcg/engine'
+import { apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -471,15 +471,15 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty-two implemented clauses on, and only those twenty-two', () => {
+  it('loadCards merges the twenty-three implemented clauses on, and only those twenty-three', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
-    // removal), one from C8 (Hugh Yurg's enters-field observer). Any clause added without a test lands here
-    // first.
+    // removal), one from C8 (Hugh Yurg's enters-field observer), one from C9 (Reeve's look). Any
+    // clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
       '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
-      '20-103H', '22-068R', '24-063H', '27-124S', '27-125S', '27-127S', '9-074C',
+      '20-103H', '20-105C', '22-068R', '24-063H', '27-124S', '27-125S', '27-127S', '9-074C',
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
@@ -487,7 +487,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-103H:summon',
-      '22-068R:damages-opponent', '24-063H:cheap-forward',
+      '20-105C:etb', '22-068R:damages-opponent', '24-063H:cheap-forward',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
     ].sort())
@@ -1128,4 +1128,73 @@ describe('24-063H Hugh Yurg — "When a Forward of cost 1 enters your field, …
     expect(ABILITY_CLAUSES['24-063H']).toBe(2)
     expect(ABILITIES['24-063H']?.length).toBe(1)
   })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C9 — 20-105C Reeve's private look
+// ---------------------------------------------------------------------------
+
+describe('20-105C Reeve — "look at the top 3 cards of your deck. Add 1 among them to your hand …"', () => {
+  /** Cast Reeve for player 0 and return the state with its choice pending. */
+  function castReeve() {
+    let s = makeGame()
+    // Reeve is LIGHTNING, cost 4 — Earth CP will not pay for it, and the assertion below says so rather
+    // than letting the test pass on a cast that never happened.
+    ;[s] = withCp(s, 0, Array<string>(4).fill(LIGHTNING_BACKUP))
+    let reeve: CardId
+    ;[s, reeve] = withHand(s, 0, '20-105C')
+    const cmd = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === reeve)
+    expect(cmd, 'Reeve was not castable').toBeDefined()
+    const top3 = s.players[0].deck.slice(0, 3)
+    return { r: apply(s, cmd!), top3, before: s }
+  }
+
+  it('raises a choice among exactly three, answered by INDEX', () => {
+    const { r } = castReeve()
+    expect(r.state.pending?.kind).toBe('chooseFromDeck')
+    if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('unreachable')
+    expect(r.state.pending.count).toBe(3)
+    expect(r.state.pending.eligible).toEqual([0, 1, 2])   // "1 card among them" — no filter
+    expect(r.state.pending.min).toBe(1)
+    expect(r.state.pending.max).toBe(1)
+    // The pending carries no card id at all. That is what makes it valid in every determinisation.
+    expect(JSON.stringify(r.state.pending)).not.toMatch(String(r.state.players[0].deck[0]))
+  })
+
+  it('takes the chosen card and bottoms the other two', () => {
+    const { r, top3, before } = castReeve()
+    const deckBefore = before.players[0].deck.length
+    const handBefore = r.state.players[0].hand.length
+
+    const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [1] })
+    expect(done.state.players[0].hand).toContain(top3[1])
+    expect(done.state.players[0].hand.length).toBe(handBefore + 1)
+    // The other two are at the BOTTOM, in exposed order, and the deck is one shorter.
+    expect(done.state.players[0].deck.slice(-2)).toEqual([top3[0], top3[2]])
+    expect(done.state.players[0].deck.length).toBe(deckBefore - 1)
+    expect(done.state.pending).toBeNull()
+    ok(done.state)
+  })
+
+  it('is PRIVATE: the controller learns all three, the opponent learns none', () => {
+    const { r, top3 } = castReeve()
+    for (const id of top3) {
+      expect(knows(r.state, 0, id!), 'the controller did not learn what it looked at').toBe(true)
+      expect(knows(r.state, 1, id!), 'the opponent learned a card it never saw').toBe(false)
+    }
+  })
+
+  it("the opponent's view shows THAT three were looked at, but not WHICH", () => {
+    const { r, top3 } = castReeve()
+    const theirs = viewFor(r.state, 1)
+    const slots = theirs.fields[0].deck.slice(0, 3)
+    expect(slots.map((d) => d.card)).toEqual([null, null, null])
+    expect(slots.map((d) => d.knownBy)).toEqual([1, 1, 1])   // player 0's bit, and only that
+    for (const id of top3) expect(theirs.cards[id!]).toBeUndefined()
+
+    // And the controller's own view does name them.
+    const mine = viewFor(r.state, 0)
+    expect(mine.fields[0].deck.slice(0, 3).map((d) => d.card)).toEqual(top3)
+  })
+
 })

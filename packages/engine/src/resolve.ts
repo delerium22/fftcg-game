@@ -4,7 +4,7 @@ import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
 import { MAX_RESOLUTION_STEPS } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending } from './state.js'
-import { defOf, findFieldCard, updatePlayer } from './state.js'
+import { defOf, findFieldCard, learn, updatePlayer } from './state.js'
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event } from './events.js'
@@ -194,6 +194,8 @@ interface Ctx {
   path: number[]
   chosen: CardId[]
   modes: number[]
+  /** Indices answered to a `chooseFromDeck` (spec C9-1). */
+  picks: number[]
   /** What fired this clause, for `onSubject` and narration; null for self-triggers (spec C2-5). */
   triggerEvent: TriggerEvent | null
   /** The path the frame was suspended at; execution rejoins it instead of replaying the effects already run. */
@@ -232,6 +234,25 @@ function runEffects(ctx: Ctx, effects: readonly Effect[], depth: number, onSpine
   }
 }
 
+/**
+ * Finish a `lookAtDeck`: the picked cards go to hand, the rest to the bottom, and the exposure is over.
+ *
+ * Shared by the answered path and the nothing-was-eligible path, which are the same move with an empty pick.
+ */
+function settleLook(ctx: Ctx, eff: Extract<Effect, { kind: 'lookAtDeck' }>, exposed: readonly CardId[], picks: readonly number[]): void {
+  const taken = picks.map((i) => exposed[i] as CardId)
+  const rest = exposed.filter((_, i) => !picks.includes(i))
+  ctx.state = updatePlayer(ctx.state, ctx.controller, (q) => ({
+    ...q,
+    // MVP0-SIMPLIFICATION (spec C9): "return the other cards to the bottom in any order" keeps the exposed
+    // order. Asking a player to arrange cards going to the BOTTOM of a 40-card deck is a permutation prompt
+    // for something a game this length will almost never reach.
+    deck: [...q.deck.slice(eff.count), ...rest],
+    hand: [...q.hand, ...taken],
+  }))
+  for (const id of taken) ctx.events.push({ type: 'addedToHand', player: ctx.controller, card: id })
+}
+
 function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): void {
   step(ctx)
   switch (eff.kind) {
@@ -255,6 +276,30 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       }
       if (eff.modes.length === 0 || eff.min > eff.modes.length) { noLegalTarget(ctx); return }
       ctx.suspend = { kind: 'chooseMode', player: ctx.controller, min: eff.min, max: Math.min(eff.max, eff.modes.length), labels: eff.modes.map((m) => m.label) }
+      return
+    }
+    case 'lookAtDeck': {
+      const exposed = ctx.state.players[ctx.controller].deck.slice(0, eff.count)
+      if (answered) { settleLook(ctx, eff, exposed, ctx.picks); return }
+      if (exposed.length === 0) { noLegalTarget(ctx); return }
+
+      // Exposing IS the effect that changes what is known — before any choice, and whether or not one
+      // follows. `self` is a LOOK, `all` a REVEAL; that is the whole private/public distinction.
+      const audience: PlayerId[] = eff.audience === 'all' ? [0, 1] : [ctx.controller]
+      ctx.state = learn(ctx.state, audience, exposed)
+      ctx.events.push({ type: 'deckExposed', player: ctx.controller, count: exposed.length, audience: eff.audience })
+
+      const eligible = exposed
+        .map((id, i) => (matchesFilter(ctx.state, ctx.source, id, eff.take.filter) ? i : -1))
+        .filter((i) => i >= 0)
+      // "Add 1 Backup among them" with no Backup among them takes nothing — but the look still happened and
+      // the cards still go to the bottom, so this settles rather than aborting.
+      if (eff.take.min > eligible.length) { settleLook(ctx, eff, exposed, []); return }
+
+      ctx.suspend = {
+        kind: 'chooseFromDeck', player: ctx.controller,
+        min: eff.take.min, max: Math.min(eff.take.max, eligible.length), count: exposed.length, eligible,
+      }
       return
     }
     case 'forEach': {
@@ -381,7 +426,7 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
   if (!ability) return base   // the clause vanished with its def; drop the frame rather than throw
   const ctx: Ctx = {
     state, events: [], source: frame.source, controller: frame.controller, abilityId: frame.abilityId,
-    path: [...frame.path], chosen: [...frame.chosen], modes: [...frame.modes],
+    path: [...frame.path], chosen: [...frame.chosen], modes: [...frame.modes], picks: [...(frame.picks ?? [])],
     triggerEvent: frame.triggerEvent,
     resume: frame.path, suspend: null, steps: state.resolution.steps,
   }
@@ -528,6 +573,28 @@ export function applyChooseTargets(state: GameState, player: PlayerId, targets: 
   for (const id of targets) if (!candidates.includes(id)) throw new IllegalCommandError(`${id} is not a legal target`)
   // Extending the path by one level says "the choice at this node is made" — resume runs `then`, not the prompt.
   const active: Frame = { ...frame, chosen: [...targets], path: [...frame.path, 0] }
+  return [{ ...state, pending: null, resolution: { ...state.resolution, active } }, []]
+}
+
+/**
+ * Answer a `chooseFromDeck` with INDICES (spec C9-1).
+ *
+ * Validated against the pending's own `count`/`eligible` rather than against the deck, which is what keeps
+ * this world-independent: the same command is legal in every determinisation, and which card index 2 names
+ * is whatever that world sampled.
+ */
+export function applyChooseFromDeck(state: GameState, player: PlayerId, picks: readonly number[]): [GameState, Event[]] {
+  const pending = state.pending
+  if (pending?.kind !== 'chooseFromDeck' || pending.player !== player) throw new IllegalCommandError('no deck choice owed by this player')
+  if (new Set(picks).size !== picks.length) throw new IllegalCommandError('duplicate pick')
+  if (picks.length < pending.min || picks.length > pending.max) throw new IllegalCommandError(`choose ${pending.min}..${pending.max} cards, got ${picks.length}`)
+  for (const i of picks) {
+    if (!Number.isInteger(i) || i < 0 || i >= pending.count) throw new IllegalCommandError(`${i} is not one of the exposed cards`)
+    if (!pending.eligible.includes(i)) throw new IllegalCommandError(`${i} is not a legal choice here`)
+  }
+  const { frame } = suspendedNode(state)
+  // Extending the path says "the choice at this node is made" — the same marker `applyChooseTargets` writes.
+  const active: Frame = { ...frame, picks: [...picks], path: [...frame.path, 0] }
   return [{ ...state, pending: null, resolution: { ...state.resolution, active } }, []]
 }
 

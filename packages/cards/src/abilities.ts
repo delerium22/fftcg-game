@@ -364,6 +364,31 @@ const CLOUD_ATTACK_PHASE: Ability = {
 }
 
 /**
+ * Reeve's ETB (spec C9) — the first clause to use the knowledge substrate, and the private half of the
+ * private/public pair it forms with Miner.
+ *
+ * `audience: 'self'` is the whole of "LOOK at" as opposed to "reveal": the controller learns the three cards
+ * and the opponent learns only that three were looked at. Everything downstream follows from that one field —
+ * the view shows the ids to one seat and not the other, and the log physically cannot name a card it was not
+ * shown, because the id is simply not there.
+ *
+ * The printed `EX BURST` tag is quoted but not implemented: this fires on a NORMAL cast, which is what
+ * `enterField` means — the same treatment C1 gave Noel and Lightning.
+ */
+const REEVE_ETB: Ability = {
+  id: '20-105C:etb',
+  trigger: { kind: 'enterField' },
+  text: 'EX BURST When Reeve enters the field, look at the top 3 cards of your deck. Add 1 card among them to '
+    + 'your hand and return the other cards to the bottom of your deck in any order.',
+  effects: [{
+    kind: 'lookAtDeck', count: 3, audience: 'self',
+    // "Add 1 card among them" — no filter, so every exposed card is eligible.
+    take: { min: 1, max: 1 },
+    rest: 'bottom',
+  }],
+}
+
+/**
  * Moogle's colour fixing (spec C6) — a FIELD-scoped static, and the reason C4 made a static's scope explicit
  * instead of assuming statics radiate from the field. Odin's reads while its card sits in hand; this one
  * applies only while Moogle is on the field, which is exactly what "If Class Tenth Moogle is on the field"
@@ -563,6 +588,7 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   // The card's SECOND printed clause, landing first — its ETB deck reveal is C6.
   '20-074C': [MINER_DRAW],
   '20-103H': [RAMUH_SUMMON],
+  '20-105C': [REEVE_ETB],
   '22-068R': [PRISHE_DAMAGES_OPPONENT],
   // Clause 2 only; the ETB deck search is rung C9.
   '24-063H': [HUGH_YURG_CHEAP_FORWARD],
