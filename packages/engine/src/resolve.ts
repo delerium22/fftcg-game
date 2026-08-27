@@ -394,7 +394,6 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
 // Draining
 // ---------------------------------------------------------------------------
 
-/** §10.1.1 Attack Preparation Step, then §10.1.2 Declaration. Shared by `pass` and by the agenda continuation. */
 /**
  * §10.1.1 Attack Preparation Step. Enters the Attack Phase and STOPS there, so anything that triggers "at the
  * beginning of the Attack Phase" resolves while the state actually says Attack Phase (spec C5-1).

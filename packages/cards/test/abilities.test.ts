@@ -842,17 +842,35 @@ describe('27-124S Cloud — "At the beginning of the Attack Phase during each of
   })
 
   it('grants BOTH printed protections, and cannotBeBroken really prevents a break (C5-A4)', () => {
+    // Two Forwards, ONE of them chosen, then lethal damage to BOTH. The unchosen one is the control: without
+    // it this test could pass while proving nothing about the flag, which is exactly what its first version
+    // did — it asserted that player 1 conceding makes player 0 the winner, which is true of every state.
     let s = makeGame()
-    let cloud: CardId
+    let cloud: CardId; let control: CardId
     ;[s, cloud] = withField(s, 0, 'forwards', '27-124S')
+    ;[s, control] = withField(s, 0, 'forwards', '16-092C')
 
     const r = pass(s, 0)
     const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [cloud] })
-    const flags = fc(done.state, cloud)?.flags ?? []
-    expect([...flags].sort()).toEqual(['cannotBeBroken', 'cannotBeReturnedByOpponent'])
-    // Only the first is consulted by anything today (spec C5-4); assert that half for real.
-    const broken = apply(done.state, { type: 'concede', player: 1 })
-    expect(broken.state.result?.winner).toBe(0)
+    expect([...(fc(done.state, cloud)?.flags ?? [])].sort()).toEqual(['cannotBeBroken', 'cannotBeReturnedByOpponent'])
+    expect(fc(done.state, control)?.flags ?? []).toEqual([])
+
+    // Lethal damage to both, then a legal command so `apply` settles and §12.4.5 runs.
+    const lethal = (state: GameState): GameState => {
+      const ps = state.players[0]
+      const players = [state.players[0], state.players[1]] as typeof state.players
+      players[0] = { ...ps, forwards: ps.forwards.map((c) => ({ ...c, damage: powerOf(state, c) + 1000 })) }
+      return { ...state, players }
+    }
+    const settled = apply(lethal(done.state), { type: 'pass', player: 0 })
+
+    // The protected one survives; the identically-damaged control does not. Only `cannotBeBroken` separates
+    // them, so the assertion cannot pass without it. §12.4.5 filters the protected card out of the transition
+    // list entirely, so there is no event to look for — survival IS the observable.
+    expect(settled.state.players[0].forwards.some((c) => c.id === cloud)).toBe(true)
+    expect(settled.state.players[0].forwards.some((c) => c.id === control)).toBe(false)
+    expect(settled.state.players[0].breakZone).toContain(control)
+    ok(settled.state)
   })
 
   it('fires ONLY on its controller\'s turn, with a Cloud on each side (C5-A3)', () => {
