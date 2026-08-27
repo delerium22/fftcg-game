@@ -120,3 +120,28 @@ costs, cost triggers and queued resolution.
    codecs, target preflight, generalized CP with exclusions, atomic cost transitions with `reason: 'cost'`,
    agenda ordering, the `draw` effect and the `drawCards` extraction, AI enumeration, UI payment collapsing.
 2. **The six clauses**, plus the adversarial tests above.
+
+## Measurement (2026-08-27)
+
+| Gate | Result |
+|---|---|
+| Fuzzer, 200 games seed 1 | **200/200 completed, 0 failures, 0 draws** |
+| Greedy vs the random baseline, 200 games | **199/200**, unchanged from before the rung |
+| ISMCTS vs greedy, 40 mirrored pairs (80 games) | **87.5 %**, 95 % CI **[80.0, 93.75]** |
+| `temporaryPower` A/B — new greedy vs old, 400 pairs (800 games) | **50.5 %** |
+
+**Reading the ISMCTS number.** D1 measured 90.0 % over 120 games; 87.5 % over 80 sits comfortably inside this
+run's own confidence interval, so nothing regressed. But it is **not the same measurement**: six clauses that
+did nothing in D1 now work, so the game the two agents are playing has changed. Treat it as "ISMCTS still
+clearly beats greedy", not as a comparable figure.
+
+**Reading the A/B.** `temporaryPower` was measured against the exact pre-C3 behaviour and shows **no
+difference** — 53.3 % over 120 games, 50.5 % over 800. It is kept as a correctness fix for a provably wrong
+valuation (the exact 8.0 tie), not as a strength improvement, and this rung claims none. The harness that
+produced it is `apps/cli/src/weights-ab.ts`, committed rather than discarded, because neither
+`mirror --a greedy --b greedy` (a weighting against itself) nor ismcts-vs-greedy (ISMCTS uses `evaluate` in
+its rollouts, so both sides move) can answer a weights question.
+
+**What is NOT measured.** Whether the AI plays these six clauses *well*. Six clauses sit far below the noise
+floor of an 80-game mirror, and the acceptance criteria deliberately test reachability, legality and
+resolution directly instead.
