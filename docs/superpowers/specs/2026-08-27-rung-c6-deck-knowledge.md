@@ -1,9 +1,59 @@
-# Rung C3 — Looking at your own deck: the information model, and the two cards that need it
+# Rung C6 (DEFERRED) — Looking at your own deck: the information model
 
-> Revision 1 (2026-08-27). Prerequisite reading: the "What C2 actually built, and what C3 inherits" section of
-> `2026-08-27-rung-c2-observer-triggers.md`, and the "WHAT I WOULD DO DIFFERENTLY" section of
-> `2026-08-27-rung-d2-search-worker.codex-code-review.md`, both of which say the same thing: decide the
-> visibility model **before** adding any deck target.
+> **Status: deferred, deliberately, after its own Codex plan-review found four blockers.** Revision 1 was
+> written as the next rung; the review is
+> `docs/superpowers/plans/2026-08-27-rung-c3-deck-knowledge.codex-review.md`. Everything below is revision 1
+> as reviewed — kept intact because the analysis is sound and this rung will be built eventually. What changed
+> is only *when*.
+
+## Why this is deferred, and what it would cost
+
+The review found four blockers, none of them cosmetic, and together they describe a substrate rather than a
+feature:
+
+1. **`FieldView.deck` cannot be the knowledge model.** `PlayerState` has no knowledge state at all, so after
+   Reeve bottoms two known cards nothing records that its controller still knows those positions. And
+   `(CardId | null)[]` cannot express *"unknown to me, known to them"* — which is precisely what a root
+   determinisation must preserve about an opponent who has looked at their own deck. Knowledge has to live
+   durably in `GameState` as a per-card `knownBy` mask, projected per viewer.
+2. **`determinise` must REBUILD a deck pending, not copy one.** Redacting the opponent's candidates leaves
+   nothing executable, and a redacted `Pending` cannot be live state at all — `invariants.ts:62` requires
+   `max <= candidates.length` and every candidate to exist. That forces a `PendingState` / `PendingView`
+   split and a reconstruction step from the AST plus the sampled deck.
+3. **Collapsing the action key would make the search play its opponent at RANDOM.** This one was my error and
+   it is worth recording precisely: `search.ts:386` groups commands sharing a key and picks among them
+   uniformly, so collapsing all of an opponent's private Reeve choices into one key does not model hidden
+   information — it replaces the opponent's decision with a coin flip, the exact defect the existing
+   actor-view keying was built to avoid. The fix is two identities (an actor/policy key and an observer
+   transition key), not one collapsed `ActionKey`.
+4. **The browser log leaks the private choice outright.** AI commands are narrated from the AI's own view
+   (`useGame.ts:222`) and `describeChoice` names every chosen target (`commands.ts:241`), so an AI Reeve would
+   print the card it took straight to the human. Narration has to be observer-relative.
+
+## Why something else goes first
+
+The decisive argument is arithmetic, and the review's own scoping section supports it. This substrate buys
+**two** ability clauses (Reeve's and Miner's ETBs). Meanwhile **eight** clauses in the same starter deck are
+activated abilities — Red Mage's `[Lightning][Dull]`, Noel's `[Dull], put into the Break Zone`, Miner's
+`[2][Dull]`, Undead Princess's two, Geomancer's and Red Mage 18-069C's `discard`, and Sphene's `[0]` — and
+every one of them is blocked on a single missing thing: there is no `activateAbility` command in the `Command`
+union at all (`packages/engine/src/commands.ts:5`). They reuse the existing `Effect` AST for their effect half
+and the existing `Payment` machinery for their CP half.
+
+Eight clauses behind one primitive beats two clauses behind four blockers, and activated abilities are also
+the ones a *human* feels: they are the difference between a board you watch and a board you use. Deck
+knowledge is deferred until the cards that need it outnumber the cost of the substrate — Hugh Yurg's search
+and EX Burst both push in that direction.
+
+**When this is picked up again, start from the review, not from this spec.** Its staging advice stands: build
+the information substrate first with no cards attached, then Reeve alone to prove private pinning, redaction,
+rebinding and non-interference, then Miner to prove public visibility, known-opponent-hand persistence,
+observer-relative narration, and the browser rendering the reveal at all — the board currently shows deck
+count only (`Board.tsx:57`), so a "public" reveal would today be visible to nobody.
+
+---
+
+*Revision 1 follows, unchanged.*
 
 ## Context
 
