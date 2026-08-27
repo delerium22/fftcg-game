@@ -306,6 +306,37 @@ const PRISHE_DAMAGES_OPPONENT: Ability = {
 }
 
 /**
+ * Hugh Yurg's second clause (spec C8) — the pool's first ability that watches a card ARRIVE, where C2's
+ * watchers all watch one leave.
+ *
+ * Three restrictions, all explicit rather than implicit in which array the dispatch happens to scan:
+ *
+ * - `whose: 'self'` — "enters **your** field", relative to Hugh Yurg's own controller and never the turn
+ *   player. The dispatch enforces it; C2-10 had to fix exactly that once for the mirror trigger.
+ * - `of: 'forward'` — a cost-1 Backup does not trigger it.
+ * - `cost: 1` — EXACT. `maxCost` exists and is the obvious thing to reach for, and it would be wrong: a
+ *   cost-3 Forward must not trigger this.
+ *
+ * "Choose 1 Forward" is unrestricted by controller, so pumping an opponent's Forward is legal and bad — the
+ * card's business, not the engine's. Undead Princess is a cost-1 Forward, which makes this a live line with
+ * the clause C7 landed.
+ */
+const HUGH_YURG_CHEAP_FORWARD: Ability = {
+  id: '24-063H:cheap-forward',
+  trigger: { kind: 'observesEnterField', whose: 'self', of: 'forward', filter: { cost: 1 } },
+  text: 'When a Forward of cost 1 enters your field, choose 1 Forward. Until the end of the turn, it gains '
+    + '+2000 power and Brave.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [
+      { kind: 'addPower', amount: 2000 },
+      { kind: 'grantKeyword', keyword: 'brave' },
+    ],
+  }],
+}
+
+/**
  * Cloud's second clause (spec C5) — the pool's only ability that fires on a PHASE rather than on something
  * happening to a card, and the only one that repeats: it goes off at the start of every one of its
  * controller's Attack Phases.
@@ -533,6 +564,8 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   '20-074C': [MINER_DRAW],
   '20-103H': [RAMUH_SUMMON],
   '22-068R': [PRISHE_DAMAGES_OPPONENT],
+  // Clause 2 only; the ETB deck search is rung C9.
+  '24-063H': [HUGH_YURG_CHEAP_FORWARD],
   // Printed order: the ETB is clause 1, the Attack-Phase clause 2.
   '27-124S': [CLOUD_ETB, CLOUD_ATTACK_PHASE],
   '27-125S': [LUSO_DAMAGES_FORWARD, LUSO_DAMAGES_OPPONENT],

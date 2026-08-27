@@ -119,6 +119,8 @@ function matchesFilter(state: GameState, source: CardId, id: CardId, filter: Tar
   if (filter.types !== undefined && !filter.types.includes(def.type)) return false
   if (filter.element !== undefined && !def.elements.includes(filter.element)) return false
   if (filter.maxCost !== undefined && def.cost > filter.maxCost) return false
+  // EXACT, not a ceiling: a cost-3 Forward must not satisfy Hugh Yurg's "of cost 1" (spec C8-3).
+  if (filter.cost !== undefined && def.cost !== filter.cost) return false
   if (filter.excludeSource && id === source) return false
   if (filter.excludeSourceName) {
     const src = defFor(state, source)
@@ -633,6 +635,45 @@ function enqueueZoneTriggers(state: GameState, occurrences: readonly WatcherOccu
  * shipped gate, ~130 of ~220 ability breaks had a Lightning standing on the watching side, so roughly 40% of the
  * breaks its printed text names were silently missed, with every test, invariant and fuzzer run still green.
  */
+/**
+ * Dispatch `observesEnterField` clauses for one card ARRIVING on a field (spec C8-1) — `observesZoneChange`
+ * pointed the other way.
+ *
+ * `state` must ALREADY contain the arrived card. Its mirror reads watchers from the pre-move state, because a
+ * watcher leaving in the same batch must still trigger; here the opposite is wanted, and for the same reason:
+ * a card that just arrived can be watched, and a watcher that just arrived can watch. Calling this before the
+ * field arrays are updated would simply fire nothing, which is the failure a test asserting "no crash" would
+ * not notice.
+ *
+ * Every path that puts a card onto the field must call this. Today that is casting; rung C9's Hugh Yurg
+ * search puts one there without casting, and it calls this same helper rather than growing a parallel copy —
+ * which is exactly the mistake `breakCard` made against the zone-change dispatch, silently missing ~40% of
+ * the breaks its printed text named.
+ */
+export function enqueueEnterFieldTriggers(state: GameState, card: CardId, controller: PlayerId): GameState {
+  const def = defFor(state, card)
+  if (!def) return state
+  const event: TriggerEvent = { kind: 'enteredField', card, controller }
+  let s = state
+  for (const watcher of [0, 1] as const) {
+    const ps = s.players[watcher]
+    for (const c of [...ps.forwards, ...ps.backups]) {
+      for (const ability of defOf(s, c.id).abilities ?? []) {
+        const t = ability.trigger
+        if (t.kind !== 'observesEnterField') continue
+        // "your field" is relative to the WATCHER, never the turn player (spec C2-10, and C8-1 inherits it).
+        if (t.whose === 'self' && controller !== watcher) continue
+        if (t.whose === 'opponent' && controller === watcher) continue
+        if (def.type !== t.of) continue
+        // `source` is the WATCHER, so `excludeSource` on such a filter would mean "not myself arriving".
+        if (t.filter && !matchesFilter(s, c.id, card, t.filter)) continue
+        s = enqueueTrigger(s, c.id, watcher, ability, event)
+      }
+    }
+  }
+  return s
+}
+
 export function enqueueZoneChangeTriggers(pre: GameState, post: GameState, transitions: readonly ZoneTransition[]): GameState {
   if (!transitions.length) return post
   return enqueueZoneTriggers(post, collectWatchers(pre, transitions))

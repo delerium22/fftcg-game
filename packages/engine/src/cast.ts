@@ -6,7 +6,7 @@ import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { canPay, castRequirement, generateCp, pay } from './cp.js'
-import { enqueueTrigger } from './resolve.js'
+import { enqueueEnterFieldTriggers, enqueueTrigger } from './resolve.js'
 
 export function castCheck(state: GameState, player: PlayerId, card: CardId): string | null {
   if (state.result) return 'game is over'
@@ -86,6 +86,10 @@ export function applyCastCharacter(state: GameState, player: PlayerId, card: Car
   warnUnimplemented(def, card, events)
   // `enterField`, not `cast`: C2's Hugh Yurg puts a Character onto the field without casting it (spec C1-2).
   s = dispatch(s, def, card, player, { kind: 'enterField' })
+  // Then the cards WATCHING an arrival (spec C8-1). After the entering card's own clauses, so a card that
+  // both has an ETB and is watched resolves them in that order — the CR gives simultaneous triggers to the
+  // active player to order, and MVP0 gives them queue order (spec C1-4/C8-4).
+  s = enqueueEnterFieldTriggers(s, card, player)
   return [s, events]
 }
 

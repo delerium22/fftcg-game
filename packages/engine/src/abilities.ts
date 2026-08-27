@@ -31,6 +31,8 @@ export interface TargetFilter {
   readonly element?: Element
   /** Inclusive printed-cost ceiling, e.g. Lightning's "cost 4 or less" (C2). */
   readonly maxCost?: number
+  /** EXACT printed cost, e.g. Hugh Yurg's "a Forward of cost 1" (C8). Not a ceiling — `maxCost` is that. */
+  readonly cost?: number
   /** "other than <this card>" — excludes the ability's own source. */
   readonly excludeSource?: boolean
   /** "other than Card Name <X>" — excludes every card sharing the source's name (Billy Bob). */
@@ -122,6 +124,16 @@ export type AbilityTrigger =
    * later rung breaks.
    */
   | { readonly kind: 'observesZoneChange'; readonly from: 'field'; readonly to: 'breakZone'; readonly whose: TriggerWhose; readonly of: CardType }
+  /**
+   * Some OTHER card ARRIVED on a field, and this one was watching (spec C8-1) — `observesZoneChange` pointed
+   * the other way. `whose` resolves against the WATCHER's controller, never the turn player, exactly as
+   * C2-10 settled for its mirror: Hugh Yurg prints "enters **your** field".
+   *
+   * `of` is the arriving card's TYPE and `filter` narrows it further — Hugh Yurg watches "a **Forward** of
+   * **cost 1**". Both are explicit rather than implicit in which array the producer happens to scan, which is
+   * the mistake C2 had to call out once already.
+   */
+  | { readonly kind: 'observesEnterField'; readonly whose: TriggerWhose; readonly of: CardType; readonly filter?: TargetFilter }
   /**
    * The beginning of the Attack Phase, on the CONTROLLER's own turn (spec C5-2). Cloud prints "during each of
    * your turns", and that restriction lives in the dispatch rather than on the card: a clause that fired on
@@ -229,6 +241,8 @@ export type TriggerEvent =
    * for its own ability was not broken (§15.1.1.3.2), and saying so would misreport the board.
    */
   | { readonly kind: 'zoneChange'; readonly card: CardId; readonly from: 'field'; readonly to: 'breakZone'; readonly controller: PlayerId; readonly owner: PlayerId; readonly reason: ZoneTransitionReason }
+  /** A card arrived on a field (spec C8-1). `controller` is whose field it entered. */
+  | { readonly kind: 'enteredField'; readonly card: CardId; readonly controller: PlayerId }
 
 export interface Ability {
   /**

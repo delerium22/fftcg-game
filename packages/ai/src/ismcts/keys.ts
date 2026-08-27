@@ -440,6 +440,8 @@ function triggerDigest(view: PlayerView, e: TriggerEvent | null): string {
       return `dmg.${r(e.source)}.${e.sourceController}.${e.target === null ? '-' : r(e.target)}.${e.victim ?? '-'}.${e.amount}`
     case 'zoneChange':
       return `zc.${r(e.card)}.${e.from}.${e.to}.${e.controller}.${e.owner}`
+    case 'enteredField':
+      return `ef.${r(e.card)}.${e.controller}`
     default: { const _exhaustive: never = e; return _exhaustive }
   }
 }

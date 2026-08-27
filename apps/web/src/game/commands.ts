@@ -55,6 +55,8 @@ export type TriggerCause =
    * one; absent, it means the ordinary case (the card was broken). `Frame.triggerEvent` always carries it.
    */
   | { readonly kind: 'zoneChange'; readonly card: CardId; readonly controller: PlayerId; readonly reason?: ZoneTransitionReason }
+  /** A card arrived on a field (spec C8). `controller` is whose field, which is what the wording turns on. */
+  | { readonly kind: 'enteredField'; readonly card: CardId; readonly controller: PlayerId }
 
 const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' : "the AI's")
 
@@ -69,6 +71,7 @@ export function describeTriggerCause(v: PlayerView, ev: TriggerCause): string {
   // Not every trip to the Break Zone is a break. A card put there to PAY for its own ability was not broken
   // (§15.1.1.3.2), and reporting it as one would tell the player something about the board that is false —
   // it also reads as though their own card had been destroyed by the opponent.
+  if (ev.kind === 'enteredField') return `${possessive(v, ev.controller)} ${name(v, ev.card)} entered the field`
   if (ev.kind === 'zoneChange') {
     const how = ev.reason === 'cost' ? 'was put into the Break Zone' : 'was broken'
     return `${possessive(v, ev.controller)} ${name(v, ev.card)} ${how}`

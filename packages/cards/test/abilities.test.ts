@@ -471,21 +471,23 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty-one implemented clauses on, and only those twenty-one', () => {
+  it('loadCards merges the twenty-two implemented clauses on, and only those twenty-two', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
-    // removal). Any clause added without a test lands here first.
+    // removal), one from C8 (Hugh Yurg's enters-field observer). Any clause added without a test lands here
+    // first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
       '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
-      '20-103H', '22-068R', '27-124S', '27-125S', '27-127S', '9-074C',
+      '20-103H', '22-068R', '24-063H', '27-124S', '27-125S', '27-127S', '9-074C',
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
       // a hand-written order just makes the next insertion fail for the wrong reason.
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
-      '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-103H:summon', '22-068R:damages-opponent',
+      '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-103H:summon',
+      '22-068R:damages-opponent', '24-063H:cheap-forward',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
     ].sort())
@@ -1043,5 +1045,81 @@ describe('19-052C Undead Princess — "Remove Undead Princess in the Break Zone 
     expect(r.events.some((e) => e.type === 'removedFromGame')).toBe(true)
     expect(r.events.some((e) => e.type === 'brokenByAbility' || e.type === 'discarded')).toBe(false)
     ok(r.state)   // C7-A4: still exactly one place for every card
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C8 — 24-063H Hugh Yurg's enters-field observer
+// ---------------------------------------------------------------------------
+
+describe('24-063H Hugh Yurg — "When a Forward of cost 1 enters your field, …"', () => {
+  const COST_1_FORWARD = '19-052C'   // Undead Princess, cost 1 — the C7 combo
+  const COST_1_BACKUP = '18-064C'    // Geomancer, cost 1
+  const COST_3_FORWARD = '27-124S'   // Cloud
+
+  /** Cast `code` for player 0 with exactly enough CP, and return the resulting state. */
+  function castFor(state: GameState, code: string) {
+    const def = DEFS.find((d) => d.code === code)!
+    let s = state
+    ;[s] = withCp(s, 0, Array<string>(def.cost).fill(EARTH_BACKUP))
+    let card: CardId
+    ;[s, card] = withHand(s, 0, code)
+    const cmd = legalCommands(s, 0).find((c) => (c.type === 'castCharacter' || c.type === 'castSummon') && c.card === card)
+    expect(cmd, `${code} was not castable`).toBeDefined()
+    return { r: apply(s, cmd!), card }
+  }
+
+  it('fires on a cost-1 Forward, granting +2000 and Brave (C8-A1)', () => {
+    let s = makeGame()
+    let yurg: CardId; let ally: CardId
+    ;[s, yurg] = withField(s, 0, 'forwards', '24-063H')
+    ;[s, ally] = withField(s, 0, 'forwards', COST_3_FORWARD)
+    const base = powerOfId(s, ally)
+
+    const { r } = castFor(s, COST_1_FORWARD)
+    expect(r.state.pending?.kind).toBe('chooseTargets')
+    const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [ally] })
+    expect(powerOfId(done.state, ally)).toBe(base + 2000)
+    expect(fc(done.state, ally)?.granted).toContain('brave')
+    void yurg
+    ok(done.state)
+  })
+
+  it('does NOT fire on a cost-3 Forward — the filter is exact, not a ceiling (C8-A2)', () => {
+    let s = makeGame()
+    ;[s] = withField(s, 0, 'forwards', '24-063H')
+    const { r } = castFor(s, COST_3_FORWARD)
+    // Cloud's own ETB needs no choice, so any pending here would be Hugh Yurg's.
+    expect(r.state.pending).toBeNull()
+  })
+
+  it('does NOT fire on a cost-1 BACKUP (C8-A4)', () => {
+    let s = makeGame()
+    ;[s] = withField(s, 0, 'forwards', '24-063H')
+    const { r } = castFor(s, COST_1_BACKUP)
+    expect(r.state.pending).toBeNull()
+  })
+
+  it('fires only for the watcher whose OWN field the card entered (C8-A3)', () => {
+    // The mistake one Hugh Yurg cannot detect: "your field" resolved against the turn player instead of the
+    // watcher would make the opponent's copy fire too. C2-10 had to fix exactly this for the mirror trigger.
+    let s = makeGame()
+    let mine: CardId; let theirs: CardId; let ally: CardId
+    ;[s, mine] = withField(s, 0, 'forwards', '24-063H')
+    ;[s, theirs] = withField(s, 1, 'forwards', '24-063H')
+    ;[s, ally] = withField(s, 0, 'forwards', COST_3_FORWARD)
+
+    const { r } = castFor(s, COST_1_FORWARD)
+    // Exactly ONE trigger is queued: player 0's. Two would mean the opponent's copy fired as well.
+    const queued = [r.state.resolution.active, ...r.state.resolution.queue].filter((f) => f?.abilityId === '24-063H:cheap-forward')
+    expect(queued).toHaveLength(1)
+    expect(queued[0]?.source).toBe(mine)
+    expect(queued[0]?.controller).toBe(0)
+    void theirs; void ally
+  })
+
+  it('still warns about the deck-search clause it does not have (C8-A6)', () => {
+    expect(ABILITY_CLAUSES['24-063H']).toBe(2)
+    expect(ABILITIES['24-063H']?.length).toBe(1)
   })
 })
