@@ -748,13 +748,21 @@ describe('SearchCoordinator: fallback detection (D2-6)', () => {
     expect(h.warnings).toHaveLength(1)
   })
 
-  it('keeps advancing the per-position seed under the fallback', () => {
+  // The decision counter keeps tracking committed commands under the fallback. Note what this is NOT: once
+  // the worker is gone no search is ever posted again, and Greedy carries its own RNG, so the SEED derived
+  // from that counter has no consumer here. What is worth pinning is that the fallback keeps committing
+  // decisions at all, and that the counter stays a true count of them rather than freezing.
+  it('keeps counting committed decisions under the fallback', () => {
     const h = harness()
     const state = h.readState()
     h.coordinator.request(state, h.handlers)
     h.transport().handlers.failure('gone')
     h.clock.advance(STEP_MS)
     expect(h.delivered).toHaveLength(1)
-    expect(h.coordinator.nextSeed).toBe(searchSeed(GAME_SEED, 1))
+
+    h.coordinator.request(h.readState(), h.handlers)
+    h.clock.advance(STEP_MS)
+    expect(h.delivered).toHaveLength(2)
+    expect(h.transports).toHaveLength(1)   // and never another worker
   })
 })

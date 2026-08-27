@@ -158,7 +158,15 @@ export class SearchCoordinator {
   private failureReason = ''
 
   private nextRequestId = 0
-  /** Advances ONLY on a committed AI command. Never on a post, a retry or a worker replacement. */
+  /**
+   * Advances ONLY on a committed AI command. Never on a post, a retry or a worker replacement.
+   *
+   * The advance is provisional across `onCommand` and rolled back if it rejects, which makes the ordinary
+   * case — a handler that commits and synchronously re-requests — take the NEXT position's seed rather than
+   * reusing this one. The one shape it does not order correctly is a handler that both commits something and
+   * then returns false; that handler is contradictory (`false` means "I did not take this command"), so this
+   * is a contract on the caller rather than a queue to build here.
+   */
   private decisionIndex = 0
 
   private active: Outstanding | null = null

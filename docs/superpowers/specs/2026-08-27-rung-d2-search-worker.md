@@ -153,6 +153,18 @@ Note these round trips are **below** D1's headless ~254 ms/decision rather than 
 B's contended maximum crossing that figure. The budget still has not been *strength*-calibrated (D1's caveat
 stands); what is now known is that the browser is not what would force it down.
 
+**Post-fix re-verification (after the D2 code-review fixes).** A further production-preview game on the fixed
+build: **34 posted / 34 received / 34 committed**, zero worker errors, zero fallback warnings, zero `longtask`
+entries, max rAF gap 20 ms. Round trips were slower in that run (p50 455 ms) because the machine was running
+the test suite and fuzzer at the same time — recorded rather than re-run until the number looked better, and
+it also shows the pacing deadline absorbing a loaded machine without tripping the fallback.
+
+**A trap the harness now refuses to fall into.** The app builds its worker lazily on the first AI decision, so
+instrumentation installed after page load loses a race whenever the AI moves first — and then reports
+`0 posted / 0 received` beside a completed game with no fallback warning, which reads exactly like a worker
+that never ran. Two of three runs hit this. `summarise` now returns `instrumentationValid: false` and refuses
+the run. Any future D2 measurement showing zeros must be checked against that flag before it is believed.
+
 **Corrections made to this section after review:**
 - "the main thread was never blocked" → no task ≥ 50 ms was *observed*.
 - "bracket D1's ~254 ms" → the round trips are *below* it; only a contended maximum crosses it.

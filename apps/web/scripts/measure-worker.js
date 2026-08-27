@@ -28,7 +28,19 @@
  *    attribute that specifically, measure again with the field removed.
  */
 
-/** Install the observers. Must run BEFORE any AI decision, or the first search is not covered. */
+/**
+ * Install the observers. Must run BEFORE the first AI decision, because that is when the app lazily builds
+ * its worker — and patching `Worker` afterwards observes nothing.
+ *
+ * Whether that is achievable depends on the driver: evaluating this after page load usually wins the race,
+ * but when the AI moves first it does not. `summarise` therefore refuses to report a run it can prove it
+ * missed, rather than returning zeros that read exactly like a broken worker.
+ *
+ * Injecting before app boot is the reliable fix, but note the trap: this file is an ES module, so handing it
+ * straight to Playwright's `page.addInitScript` fails with "Unexpected token 'export'" — the injection is
+ * silently a no-op and the run is blind again, exactly as if nothing had been tried. Strip the `export`
+ * keywords for that path, and trust `instrumentationValid` either way.
+ */
 export function instrument() {
   const w = window
   const m = (w.__d2 = {
@@ -160,7 +172,16 @@ export function summarise(errors = []) {
   const warnings = [...document.querySelectorAll('.log__line--warning')]
     .map((l) => l.textContent)
     .filter((t) => /background search|could not make a move/i.test(t))
+  const aiCommits = document.querySelectorAll('.log__line--ai').length
+  // The instrumentation is only meaningful if it was in place before the worker was built. AI commands with
+  // no observed worker and no fallback warning means the app is using a worker this harness never saw — the
+  // run is blind, not clean, and reporting `0 / 0 / 0` would look identical to a worker that never ran.
+  const missed = m.workersConstructed === 0 && aiCommits > 0 && warnings.length === 0
   return {
+    instrumentationValid: !missed,
+    ...(missed
+      ? { discard: 'the worker was constructed before this harness patched Worker — re-run, installing it before app boot' }
+      : {}),
     finished: !!document.querySelector('.banner'),
     outcome: document.querySelector('.banner__title')?.textContent ?? null,
     jsErrors: errors,
@@ -171,7 +192,7 @@ export function summarise(errors = []) {
     resultsReceived: m.resultsReceived,
     workerErrors: m.workerErrors,
     // The correlation that actually supports "the search played this game".
-    aiCommitsCommitted: document.querySelectorAll('.log__line--ai').length,
+    aiCommitsCommitted: aiCommits,
     searchFallbackWarnings: warnings,
 
     tripP50Ms: pct(m.trips, 0.5),
