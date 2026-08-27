@@ -1071,13 +1071,19 @@ describe('24-063H Hugh Yurg — "When a Forward of cost 1 enters your field, …
 
   it('fires on a cost-1 Forward, granting +2000 and Brave (C8-A1)', () => {
     let s = makeGame()
-    let yurg: CardId; let ally: CardId
+    let yurg: CardId; let ally: CardId; let theirs: CardId
     ;[s, yurg] = withField(s, 0, 'forwards', '24-063H')
     ;[s, ally] = withField(s, 0, 'forwards', COST_3_FORWARD)
+    ;[s, theirs] = withField(s, 1, 'forwards', COST_3_FORWARD)
     const base = powerOfId(s, ally)
 
     const { r } = castFor(s, COST_1_FORWARD)
     expect(r.state.pending?.kind).toBe('chooseTargets')
+    // "Choose 1 Forward" is unrestricted by controller. Without this the scope could be narrowed to 'self'
+    // and no test in the repo would notice — the card comment asserts the property, so a test must too.
+    const candidates = r.state.pending?.kind === 'chooseTargets' ? r.state.pending.candidates : []
+    expect(candidates).toContain(theirs)
+
     const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [ally] })
     expect(powerOfId(done.state, ally)).toBe(base + 2000)
     expect(fc(done.state, ally)?.granted).toContain('brave')

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type AbilityTrigger, type CardId, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason,
+  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason,
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
@@ -134,6 +134,7 @@ function holderOf(v: PlayerView, id: CardId): PlayerId {
 interface Hit { readonly source: CardId; readonly target: CardId; readonly amount: number; used: boolean }
 interface PlayerHit { readonly victim: PlayerId; used: boolean }
 interface ZoneHit { readonly card: CardId; readonly controller: PlayerId; readonly reason: ZoneTransitionReason; used: boolean }
+interface EnterHit { readonly card: CardId; readonly controller: PlayerId; readonly type: CardType; used: boolean }
 
 /**
  * Pair one `abilityTriggered` with the event that fired it, consuming the candidate so the NEXT trigger of the
@@ -148,7 +149,7 @@ interface ZoneHit { readonly card: CardId; readonly controller: PlayerId; readon
  */
 function causeOf(
   v: PlayerView, e: Extract<Event, { type: 'abilityTriggered' }>,
-  hits: Hit[], playerHits: PlayerHit[], zoneHits: ZoneHit[],
+  hits: Hit[], playerHits: PlayerHit[], zoneHits: ZoneHit[], enterHits: EnterHit[],
 ): TriggerCause | null {
   const trigger = triggerOf(v, e.card, e.abilityId)
   if (!trigger) return null
@@ -172,6 +173,19 @@ function causeOf(
     hit.used = true
     return { kind: 'zoneChange', card: hit.card, controller: hit.controller, reason: hit.reason }
   }
+  if (trigger.kind === 'observesEnterField') {
+    // The mirror of the branch above, and it has to exist for the same reason C2 wrote that one: the cause is
+    // the only thing tying "Hugh Yurg's ability triggers" to the card that just arrived. C8 shipped the
+    // narration for this cause and the `TriggerCause` variant, but not the reconstruction that produces one —
+    // so the ordinary single-watcher line came out bare, while a second watcher (whose frame survived in the
+    // queue across a prompt) got its cause from the other route. Two paths, disagreeing.
+    const wants = (controller: PlayerId): boolean =>
+      trigger.whose === 'any' || (trigger.whose === 'self') === (controller === e.player)
+    const hit = enterHits.find((h) => !h.used && h.type === trigger.of && wants(h.controller))
+    if (!hit) return null
+    hit.used = true
+    return { kind: 'enteredField', card: hit.card, controller: hit.controller }
+  }
   return null   // enterField/summonResolve are about the source itself — there is nothing to explain
 }
 
@@ -194,6 +208,7 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
   const hits: Hit[] = []
   const playerHits: PlayerHit[] = []
   const zoneHits: ZoneHit[] = []
+  const enterHits: EnterHit[] = []
   const lines: LogLine[] = []
   let started = 0
   for (const e of events) {
@@ -203,6 +218,8 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
       case 'abilityDamage': hits.push({ source: e.source, target: e.target, amount: e.amount, used: false }); break
       // `playerDamaged.card` is the card TAKEN as damage, not the dealer; the dealer is the watcher itself.
       case 'playerDamaged': playerHits.push({ victim: e.player, used: false }); break
+      // A card ARRIVING (spec C8). `cast` is the only producer today; a future put-into-play path adds its own.
+      case 'cast': enterHits.push({ card: e.card, controller: e.player, type: e.cardType, used: false }); break
       case 'broken':
       case 'brokenByAbility':
       case 'putIntoBreakZone': zoneHits.push({ card: e.card, controller: holderOf(v, e.card), reason: 'ability', used: false }); break
@@ -218,7 +235,7 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
       // trigger came from, so fall through to reconstruction rather than narrate another clause's subject.
       cause = frame && frame.source === e.card && frame.abilityId === e.abilityId
         ? frame.triggerEvent
-        : causeOf(v, e, hits, playerHits, zoneHits)
+        : causeOf(v, e, hits, playerHits, zoneHits, enterHits)
     }
     const line = describeEvent(v, e, cause)
     if (line) lines.push(line)

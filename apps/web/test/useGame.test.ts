@@ -470,8 +470,11 @@ const LIGHTNING = '27-127S', LUSO = '27-125S', PRISHE = '22-068R', SPHENE = '27-
 const LIGHTNING_ETB = '27-127S:etb'
 const LIGHTNING_WATCH = '27-127S:opponent-forward-broken'
 const LUSO_DAMAGES = '27-125S:damages-forward'
+const HUGH_YURG = '24-063H'
+const HUGH_YURG_WATCH = '24-063H:cheap-forward'
+const PRINCESS = '19-052C'
 
-const ids = { lightning: 900, sphene: 902, prishe: 901, luso: 903, victim: 904, aiLightning: 905, mine: 906 }
+const ids = { lightning: 900, sphene: 902, prishe: 901, luso: 903, victim: 904, aiLightning: 905, mine: 906, arrival: 907, yurg: 908 }
 
 /**
  * A human view with the C2 cast already on the table: a Lightning per seat, the AI Forwards its clause watches
@@ -534,6 +537,34 @@ describe('the log says WHY an observer trigger fired (spec C2-5)', () => {
     // Lightning's ETB is about Lightning. Its line keeps rung C1's exact wording, break in the batch or not.
     const out = texts(c2View(), [{ type: 'broken', card: ids.prishe }, triggered(HUMAN, ids.lightning, LIGHTNING_ETB)])
     expect(out[1]?.startsWith('Lightning\'s ability triggers: "EX BURST')).toBe(true)
+  })
+
+  it('C8: names the card whose ARRIVAL fired it, from the events alone', () => {
+    // The mirror of the break case above, and it needed its own producer. C8 shipped the `enteredField`
+    // TriggerCause and its narration but no branch in `causeOf`, so the ordinary line — a trigger raised and
+    // started inside the same command, with nothing in the pre-command queue — came out bare. With two
+    // watchers the two routes then disagreed: one line carried a cause and the other did not.
+    const v = c2View()
+    v.cards[ids.arrival] = { id: ids.arrival, code: PRINCESS, owner: HUMAN }
+    v.cards[ids.yurg] = { id: ids.yurg, code: HUGH_YURG, owner: HUMAN }
+    const out = eventLines(v, [
+      { type: 'cast', player: HUMAN, card: ids.arrival, cardType: 'forward' },
+      triggered(HUMAN, ids.yurg, HUGH_YURG_WATCH),
+    ]).map((l) => l.text)
+    expect(out.at(-1)).toContain("Hugh Yurg's ability triggers — your Undead Princess entered the field")
+  })
+
+  it("C8: an arrival on the OPPONENT's field does not lend its cause to your watcher", () => {
+    // `whose: 'self'` is read from the WATCHER's seat, exactly as the break case is (spec C2-10). A cause
+    // taken from the wrong side would be worse than none: it would name a card that did not fire it.
+    const v = c2View()
+    v.cards[ids.arrival] = { id: ids.arrival, code: PRINCESS, owner: AI }
+    v.cards[ids.yurg] = { id: ids.yurg, code: HUGH_YURG, owner: HUMAN }
+    const out = eventLines(v, [
+      { type: 'cast', player: AI, card: ids.arrival, cardType: 'forward' },
+      triggered(HUMAN, ids.yurg, HUGH_YURG_WATCH),
+    ]).map((l) => l.text)
+    expect(out.at(-1)).not.toContain('entered the field')
   })
 
   it('recovers a cause from a frame that queued in an EARLIER batch', () => {

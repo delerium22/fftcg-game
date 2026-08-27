@@ -462,8 +462,26 @@ describe('observationKey (contract 6)', () => {
       ['frame.triggerEvent.source', { ...view, resolution: { ...view.resolution, active: { ...active, triggerEvent: { kind: 'damage', source: ids.b1!, sourceController: 0, target: ids.d1!, victim: null, amount: 3000 } } } }],
       ['frame.triggerEvent.target', { ...view, resolution: { ...view.resolution, active: { ...active, triggerEvent: { kind: 'damage', source: ids.a2!, sourceController: 0, target: ids.a1!, victim: null, amount: 3000 } } } }],
       ['queued frame.triggerEvent.card', { ...view, resolution: { ...view.resolution, queue: [{ ...view.resolution.queue[0]!, triggerEvent: { kind: 'zoneChange', card: ids.d1!, from: 'field', to: 'breakZone', controller: 1, owner: 1 , reason: 'ability'} }] } }],
+      ['frame.triggerEvent enteredField', { ...view, resolution: { ...view.resolution, active: { ...active, triggerEvent: { kind: 'enteredField', card: ids.a1!, controller: 0 } } } }],
     ]
     for (const [why, v] of swaps) expect(observationKey(v), why).not.toBe(key)
+  })
+
+  // C8's `enteredField` shape, pinned against ITSELF rather than against the baseline.
+  //
+  // The first attempt at this put two enteredField variants in the swaps table above, which proved nothing:
+  // each is compared to the baseline, and a digest that flattened every enteredField event to a constant
+  // still differed from a baseline carrying a `damage` event. Both entries passed under a deliberately
+  // broken digest. Two events of the SAME kind must be compared to each other.
+  it('distinguishes two enteredField events from one another', () => {
+    const { view, ids } = richView()
+    const active = view.resolution.active!
+    const withEvent = (card: CardId, controller: PlayerId) =>
+      observationKey({ ...view, resolution: { ...view.resolution, active: { ...active, triggerEvent: { kind: 'enteredField', card, controller } } } })
+
+    expect(withEvent(ids.a1!, 0)).not.toBe(withEvent(ids.a2!, 0))   // different card
+    expect(withEvent(ids.a1!, 0)).not.toBe(withEvent(ids.a1!, 1))   // different controller
+    expect(withEvent(ids.a1!, 0)).toBe(withEvent(ids.a1!, 0))       // and canonical
   })
 
   it('but not what the root can actually see', () => {

@@ -625,17 +625,6 @@ function enqueueZoneTriggers(state: GameState, occurrences: readonly WatcherOccu
   return s
 }
 /**
- * Dispatch `observesZoneChange` clauses for one batch of field→Break Zone movement.
- *
- * `pre` is the state BEFORE the batch moved — watchers must be read from it, or a watcher that is itself in the
- * batch is already gone (spec C2-4). `post` is the state the frames are queued onto.
- *
- * EVERY field→Break Zone path must call this, not just the §12.4.4/§12.4.5 rule processes. `breakCard` did its own
- * zone move and skipped it, so no observer clause fired on an ability-caused break at all — measured on the
- * shipped gate, ~130 of ~220 ability breaks had a Lightning standing on the watching side, so roughly 40% of the
- * breaks its printed text names were silently missed, with every test, invariant and fuzzer run still green.
- */
-/**
  * Dispatch `observesEnterField` clauses for one card ARRIVING on a field (spec C8-1) — `observesZoneChange`
  * pointed the other way.
  *
@@ -673,6 +662,18 @@ export function enqueueEnterFieldTriggers(state: GameState, card: CardId, contro
   }
   return s
 }
+
+/**
+ * Dispatch `observesZoneChange` clauses for one batch of field→Break Zone movement.
+ *
+ * `pre` is the state BEFORE the batch moved — watchers must be read from it, or a watcher that is itself in the
+ * batch is already gone (spec C2-4). `post` is the state the frames are queued onto.
+ *
+ * EVERY field→Break Zone path must call this, not just the §12.4.4/§12.4.5 rule processes. `breakCard` did its own
+ * zone move and skipped it, so no observer clause fired on an ability-caused break at all — measured on the
+ * shipped gate, ~130 of ~220 ability breaks had a Lightning standing on the watching side, so roughly 40% of the
+ * breaks its printed text names were silently missed, with every test, invariant and fuzzer run still green.
+ */
 
 export function enqueueZoneChangeTriggers(pre: GameState, post: GameState, transitions: readonly ZoneTransition[]): GameState {
   if (!transitions.length) return post
