@@ -3,7 +3,7 @@
 > Revision 2 (2026-08-27), after a Codex plan-review that found five blockers, three of which were my own
 > errors and one of which was a flat self-contradiction. The review is
 > `docs/superpowers/plans/2026-08-27-rung-c3-activated-abilities.codex-review.md`. This rung replaced a
-> planned deck-knowledge rung; that reasoning is at the top of `2026-08-27-rung-c6-deck-knowledge.md`, and the
+> planned deck-knowledge rung; that reasoning is at the top of `2026-08-27-rung-c9-deck-knowledge.md`, and the
 > review independently confirmed the reordering was right.
 
 ## Context
@@ -35,7 +35,7 @@ removed-from-game zone) and Sphene's `[0]` (needs field→Break-Zone history and
 **Correction to revision 1's framing.** It said "eight clauses behind one primitive", which undersold this.
 Activation also needs target declaration, generalized costs, a draw effect, command codecs, AI enumeration and
 a timing policy. The reordering is still right — the review agreed, because none of that entangles
-determinisation with private information the way rung C6 does — but this is a substrate, not a one-liner.
+determinisation with private information the way rung C9 does — but this is a substrate, not a one-liner.
 
 ## Decisions
 
@@ -52,7 +52,7 @@ determinisation with private information the way rung C6 does — but this is a 
 | C3-9 | **Add `{ kind: 'draw'; count }` and move `drawCards` somewhere neutral** | Revision 1 claimed all four effect halves needed no new machinery. False: `Effect` has no draw, and the only draw primitive lives in `phases.ts`, which `resolve.ts` cannot import because `phases.ts` already imports `resolve.ts` (`phases.ts:8`). Extract `drawCards` — empty-deck loss semantics (§3.1.2) intact — into a module both can import. |
 | C3-10 | **The AI must be given activations explicitly** | Revision 1 said the AI gets them "for free" from `legalCommands`. It does not: `candidateCommands` hand-builds casts and `pass` in the Main Phases (`candidates.ts:295`) and the search enumerates *that* list. Activation needs its own emission (one preferred-payment activation per `(source, abilityId, target set)`), plus `ActionKey` encode/decode and the synthetic-id guard. |
 | C3-11 | **MVP0-SIMPLIFICATION: turn player, Main Phase 1 or 2 only — and this one costs something** | Revision 1 claimed this was "not a further loss of fidelity". Wrong: the CR allows action abilities in the Attack Phase too, and the engine even has an unblocked turn-player action point at attack declaration (`legal.ts:68`). Noel and Red Mage still work from Main 1 before attacking, but **Undead Princess stops being a combat trick** — she cannot pump after blockers are declared. Stated plainly as "action abilities are sorcery-speed", marked at the site, and listed in the README's deviations. |
-| C3-12 | Not in scope | Undead Princess's second clause and the removed-from-game zone; Sphene; EX Burst; static abilities (Class Tenth Moogle's CP, Odin's cost reduction, Sphene's protection); deck knowledge (C6). |
+| C3-12 | Not in scope | Undead Princess's second clause and the removed-from-game zone; Sphene; EX Burst; static abilities (Class Tenth Moogle's CP, Odin's cost reduction, Sphene's protection); deck knowledge (C9). |
 
 ## Rules citations
 

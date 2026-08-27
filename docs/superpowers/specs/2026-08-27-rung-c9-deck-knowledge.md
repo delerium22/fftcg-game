@@ -1,4 +1,4 @@
-# Rung C6 (DEFERRED) — Looking at your own deck: the information model
+# Rung C9 (DEFERRED) — Looking at your own deck: the information model
 
 > **Status: deferred, deliberately, after its own Codex plan-review found four blockers.** Revision 1 was
 > written as the next rung; the review is
@@ -32,8 +32,8 @@ feature:
 
 ## Why something else goes first
 
-The decisive argument is arithmetic, and the review's own scoping section supports it. This substrate buys
-**two** ability clauses (Reeve's and Miner's ETBs). Meanwhile **eight** clauses in the same starter deck are
+The decisive argument is arithmetic, and the review's own scoping section supports it. This substrate buys **three** ability clauses — Reeve's and Miner's ETBs, and Hugh Yurg's
+"search for 1 Earth Forward of cost 1 and play it onto the field", which needs the same deck access. Meanwhile **eight** clauses in the same starter deck are
 activated abilities — Red Mage's `[Lightning][Dull]`, Noel's `[Dull], put into the Break Zone`, Miner's
 `[2][Dull]`, Undead Princess's two, Geomancer's and Red Mage 18-069C's `discard`, and Sphene's `[0]` — and
 every one of them is blocked on a single missing thing: there is no `activateAbility` command in the `Command`

@@ -14,7 +14,7 @@ Grouping the remaining twelve by the machinery they need:
 | Needs | Clauses |
 |---|---|
 | **Static (continuous) abilities** | **3** — Moogle's CP production, Odin's cost reduction, Sphene's Break-Zone protection |
-| Deck knowledge (rung C6) | 2 — Miner's and Reeve's ETBs |
+| Deck knowledge (rung C9) | 2 — Miner's and Reeve's ETBs (Hugh Yurg's search is a third) |
 | Deck search + put into play + observer | 2 — Hugh Yurg |
 | Removed-from-game zone | 1 — Undead Princess's second clause |
 | Field→Break-Zone history + once-per-turn | 1 — Sphene's `[0]` |
@@ -46,6 +46,10 @@ whole card work.
   payment collapsing. It also retires a standing `MVP0-SIMPLIFICATION` ("multi-element backups produce their
   first element; none in the MVP0 pool" — `cp.ts:26`), which deserves its own rung rather than a corner of
   this one.
+
+  > **Corrected in C6.** This estimate was wrong: `Payment` never needed to record which Element a Backup
+  > produced, because nothing needs to know. See `2026-08-27-rung-c6-flexible-cp.md`, which did it by giving a
+  > CP source a SET of Elements and touching one file.
 - **Sphene's Break-Zone protection** is a static whose subject is *removal from the game*, and there is no
   removed-from-game zone yet. It cannot be observed to work, so building it now would be untestable.
 - EX Burst itself; everything else in the table above.
