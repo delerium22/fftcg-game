@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { apply, applyChooseFirst, applyMulligan, checkInvariants, createGame, defOf, findFieldCard, legalCommands, powerOf } from '@fftcg/engine'
+import { apply, applyChooseFirst, applyMulligan, castRequirement, checkInvariants, createGame, defOf, findFieldCard, legalCommands, powerOf } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -469,8 +469,8 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the seventeen implemented clauses on, and only those seventeen', () => {
-    // Five from rung C1, five from C2, six from C3's activated abilities, one from C4 (Odin's Summon). Any
+  it('loadCards merges the eighteen implemented clauses on, and only those eighteen', () => {
+    // Five from rung C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's). Any
     // clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
@@ -478,8 +478,8 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '20-103H', '22-068R', '27-124S', '27-125S', '27-127S',
     ])
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
-      '1-121C:haste', '12-120C:etb', '13-072R:summon', '16-092C:dull-all', '16-092C:etb', '18-064C:draw',
-      '18-069C:draw',
+      '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
+      '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '20-074C:draw', '20-103H:summon', '22-068R:damages-opponent',
       '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken',
@@ -730,9 +730,75 @@ describe('13-072R Odin — "EX BURST Choose 1 Forward of cost 5 or less. Break i
     ok(done.state)
   })
 
-  it('keeps warning about the cost-reduction clause it still does not have', () => {
-    // ABILITY_CLAUSES counts PRINTED clauses: Odin prints two and has one, so the cast must still say so.
+  it('warns about nothing, now that BOTH of Odin\'s printed clauses have ASTs', () => {
+    // ABILITY_CLAUSES counts PRINTED clauses and must not move; what changes is that the implemented count
+    // caught up with it. Doing both clauses of one card is the only way to watch a whole card work.
     expect(ABILITY_CLAUSES['13-072R']).toBe(2)
-    expect(ABILITIES['13-072R']?.length).toBe(1)
+    expect(ABILITIES['13-072R']?.length).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C4 — 13-072R Odin's static cost reduction
+// ---------------------------------------------------------------------------
+
+describe('13-072R Odin — "If you have received 5 points of damage or more, the cost … is reduced by 3."', () => {
+  /** `n` cards in `p`'s damage zone, taken off their own deck so every instance stays in exactly one zone. */
+  function damaged(state: GameState, p: PlayerId, n: number): GameState {
+    const ps = state.players[p]
+    return setPlayer(state, p, { ...ps, damageZone: ps.deck.slice(0, n), deck: ps.deck.slice(n) })
+  }
+
+  /** What Odin costs `caster` right now. `withHand` MINTS the instance, so the requirement must be read off
+   *  the state it returned — not the one handed in, which has never heard of the card. */
+  const odinCost = (state: GameState, caster: PlayerId = 0) => {
+    const [s, odin] = withHand(state, caster, '13-072R')
+    return castRequirement(s, odin, caster).amount
+  }
+
+  it('costs its printed 5 below the threshold and 2 at it (C4-A1)', () => {
+    const base = makeGame()
+    expect(odinCost(base)).toBe(5)
+    expect(odinCost(damaged(base, 0, 4))).toBe(5)   // four is not "5 or more"
+    expect(odinCost(damaged(base, 0, 5))).toBe(2)
+    expect(odinCost(damaged(base, 0, 6))).toBe(2)
+  })
+
+  it('reads the CASTER\'s damage, not the opponent\'s (C4-A2)', () => {
+    // The one mistake a symmetric fixture cannot catch: reversed, Odin would be cheap exactly when you are
+    // winning, and a test that only checks "the reduction happened" would still pass.
+    const base = makeGame()
+    expect(odinCost(damaged(base, 1, 5), 0)).toBe(5)
+    expect(odinCost(damaged(base, 0, 5), 0)).toBe(2)
+  })
+
+  it('is actually castable for the reduced cost, through legalCommands (C4-A1)', () => {
+    let s = damaged(makeGame(), 0, 5)
+    ;[s] = withCp(s, 0, [LIGHTNING_BACKUP, LIGHTNING_BACKUP])   // exactly 2 CP — not the printed 5
+    let odin: CardId
+    ;[s, odin] = withHand(s, 0, '13-072R')
+    ;[s] = withField(s, 1, 'forwards', '27-124S')               // a legal target, so the Summon can resolve
+
+    const casts = legalCommands(s, 0).filter((c) => c.type === 'castSummon' && c.card === odin)
+    expect(casts.length, 'Odin was not castable for the reduced cost').toBeGreaterThan(0)
+    // Every enumerated payment totals the REDUCED cost: two dulled Backups, never five.
+    for (const c of casts) if (c.type === 'castSummon') expect(c.payment.dullBackups.length).toBe(2)
+    ok(apply(s, casts[0]!).state)
+  })
+
+  it('never resolves: no frame, no event, no resolution step (C4-A4)', () => {
+    let s = damaged(makeGame(), 0, 5)
+    ;[s] = withCp(s, 0, [LIGHTNING_BACKUP, LIGHTNING_BACKUP])
+    let odin: CardId
+    ;[s, odin] = withHand(s, 0, '13-072R')
+    ;[s] = withField(s, 1, 'forwards', '27-124S')
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castSummon' && c.card === odin)
+    const r = apply(s, cast!)
+
+    // Exactly one clause reaches the agenda — the Summon effect. The static contributes nothing.
+    const triggered = r.events.filter((e) => e.type === 'abilityTriggered')
+    expect(triggered.map((e) => (e as { abilityId: string }).abilityId)).toEqual(['13-072R:summon'])
+    const queued = [r.state.resolution.active, ...r.state.resolution.queue].filter(Boolean)
+    expect(queued.every((f) => f?.abilityId !== '13-072R:cost-reduction')).toBe(true)
   })
 })

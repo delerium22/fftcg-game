@@ -320,6 +320,21 @@ const PRISHE_DAMAGES_OPPONENT: Ability = {
  * Lightning, and `ABILITY_CLAUSES['13-072R']` stays at 2 so the card keeps warning about the clause it is
  * still missing.
  */
+/**
+ * Odin's first clause, and the rung's whole point: an ability that is never resolved. There is no frame, no
+ * event and no agenda entry — `castRequirement` simply reads it while working out what Odin costs.
+ *
+ * "you have received" is the CASTER's damage, which is the one thing here that is easy to get backwards and
+ * impossible to notice: reversed, Odin would be cheap exactly when you are winning, and every test that only
+ * checks "the reduction happened" would still pass.
+ */
+const ODIN_COST_REDUCTION: Ability = {
+  id: '13-072R:cost-reduction',
+  trigger: { kind: 'static', effect: { kind: 'costReduction', amount: 3, when: { kind: 'damageReceived', atLeast: 5 } } },
+  text: 'If you have received 5 points of damage or more, the cost required to cast Odin is reduced by 3.',
+  effects: [],   // a static makes something true; it has nothing to run
+}
+
 const ODIN_SUMMON: Ability = {
   id: '13-072R:summon',
   trigger: { kind: 'summonResolve' },
@@ -437,8 +452,8 @@ const RED_MAGE_18_DRAW: Ability = {
 export const ABILITIES: Record<string, readonly Ability[]> = {
   '1-121C': [RED_MAGE_HASTE],
   '12-120C': [SHANTOTTO_ETB],
-  // The Summon effect only; the conditional cost reduction is the other printed clause.
-  '13-072R': [ODIN_SUMMON],
+  // Printed order: the static cost reduction is clause 1, the Summon effect clause 2.
+  '13-072R': [ODIN_COST_REDUCTION, ODIN_SUMMON],
   // Printed order: the ETB is clause 1, the action clause 2.
   '16-092C': [NOEL_ETB, NOEL_DULL_ALL],
   '18-064C': [GEOMANCER_DRAW],

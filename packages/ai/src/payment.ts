@@ -52,7 +52,7 @@ function assignRequiredElements(elements: readonly Element[], sources: Source[],
 }
 
 export function preferredPayment(state: GameState, player: PlayerId, card: CardId): Payment | null {
-  return preferredPaymentFor(state, player, castRequirement(state, card))
+  return preferredPaymentFor(state, player, castRequirement(state, card, player))
 }
 
 /**

@@ -124,6 +124,37 @@ export type AbilityTrigger =
    * Break-Zone ability arrives.
    */
   | { readonly kind: 'activated'; readonly sourceZone: ActivationSourceZone; readonly cost: AbilityCost }
+  /**
+   * NOT a trigger either, and unlike an activated ability it never RESOLVES at all (spec C4-1). A static
+   * ability is simply true, continuously, and the rules consult it: it never reaches the resolution agenda,
+   * emits no event, and consumes no resolution steps.
+   *
+   * It lives in this union for the same reason `activated` does — every dispatch site already switches on
+   * `kind`, so trigger dispatch ignores it inertly and the compiler finds any switch that forgot it.
+   */
+  | { readonly kind: 'static'; readonly effect: StaticEffect }
+
+/**
+ * What a static ability makes true. Exactly ONE shape today, deliberately: a second arrives when a second
+ * card needs one, and the union makes adding it a compile-time exercise rather than a guess now.
+ */
+export type StaticEffect =
+  /**
+   * "the cost required to cast <this card> is reduced by N" — Odin. Note the scope: it modifies its OWN
+   * card's cost, from wherever that card is (Odin's is read while it sits in hand), rather than radiating
+   * from the field the way a Break-Zone protection would. Making the scope explicit now is what keeps
+   * Sphene's field-scoped static from being a rewrite.
+   */
+  | { readonly kind: 'costReduction'; readonly amount: number; readonly when: StaticCondition }
+
+/**
+ * When a static applies. Plain data, never a predicate function: card definitions travel through
+ * `structuredClone` into the search and into the Web Worker, which strips functions — the same constraint
+ * that made the whole ability system an AST.
+ */
+export type StaticCondition =
+  /** "If you have received N points of damage or more" — the CASTER's damage zone (§9.4). */
+  | { readonly kind: 'damageReceived'; readonly atLeast: number }
 
 export type ActivationSourceZone = 'field' | 'hand' | 'breakZone'
 

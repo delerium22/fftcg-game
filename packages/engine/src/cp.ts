@@ -1,4 +1,5 @@
 import type { CardDef, Element, PlayerId } from './types.js'
+import type { StaticCondition } from './abilities.js'
 import type { CardId, GameState } from './state.js'
 import { defOf, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
@@ -90,14 +91,53 @@ export interface CpRequirement {
 }
 
 /** The requirement for CASTING `card` — the Light/Dark exemption applied (§11.2.1.1). */
-export function castRequirement(state: GameState, card: CardId): CpRequirement {
+export function castRequirement(state: GameState, card: CardId, caster: PlayerId): CpRequirement {
   const def = defOf(state, card)
-  return { amount: def.cost, requiredElements: requiredElements(def), excluded: [card] }
+  return {
+    amount: Math.max(0, def.cost - costReduction(state, def, caster)),
+    requiredElements: requiredElements(def),
+    excluded: [card],
+  }
+}
+
+/**
+ * How much this card's own static abilities take off its cost (spec C4-4).
+ *
+ * Clamped by the caller at 0: a reduction cannot make a card pay negative CP, and `canPay` already treats 0
+ * as "no CP may be generated" (§11.2.2.4), so a fully-reduced card admits only the empty payment.
+ *
+ * Only the card's OWN statics are read. Nothing else in the pool reduces another card's cost, and inventing
+ * a board-wide sweep for a case no card needs would be guessing at the shape of the next one.
+ */
+function costReduction(state: GameState, def: CardDef, caster: PlayerId): number {
+  let total = 0
+  for (const ability of def.abilities ?? []) {
+    if (ability.trigger.kind !== 'static') continue
+    const { effect } = ability.trigger
+    if (effect.kind !== 'costReduction') continue
+    if (!staticApplies(state, effect.when, caster)) continue
+    total += effect.amount
+  }
+  return total
+}
+
+/** Whether a static's condition currently holds, from the perspective of `player`. */
+export function staticApplies(state: GameState, when: StaticCondition, player: PlayerId): boolean {
+  // Exhaustive by construction: one entry per `StaticCondition` kind, so adding a variant without handling it
+  // fails to compile. A `switch` cannot carry that here — with a single-member union TypeScript does not
+  // narrow the default branch to `never`, so the usual assertion would be a compile error today and a silent
+  // gap the moment a second variant lands.
+  const conditions: { readonly [K in StaticCondition['kind']]: (w: Extract<StaticCondition, { kind: K }>) => boolean } = {
+    // §9.4 — damage is received by a PLAYER, and "you have received" is the CASTER, never the opponent. A
+    // symmetric fixture cannot tell those apart, so this one has a test of its own.
+    damageReceived: (w) => state.players[player].damageZone.length >= w.atLeast,
+  }
+  return conditions[when.kind](when as never)
 }
 
 /** Every *minimal* legal payment for `card` (no source can be removed and still pay). Used by legalCommands as the canonical choice list; `apply` accepts any payment that `canPay` — overpaying is legal (§11.2.2.3). */
 export function enumeratePayments(state: GameState, player: PlayerId, card: CardId): Payment[] {
-  return enumeratePaymentsFor(state, player, castRequirement(state, card))
+  return enumeratePaymentsFor(state, player, castRequirement(state, card, player))
 }
 
 /** As `enumeratePayments`, for any requirement — an ability cost as readily as a card's printed cost. */

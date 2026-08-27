@@ -40,7 +40,7 @@ export function castCheck(state: GameState, player: PlayerId, card: CardId): str
  * that does (Odin's "reduced by 3"), and this is the seam it would have broken.
  */
 function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
-  const req = castRequirement(state, card)
+  const req = castRequirement(state, card, player)
   const cp = generateCp(state, player, payment, req.excluded)
   if (!canPay(req.amount, req.requiredElements, cp)) {
     throw new IllegalCommandError(`payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}`)
