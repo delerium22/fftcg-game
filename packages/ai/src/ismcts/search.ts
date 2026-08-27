@@ -412,9 +412,14 @@ export function searchTree(input: SearchInput): SearchTree {
   if (!best) throw new Error('searchIsmcts: no root action was ever visited')
   if (isOpaque(best.key)) throw new Error(`searchIsmcts: root action ${best.key} names a card the root player cannot identify`)
 
-  // The tree holds keys; only the root turns one back into a `Command`, and it does so against the LIVE view —
-  // so the returned ids are the real game's, never a determinisation's synthetic ones.
-  const command = decodeAction(input.view, best.key) ?? rootCommands.get(best.key)
+  // Return the command the tree actually EVALUATED, not a fresh decode of its key. Keys sort their lists
+  // (order is not semantic to `apply`), but the engine preserves command order in places the search then
+  // reads back: Break-Zone order after a multi-card discard, and a resolution frame's `chosen` binding. So a
+  // decode could hand back `[V-F1,V-F7]` where the simulations had scored `[V-F7,V-F1]` — a different
+  // observation from the one the statistics were gathered on. `rootCommands` holds the real candidate that
+  // produced this key, and the root player's own cards keep their live ids through determinisation (only
+  // hidden cards are re-minted), so it is already a live command. Decoding stays as the fallback.
+  const command = rootCommands.get(best.key) ?? decodeAction(input.view, best.key)
   if (!command) throw new Error(`searchIsmcts: root action ${best.key} does not decode against the live view`)
 
   // What the counters mean (D-A4), because two of them are easy to misread: `rolloutApplies` includes the

@@ -5,7 +5,7 @@ import {
 } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
 import { GreedyAgent } from '../src/greedy.js'
-import { actionKey, compareKeys, observationKey, type ActionKey, type ObservationKey, type SearchInput } from '../src/ismcts/keys.js'
+import { actionKey, compareKeys, decodeAction, observationKey, type ActionKey, type ObservationKey, type SearchInput } from '../src/ismcts/keys.js'
 import {
   DEFAULT_EXPLORATION_C, backpropagate, createNode, edgeFor, exploitation, leafReward, makeStreams, meanReward,
   rankRootEdges, rolloutToCap, searchIsmcts, searchTree, searchView, selectKey, ucb,
@@ -594,5 +594,40 @@ describe('IsmctsAgent', () => {
     s = toAttackDeclaration(s)
     const agent = new IsmctsAgent({ seed: 1, decks: decksOf(s), iterations: 120 })
     expect(agent.decide(viewFor(s, 0), [])).toEqual({ type: 'declareAttack', player: 0, attackers: [f] })
+  })
+})
+
+describe('the returned command is the one the tree EVALUATED', () => {
+  /**
+   * Keys sort their lists, because order is not semantic to `apply` — but the engine PRESERVES command order
+   * where the search then reads it back: Break-Zone order after a multi-card discard, and a frame's `chosen`
+   * binding. Reproduced directly: a discard of `[V-F7, V-F1]` keys to `discardToHandSize|p0|h:V-F1,h:V-F7`,
+   * decodes to `[V-F1, V-F7]`, and lands in the Break Zone in the OTHER order — a different `observationKey`
+   * from the one every simulation scored. So the root must return the candidate it evaluated, not a re-decode.
+   */
+  it('a re-decode can change the observation, so the search returns the candidate itself', () => {
+    let s: GameState = withHandSize(makeGame({ seed: 4 }), 0, 0)
+    let a = 0
+    let b = 0
+    // `candidateCommands` orders a discard by ASCENDING cardValue; keys order it by CODE. These two disagree
+    // — the cheap Summon is the lower value but the later code — so the candidate is genuinely not ref-sorted.
+    ;[s, a] = withHand(s, 0, 'V-F8')   // 9000: high value, early code
+    ;[s, b] = withHand(s, 0, 'V-S2')   // cost-1 summon: low value, late code
+    s = { ...s, phase: 'end', pending: { kind: 'discardToHandSize', player: 0, count: 2 }, priority: 0 }
+    const view = viewFor(s, 0)
+
+    // First: the hazard is real on this fixture, or the rest of the test proves nothing.
+    const unsorted: Command = { type: 'discardToHandSize', player: 0, cards: [b, a] }   // value order
+    const decoded = decodeAction(view, actionKey(view, unsorted))
+    const obs = (c: Command): ObservationKey => observationKey(viewFor(apply(s, c).state, 0))
+    expect(decoded).not.toBeNull()
+    expect(obs(decoded as Command), 'the fixture must actually exhibit the reorder').not.toBe(obs(unsorted))
+
+    // Then: what the search returns is a command `candidateCommands` really offered — identically, not merely
+    // up to its key — so the game gets the transition the statistics were gathered on.
+    const agent = new IsmctsAgent({ seed: 3, decks: decksOf(s), iterations: 40 })
+    const chosen = agent.decide(view, [])
+    const cands = candidateCommands(s, 0)
+    expect(cands.some((c) => JSON.stringify(c) === JSON.stringify(chosen)), `returned ${JSON.stringify(chosen)}`).toBe(true)
   })
 })
