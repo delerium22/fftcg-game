@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type AbilityTrigger, type CardId, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView,
+  type AbilityTrigger, type CardId, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason,
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
@@ -79,6 +79,14 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       const why = cause ? ` — ${describeTriggerCause(v, cause)}` : ''
       return { kind: 'event', text: `${name(v, e.card)}'s ability triggers${why}${text ? `: "${text}"` : ''}` }
     }
+    // C3: ACTIVATED, not triggered. The distinction is the whole of what this rung added for the player —
+    // "triggers" would report a move they deliberately made as something that merely happened to them.
+    case 'abilityActivated': {
+      const text = abilityText(v, e.card, e.abilityId)
+      const whose = e.player === v.me ? 'Your' : "The AI's"
+      return { kind: 'event', text: `${whose} ${name(v, e.card)} activates${text ? `: "${text}"` : ''}` }
+    }
+    case 'paidToBreakZone': return { kind: 'event', text: `${name(v, e.card)} is put into the Break Zone to pay for it` }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${name(v, e.card)}'s ability finds no legal target — nothing happens` }
     case 'dulled': return { kind: 'event', text: `${name(v, e.card)} is dulled` }
     case 'abilityDamage': return { kind: 'event', text: `${name(v, e.source)} deals ${e.amount} damage to ${name(v, e.target)}` }
@@ -114,7 +122,7 @@ function holderOf(v: PlayerView, id: CardId): PlayerId {
 
 interface Hit { readonly source: CardId; readonly target: CardId; readonly amount: number; used: boolean }
 interface PlayerHit { readonly victim: PlayerId; used: boolean }
-interface ZoneHit { readonly card: CardId; readonly controller: PlayerId; used: boolean }
+interface ZoneHit { readonly card: CardId; readonly controller: PlayerId; readonly reason: ZoneTransitionReason; used: boolean }
 
 /**
  * Pair one `abilityTriggered` with the event that fired it, consuming the candidate so the NEXT trigger of the
@@ -151,7 +159,7 @@ function causeOf(
     const hit = zoneHits.find((h) => !h.used && wants(h.controller))
     if (!hit) return null
     hit.used = true
-    return { kind: 'zoneChange', card: hit.card, controller: hit.controller }
+    return { kind: 'zoneChange', card: hit.card, controller: hit.controller, reason: hit.reason }
   }
   return null   // enterField/summonResolve are about the source itself — there is nothing to explain
 }
@@ -186,7 +194,10 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
       case 'playerDamaged': playerHits.push({ victim: e.player, used: false }); break
       case 'broken':
       case 'brokenByAbility':
-      case 'putIntoBreakZone': zoneHits.push({ card: e.card, controller: holderOf(v, e.card), used: false }); break
+      case 'putIntoBreakZone': zoneHits.push({ card: e.card, controller: holderOf(v, e.card), reason: 'ability', used: false }); break
+      // C3: paying a cost moves a card the same way a break does, so an observer of the MOVEMENT fires on it
+      // and the log needs the same cause available — tagged, so it is not narrated as a break.
+      case 'paidToBreakZone': zoneHits.push({ card: e.card, controller: e.player, reason: 'cost', used: false }); break
       default: break
     }
     let cause: TriggerCause | null = null

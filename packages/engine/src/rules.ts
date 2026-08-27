@@ -1,6 +1,7 @@
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import { EMPTY_RESOLUTION } from './abilities.js'
+import type { ZoneTransitionReason } from './abilities.js'
 import type { CardId, FieldCard, GameState } from './state.js'
 import { DAMAGE_TO_LOSE, defOf, powerOf, updatePlayer } from './state.js'
 import type { Event } from './events.js'
@@ -54,7 +55,7 @@ export interface ZoneTransition {
    * the printed wording the implemented watcher encodes — must see it. Anything that means "was broken"
    * specifically must filter on this field rather than assume every transition is a break.
    */
-  readonly reason: 'zeroPower' | 'damage' | 'ability' | 'cost'
+  readonly reason: ZoneTransitionReason
   /** The card whose ability caused the transition; null for a rule process, which has no source. */
   readonly cause: CardId | null
   readonly causeController: PlayerId | null

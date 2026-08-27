@@ -181,8 +181,9 @@ describe('C2-A3: one Lightning watching TWO simultaneous breaks triggers TWICE (
     const { r, a, b } = twoVictims()
     const subjects = [r.state.resolution.active, ...r.state.resolution.queue].map((f) => f?.triggerEvent)
     expect(subjects).toEqual([
-      { kind: 'zoneChange', card: a, from: 'field', to: 'breakZone', controller: 1, owner: 1 },
-      { kind: 'zoneChange', card: b, from: 'field', to: 'breakZone', controller: 1, owner: 1 },
+      // `reason` rides on the event from C3 so narration can tell a break from a cost payment.
+      { kind: 'zoneChange', card: a, from: 'field', to: 'breakZone', controller: 1, owner: 1, reason: 'damage' },
+      { kind: 'zoneChange', card: b, from: 'field', to: 'breakZone', controller: 1, owner: 1, reason: 'damage' },
     ])
   })
 })

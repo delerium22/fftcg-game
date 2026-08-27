@@ -127,6 +127,9 @@ export type AbilityTrigger =
 
 export type ActivationSourceZone = 'field' | 'hand' | 'breakZone'
 
+/** Mirrors `ZoneTransition.reason` (rules.ts); declared here so the trigger event can carry it without a cycle. */
+export type ZoneTransitionReason = 'zeroPower' | 'damage' | 'ability' | 'cost'
+
 /**
  * What activating costs. Every part is paid at once or the activation is not legal at all (§11.6.10) — there
  * is no partial payment and no "pay what you can".
@@ -161,7 +164,12 @@ export interface AbilityCost {
  */
 export type TriggerEvent =
   | { readonly kind: 'damage'; readonly source: CardId; readonly sourceController: PlayerId; readonly target: CardId | null; readonly victim: PlayerId | null; readonly amount: number }
-  | { readonly kind: 'zoneChange'; readonly card: CardId; readonly from: 'field'; readonly to: 'breakZone'; readonly controller: PlayerId; readonly owner: PlayerId }
+  /**
+   * `reason` rides along so narration can tell the player what actually happened. Every transition into the
+   * Break Zone used to be described as "was broken", which stopped being true in C3: a card put there to PAY
+   * for its own ability was not broken (§15.1.1.3.2), and saying so would misreport the board.
+   */
+  | { readonly kind: 'zoneChange'; readonly card: CardId; readonly from: 'field'; readonly to: 'breakZone'; readonly controller: PlayerId; readonly owner: PlayerId; readonly reason: ZoneTransitionReason }
 
 export interface Ability {
   /**

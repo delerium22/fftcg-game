@@ -1,9 +1,10 @@
 import {
-  HAND_SIZE_LIMIT, describeAbilityCost, effectivePower, seedRng,
+  HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, effectivePower, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
+  type ZoneTransitionReason,
 } from '@fftcg/engine'
-import { preferredPayment } from '@fftcg/ai'
+import { preferredPayment, preferredPaymentFor } from '@fftcg/ai'
 import type { Choice, ChoiceSet } from './types.js'
 
 const PHASE_LABEL: Record<string, string> = {
@@ -46,7 +47,11 @@ const modeLabel = (v: PlayerView, i: number): string => (v.pending?.kind === 'ch
  */
 export type TriggerCause =
   | { readonly kind: 'damage'; readonly source: CardId; readonly target: CardId | null; readonly victim: PlayerId | null; readonly amount: number }
-  | { readonly kind: 'zoneChange'; readonly card: CardId; readonly controller: PlayerId }
+  /**
+   * `reason` is optional because the log RECONSTRUCTS causes from the event stream and cannot always know
+   * one; absent, it means the ordinary case (the card was broken). `Frame.triggerEvent` always carries it.
+   */
+  | { readonly kind: 'zoneChange'; readonly card: CardId; readonly controller: PlayerId; readonly reason?: ZoneTransitionReason }
 
 const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' : "the AI's")
 
@@ -58,7 +63,13 @@ const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' 
  * at the head of a prompt.
  */
 export function describeTriggerCause(v: PlayerView, ev: TriggerCause): string {
-  if (ev.kind === 'zoneChange') return `${possessive(v, ev.controller)} ${name(v, ev.card)} was broken`
+  // Not every trip to the Break Zone is a break. A card put there to PAY for its own ability was not broken
+  // (§15.1.1.3.2), and reporting it as one would tell the player something about the board that is false —
+  // it also reads as though their own card had been destroyed by the opponent.
+  if (ev.kind === 'zoneChange') {
+    const how = ev.reason === 'cost' ? 'was put into the Break Zone' : 'was broken'
+    return `${possessive(v, ev.controller)} ${name(v, ev.card)} ${how}`
+  }
   if (ev.victim !== null) return `${name(v, ev.source)} dealt damage to ${ev.victim === v.me ? 'you' : 'the AI'}`
   return `${name(v, ev.source)} dealt ${ev.amount} damage to ${ev.target === null ? 'a Forward' : name(v, ev.target)}`
 }
@@ -384,7 +395,18 @@ export function sameCommand(a: Command, b: Command): boolean {
 }
 
 type CastCommand = Extract<Command, { type: 'castCharacter' | 'castSummon' }>
+type ActivateCommand = Extract<Command, { type: 'activateAbility' }>
+/**
+ * Both kinds of command that carry a `Payment`, and therefore both kinds that `legalCommands` explodes into
+ * one entry per minimal payment. C3 added the second; collapsing only casts would have put a separate button
+ * on the board for every way of paying for the same Red Mage ability.
+ */
+type PayableCommand = CastCommand | ActivateCommand
 const isCast = (c: Command): c is CastCommand => c.type === 'castCharacter' || c.type === 'castSummon'
+const isPayable = (c: Command): c is PayableCommand => isCast(c) || c.type === 'activateAbility'
+/** What counts as "the same move, paid differently". */
+const payableKey = (c: PayableCommand): string =>
+  c.type === 'activateAbility' ? `a:${c.source}:${c.abilityId}` : `c:${c.card}`
 
 /**
  * `preferredPayment` reads only the acting player's own backups, hand and the shared card/def tables — all of it
@@ -414,31 +436,46 @@ function stateShim(v: PlayerView): GameState {
  * payment, so the whole list stays in `legalCommands` order. Feed the result to `buildChoiceSet`.
  */
 export function preferredChoices(v: PlayerView, legal: Command[]): Command[] {
-  const casts = legal.filter(isCast)
-  if (!casts.length) return legal
-  const keep = new Map<CardId, Command>()
-  for (const c of casts) if (!keep.has(c.card)) keep.set(c.card, c)
+  const payable = legal.filter(isPayable)
+  if (!payable.length) return legal
+  const keep = new Map<string, Command>()
+  for (const c of payable) if (!keep.has(payableKey(c))) keep.set(payableKey(c), c)
   const shim = stateShim(v)
-  for (const card of [...keep.keys()]) {
-    const preferred = preferredPayment(shim, v.me, card)
+  for (const c of payable) {
+    const key = payableKey(c)
+    const preferred = preferredFor(shim, v, c)
     if (!preferred) continue
-    const match = casts.find((c) => c.card === card && samePayment(c.payment, preferred))
-    if (match) keep.set(card, match)
+    const match = payable.find((o) => payableKey(o) === key && samePayment(o.payment, preferred))
+    if (match) keep.set(key, match)
   }
-  const seen = new Set<CardId>()
+  const seen = new Set<string>()
   const out: Command[] = []
   for (const c of legal) {
-    if (!isCast(c)) { out.push(c); continue }
-    if (seen.has(c.card)) continue
-    seen.add(c.card)
-    out.push(keep.get(c.card) ?? c)
+    if (!isPayable(c)) { out.push(c); continue }
+    const key = payableKey(c)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(keep.get(key) ?? c)
   }
   return out
 }
 
-/** The printed cost of one activated clause, read off the view's own definitions. */
-function activatedCostOf(v: PlayerView, source: CardId, abilityId: string): string {
+/** The payment the AI's own value-minimising chooser would pick for this move. */
+function preferredFor(shim: GameState, v: PlayerView, c: PayableCommand): Payment | null {
+  if (c.type !== 'activateAbility') return preferredPayment(shim, v.me, c.card)
+  const ability = activatedAbilityOf(v, c.source, c.abilityId)
+  if (!ability || ability.trigger.kind !== 'activated') return null
+  return preferredPaymentFor(shim, v.me, abilityCpRequirement(c.source, ability.trigger.cost))
+}
+
+/** The activated clause `abilityId` names, read off the view's own definitions. */
+function activatedAbilityOf(v: PlayerView, source: CardId, abilityId: string): Ability | undefined {
   const def = v.defs[v.cards[source]?.code ?? '']
-  const ability = (def?.abilities ?? []).find((a) => a.id === abilityId)
+  return (def?.abilities ?? []).find((a) => a.id === abilityId)
+}
+
+/** The printed cost of one activated clause, for the button label. */
+function activatedCostOf(v: PlayerView, source: CardId, abilityId: string): string {
+  const ability = activatedAbilityOf(v, source, abilityId)
   return ability && ability.trigger.kind === 'activated' ? describeAbilityCost(ability.trigger.cost) : 'Ability'
 }

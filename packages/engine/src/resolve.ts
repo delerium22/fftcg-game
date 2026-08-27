@@ -582,7 +582,7 @@ function enqueueZoneTriggers(state: GameState, occurrences: readonly WatcherOccu
   let s = state
   for (const o of occurrences) {
     const t = o.transition
-    const event: TriggerEvent = { kind: 'zoneChange', card: t.card, from: 'field', to: 'breakZone', controller: t.controller, owner: t.owner }
+    const event: TriggerEvent = { kind: 'zoneChange', card: t.card, from: 'field', to: 'breakZone', controller: t.controller, owner: t.owner, reason: t.reason }
     s = enqueueTrigger(s, o.source, o.controller, o.ability, event)
   }
   return s

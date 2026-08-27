@@ -424,7 +424,7 @@ function richView(): { view: PlayerView; ids: Record<string, CardId> } {
     pending: { kind: 'chooseTargets', player: 0, min: 1, max: 2, candidates: [d1, a1] },
     resolution: {
       active: { abilityId: 'X-SRC:etb', source: b1, controller: 0, path: [0, 1], chosen: [a1, d1], modes: [1], triggerEvent: { kind: 'damage', source: a2, sourceController: 0, target: d1, victim: null, amount: 3000 } },
-      queue: [{ abilityId: 'Y-SRC:etb', source: a1, controller: 1, path: [], chosen: [], modes: [], triggerEvent: { kind: 'zoneChange', card: z1, from: 'field', to: 'breakZone', controller: 1, owner: 1 } }],
+      queue: [{ abilityId: 'Y-SRC:etb', source: a1, controller: 1, path: [], chosen: [], modes: [], triggerEvent: { kind: 'zoneChange', card: z1, from: 'field', to: 'breakZone', controller: 1, owner: 1 , reason: 'ability'} }],
       continuation: 'enterAttackDeclaration',
       steps: 7,
     },
@@ -461,7 +461,7 @@ describe('observationKey (contract 6)', () => {
       ['frame.chosen', { ...view, resolution: { ...view.resolution, active: { ...active, chosen: [ids.a2!, ids.d1!] } } }],
       ['frame.triggerEvent.source', { ...view, resolution: { ...view.resolution, active: { ...active, triggerEvent: { kind: 'damage', source: ids.b1!, sourceController: 0, target: ids.d1!, victim: null, amount: 3000 } } } }],
       ['frame.triggerEvent.target', { ...view, resolution: { ...view.resolution, active: { ...active, triggerEvent: { kind: 'damage', source: ids.a2!, sourceController: 0, target: ids.a1!, victim: null, amount: 3000 } } } }],
-      ['queued frame.triggerEvent.card', { ...view, resolution: { ...view.resolution, queue: [{ ...view.resolution.queue[0]!, triggerEvent: { kind: 'zoneChange', card: ids.d1!, from: 'field', to: 'breakZone', controller: 1, owner: 1 } }] } }],
+      ['queued frame.triggerEvent.card', { ...view, resolution: { ...view.resolution, queue: [{ ...view.resolution.queue[0]!, triggerEvent: { kind: 'zoneChange', card: ids.d1!, from: 'field', to: 'breakZone', controller: 1, owner: 1 , reason: 'ability'} }] } }],
     ]
     for (const [why, v] of swaps) expect(observationKey(v), why).not.toBe(key)
   })

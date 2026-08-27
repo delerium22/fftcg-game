@@ -3,11 +3,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
   actingPlayer, apply, createGame, legalCommands, viewFor,
-  type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type PlayerView, type TriggerEvent,
+  type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type Payment, type PlayerView, type TriggerEvent,
 } from '@fftcg/engine'
 import { GreedyAgent, preferredPayment } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
-import { buildChoiceSet, describeChoice, fieldCardDisplay, preferredChoices, promptFor, samePayment } from '../src/game/commands.js'
+import { buildChoiceSet, describeChoice, fieldCardDisplay, preferredChoices, promptFor, sameCommand, samePayment } from '../src/game/commands.js'
 import { AI, HUMAN } from '../src/game/types.js'
 import { Card } from '../src/ui/Card.js'
 import { stepAi } from '../src/game/useGame.js'
@@ -151,10 +151,14 @@ describe('preferredChoices', () => {
     expect(samePayment((kept as Extract<Command, { type: 'castCharacter' }>).payment, preferred)).toBe(true)
   })
 
-  it('leaves non-cast commands untouched and preserves relative order', () => {
+  it('leaves commands that carry no payment untouched and preserves relative order', () => {
     const collapsed = preferredChoices(view, legal)
-    const nonCast = (cs: Command[]) => cs.filter((c) => c.type !== 'castCharacter' && c.type !== 'castSummon')
-    expect(nonCast(collapsed)).toEqual(nonCast(legal))
+    // C3 generalised the collapsing from casts to every command that carries a `Payment`, because
+    // `legalCommands` explodes activations into one entry per minimal payment exactly as it does casts —
+    // otherwise the board grows a separate button for each way of paying for the same Red Mage ability.
+    const PAYABLE = ['castCharacter', 'castSummon', 'activateAbility']
+    const unpayable = (cs: Command[]) => cs.filter((c) => !PAYABLE.includes(c.type))
+    expect(unpayable(collapsed)).toEqual(unpayable(legal))
     // one entry per castable card, each sitting where that card's FIRST payment was
     const order = collapsed.filter((c) => c.type === 'castCharacter' || c.type === 'castSummon').map((c) => (c as Extract<Command, { type: 'castCharacter' }>).card)
     const firstSeen: CardId[] = []
@@ -415,12 +419,12 @@ describe('a prompt raised by an observer trigger names its cause (spec C2-5)', (
   const ask = 'Noel: choose 1 Forward you control to give Haste'
 
   it('leads with the cause, then the ask', () => {
-    const broken: TriggerEvent = { kind: 'zoneChange', card: THEIRS, from: 'field', to: 'breakZone', controller: AI, owner: AI }
+    const broken: TriggerEvent = { kind: 'zoneChange', card: THEIRS, from: 'field', to: 'breakZone', controller: AI, owner: AI , reason: 'ability'}
     expect(promptFor(watchView(broken))).toBe(`The AI's Sphene was broken — ${ask}`)
   })
 
   it('C2-10: reads "opponent" from the ability controller, so it flips with the seat', () => {
-    const mineBroken: TriggerEvent = { kind: 'zoneChange', card: MINE, from: 'field', to: 'breakZone', controller: HUMAN, owner: HUMAN }
+    const mineBroken: TriggerEvent = { kind: 'zoneChange', card: MINE, from: 'field', to: 'breakZone', controller: HUMAN, owner: HUMAN , reason: 'ability'}
     expect(promptFor(watchView(mineBroken))).toBe(`Your Cloud was broken — ${ask}`)
   })
 
@@ -443,5 +447,49 @@ describe('wording degrades gracefully when the clause cannot be read', () => {
     v.resolution = { active: null, queue: [], continuation: null, steps: 0 }
     expect(promptFor(v)).toBe('Choose up to 2 Forwards the AI controls')
     expect(describeChoice(v, targets([901]))).toBe('Target Cloud')
+  })
+})
+
+describe('activated abilities on the board (C3-A7)', () => {
+  /** A board with one Red Mage on the field, plus an unrelated Backup that could pay for its ability. */
+  function redMageView(): { v: PlayerView; src: CardId; backup: CardId } {
+    const v = viewFor(dealtGame(1), HUMAN)
+    const src = instance(v, 910, '1-121C')
+    const backup = instance(v, 911, '9-074C')
+    v.fields[HUMAN].backups = [fieldCard(src), fieldCard(backup)]
+    return { v, src, backup }
+  }
+  const act = (source: CardId, abilityId: string, payment: Payment = { dullBackups: [], discards: [] }): Command =>
+    ({ type: 'activateAbility', player: HUMAN, source, abilityId, payment })
+
+  it('belongs to its source card, so the board lights that card up', () => {
+    // Not the CP sources: those are payment, chosen for the player, and making them clickable would imply
+    // the click picks them.
+    const { v, src, backup } = redMageView()
+    const set = buildChoiceSet(v, [act(src, '1-121C:haste', { dullBackups: [backup], discards: [] })])
+    expect(set.byCard.get(src)?.map((c) => c.command.type)).toEqual(['activateAbility'])
+    expect(set.byCard.get(backup)).toBeUndefined()
+  })
+
+  it('labels the button with the printed cost', () => {
+    const { v, src, backup } = redMageView()
+    const label = describeChoice(v, act(src, '1-121C:haste', { dullBackups: [backup], discards: [] }))
+    expect(label).toContain('[Lightning][Dull]')
+  })
+
+  it('tells two clauses of the SAME card apart', () => {
+    // Miner and Undead Princess each print two clauses, so identity has to include the clause — the same
+    // reason the command carries `abilityId` rather than an index into the card's ability array.
+    const { src } = redMageView()
+    expect(sameCommand(act(src, '16-092C:etb'), act(src, '16-092C:dull-all'))).toBe(false)
+    expect(sameCommand(act(src, '16-092C:etb'), act(src, '16-092C:etb'))).toBe(true)
+  })
+
+  it('tells two payments of the same clause apart', () => {
+    const { src } = redMageView()
+    const a = act(src, '1-121C:haste', { dullBackups: [7], discards: [] })
+    const b = act(src, '1-121C:haste', { dullBackups: [8], discards: [] })
+    expect(sameCommand(a, b)).toBe(false)
+    expect(sameCommand(a, act(src, '1-121C:haste', { dullBackups: [7], discards: [] }))).toBe(true)
   })
 })

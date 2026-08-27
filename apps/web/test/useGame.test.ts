@@ -524,7 +524,7 @@ describe('the log says WHY an observer trigger fired (spec C2-5)', () => {
     // own `triggerEvent` (spec C2-5) — read it rather than let the line go bare.
     const frame: Frame = {
       abilityId: LIGHTNING_WATCH, source: ids.lightning, controller: HUMAN, path: [], chosen: [], modes: [],
-      triggerEvent: { kind: 'zoneChange', card: ids.sphene, from: 'field', to: 'breakZone', controller: AI, owner: AI },
+      triggerEvent: { kind: 'zoneChange', card: ids.sphene, from: 'field', to: 'breakZone', controller: AI, owner: AI , reason: 'ability'},
     }
     const out = eventLines(c2View(), [triggered(HUMAN, ids.lightning, LIGHTNING_WATCH)], [frame]).map((l) => l.text)
     expect(out[0]).toContain("the AI's Sphene was broken")
