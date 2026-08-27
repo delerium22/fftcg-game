@@ -324,9 +324,15 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       ctx.state = learn(ctx.state, audience, exposed)
       ctx.events.push({ type: 'deckExposed', player: ctx.controller, count: exposed.length, audience: eff.audience, cards: exposed, scope: eff.count === 'all' ? 'deck' : 'top' })
 
-      const eligible = exposed
-        .map((id, i) => (matchesFilter(ctx.state, ctx.source, id, eff.take.filter) ? i : -1))
-        .filter((i) => i >= 0)
+      const pending: Extract<Pending, { kind: 'chooseFromDeck' }> = {
+        kind: 'chooseFromDeck', player: ctx.controller,
+        min: eff.take.min, max: eff.take.max, count: exposed.length, to: eff.to,
+        ...(eff.take.filter ? { filter: eff.take.filter } : {}),
+      }
+      // Asked through the SAME function that will validate the answer, and against the same state. Computing
+      // it inline here instead left two implementations of "which positions does this filter allow" — so the
+      // question a player is offered could drift from the one their answer is checked against.
+      const eligible = deckPickCandidates(ctx.state, pending)
       // "Add 1 Backup among them" with no Backup among them takes nothing — but the look still happened and
       // the cards still go to the bottom, so this settles rather than aborting.
       //
@@ -336,11 +342,7 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       // has to make to continue, and for the AI a tree edge that carries no information.
       if (eligible.length === 0 || eff.take.min > eligible.length) { settleLook(ctx, eff, exposed, []); return }
 
-      ctx.suspend = {
-        kind: 'chooseFromDeck', player: ctx.controller,
-        min: eff.take.min, max: eff.take.max, count: exposed.length, to: eff.to,
-        ...(eff.take.filter ? { filter: eff.take.filter } : {}),
-      }
+      ctx.suspend = pending
       return
     }
     case 'forEach': {

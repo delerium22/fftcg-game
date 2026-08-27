@@ -90,6 +90,27 @@ export function visibleKnownBy(state: GameState, cards: Record<CardId, CardInsta
 }
 
 /**
+ * The cards `picks` names in `player`'s deck, as this view sees them — or `null` when the viewer cannot see
+ * every one of them and the answer must be given as a count instead.
+ *
+ * Here rather than in a renderer because BOTH renderers need it and both got it wrong the same two ways
+ * (spec C9): they indexed the VIEWER's deck instead of the CHOOSER's, which names the wrong player's cards
+ * outright, and they named a card the viewer had never been shown. The wording around it — "Take" versus
+ * "Play … onto the field", and how each app spells a card name — stays with the renderer; the rule about
+ * which cards a set of picks actually names does not.
+ */
+export function pickedDeckCards(view: PlayerView, player: PlayerId, picks: readonly number[]): CardId[] | null {
+  const slots = view.fields[player].deck
+  const out: CardId[] = []
+  for (const i of picks) {
+    const card = slots[i]?.card
+    if (card === null || card === undefined) return null
+    out.push(card)
+  }
+  return out
+}
+
+/**
  * One player's deck as `viewer` sees it (spec C9-5).
  *
  * EXPORTED for the same reason `visibleKnownBy` is: `searchView` is a second copy of this projection, and a

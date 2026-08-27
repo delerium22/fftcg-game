@@ -1,5 +1,5 @@
 import type { CardId, Command, FieldCard, PlayerView } from '@fftcg/engine'
-import { describeAbilityCost } from '@fftcg/engine'
+import { describeAbilityCost, pickedDeckCards } from '@fftcg/engine'
 
 const PHASE_LABEL: Record<string, string> = { setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase', main1: 'Main Phase 1', attack: 'Attack Phase', main2: 'Main Phase 2', end: 'End Phase' }
 
@@ -46,14 +46,12 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'chooseTargets': return c.targets.length ? `Target ${c.targets.map((id) => name(v, id)).join(', ')}` : 'Choose no targets'
     case 'chooseMode': return c.modes.length ? `Choose mode ${c.modes.map((i) => i + 1).join(' + ')}` : 'Choose no modes'
     case 'chooseFromDeck': {
-      // A search PLAYS what it finds; a look ADDS it to hand — and the indices are positions in the CHOOSER's
-      // deck, not the viewer's. Both were wrong here until the C9 review: hotseat labelled Hugh Yurg's search
-      // "Take Luso" for a card that goes straight onto the field, and read the wrong player's deck to do it.
+      // A search PLAYS what it finds; a look ADDS it to hand. Which cards the indices name is
+      // `pickedDeckCards`' rule, shared with the browser — both renderers got it wrong the same two ways.
       const field = v.pending?.kind === 'chooseFromDeck' && v.pending.to === 'field'
       if (!c.picks.length) return field ? 'Find nothing' : 'Take nothing'
-      const exposed = v.fields[c.player].deck
-      const named = c.picks.map((i) => exposed[i]?.card).filter((id): id is CardId => id !== null && id !== undefined)
-      const what = named.length === c.picks.length ? named.map((id) => name(v, id)).join(', ') : `${c.picks.length} card(s)`
+      const named = pickedDeckCards(v, c.player, c.picks)
+      const what = named ? named.map((id) => name(v, id)).join(', ') : `${c.picks.length} card(s)`
       return field ? `Play ${what} onto the field` : `Take ${what}`
     }
     case 'declareAttack': return `Attack with ${c.attackers.map((id) => name(v, id)).join(' + ')}`

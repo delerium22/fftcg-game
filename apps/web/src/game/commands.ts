@@ -1,5 +1,5 @@
 import {
-  HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, effectivePower, seedRng,
+  HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, effectivePower, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
   type ZoneTransitionReason,
@@ -269,12 +269,9 @@ export function describeChoice(v: PlayerView, c: Command): string {
       // A search PLAYS what it finds; a look ADDS it to hand. The pending says which, so the button says it too.
       const field = v.pending?.kind === 'chooseFromDeck' && v.pending.to === 'field'
       if (!c.picks.length) return field ? 'Find nothing' : 'Take nothing'
-      // `c.player`'s deck, NOT `v.me`'s. The indices are positions in the CHOOSER's deck, so reading the
-      // viewer's own deck would silently name the wrong player's card whenever the two differ — which is
-      // exactly what happens when this labels the opponent's move in the log.
-      const exposed = v.fields[c.player].deck
-      const named = c.picks.map((i) => exposed[i]?.card).filter((id): id is CardId => id !== null && id !== undefined)
-      const what = named.length === c.picks.length ? listNames(v, named) : `${c.picks.length} card${c.picks.length === 1 ? '' : 's'}`
+      // Which cards those indices name is the engine's rule, not this renderer's — see `pickedDeckCards`.
+      const named = pickedDeckCards(v, c.player, c.picks)
+      const what = named ? listNames(v, named) : `${c.picks.length} card${c.picks.length === 1 ? '' : 's'}`
       return field ? `Play ${what} onto the field` : `Take ${what}`
     }
     // A mode has no card subject, so its button IS the printed wording — never a paraphrase of it.
