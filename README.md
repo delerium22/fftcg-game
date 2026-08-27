@@ -7,17 +7,23 @@ with Square Enix.
 Design spec and MVP ladder:
 [`docs/superpowers/specs/2026-08-25-fftcg-game-design.md`](docs/superpowers/specs/2026-08-25-fftcg-game-design.md).
 
-## Status: rung B — playable in the browser against the AI
+## Status: rung D — playable in the browser against a search-based AI
 
 **You can sit down and play a full game against the AI in a browser**: first-player choice and
 mulligan, casting Backups/Forwards/Summons with CP paid for you, attacking and blocking, party
-damage, and win/loss. The engine (`packages/engine`) and the greedy AI (`packages/ai`) contain no
-`node:` imports, so the whole game — rules, opponent, and card database — runs client-side. There
-is no server.
+damage, and win/loss. The engine (`packages/engine`) and the AI (`packages/ai`) contain no `node:`
+imports, so the whole game — rules, opponent, and card database — runs client-side. There is no
+server.
 
-Card abilities are still not implemented: every card plays as if its text box were blank, and the
-game log says so in amber whenever a card with abilities hits the field, so the caveat is visible
-in play rather than a silent surprise. That is rung C.
+The browser opponent is the **ISMCTS search**, running in a Web Worker so the board never freezes
+while it thinks (rung D2). It beats the heuristic agent **90.0 %** over 120 mirrored games. If the
+worker fails for any reason the game falls back to the heuristic agent permanently and says so in
+the log, in amber — a weaker opponent is never silent.
+
+Card abilities are **partly** implemented: **10 of the starter deck's 28 printed ability clauses,
+across 8 of its 19 cards**. Every unimplemented clause plays as if its text box were blank, and the
+game log says so in amber whenever such a card hits the field, so the caveat is visible in play
+rather than a silent surprise. Finishing them is rung C3.
 
 The same engine still plays in the terminal (hotseat) and under a self-play fuzzer.
 
@@ -34,14 +40,21 @@ pnpm lint                                               # eslint .
 pnpm --filter @fftcg/cli hotseat --seed 1                              # play a game in the terminal
 pnpm --filter @fftcg/cli selfplay --games 200 --seed 1                 # random-vs-random fuzzer
 pnpm --filter @fftcg/cli selfplay --games 200 --seed 1 --p0 greedy --p1 random --fast   # greedy AI vs random
+pnpm --filter @fftcg/cli mirror --pairs 60 --a ismcts --b greedy --fast                 # ISMCTS vs greedy, seats swapped
 pnpm --filter @fftcg/cli deckorder --seed 1                            # print a seeded deck order
 ```
+
+`mirror` is the honest way to compare two agents: it plays every seed twice with the seats swapped,
+so a seat advantage cannot masquerade as a strength difference, and reports a **paired-bootstrap
+confidence interval** rather than a bare percentage.
 
 All three CLI commands accept `--seed N` and `--deck <path>` (default deck:
 `decks/starter-2025-vol2.txt`); `selfplay` also accepts:
 - `--games N` — number of games (default 200).
-- `--p0 <spec>`, `--p1 <spec>` — per-seat agent, one of `random` (default), `greedy`, or `greedy:N`
-  (`N` = 0, 1, or 2; pins that seat's lookahead depth regardless of `--depth`).
+- `--p0 <spec>`, `--p1 <spec>` — per-seat agent, one of `random` (default), `greedy`, `greedy:N`
+  (`N` = 0, 1, or 2; pins that seat's lookahead depth regardless of `--depth`), or `ismcts[:N]`
+  (`N` = iteration budget; bare `ismcts` uses the search's own default, so a run is always reported
+  with the budget that produced its ms/decision).
 - `--depth N` — lookahead depth (0, 1, or 2; default 1) applied to any `greedy` seat that didn't pin
   its own depth via `greedy:N`.
 - `--fast` — skips the engine's `checkInvariants`/immutability assertions between commands (`strict:
@@ -69,19 +82,39 @@ play.
 
 ## AI opponent
 
-`packages/ai`'s `GreedyAgent` plays by determinising the game (rebuilding a full, consistent
-`GameState` from the agent's own `PlayerView` plus both players' deck lists — assumed public
-knowledge, e.g. a fixed starter matchup — sampling unseen cards with a seeded RNG, never the
-ground-truth state). The search itself is a **greedy one-ply lookahead with rollout**: for each
-legal move it applies the move, fully resolves any combat it opens, then rolls out greedily to the
-end of the current turn (depth 1, the default); at attack declaration the depth adaptively widens
-to 2, also rolling out the opponent's following turn. Every resulting state is scored with a
-hand-tuned evaluation function and the best-scoring move is played. It is seeded and deterministic
-(same seed + same views ⇒ same decisions) and never sees hidden information beyond what a real
-player could infer from the deck lists being public. Measured over 200 seeded self-play games
-(`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`'s appendix has the full breakdown):
-greedy wins **≥ 98 % of games vs. the concrete-command random baseline** on 200-game seeded runs,
-regardless of seat or lookahead depth.
+Both agents in `packages/ai` play by **determinising** the game — rebuilding a full, consistent
+`GameState` from the agent's own `PlayerView` plus both players' deck lists (assumed public
+knowledge, e.g. a fixed starter matchup), sampling unseen cards with a seeded RNG, never touching
+the ground-truth state. Neither ever sees hidden information beyond what a real player could infer
+from the deck lists being public, and both are seeded and deterministic: same seed + same views ⇒
+same decisions.
+
+**`IsmctsAgent` is what the browser plays, and it is the stronger of the two.** It runs
+single-observer ISMCTS: a fresh determinisation per iteration, one shared tree, and UCB1 corrected
+for *availability* — an action's exploration bonus counts only the iterations in which that action
+was actually legal, `mean + C·sqrt(log A(s,a) / N(s,a))`, which is what stops rarely-available
+actions from looking artificially good. Nodes are keyed canonically so the same decision found under
+different determinisations shares statistics. Rollouts are bounded twice over (command cap and apply
+cap) because their tail, not their median, is what costs.
+
+**`GreedyAgent`** is the fallback and the baseline: a one-ply lookahead that applies each legal move,
+fully resolves any combat it opens, then rolls out greedily to the end of the turn (depth 1, the
+default), widening to depth 2 at attack declaration. Every resulting state is scored with a
+hand-tuned evaluation function.
+
+Measured strength, all on seeded runs:
+
+| Matchup | Result |
+|---|---|
+| ISMCTS vs greedy, 120 mirrored games, 200 iterations | **90.0 %** |
+| Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
+| ISMCTS in the browser (production build, Apple Silicon) | p50 **152 ms**, p95 240 ms per decision |
+
+Full breakdowns: [`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`](docs/superpowers/specs/2026-08-26-heuristic-ai-design.md)
+(greedy) and [`docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md`](docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md)
+(ISMCTS). One caveat worth stating plainly: the 200-iteration budget was chosen because the browser
+comfortably affords it, **not** because it was calibrated for strength — more iterations have not
+been shown to be worth their latency.
 
 ## Card images
 
@@ -121,7 +154,7 @@ grep -rn MVP0-SIMPLIFICATION packages apps --include='*.ts' --exclude-dir=dist
 ```
 packages/engine   pure TS rules engine (state, commands, reducer, legal-move enumeration, views)
 packages/cards    Vol. 2 card data: fetch script + patches + normalisation
-packages/ai       Agent interface + RandomAgent + GreedyAgent (determinised greedy lookahead)
+packages/ai       Agent interface + RandomAgent + GreedyAgent (determinised lookahead) + IsmctsAgent (SO-ISMCTS)
 apps/cli          hotseat / selfplay / deckorder CLI (tsx)
 decks/            deck list text files
 docs/superpowers/ design spec and implementation plans
