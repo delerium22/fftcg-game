@@ -306,21 +306,6 @@ const PRISHE_DAMAGES_OPPONENT: Ability = {
 }
 
 /**
- * Odin's Summon effect (spec C4). Structurally Lightning's ETB — a `maxCost` target then `breakCard` — with
- * two differences worth reading off the printed text rather than assuming:
- *
- * - "Choose 1 Forward", not "a Forward opponent controls", so `controller: 'any'`. Breaking your own Forward
- *   is legal and almost always bad, which is the card's business, not the engine's.
- * - `maxCost: 5` is the PRINTED cost of the target. Odin's own first clause reduces the cost to CAST Odin;
- *   neither that nor any other modifier is meant to move a target's printed cost, and `targetCandidates`
- *   reads `def.cost` for exactly that reason.
- *
- * The `EX BURST` tag is quoted because it is printed, but EX Burst itself is not implemented: this clause
- * fires on a NORMAL cast, which is what `summonResolve` means. That is the same treatment C1 gave Noel and
- * Lightning, and `ABILITY_CLAUSES['13-072R']` stays at 2 so the card keeps warning about the clause it is
- * still missing.
- */
-/**
  * Odin's first clause, and the rung's whole point: an ability that is never resolved. There is no frame, no
  * event and no agenda entry — `castRequirement` simply reads it while working out what Odin costs.
  *
@@ -335,6 +320,21 @@ const ODIN_COST_REDUCTION: Ability = {
   effects: [],   // a static makes something true; it has nothing to run
 }
 
+/**
+ * Odin's Summon effect (spec C4). Structurally Lightning's ETB — a `maxCost` target then `breakCard` — with
+ * two differences worth reading off the printed text rather than assuming:
+ *
+ * - "Choose 1 Forward", not "a Forward opponent controls", so `controller: 'any'`. Breaking your own Forward
+ *   is legal and almost always bad, which is the card's business, not the engine's.
+ * - `maxCost: 5` is the PRINTED cost of the target. Odin's own first clause reduces the cost to CAST Odin;
+ *   neither that nor any other modifier is meant to move a target's printed cost, and `targetCandidates`
+ *   reads `def.cost` for exactly that reason.
+ *
+ * The `EX BURST` tag is quoted because it is printed, but EX Burst itself is not implemented: this clause
+ * fires on a NORMAL cast, which is what `summonResolve` means — the same treatment C1 gave Noel and
+ * Lightning. `ABILITY_CLAUSES['13-072R']` stays at 2 because it counts PRINTED clauses; what changed in C4
+ * is that the implemented count caught up with it, so Odin now warns about nothing at all.
+ */
 const ODIN_SUMMON: Ability = {
   id: '13-072R:summon',
   trigger: { kind: 'summonResolve' },
