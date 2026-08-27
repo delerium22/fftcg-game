@@ -375,6 +375,29 @@ describe('rollouts are hard-bounded by a COMMAND cap (D-6)', () => {
     expect(r.applies).toBeGreaterThan(0)   // the exempt tail did real work
   })
 
+  /**
+   * ...and that tail is why a COMMAND cap alone is not a hard bound on WORK. It used to run with
+   * `cap: Infinity` — a counter, not a limit — so after the command cap the settlement tail was unbounded,
+   * and `greedyStep` inside it applies every candidate it scores. That is precisely the runaway a Worker
+   * with no cancellation cannot survive, and it is invisible to a win-rate gate.
+   */
+  it('bounds WORK with a separate apply cap, and still returns a fully settled leaf', () => {
+    let s = partyAttackPosition()
+    s = apply(s, { type: 'declareAttack', player: 0, attackers: s.players[0].forwards.map((c) => c.id) }).state
+    const generous = rolloutToCap(s, 0, 12)
+    const tight = rolloutToCap(s, 0, 12, undefined, undefined, 4)
+
+    // The cap bites: a tight budget really does less work than a generous one on the same position.
+    expect(tight.applies).toBeLessThan(generous.applies)
+    // But it never buys that by leaving the leaf half-resolved — which would price a declared attack that
+    // dealt no damage as pure loss (R4 by another route).
+    expect(tight.state.pending).toBeNull()
+    expect(tight.state.resolution.active).toBeNull()
+    expect(tight.state.resolution.queue).toEqual([])
+    expect(tight.reward).toBeGreaterThanOrEqual(0)
+    expect(tight.reward).toBeLessThanOrEqual(1)
+  })
+
   it('bounds every reward to [0,1] with terminals exact', () => {
     const s = makeGame()
     expect(leafReward({ ...s, result: { winner: 0, reason: 'x' } }, 0)).toBe(1)

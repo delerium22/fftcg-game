@@ -50,6 +50,14 @@ export const DEFAULT_ITERATIONS = 200
 /** D-6: a cap on rollout COMMANDS, not depth — an ability cascade makes a single command arbitrarily deep. */
 export const DEFAULT_ROLLOUT_COMMAND_CAP = 24
 
+/**
+ * The hard WORK bound on one rollout, in `apply` calls, covering the settlement tail the command cap cannot.
+ * Measured at ~520 applies per iteration on the starter matchup at the command cap above, so this is roughly
+ * 4x a normal rollout: high enough never to bind in ordinary play, low enough that a pathological cascade
+ * cannot run away inside a Worker with no cancellation.
+ */
+export const DEFAULT_ROLLOUT_APPLY_CAP = 2048
+
 /** Rollouts price both sides symmetrically; `greedyStep` flips it for the non-perspective player itself. */
 const ROLLOUT_AGGRESSION = 0.5
 
@@ -262,8 +270,25 @@ export interface RolloutResult {
  * board where the attack was declared, both Forwards are dull and no damage has been dealt — which prices an
  * attack as pure loss and inverts the search's entire view of combat.
  */
-export function rolloutToCap(state: GameState, root: PlayerId, cap: number, weights: Weights = DEFAULT_WEIGHTS, counters?: Counters | undefined): RolloutResult {
-  const budget = { used: 0, cap: Number.POSITIVE_INFINITY }   // a counter, not a limit: the cap here is on COMMANDS
+export function rolloutToCap(
+  state: GameState, root: PlayerId, cap: number, weights: Weights = DEFAULT_WEIGHTS,
+  counters?: Counters | undefined, applyCap: number = DEFAULT_ROLLOUT_APPLY_CAP,
+): RolloutResult {
+  // TWO bounds, because one cannot do both jobs.
+  //
+  // `cap` bounds trajectory COMMANDS — how far into the future this rollout looks. It cannot bound the
+  // settlement tail below, because a state owing a block, a party split or an ability target MUST be resolved
+  // before `leafReward` prices it: evaluating a half-resolved position is the R4/C1/C2 defect, and stopping
+  // mid-cascade to respect a command budget would reintroduce it deliberately.
+  //
+  // `applyCap` bounds WORK, and it is the one that actually protects a Worker from an unbounded tail. It was
+  // `Infinity` — a counter, not a limit — so after the command cap the settlement tail ran without any bound
+  // at all, and `greedyStep` inside it applies every candidate it scores. With a real cap, `within(budget)`
+  // degrades that to scoring only the first candidate (rung A's W1 floor): the tail still COMPLETES, so the
+  // leaf is always fully resolved, it just chooses more cheaply once the budget is gone. Settlement itself
+  // terminates because every forced decision strictly advances, and a true cascade cycle is caught by the
+  // engine's own `MAX_RESOLUTION_STEPS`.
+  const budget = { used: 0, cap: applyCap }
   let s = state
   let commands = 0
   while (!s.result && commands < cap) {

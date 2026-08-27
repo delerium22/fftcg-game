@@ -22,7 +22,18 @@ const deckArg = flag('deck', '')
 const deckPath = deckArg ? resolve(deckArg) : resolve(repoRoot, 'decks/starter-2025-vol2.txt')
 const deck = parseDeckFile(readFileSync(deckPath, 'utf8'))
 const defs = loadCards()
-const seed = Number(flag('seed', '1'))
+/**
+ * `--seed` is validated as strictly as `--depth` and `--iterations`. It was the one flag that was not, and a
+ * typo did not fail — `Number('x')` is `NaN`, `NaN + i` is `NaN`, and `seedRng` coerces that to 0, so every
+ * pair of a mirrored tournament collapsed onto the SAME game and reported a meaninglessly narrow confidence
+ * interval. A gate that silently measures one game 200 times is worse than no gate.
+ */
+function parseSeed(s: string): number {
+  if (!/^\d+$/.test(s)) throw new Error(`invalid seed "${s}" (expected a non-negative integer)`)
+  return Number(s)
+}
+
+const seed = parseSeed(flag('seed', '1'))
 
 /**
  * Applies `--depth`/`--iterations` to a BARE spec (no explicit `:N`); an explicit suffix always wins. The
