@@ -587,13 +587,22 @@ describe('observationKey (contract 6)', () => {
     // two same-code Break Zone cards is retrievable, are different information sets.
     differs({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, usedThisTurn: ['X:once'] } : c)) }, view.fields[1]] }, 'a spent once-per-turn ability')
     {
-      const two = [ids.z1!, ids.z1!]   // same code twice, only one of them retrievable
-      const withBz = (elig: readonly number[]): PlayerView => ({
-        ...view,
-        fields: [{ ...f0, breakZone: two, putIntoBreakZoneFromFieldThisTurn: elig }, view.fields[1]],
+      // TWO DISTINCT ids of the SAME code. The first version of this test put one id in both slots, which
+      // makes "only one of them retrievable" unrepresentable — `bzEntry` tests id membership, so both slots
+      // are marked or neither is. It therefore compared "none eligible" against "both eligible" and pinned
+      // only "eligibility appears somewhere", leaving a code-SET encoding green. Same-code duplicates in one
+      // Break Zone are ordinary: the starter deck runs three copies of several cards.
+      const a = 8100 as CardId
+      const b = 8101 as CardId
+      const cards = { ...view.cards, [a]: { id: a, code: 'V-F1', owner: 0 as PlayerId }, [b]: { id: b, code: 'V-F1', owner: 0 as PlayerId } }
+      const withBz = (elig: readonly CardId[]): PlayerView => ({
+        ...view, cards,
+        fields: [{ ...f0, breakZone: [a, b], putIntoBreakZoneFromFieldThisTurn: elig }, view.fields[1]],
       })
-      // Encoded POSITIONALLY: by code alone these two collide, and `z0:0` vs `z0:1` are different actions.
-      expect(observationKey(withBz([])), 'Break Zone eligibility is not in the key').not.toBe(observationKey(withBz(two)))
+      // POSITIONAL: `cardRef` names Break Zone cards `z0:0` / `z0:1`, so which one is retrievable is a
+      // different legal action. By code alone these two states are indistinguishable — a FALSE MATCH.
+      expect(observationKey(withBz([a])), 'Break Zone eligibility is not encoded positionally').not.toBe(observationKey(withBz([b])))
+      expect(observationKey(withBz([])), 'Break Zone eligibility is not in the key at all').not.toBe(observationKey(withBz([a])))
     }
     differs({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, damage: 3000 } : c)) }, view.fields[1]] }, 'damage on a forward')
     differs({ ...view, fields: [{ ...f0, forwards: [...f0.forwards].reverse() }, view.fields[1]] }, 'field order (it is what positional refs mean)')

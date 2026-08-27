@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { applyPass, applyDiscardToHandSize, drawCards, startTurn } from '../src/phases.js'
+import { applyPass, applyDiscardToHandSize, drawCards, finishEndPhase, startTurn } from '../src/phases.js'
 import { apply } from '../src/apply.js'
-import type { GameState } from '../src/state.js'
+import type { CardId, GameState } from '../src/state.js'
+import { findFieldCard } from '../src/state.js'
 import type { PlayerId } from '../src/types.js'
 import { IllegalCommandError } from '../src/errors.js'
 import { makeGame, withField, withHandSize } from './helpers.js'
@@ -65,6 +66,18 @@ describe("the turn's Break Zone history clears at the turn boundary (spec C10-3)
     const [after] = startTurn(seeded, seeded.turn + 1, 1)
     expect(after.players[0].putIntoBreakZoneFromFieldThisTurn).toEqual([])
     expect(after.players[1].putIntoBreakZoneFromFieldThisTurn).toEqual([])
+  })
+
+  it("and `usedThisTurn` is cleared by the End Phase reset, across a REAL turn boundary", () => {
+    // The C10 review found the "fresh allowance" acceptance test hand-wrote `usedThisTurn: []` instead of
+    // crossing a turn — so deleting the reset from `finishEndPhase` left the whole suite green. This crosses
+    // it for real: mark a card as having used an ability, run the End Phase, and the mark must be gone.
+    let s = makeGame()
+    let card: CardId
+    ;[s, card] = withField(s, 0, 'forwards', 'V-F1', { usedThisTurn: ['V-F1:once'] })
+    expect(findFieldCard(s, card)?.card.usedThisTurn).toEqual(['V-F1:once'])
+    const [after] = finishEndPhase(s)
+    expect(findFieldCard(after, card)?.card.usedThisTurn, 'the per-turn allowance was never refreshed').toEqual([])
   })
 })
 

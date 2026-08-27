@@ -146,19 +146,26 @@ describe('searchView', () => {
       expect(searchView(s, p)).toEqual(viewFor(s, p))
       expect(searchView(s, p).cards[removed], `seat ${p} lost the removed card`).toBeDefined()
     }
-    // C10: both new fields must ride along too, with NON-DEFAULT values — with the arrays empty this whole
-    // assertion passes even if both projections drop them, which is how C7's zone and C9's deck slipped past.
-    const bz0 = s.players[0].breakZone[0]
-    if (bz0 !== undefined) {
-      const p0 = s.players[0]
-      s = { ...s, players: [
-        { ...p0, putIntoBreakZoneFromFieldThisTurn: [bz0], forwards: p0.forwards.map((c, i) => (i === 0 ? { ...c, usedThisTurn: ['X:once'] } : c)) },
-        s.players[1],
-      ] }
-      for (const p of [0, 1] as const) {
-        expect(searchView(s, p).fields[0].putIntoBreakZoneFromFieldThisTurn, `seat ${p} lost the Break Zone history`).toEqual([bz0])
-        expect(searchView(s, p)).toEqual(viewFor(s, p))
-      }
+    // C10: both new fields must ride along too, with NON-DEFAULT values.
+    //
+    // The first version of this guarded the whole block on `if (breakZone[0] !== undefined)` — and
+    // `makeGame()` starts with an EMPTY Break Zone, so the assertion written to prove the fields are carried
+    // never executed once. Unconditional, and the card is put there by the fixture rather than hoped for.
+    const bz0 = s.players[0].deck[9] as CardId
+    const p0 = s.players[0]
+    s = { ...s, players: [
+      {
+        ...p0,
+        deck: p0.deck.filter((id) => id !== bz0),
+        breakZone: [...p0.breakZone, bz0],
+        putIntoBreakZoneFromFieldThisTurn: [bz0],
+        forwards: p0.forwards.map((c, i) => (i === 0 ? { ...c, usedThisTurn: ['X:once'] } : c)),
+      },
+      s.players[1],
+    ] }
+    for (const p of [0, 1] as const) {
+      expect(searchView(s, p).fields[0].putIntoBreakZoneFromFieldThisTurn, `seat ${p} lost the Break Zone history`).toEqual([bz0])
+      expect(searchView(s, p)).toEqual(viewFor(s, p))
     }
 
     // Seat 0 looked, so it must be able to NAME them; seat 1 did not, so it must not.
