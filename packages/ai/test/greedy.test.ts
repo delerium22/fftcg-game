@@ -18,7 +18,7 @@ const hurt = (s: GameState, p: 0 | 1, n: number): GameState => {
   return { ...s, players }
 }
 const toAttackDeclaration = (s: GameState): GameState => apply(s, { type: 'pass', player: 0 }).state
-const ZERO_WEIGHTS: Weights = { damage: 0, forwardPower: 0, forwardPresence: 0, dullFactor: 0, backup: 0, hand: 0, handQuality: 0, deck: 0, threat: 0, terminal: 0, haste: 0, brave: 0, protection: 0, temporaryPower: 0 }
+const ZERO_WEIGHTS: Weights = { damage: 0, forwardPower: 0, forwardPresence: 0, dullFactor: 0, backup: 0, hand: 0, handQuality: 0, deck: 0, threat: 0, terminal: 0, haste: 0, brave: 0, protection: 0, temporaryPower: 0, expiredThreat: 0 }
 
 describe('GreedyAgent', () => {
   it('is deterministic per seed and never concedes', () => {

@@ -28,6 +28,13 @@ export interface Weights {
    * turn; what it must not do is masquerade as a permanent gain.
    */
   temporaryPower: number
+  /**
+   * The fraction of a temporary bonus that still counts as `threat` once it provably cannot reach combat —
+   * this player's own Main Phase 2, where the attack phase is behind them and the bonus expires at end of
+   * turn. `0` is the honest value; `1` is the pre-C3 behaviour, and exists so the change is A/B-able through
+   * `weights-ab.ts` rather than being an unmeasurable code edit.
+   */
+  expiredThreat: number
 }
 
 export const DEFAULT_WEIGHTS: Weights = {
@@ -45,6 +52,7 @@ export const DEFAULT_WEIGHTS: Weights = {
   brave: 0.6,
   protection: 0.5,
   temporaryPower: 0.4,
+  expiredThreat: 0,
 }
 
 /**
@@ -108,7 +116,14 @@ function material(state: GameState, p: PlayerId, w: Weights): number {
     const permanent = Math.max(0, total - c.powerBonus)
     const temporary = total - permanent
     v += ((permanent / 1000) * w.forwardPower + (temporary / 1000) * w.temporaryPower) * (c.status === 'dull' ? w.dullFactor : 1) + w.forwardPresence
-    if (c.status === 'active') v += (total / 1000) * w.threat   // active-power tempo: this side's own attack-ready threat
+    // Active-power tempo: this side's own attack-ready threat. A temporary bonus counts here — it really does
+    // swing a fight — EXCEPT where it provably cannot reach one. In this player's OWN Main Phase 2 the attack
+    // phase is behind them and the bonus expires at end of turn, so scoring it as threat rewards pumping a
+    // Forward that will never use it. Every other phase still has combat ahead: attacking on their own turn,
+    // or blocking on the opponent's.
+    const spent = state.turnPlayer === p && state.phase === 'main2'
+    const threatPower = spent ? permanent + temporary * w.expiredThreat : total
+    if (c.status === 'active') v += (threatPower / 1000) * w.threat
     v += abilityTerms(state, p, c, true, w)
   }
   for (const c of ps.backups) v += abilityTerms(state, p, c, false, w)

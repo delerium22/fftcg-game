@@ -24,8 +24,12 @@ const decks: [string[], string[]] = [deck, deck]
 const defs = loadCards()
 
 const NEW = DEFAULT_WEIGHTS
-// The old behaviour exactly: a bonus counted at the same rate as printed power.
-const OLD = { ...DEFAULT_WEIGHTS, temporaryPower: DEFAULT_WEIGHTS.forwardPower }
+/**
+ * The pre-C3 behaviour, exactly: power that expires counted at the same rate as printed power, and still
+ * counted as threat in a Main Phase 2 it can never reach combat from. Both halves are weights precisely so
+ * this comparison is possible — a change that can only be made by editing code cannot be A/B'd.
+ */
+const OLD = { ...DEFAULT_WEIGHTS, temporaryPower: DEFAULT_WEIGHTS.forwardPower, expiredThreat: 1 }
 
 const PAIRS = Number(process.argv[2] ?? 60)
 let newWins = 0
