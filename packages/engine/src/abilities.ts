@@ -65,6 +65,11 @@ export type Effect =
   | { readonly kind: 'grantFlag'; readonly flag: FieldFlag }
   | { readonly kind: 'moveToHand' }
   /**
+   * Draw `count` cards for the resolving ability's controller. The primitive itself lives in `draw.ts` rather
+   * than `phases.ts`, because `phases.ts` imports `resolve.ts` and so cannot be imported back (spec C3-9).
+   */
+  | { readonly kind: 'draw'; readonly count: number }
+  /**
    * Act on the card the TRIGGER EVENT is about — Luso's "break **it**" (spec C2-5). Binds `chosen` to the
    * event's subject and runs `do`, so every existing effect works on it unchanged. Deliberately NOT a target
    * choice: "it" is named by the printed text, and offering it as a choice would let the player retarget a
@@ -109,6 +114,46 @@ export type AbilityTrigger =
    * later rung breaks.
    */
   | { readonly kind: 'observesZoneChange'; readonly from: 'field'; readonly to: 'breakZone'; readonly whose: TriggerWhose; readonly of: CardType }
+  /**
+   * NOT a trigger at all: an ability the player chooses to use (spec C3-1). It lives in this union because
+   * every dispatch site already switches on `kind`, so an activated ability is inertly ignored by trigger
+   * dispatch — and the compiler finds any switch that forgot it.
+   *
+   * `sourceZone` is an activation PRECONDITION, not part of the cost (C3-3): Geomancer's ability is usable
+   * only from hand, and inferring that from "its cost discards itself" would need replacing the moment a
+   * Break-Zone ability arrives.
+   */
+  | { readonly kind: 'activated'; readonly sourceZone: ActivationSourceZone; readonly cost: AbilityCost }
+
+export type ActivationSourceZone = 'field' | 'hand' | 'breakZone'
+
+/**
+ * What activating costs. Every part is paid at once or the activation is not legal at all (§11.6.10) — there
+ * is no partial payment and no "pay what you can".
+ */
+export interface AbilityCost {
+  /**
+   * CP. `amount` is the number required and `requiredElements` the Elements that must be among them, which
+   * is NOT derivable from the card's printed cost: Red Mage's ability costs `[Lightning]` (1, Lightning) on a
+   * printed-2 card, and Miner's costs `[2]` (2, generic) on a printed-3. `[0]` is `{ amount: 0 }` and admits
+   * only the empty payment.
+   */
+  readonly cp?: { readonly amount: number; readonly requiredElements?: readonly Element[] }
+  /**
+   * The dull icon. Gates active status and the entered-this-turn/Haste rule (§11.6.2.2) — and ONLY when
+   * present: Undead Princess's cost is a self-break with no dull icon, so she may activate while dulled and
+   * on the turn she enters.
+   */
+  readonly dull?: true
+  /**
+   * "Put <this card> into the Break Zone". NOT a break (§15.1.1.3.2): `cannotBeBroken` does not prevent it
+   * and it emits no `broken` event — but it IS a zone movement, so observers of "put from the field into the
+   * Break Zone" must still see it (spec C3-7).
+   */
+  readonly selfToBreakZone?: true
+  /** "discard <this card>", from hand. */
+  readonly selfDiscard?: true
+}
 
 /**
  * What the trigger was about, carried on the frame so `onSubject` can act on it and the log can narrate it.
@@ -190,4 +235,21 @@ export const EMPTY_RESOLUTION: Resolution = { active: null, queue: [], continuat
  */
 export function hasResolutionWork(r: Resolution): boolean {
   return r.active !== null || r.queue.length > 0 || r.continuation !== null
+}
+
+/**
+ * The printed cost, rendered the way the card prints it — `[Lightning][Dull]`, `[2][Dull], put into the Break
+ * Zone`. Lives here so the CLI and the browser cannot drift into describing the same ability differently.
+ */
+export function describeAbilityCost(cost: AbilityCost): string {
+  const parts: string[] = []
+  if (cost.cp) {
+    const els = cost.cp.requiredElements ?? []
+    // A required Element prints as its own icon; a generic cost prints as the number. `[0]` prints as `[0]`.
+    parts.push(els.length ? els.map((e) => `[${e[0]?.toUpperCase()}${e.slice(1)}]`).join('') : `[${cost.cp.amount}]`)
+  }
+  if (cost.dull) parts.push('[Dull]')
+  if (cost.selfToBreakZone) parts.push('put into the Break Zone')
+  if (cost.selfDiscard) parts.push('discard')
+  return parts.join(', ') || '[0]'
 }

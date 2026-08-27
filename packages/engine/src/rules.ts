@@ -45,8 +45,16 @@ export interface ZoneTransition {
   readonly owner: PlayerId
   readonly from: 'forwards' | 'backups'
   readonly to: 'breakZone'
-  /** `ability` is a direct `breakCard`; the other two are the §12.4.4/§12.4.5 rule processes. */
-  readonly reason: 'zeroPower' | 'damage' | 'ability'
+  /**
+   * `ability` is a direct `breakCard`; `zeroPower`/`damage` are the §12.4.4/§12.4.5 rule processes; `cost` is
+   * a card put into the Break Zone to PAY for its own activated ability (spec C3-7).
+   *
+   * `cost` is not a break (§15.1.1.3.2): `cannotBeBroken` does not prevent it and no `broken` event is
+   * emitted. It is still a zone MOVEMENT, so observers of "put from the field into the Break Zone" — which is
+   * the printed wording the implemented watcher encodes — must see it. Anything that means "was broken"
+   * specifically must filter on this field rather than assume every transition is a break.
+   */
+  readonly reason: 'zeroPower' | 'damage' | 'ability' | 'cost'
   /** The card whose ability caused the transition; null for a rule process, which has no source. */
   readonly cause: CardId | null
   readonly causeController: PlayerId | null

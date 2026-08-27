@@ -2,7 +2,8 @@ import type { PlayerId } from './types.js'
 import type { GameState } from './state.js'
 import { defOf } from './state.js'
 import type { Command } from './commands.js'
-import { enumeratePayments } from './cp.js'
+import { enumeratePayments, enumeratePaymentsFor } from './cp.js'
+import { abilityCpRequirement, activationCheck } from './activate.js'
 import { castCheck } from './cast.js'
 import { legalAttackSets, legalBlockers, legalPartyDamageAssignments } from './attack.js'
 
@@ -62,6 +63,7 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
         const type = defOf(state, card).type === 'summon' ? 'castSummon' : 'castCharacter'
         for (const payment of enumeratePayments(state, player, card)) out.push({ type, player, card, payment })
       }
+      for (const c of activationsFor(state, player)) out.push(c)
       out.push({ type: 'pass', player })
       break
     }
@@ -74,6 +76,30 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
     }
     default:
       break   // setup/active/draw/end never wait for a non-pending command
+  }
+  return out
+}
+
+/**
+ * Every legal activation for `player`, one per (source card, clause, minimal payment).
+ *
+ * Scans the three zones an activated ability can live in rather than just the field: `sourceZone` is a
+ * declared precondition on the ability (spec C3-3), so Geomancer's hand-only ability and a future Break-Zone
+ * ability enumerate through this same path instead of needing their own.
+ */
+function activationsFor(state: GameState, player: PlayerId): Command[] {
+  const out: Command[] = []
+  const ps = state.players[player]
+  const sources = [...ps.hand, ...ps.breakZone, ...ps.forwards.map((c) => c.id), ...ps.backups.map((c) => c.id)]
+  for (const source of sources) {
+    for (const ability of defOf(state, source).abilities ?? []) {
+      if (ability.trigger.kind !== 'activated') continue
+      if (activationCheck(state, player, source, ability.id) !== null) continue
+      const req = abilityCpRequirement(source, ability.trigger.cost)
+      for (const payment of enumeratePaymentsFor(state, player, req)) {
+        out.push({ type: 'activateAbility', player, source, abilityId: ability.id, payment })
+      }
+    }
   }
   return out
 }

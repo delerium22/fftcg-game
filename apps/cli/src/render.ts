@@ -1,4 +1,5 @@
 import type { CardId, Command, FieldCard, PlayerView } from '@fftcg/engine'
+import { describeAbilityCost } from '@fftcg/engine'
 
 const PHASE_LABEL: Record<string, string> = { setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase', main1: 'Main Phase 1', attack: 'Attack Phase', main2: 'Main Phase 2', end: 'End Phase' }
 
@@ -48,7 +49,19 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'declareBlock': return c.blocker === null ? 'No block' : `Block with ${name(v, c.blocker)}`
     case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${name(v, a.target)}`).join(', ')}`
     case 'discardToHandSize': return `Discard ${c.cards.map((id) => name(v, id)).join(', ')}`
+    case 'activateAbility': {
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
+      const cost = abilityCostOf(v, c.source, c.abilityId)
+      return `Use ${name(v, c.source)}'s ${cost} ability${pay.length ? ` paying: ${pay.join(', ')}` : ''}`
+    }
     case 'pass': return 'Pass'
     case 'concede': return 'Concede'
   }
+}
+
+/** The printed cost of one activated clause, for the command label. */
+function abilityCostOf(v: PlayerView, source: number, abilityId: string): string {
+  const def = v.defs[v.cards[source]?.code ?? '']
+  const ability = (def?.abilities ?? []).find((a) => a.id === abilityId)
+  return ability && ability.trigger.kind === 'activated' ? describeAbilityCost(ability.trigger.cost) : 'ability'
 }

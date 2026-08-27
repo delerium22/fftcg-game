@@ -12,6 +12,13 @@ export type Event =
   | { type: 'cpGenerated'; player: PlayerId; cp: Element[] }
   | { type: 'discarded'; player: PlayerId; card: CardId; reason: 'cp' | 'handSize' }
   | { type: 'cast'; player: PlayerId; card: CardId; cardType: CardType }
+  /** An activated ability was used (spec C3-1) — activated, NOT triggered; the log must not conflate them. */
+  | { type: 'abilityActivated'; player: PlayerId; card: CardId; abilityId: string }
+  /**
+   * A card put into the Break Zone to PAY for its own ability. Deliberately not `brokenByAbility`: this is not
+   * a break (§15.1.1.3.2), so anything counting breaks must not count it.
+   */
+  | { type: 'paidToBreakZone'; player: PlayerId; card: CardId }
   | { type: 'summonResolvedNoEffect'; card: CardId }
   /**
    * Coverage is per CLAUSE (spec C1-9). `clauses` counts the printed clauses still unimplemented; it is OMITTED

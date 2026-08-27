@@ -1,5 +1,5 @@
 import {
-  HAND_SIZE_LIMIT, effectivePower, seedRng,
+  HAND_SIZE_LIMIT, describeAbilityCost, effectivePower, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
 } from '@fftcg/engine'
@@ -245,6 +245,13 @@ export function describeChoice(v: PlayerView, c: Command): string {
     }
     // A mode has no card subject, so its button IS the printed wording — never a paraphrase of it.
     case 'chooseMode': return c.modes.length ? c.modes.map((i) => modeLabel(v, i)).join(' + ') : 'None of these'
+    // The printed cost is part of the label: a player choosing to spend a card needs to see what it costs
+    // before clicking, not after (spec C3-A7).
+    case 'activateAbility': {
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
+      const cost = activatedCostOf(v, c.source, c.abilityId)
+      return `${cost}: ${name(v, c.source)}${pay.length ? ` — paying ${pay.join(', ')}` : ''}`
+    }
     case 'declareAttack': return `Attack with ${c.attackers.map((id) => name(v, id)).join(' + ')}`
     case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${name(v, c.blocker)}`
     case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${name(v, a.target)}`).join(', ')}`
@@ -304,6 +311,9 @@ function subjectsOf(c: Command): CardId[] {
     // Spec B-A4 + C1-6: the subjects of a target answer are exactly its targets, so the board lights up the
     // legal candidates and nothing else — clicking one is how the set gets picked.
     case 'chooseTargets': return [...c.targets]
+    // An activation is an action taken BY a card, so its subject is the source — clicking the card is how you
+    // use it. The CP sources are deliberately not subjects: they are payment, chosen for you.
+    case 'activateAbility': return [c.source]
     // `chooseMode` has no card subject at all: its options are printed wordings, so they are strip buttons.
     case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
@@ -364,6 +374,10 @@ export function sameCommand(a: Command, b: Command): boolean {
     case 'discardToHandSize': return sameIds(a.cards, (b as typeof a).cards)
     case 'chooseTargets': return sameIds([...a.targets], [...(b as typeof a).targets])
     case 'chooseMode': return sameIds([...a.modes], [...(b as typeof a).modes])
+    case 'activateAbility': {
+      const o = b as typeof a
+      return a.source === o.source && a.abilityId === o.abilityId && samePayment(a.payment, o.payment)
+    }
     case 'pass': case 'concede': return true
     default: { const _exhaustive: never = a; return _exhaustive }
   }
@@ -420,4 +434,11 @@ export function preferredChoices(v: PlayerView, legal: Command[]): Command[] {
     out.push(keep.get(c.card) ?? c)
   }
   return out
+}
+
+/** The printed cost of one activated clause, read off the view's own definitions. */
+function activatedCostOf(v: PlayerView, source: CardId, abilityId: string): string {
+  const def = v.defs[v.cards[source]?.code ?? '']
+  const ability = (def?.abilities ?? []).find((a) => a.id === abilityId)
+  return ability && ability.trigger.kind === 'activated' ? describeAbilityCost(ability.trigger.cost) : 'Ability'
 }

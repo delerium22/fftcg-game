@@ -4,6 +4,7 @@ import { EMPTY_RESOLUTION, hasResolutionWork } from './abilities.js'
 import type { Command } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
+import { applyActivateAbility } from './activate.js'
 import { actingPlayer } from './legal.js'
 import { applyChooseFirst, applyMulligan } from './setup.js'
 import { applyDiscardToHandSize, applyPass } from './phases.js'
@@ -74,6 +75,8 @@ export function apply(state: GameState, command: Command): ApplyResult {
       case 'discardToHandSize': [s, events] = applyDiscardToHandSize(state, command.player, command.cards); break
       case 'chooseTargets': [s, events] = applyChooseTargets(state, command.player, command.targets); break
       case 'chooseMode': [s, events] = applyChooseMode(state, command.player, command.modes); break
+      case 'activateAbility':
+        [s, events] = applyActivateAbility(state, command.player, command.source, command.abilityId, command.payment); break
       case 'pass': [s, events] = applyPass(state, command.player); break
       case 'concede':
         s = { ...state, pending: null, resolution: EMPTY_RESOLUTION, result: { winner: opponentOf(command.player), reason: `player ${command.player} conceded (§2.1)` } }; events = []; break

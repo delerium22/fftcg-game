@@ -1,6 +1,7 @@
 import type { Ability, AbilityTrigger, Effect, Frame, TargetFilter, TargetSpec, TriggerEvent, TriggerWhose } from './abilities.js'
 // Type-only, so it is erased at compile time and creates no runtime cycle with rules.ts (which imports this module).
 import type { ZoneTransition } from './rules.js'
+import { drawCards } from './draw.js'
 import { MAX_RESOLUTION_STEPS } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending } from './state.js'
 import { findFieldCard, updatePlayer } from './state.js'
@@ -155,7 +156,7 @@ function setFieldCard(state: GameState, id: CardId, f: (c: FieldCard) => FieldCa
     : { ...ps, backups: ps.backups.map((c) => (c.id === id ? f(c) : c))}))
 }
 
-function removeFromField(state: GameState, id: CardId): GameState {
+export function removeFromField(state: GameState, id: CardId): GameState {
   const loc = findFieldCard(state, id)
   if (!loc) return state
   return updatePlayer(state, loc.owner, (ps) => (loc.zone === 'forwards'
@@ -359,6 +360,13 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         ctx.events.push({ type: 'returnedToHand', player: ctx.state.cards[id]?.owner ?? ctx.controller, card: id })
       }
       return
+    case 'draw': {
+      // The ability's CONTROLLER draws, not the turn player: Miner's draw is Miner's controller's.
+      const [drawn, drawEvents] = drawCards(ctx.state, ctx.controller, eff.count)
+      ctx.state = drawn
+      ctx.events.push(...drawEvents)
+      return
+    }
     default: { const _exhaustive: never = eff; return _exhaustive }
   }
 }

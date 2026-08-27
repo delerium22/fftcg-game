@@ -229,6 +229,13 @@ export function actionKey(view: PlayerView, command: Command): ActionKey {
     case 'chooseMode':
       // Mode answers are indices into the pending's printed `labels`, not ids — already world-independent.
       return `${head}${FIELD}${[...command.modes].sort((a, b) => a - b).join(',')}`
+    case 'activateAbility': {
+      // `abilityId` is a printed-clause identity, already world-independent — unlike a card id, it needs no
+      // canonicalisation. The source and every CP source do, exactly as for a cast.
+      const dull = joinRefs(command.payment.dullBackups.map(r))
+      const discards = joinTagged(command.payment.discards.map((d) => [r(d.card), d.element] as const))
+      return `${head}${FIELD}${r(command.source)}${FIELD}${command.abilityId}${FIELD}${dull}${FIELD}${discards}`
+    }
     case 'pass':
     case 'concede':
       return head
@@ -277,6 +284,21 @@ const DECODERS: Record<Command['type'], Decoder> = {
   },
   castCharacter: (ctx) => decodeCast(ctx, 'castCharacter'),
   castSummon: (ctx) => decodeCast(ctx, 'castSummon'),
+  activateAbility: ({ view, player, args, id, ids }) => {
+    if (view.pending) return null
+    const source = id(args[0])
+    const abilityId = args[1]
+    const dullBackups = ids(args[2])
+    const items = splitTagged(args[3] ?? '')
+    if (source === null || !abilityId || !dullBackups || !items) return null
+    const discards: { card: CardId; element: Element }[] = []
+    for (const [ref, tag] of items) {
+      const src = id(ref)
+      if (src === null || !isElement(tag)) return null
+      discards.push({ card: src, element: tag })
+    }
+    return { type: 'activateAbility', player, source, abilityId, payment: { dullBackups, discards } }
+  },
   declareAttack: ({ view, player, args, ids }) => {
     if (view.pending) return null
     const attackers = ids(args[0])

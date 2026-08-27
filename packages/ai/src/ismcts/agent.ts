@@ -21,6 +21,7 @@ function commandCardIds(c: Command): readonly CardId[] {
     case 'assignPartyDamage': return c.assignments.map((a) => a.target)
     case 'discardToHandSize': return c.cards
     case 'chooseTargets': return c.targets
+    case 'activateAbility': return [c.source, ...c.payment.dullBackups, ...c.payment.discards.map((d) => d.card)]
     case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }

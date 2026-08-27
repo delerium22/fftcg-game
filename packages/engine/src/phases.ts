@@ -6,17 +6,10 @@ import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { runRuleProcesses } from './rules.js'
 import { enterAttackDeclaration } from './resolve.js'
+// Re-exported so every existing importer of `drawCards` from this module keeps working (spec C3-9).
+export { drawCards } from './draw.js'
+import { drawCards } from './draw.js'
 
-export function drawCards(state: GameState, p: PlayerId, n: number): [GameState, Event[]] {
-  const ps = state.players[p]
-  if (ps.deck.length < n) {
-    // §3.1.2 — attempt to draw from an empty deck loses; the cards that could be drawn are still drawn
-    const s = updatePlayer(state, p, (q) => ({ ...q, deck: [], hand: [...q.hand, ...q.deck] }))
-    return [{ ...s, result: { winner: opponentOf(p), reason: `player ${p} could not draw a card (§3.1.2)` } }, [{ type: 'drew', player: p, count: ps.deck.length }]]
-  }
-  const s = updatePlayer(state, p, (q) => ({ ...q, deck: q.deck.slice(n), hand: [...q.hand, ...q.deck.slice(0, n)] }))
-  return [s, [{ type: 'drew', player: p, count: n }]]
-}
 
 export function startTurn(state: GameState, turn: number, player: PlayerId): [GameState, Event[]] {
   const events: Event[] = [{ type: 'turnStarted', turn, player }]
