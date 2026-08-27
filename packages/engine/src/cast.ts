@@ -5,7 +5,7 @@ import { MAX_BACKUPS, defOf, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
-import { canPay, generateCp, pay, requiredElements } from './cp.js'
+import { canPay, castRequirement, generateCp, pay } from './cp.js'
 import { enqueueTrigger } from './resolve.js'
 
 export function castCheck(state: GameState, player: PlayerId, card: CardId): string | null {
@@ -30,10 +30,21 @@ export function castCheck(state: GameState, player: PlayerId, card: CardId): str
   return null
 }
 
+/**
+ * Validate and spend a cast's payment.
+ *
+ * The cost comes from `castRequirement`, NOT from `def.cost` — the two must never be able to disagree.
+ * `enumeratePayments`, `preferredPayment`, `legalCommands`, the AI's candidates and the browser's label all
+ * derive from that one function, so reading the printed cost here would let the engine offer a payment it
+ * then refuses. That is currently invisible because nothing modifies a cost yet; rung C4 adds the first card
+ * that does (Odin's "reduced by 3"), and this is the seam it would have broken.
+ */
 function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
-  const def = defOf(state, card)
-  const cp = generateCp(state, player, payment, card)
-  if (!canPay(def.cost, requiredElements(def), cp)) throw new IllegalCommandError(`payment does not cover cost ${def.cost} ${def.elements.join('/')}`)
+  const req = castRequirement(state, card)
+  const cp = generateCp(state, player, payment, req.excluded)
+  if (!canPay(req.amount, req.requiredElements, cp)) {
+    throw new IllegalCommandError(`payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}`)
+  }
   return pay(state, player, payment)
 }
 
