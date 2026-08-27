@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, activationCheck, attackCheck, castCheck, defOf, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, activationCheck, activationTargetSets, attackCheck, castCheck, defOf, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -325,10 +325,14 @@ function activationCandidates(state: GameState, player: PlayerId): Command[] {
   for (const source of sources) {
     for (const ability of defOf(state, source).abilities ?? []) {
       if (ability.trigger.kind !== 'activated') continue
-      if (activationCheck(state, player, source, ability.id) !== null) continue
       const payment = preferredPaymentFor(state, player, abilityCpRequirement(source, ability.trigger.cost))
       if (!payment) continue
-      out.push({ type: 'activateAbility', player, source, abilityId: ability.id, payment })
+      // One command per declared TARGET SET — the target choice is part of the action now, not a decision the
+      // search reaches a ply later, so collapsing them would hide the choice from the agent entirely.
+      for (const targets of activationTargetSets(state, player, source, ability)) {
+        if (activationCheck(state, player, source, ability.id, targets) !== null) continue
+        out.push({ type: 'activateAbility', player, source, abilityId: ability.id, payment, targets })
+      }
     }
   }
   return out

@@ -3,7 +3,7 @@ import type { GameState } from './state.js'
 import { defOf } from './state.js'
 import type { Command } from './commands.js'
 import { enumeratePayments, enumeratePaymentsFor } from './cp.js'
-import { abilityCpRequirement, activationCheck } from './activate.js'
+import { abilityCpRequirement, activationCheck, activationTargetSets } from './activate.js'
 import { castCheck } from './cast.js'
 import { legalAttackSets, legalBlockers, legalPartyDamageAssignments } from './attack.js'
 
@@ -94,10 +94,15 @@ function activationsFor(state: GameState, player: PlayerId): Command[] {
   for (const source of sources) {
     for (const ability of defOf(state, source).abilities ?? []) {
       if (ability.trigger.kind !== 'activated') continue
-      if (activationCheck(state, player, source, ability.id) !== null) continue
       const req = abilityCpRequirement(source, ability.trigger.cost)
+      // Payment x declared target set. Both are part of the command now, because an activation declares its
+      // choices before it pays (spec C3-1) — so both have to be enumerated for the choice to be offered.
+      const targetSets = activationTargetSets(state, player, source, ability)
       for (const payment of enumeratePaymentsFor(state, player, req)) {
-        out.push({ type: 'activateAbility', player, source, abilityId: ability.id, payment })
+        for (const targets of targetSets) {
+          if (activationCheck(state, player, source, ability.id, targets) !== null) continue
+          out.push({ type: 'activateAbility', player, source, abilityId: ability.id, payment, targets })
+        }
       }
     }
   }

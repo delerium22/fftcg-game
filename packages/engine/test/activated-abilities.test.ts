@@ -6,7 +6,7 @@ import type { Payment } from '../src/commands.js'
 import { describeAbilityCost } from '../src/abilities.js'
 import { apply } from '../src/apply.js'
 import { legalCommands } from '../src/legal.js'
-import { activationCheck } from '../src/activate.js'
+import { activatedAbility, activationCheck, activationTargetSets } from '../src/activate.js'
 import { IllegalCommandError } from '../src/errors.js'
 import { deckOf, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
@@ -47,8 +47,8 @@ function gameWith(defs: CardDef[]): GameState {
   return makeGame({ defs: pool, decks: [deckOf(VANILLA_POOL.map((d) => d.code)), deckOf(VANILLA_POOL.map((d) => d.code))] })
 }
 
-const activate = (s: GameState, source: CardId, abilityId: string, payment = NO_PAY) =>
-  apply(s, { type: 'activateAbility', player: 0, source, abilityId, payment })
+const activate = (s: GameState, source: CardId, abilityId: string, payment = NO_PAY, targets: readonly CardId[] = []) =>
+  apply(s, { type: 'activateAbility', player: 0, source, abilityId, payment, targets })
 
 // ---------------------------------------------------------------------------
 // C3-A2 — the cost removes the source, and the effect still resolves in full
@@ -74,8 +74,9 @@ describe('cost and effect are separate (C3-A2)', () => {
     expect(r.state.players[1].forwards.find((c) => c.id === b)?.status).toBe('dull')
   })
 
-  it('a targeted effect resolves against the POST-cost board, so the source cannot target itself', () => {
-    // Undead Princess's shape. She is in the Break Zone by the time targets are offered.
+  it('declares its target with the activation, validated against the POST-cost board', () => {
+    // Undead Princess's shape. Targets are declared up front (spec C3-1), and validated against the state as
+    // it will be once the cost is paid — so she is already in the Break Zone and cannot be her own target.
     const def = actionCard('T-PUMP', { selfToBreakZone: true },
       [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'addPower', amount: 4000 }] }])
     let s = gameWith([def])
@@ -83,11 +84,40 @@ describe('cost and effect are separate (C3-A2)', () => {
     ;[s, src] = withField(s, 0, 'forwards', 'T-PUMP')
     ;[s, ally] = withField(s, 0, 'forwards', 'V-F1')
 
-    const r = activate(s, src, 'T-PUMP:act')
-    expect(r.state.pending?.kind).toBe('chooseTargets')
-    const candidates = r.state.pending?.kind === 'chooseTargets' ? r.state.pending.candidates : []
-    expect(candidates).toEqual([ally])
-    expect(candidates).not.toContain(src)
+    // The source is not offered as its own target...
+    expect(activationTargetSets(s, 0, src, activatedAbility(s, src, 'T-PUMP:act')!)).toEqual([[ally]])
+    expect(activationCheck(s, 0, src, 'T-PUMP:act', [src])).toMatch(/not a legal target/)
+
+    // ...and the declared target resolves with NO further prompt: the frame starts with its choice made.
+    const r = activate(s, src, 'T-PUMP:act', NO_PAY, [ally])
+    expect(r.state.pending).toBeNull()
+    expect(r.state.players[0].forwards.find((c) => c.id === ally)?.powerBonus).toBe(4000)
+  })
+
+  it('refuses an AST whose choice is not its first effect, rather than paying and no-opping', () => {
+    // The code review's counterexample, turned into a guard. A `forEach` followed by a mandatory
+    // `chooseTargets` used to pass validation, pay its cost, and then resolve to nothing.
+    const def = actionCard('T-LATE', { selfToBreakZone: true }, [
+      { kind: 'forEach', from: { zone: 'forwards', controller: 'self' }, do: [{ kind: 'dull' }] },
+      { kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'addPower', amount: 1000 }] },
+    ])
+    let s = gameWith([def])
+    let src: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-LATE')
+    expect(() => activationCheck(s, 0, src, 'T-LATE:act', [])).toThrow(/FIRST effect/)
+  })
+
+  it('lets an "up to N" ability activate with nothing to choose', () => {
+    // `min: 0` means declining is a legal answer, so an empty board must not make the ability unusable — an
+    // earlier revision rejected any empty candidate set outright.
+    const def = actionCard('T-UPTO', { dull: true }, [
+      { kind: 'chooseTargets', min: 0, max: 2, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] },
+    ], { type: 'backup', power: null })
+    let s = gameWith([def])
+    let src: CardId
+    ;[s, src] = withField(s, 0, 'backups', 'T-UPTO')
+    expect(activationCheck(s, 0, src, 'T-UPTO:act', [])).toBeNull()
+    expect(activate(s, src, 'T-UPTO:act', NO_PAY, []).state.pending).toBeNull()
   })
 
   it('is ILLEGAL, rather than a cost paid for nothing, when the ability has no legal target', () => {

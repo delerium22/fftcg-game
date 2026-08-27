@@ -208,6 +208,15 @@ export interface Frame {
   readonly triggerEvent: TriggerEvent | null
   /** Modes picked by an enclosing `chooseModes`, as indices into its `modes`. */
   readonly modes: readonly number[]
+  /**
+   * How this frame came to exist. Absent means `'triggered'`, which every C1/C2 frame is.
+   *
+   * It exists so the log can stop calling an activation a trigger. An activated ability's action frame runs
+   * through the same agenda as a triggered one — which is right, they resolve identically — but starting a
+   * frame emitted `abilityTriggered` unconditionally, so a move the player deliberately made was narrated
+   * both as "activates" and as "triggers" in the same breath.
+   */
+  readonly origin?: 'triggered' | 'activated'
 }
 
 /**

@@ -18,19 +18,22 @@ export type Command =
   /**
    * Use an activated ability (spec C3-1).
    *
-   * Targets are NOT carried here. Activating PREFLIGHTS them instead: the ability's target set is computed
-   * against the state as it will be once the costs are paid, and the activation is illegal unless a legal
-   * target exists (§11.6.5). Otherwise a player could pay a cost — usually putting the source card itself
-   * into the Break Zone — for an ability that then finds nothing to target and resolves as a no-op.
+   * `targets` answers the ability's leading `chooseTargets` and is DECLARED HERE, before any cost is paid.
    *
-   * Preflighting POST-cost is what makes this exact, and two things fall out of it for free: Undead Princess
-   * has already left the field by then and so cannot be her own target, and the candidate set the player is
-   * subsequently offered is precisely the one that was preflighted. Choosing stays a separate `Pending`,
-   * exactly as it already is for every targeted triggered ability.
+   * An earlier revision preflighted them instead — checking, at activation time, that a legal target would
+   * exist once costs were paid — and let the choice happen afterwards as an ordinary `Pending`. The code
+   * review broke that with an executed counterexample: an ability whose targeting is not its FIRST effect
+   * passed the check, paid its cost, and then resolved to nothing. Preflighting also could not survive the
+   * cost's own triggers, which resolve BEFORE the action frame and can move the board out from under the set
+   * that was checked, and it let the opponent answer a cost-fired trigger before the activating player had
+   * chosen anything.
+   *
+   * Declaring first is what makes activation one transaction (§11.6.5): choices, then validation, then
+   * payment, then resolution — never a cost paid for a choice not yet made.
    *
    * `abilityId` is the clause's stable id, never an index into the card's ability array: a card's implemented
    * clauses arrive across different rungs, so indices shift under it.
    */
-  | { type: 'activateAbility'; player: PlayerId; source: CardId; abilityId: string; payment: Payment }
+  | { type: 'activateAbility'; player: PlayerId; source: CardId; abilityId: string; payment: Payment; targets: readonly CardId[] }
   | { type: 'pass'; player: PlayerId }
   | { type: 'concede'; player: PlayerId }

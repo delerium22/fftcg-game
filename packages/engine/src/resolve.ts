@@ -425,7 +425,12 @@ export function drainResolution(state: GameState): [GameState, Event[]] {
       const steps = s.resolution.steps + 1   // starting a frame is a step too, so a cycle of empty clauses is still capped
       if (steps > MAX_RESOLUTION_STEPS) throw new Error(`resolution exceeded ${MAX_RESOLUTION_STEPS} steps (spec C1-5) — trigger cycle?`)
       s = { ...s, resolution: { ...s.resolution, active: frame, queue: rest, steps } }
-      events.push({ type: 'abilityTriggered', player: frame.controller, card: frame.source, abilityId: frame.abilityId })
+      // An ACTIVATED ability already announced itself with `abilityActivated` when the player paid for it
+      // (spec C3-A7). Saying "triggers" here as well would report their own deliberate move back to them as
+      // something that merely happened.
+      if (frame.origin !== 'activated') {
+        events.push({ type: 'abilityTriggered', player: frame.controller, card: frame.source, abilityId: frame.abilityId })
+      }
     }
   }
   if (frame) {

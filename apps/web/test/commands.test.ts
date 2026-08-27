@@ -459,8 +459,8 @@ describe('activated abilities on the board (C3-A7)', () => {
     v.fields[HUMAN].backups = [fieldCard(src), fieldCard(backup)]
     return { v, src, backup }
   }
-  const act = (source: CardId, abilityId: string, payment: Payment = { dullBackups: [], discards: [] }): Command =>
-    ({ type: 'activateAbility', player: HUMAN, source, abilityId, payment })
+  const act = (source: CardId, abilityId: string, payment: Payment = { dullBackups: [], discards: [] }, targets: readonly CardId[] = []): Command =>
+    ({ type: 'activateAbility', player: HUMAN, source, abilityId, payment, targets })
 
   it('belongs to its source card, so the board lights that card up', () => {
     // Not the CP sources: those are payment, chosen for the player, and making them clickable would imply

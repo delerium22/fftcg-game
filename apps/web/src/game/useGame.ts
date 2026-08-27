@@ -56,7 +56,12 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'turnStarted': return { kind: 'phase', text: `Turn ${e.turn} — ${whoDoes(v, e.player, 'your turn', "the AI's turn")}` }
     case 'phaseStarted': return { kind: 'phase', text: `${PHASE_LABEL[e.phase] ?? e.phase}${e.step ? ` — ${e.step}` : ''}` }
     case 'drew': return { kind: 'event', text: `${who(v, e.player)} draw${e.player === v.me ? '' : 's'} ${e.count} card${e.count === 1 ? '' : 's'}` }
-    case 'discarded': return e.reason === 'cp' ? null : { kind: 'event', text: `${who(v, e.player)} discard${e.player === v.me ? '' : 's'} ${name(v, e.card)} to the hand limit` }
+    // A CP discard is already implied by the cast line, and a COST discard by the "activates" line — neither
+    // needs its own entry. Only the hand-limit discard is a thing the player did not otherwise see.
+    case 'discarded':
+      return e.reason === 'handSize'
+        ? { kind: 'event', text: `${who(v, e.player)} discard${e.player === v.me ? '' : 's'} ${name(v, e.card)} to the hand limit` }
+        : null
     // B-A6 + C1-9: coverage is per CLAUSE. `clauses` counts the ones still missing on a card that DOES have an
     // implemented clause; its absence means the whole text box is unimplemented and the card played as vanilla.
     case 'unimplementedAbility': return e.clauses === undefined

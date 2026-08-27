@@ -10,7 +10,7 @@ export type Event =
   | { type: 'activated'; player: PlayerId; cards: CardId[] }
   | { type: 'drew'; player: PlayerId; count: number }
   | { type: 'cpGenerated'; player: PlayerId; cp: Element[] }
-  | { type: 'discarded'; player: PlayerId; card: CardId; reason: 'cp' | 'handSize' }
+  | { type: 'discarded'; player: PlayerId; card: CardId; reason: 'cp' | 'handSize' | 'cost' }
   | { type: 'cast'; player: PlayerId; card: CardId; cardType: CardType }
   /** An activated ability was used (spec C3-1) — activated, NOT triggered; the log must not conflate them. */
   | { type: 'abilityActivated'; player: PlayerId; card: CardId; abilityId: string }
