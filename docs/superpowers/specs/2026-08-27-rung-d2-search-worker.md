@@ -1,69 +1,101 @@
 # Rung D2 — The search in a Web Worker: the browser gets the strong opponent
 
+> Revision 2 (2026-08-27), after a Codex plan-review that found two blockers and corrected two claims of
+> mine. The review is `docs/superpowers/plans/2026-08-27-rung-d2-search-worker.codex-review.md`.
+
 ## Context
 
 D1 is merged (`b22be0f`): headless SO-ISMCTS beats `GreedyAgent` **90.0 %** over 120 mirrored games at
 ~254 ms/decision. **The browser still plays `GreedyAgent`** — D1 was headless by design, because 254 ms of
-synchronous search would block the main thread and freeze the board mid-turn.
+synchronous search would freeze the board mid-turn.
 
-D2 is the wiring, and only the wiring. The search core does not change: `searchIsmcts(input): SearchResult`
-is already pure, synchronous and structured-cloneable, which is exactly what D1 was told to leave behind so
-this rung would not have to rewrite it.
+D2 is the wiring only. The search core does not change: `searchIsmcts(input): SearchResult` is already
+pure, synchronous and structured-cloneable, which is what D1 was told to leave behind.
+
+## Architecture: three layers, because the races must be testable
+
+Revision 1 put worker lifecycle, pacing, retries, fallback and stale-result handling into `useGame`'s AI
+`useEffect`. That hook already owns state, pacing, mutation and the agent loop; adding this to it would make
+every D2-specific race a matter of React timing folklore rather than a test.
+
+1. **`protocol.ts`** — discriminated message types and the pure `respond(init, request)`. Deterministic
+   translation only; no lifecycle, no knowledge of what is outstanding.
+2. **`worker.ts`** — a thin shell: store init, `try`/`catch`, `postMessage`. Vitest cannot drive a real
+   `Worker`, so the shell deliberately contains nothing worth testing.
+3. **`SearchCoordinator`** — one worker per mounted hook. Owns generation/request tracking, stable
+   per-position seeds, the pacing deadline, the watchdog, termination, and the `GreedyAgent` fallback.
+   **This is the layer the D2 tests target**, because this is where every race lives.
+
+`useGame` then does what it already does: capture a state, ask for a command, re-check legality against that
+exact state, narrate, commit.
 
 ## Decisions
 
 | # | Decision | Ruling (and why) |
 |---|---|---|
-| D2-1 | A **typed worker protocol**, not ad-hoc `postMessage` | `WorkerInit` (the two declared deck lists, sent once), `WorkerSearchRequest` (`requestId`, `view`, `seed`, `iterations`), `WorkerSearchResult` (`requestId`, `command`, `diagnostics`) and `WorkerError`. Every one structured-cloneable. Codex's D1 review flagged that the seam *promised* this and did not have it. |
-| D2-2 | **Decks at init; the view per request** | Decks are what the search needs and the view does not carry. `PlayerView` already carries `defs`, so a request re-sends the 18-card catalogue — measured as negligible against a 600 ms turn, so **it is left alone**. Stripping `defs` and rehydrating in the worker is available if measurement ever says otherwise; doing it now would be optimising a cost nobody has shown. |
-| D2-3 | **A pure `respond(init, request)` the worker merely wraps** | The same trick that made D1 testable: all protocol logic lives in a plain function, and `worker.ts` is a thin `onmessage` shell. Vitest cannot drive a real `Worker`, so anything inside the shell is untestable — the shell therefore contains nothing worth testing. |
-| D2-4 | **Requests are generation-checked; stale results are dropped** | `requestId` increases monotonically; the hook ignores any result that is not the one it is waiting for. Restarting a game, or the human acting while the AI thinks, must not have a late result applied to a board that has moved on. This is the defect most likely to be *intermittent* rather than reproducible, so it gets an explicit test rather than an inspection. |
-| D2-5 | **Search overlaps the pacing delay, never adds to it** | B7 paces the AI at 600 ms so its turn is watchable. Firing the request *then* waiting 600 ms would make every AI move 850 ms. Start the search immediately and apply the result at `max(elapsed, AI_STEP_MS)`, so the search is free until it exceeds the pacing budget. |
-| D2-6 | **Fall back to `GreedyAgent`, and say so** | If `Worker` is unavailable, the module fails to load, or the worker errors, the game continues with the heuristic agent rather than freezing or silently blocking the main thread. It must be **visible in the log** — an opponent quietly one-tenth as strong is exactly the kind of degradation that goes unnoticed for a rung. |
-| D2-7 | **The iteration budget is measured in the browser, not inherited** | D1's 200 was an implementation default chosen to be "clearly above greedy without being unusable headless", never calibrated. D2 measures ms/iteration in a real browser and picks a budget for a decision that comfortably fits the pacing window, then records the number and the machine it came from. |
-| D2-8 | Not in scope | Any change to the search itself, its keys or its evaluation; a worker pool or parallel search; C3's ability clauses. |
+| D2-1 | A **discriminated wire contract** | `type: 'init' \| 'search' \| 'result' \| 'error'`. Init carries the two declared deck lists **and the stable search configuration** (`rolloutCommandCap`, `explorationC` — `SearchInput` requires them and revision 1's request listed only seed and iterations). Errors carry their `requestId`, or `null` for an init failure, and post **plain strings, never `Error` objects**. |
+| D2-2 | **Decks and config at init; the view per request** | `PlayerView` carries `defs` by design and the UI needs them; the search already clones a state containing the same definitions once per determinisation, so one 18-card catalogue per request is not the dominant cost. Revision 1 called this "measured as negligible" — **it was not measured**; D2-A2 now reports the actual serialized size and posting duration, and `Omit<PlayerView,'defs'>` is revisited only if the catalogue materially grows. |
+| D2-3 | **Search seeds are stable per game POSITION** | Derived from `(gameSeed, committedAiDecisionIndex)`, incremented **only when an AI command successfully commits**. Never from `requestId`. A seed advanced when the effect *posts* is consumed again by StrictMode's double-invoke, by a retry, by a stale request and by worker replacement — so dev and prod would choose different moves from the same board, which is the worst kind of "works on my machine". |
+| D2-4 | **A result is accepted only under all four conditions** | `mounted && activeRequestId === result.requestId && stateRef.current === requestedState && actingPlayer(requestedState) === AI`. Then clear the active id *before* applying, re-check the command against `legalCommands(requestedState, AI)`, and commit from that same captured state. Restart, any external commit, effect cleanup and unmount must **synchronously** invalidate the active id; unmount must also terminate the worker. Note the non-obvious racer: **concede is legal even when the human is not the acting player**, so a human `choose()` really can commit mid-AI-turn. |
+| D2-5 | **Pacing is a deadline, not an added delay** | `notBefore = startedAt + AI_STEP_MS`; when the result arrives, schedule at `Math.max(0, notBefore - performance.now())`. A fast search still waits out the 600 ms; a 750 ms search applies immediately, having already shown 750 ms of thinking. Revision 1's "apply at `max(elapsed, AI_STEP_MS)`" was ambiguous enough to be implemented as an *extra* 600 ms. |
+| D2-6 | **Fall back to `GreedyAgent`, detect every way it can fail, and say so** | Greedy, not reduced-iteration main-thread ISMCTS: the latter is still a synchronous search with variable rollout cost, which gives up the one guarantee this rung exists for. Detection must cover **missing `Worker`, constructor failure, synchronous `postMessage` clone failure, `error`, `messageerror`, a typed `WorkerError`, and a worker that is killed or hangs and simply never replies** — the last needs a startup and per-request **watchdog**, because nothing correlated ever arrives. On failure: invalidate the request, terminate the worker, switch to Greedy **permanently for that game**, append **one** visible log warning, and play Greedy against the current state under the same pacing deadline. |
+| D2-7 | **The iteration budget is measured in the browser** | D1's 200 was an implementation default, never calibrated. Measure, choose, and record the number with the machine and browser it came from. If the browser budget lands well below 200, **the opponent a human faces is weaker than the one D1 measured**, and that gets said. |
+| D2-8 | Not in scope | Any change to the search, its keys or its evaluation; a worker pool or parallel search; C3's ability clauses. |
 
-## Build hazard: cleared before designing around it
+## Build hazard: partly cleared, and the rest is an acceptance gate
 
-The spec's main unknown was whether a Vite worker resolves the workspace packages, which are published as
-**raw TypeScript** (`main: src/index.ts`) and reached out of the monorepo root via `server.fs.allow`. A
-throwaway worker importing `searchIsmcts` was built and run in both modes:
+A throwaway worker importing `searchIsmcts` resolved the raw-TypeScript workspace packages in both modes:
+dev logged `worker sees searchIsmcts as: function`, and `vite build` emitted a **52 kB worker chunk**
+separate from the 275 kB app chunk. `new Worker(new URL(…, import.meta.url), { type: 'module' })` is Vite's
+supported static form, and linked monorepo packages exporting ESM are treated as source.
 
-- **dev**: logged `worker sees searchIsmcts as: function`;
-- **production**: `vite build` emitted `dist/assets/probe.worker-*.js` at **52 kB** — the search bundled
-  into its own worker chunk, separate from the 275 kB app chunk.
-
-So `new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })` works, and there is **no
-dev/prod divergence** on resolution. Recorded because a passing dev check alone would not have shown it,
-and because the failure mode this rung most fears is a worker that builds and then silently falls back.
+**That proves the chunk is emitted, not that it loads and runs when served** — revision 1 claimed the hazard
+"cleared", which was too strong. `server.fs.allow` is dev-only; production takes a different bundler path,
+and hashed asset loading, MIME and base-path failures all live there. Hence D2-A7 below.
 
 ## Acceptance criteria
 
-- **D2-A1** The browser plays a **full game to a result** against ISMCTS, driven end to end, with no
-  uncaught errors.
-- **D2-A2** **The main thread is not blocked.** Measured, not asserted: the longest task during an AI turn
-  stays well under the pacing window, and the board stays responsive to a click while the AI is thinking.
-- **D2-A3** **Determinism across the boundary**: the same `(view, seed, iterations)` through `respond`
-  returns exactly the command a direct `searchIsmcts` call returns. The worker must not be a second,
-  subtly different agent.
-- **D2-A4** **Staleness**: a result whose `requestId` is not the outstanding one is dropped. Tested by
-  driving `respond` out of order, not by hoping the race does not happen.
-- **D2-A5** **Fallback**: with `Worker` unavailable the game still plays a full game, using `GreedyAgent`,
-  and the log says which opponent is playing.
+- **D2-A1** The browser plays a **full game to a result** against ISMCTS, end to end, no uncaught errors.
+- **D2-A2 (honest non-blocking measurement)** On a **production preview**, over N AI decisions: mark
+  request-post, response and commit; observe **`longtask` entries** (any reported entry is ≥ 50 ms by
+  definition); record the **maximum `requestAnimationFrame` gap**; inject a harmless test button and record
+  **input-to-handler** while a search is active. Report browser, machine, iterations, sample count, max long
+  task, max frame gap, max input delay, and worker round-trip p50/p95 — plus the request's serialized size
+  and posting duration (D2-2). *"No main-thread task ≥ 50 ms during N AI searches"* is a result;
+  *"well under 600 ms"* is not, and was revision 1's wording.
+- **D2-A3 (determinism across the boundary)** The same `(view, seed, iterations, caps)` through `respond`
+  returns exactly the command a direct `searchIsmcts` call returns.
+- **D2-A4 (staleness, at the right layer)** Tested against the **coordinator**, not `respond`: deferred
+  replies delivered after a restart, after a human commit (including concede), after StrictMode cleanup, and
+  after unmount must all be dropped, and the worker terminated on unmount.
+- **D2-A5 (fallback)** Each detectable failure — no `Worker`, constructor throw, clone failure, `error`,
+  `messageerror`, typed error, and a never-replying worker — switches to Greedy, logs **one** warning, and
+  still finishes a game.
 - **D2-A6** The chosen iteration budget is recorded with the measurement that produced it.
-- **D2-A7** `pnpm test`, `pnpm typecheck`, `pnpm lint` green; the headless gates are untouched
+- **D2-A7** `pnpm test`, `pnpm typecheck`, `pnpm lint` **and `pnpm --filter @fftcg/web build`** green, plus
+  a **production-preview** browser run that loads the emitted worker asset, completes a real `postMessage`
+  round trip, and asserts ISMCTS is actually playing rather than the fallback. Headless gates untouched
   (462 tests, ISMCTS 90.0 % vs greedy, strict fuzzer 0 failures).
 
 ## Risks
 
-- **Staleness is intermittent by nature.** A late result applied to a moved-on board would corrupt the game
-  rarely and unreproducibly — the worst failure shape there is. D2-A4 is the mitigation and it must be a
-  test, not a code reading.
-- **The fallback can hide itself.** If the worker silently fails, the game keeps working and simply plays
-  worse. Hence D2-6's requirement that it be visible in the log.
-- **Vite worker bundling.** `new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })` is the
-  supported form; the workspace packages are raw TypeScript, so the worker bundle must resolve them the same
-  way the app does. A worker that fails to build is loud; one that builds but silently falls back is not.
-- **The search is unchanged, so its D1 caveats stand**: the iteration budget was never strength-calibrated,
-  and rollouts are ~117× the tree cost. If the browser budget lands well below 200 iterations, the opponent
-  the human faces is weaker than the one D1 measured — and that must be stated, not assumed away.
+- **Staleness is intermittent by nature**, and it is the reason for the coordinator layer. A late result
+  applied to a moved-on board corrupts a game rarely and unreproducibly.
+- **The fallback can hide itself.** If the worker silently fails the game keeps working and simply plays
+  worse — hence one visible warning, and hence D2-A7 asserting ISMCTS rather than merely "a game happened".
+- **Seed drift between dev and prod** (D2-3) would be diagnosed as a search bug and is not one.
+- **D1's caveats stand**: the iteration budget was never strength-calibrated, and rollouts are ~117× the
+  tree cost.
+
+## Changelog vs revision 1
+
+- **Three-layer architecture with a `SearchCoordinator`** — revision 1 put lifecycle, retries, watchdog and
+  fallback into a `useEffect`, where none of the races could be tested.
+- **Staleness moved to the coordinator** with the four-condition acceptance rule (D2-4); revision 1 tested
+  it against pure `respond`, which cannot see any of it.
+- **Stable per-position seeds** (D2-3) — new; revision 1 left seed allocation undefined.
+- **Fallback detection enumerated**, including the watchdog for a worker that never replies (D2-6).
+- **D2-A2 replaced with an actual measurement protocol**; the old criterion was unfalsifiable.
+- **Production build and preview added to D2-A7**; the dev probe proved emission, not execution.
+- **Wire contract completed** — discriminated union, config at init, `requestId` on errors, plain strings.
+- **Pacing restated as a deadline** (D2-5).
