@@ -771,6 +771,15 @@ export function warnUnimplemented(def: CardDef, card: CardId, events: Event[]): 
  * text named. Whatever an arrival owes, it owes here.
  */
 export function putOntoField(state: GameState, card: CardId, controller: PlayerId, events: Event[]): GameState {
+  // MVP0-SIMPLIFICATION (§7.7.3/§12.4.6, spec C9): entry by ABILITY does not enforce the same-name
+  // restriction that `castCheck` does, so Hugh Yurg can search out a second Undead Princess while one is
+  // already on the field. Both are non-generic, so the pool reaches it.
+  //
+  // Deliberately NOT a check here. The CR does not forbid the entry: §7.7.3 prohibits simultaneous
+  // DEPLOYMENT, and a second copy arriving triggers §12.4.6, a rule process that puts ALL copies of that name
+  // into the Break Zone. Refusing the pick would be a third answer, wrong in the other direction, and it
+  // would quietly change what the printed text can find. `castCheck` already carries the matching note:
+  // §12.4.6/§12.4.7 are MVP3 work, and until they land the deviation is that the second copy simply stays.
   const def = defOf(state, card)
   const fc: FieldCard = {
     id: card, status: def.type === 'backup' ? 'dull' : 'active', damage: 0,

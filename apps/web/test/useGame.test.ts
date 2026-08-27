@@ -248,6 +248,45 @@ describe('the AI\'s own log lines never name a card the human was not shown (B-A
   })
 })
 
+describe("the narrator is wired to the events the ENGINE really emits (rung C9)", () => {
+  /**
+   * Every other test in this block hand-builds its `deckExposed` / `playedFromDeck` / `addedToHand` literals,
+   * so the narrator is only ever checked against a shape the TEST wrote. The engine could emit a different one
+   * — a missing `scope`, an empty `cards`, a renamed field — and all of them would still pass while the log
+   * silently lost a line. This takes the events off real `apply` calls instead.
+   */
+  const seen = new Map<string, Event[]>()
+  {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      let state = newGame(seed)
+      const agent: Agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
+      for (let i = 0; i < 400 && !state.result; i++) {
+        const p = actingPlayer(state)
+        if (p === null) break
+        const legal = legalCommands(state, p)
+        const cmd = new GreedyAgent({ seed: seed + i, decks: DECKS, depth: 1 }).decide(viewFor(state, p), legal)
+        const r = apply(state, cmd)
+        for (const e of r.events) if (!seen.has(e.type)) seen.set(e.type, [e])
+        state = r.state
+      }
+      void agent
+    }
+  }
+
+  for (const type of ['deckExposed', 'addedToHand', 'playedFromDeck'] as const) {
+    it(`emits ${type}, and the narrator turns the REAL one into a line`, () => {
+      const events = seen.get(type)
+      expect(events, `no game emitted a ${type} — this assertion proves nothing without one`).toBeDefined()
+      const v = viewFor(newGame(1), HUMAN)
+      for (const e of events ?? []) {
+        const line = describeEvent(v, e)
+        expect(line, `the narrator dropped a real ${type}`).not.toBeNull()
+        expect(line?.text.length).toBeGreaterThan(0)
+      }
+    })
+  }
+})
+
 describe('a look and a reveal in the log (rung C9)', () => {
   // The narrator redacts against the VIEW, not against the event's `audience` — so one code path serves
   // Reeve's private look and Miner's public reveal, and neither can name a card this seat was not shown.

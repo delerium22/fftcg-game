@@ -51,7 +51,7 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     // Sampled cards fill the slots this viewer does NOT know, IN ORDER, leaving the known ones where they are.
     const fill = (sampled: string[]): CardId[] => {
       const pool = [...sampled]
-      return f.deck.map((slot) => {
+      const filled = f.deck.map((slot) => {
         if (slot.card !== null) return slot.card
         const code = pool.shift()
         // The length check below cannot see this any more: `fill` always returns one entry per slot, so a
@@ -65,6 +65,12 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
         if (slot.knownBy !== 0) knownBy[id] = slot.knownBy
         return id
       })
+      // ...and too MANY is the other half. The length check below cannot see this either — `fill` returns one
+      // entry per slot whatever it is handed — so a surplus deck list used to be swallowed silently, and the
+      // simulated player played a deck missing cards their real one holds. Conservation is asserted where the
+      // cards actually run out, in both directions.
+      if (pool.length !== 0) throw new Error(`deck list for player ${p} has ${pool.length} more cards than its ${f.deck.length}-card deck and ${f.handCount}-card hand can hold`)
+      return filled
     }
     if (p === view.me) { hand = view.hand; deck = fill(order) }
     else { hand = order.slice(0, f.handCount).map(mint); deck = fill(order.slice(f.handCount)) }

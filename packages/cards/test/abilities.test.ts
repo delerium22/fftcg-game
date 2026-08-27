@@ -1408,6 +1408,37 @@ describe('24-063H Hugh Yurg — "you may search for 1 Earth Forward of cost 1 an
     ok(done.state)
   })
 
+  it('can find a second copy of a name already on the field — a PINNED deviation, not an accident', () => {
+    // MVP0-SIMPLIFICATION (§7.7.3/§12.4.6): casting a second non-generic same-name Character is illegal here,
+    // but entry by ABILITY is not checked, so the search places it. The CR agrees the entry happens — §7.7.3
+    // prohibits simultaneous deployment, and §12.4.6 then breaks ALL copies of that name — so the deviation is
+    // the missing rule process, not the placement. This pins the current behaviour so the day §12.4.6 lands,
+    // this test fails and says exactly what has to change.
+    let s = makeGame()
+    ;[s] = withCp(s, 0, Array<string>(4).fill(EARTH_BACKUP))
+    let standing: CardId
+    ;[s, standing] = withField(s, 0, 'forwards', PRINCESS)
+    const p0 = s.players[0]
+    s = setPlayer(s, 0, {
+      ...p0,
+      deck: p0.deck.filter((id) => !findable(s, id)),
+      removedFromGame: [...p0.removedFromGame, ...p0.deck.filter((id) => findable(s, id))],
+    })
+    let found: CardId[]
+    ;[s, found] = withDeckTops(s, 0, [PRINCESS])
+    let hugh: CardId
+    ;[s, hugh] = withHand(s, 0, '24-063H')
+    const cmd = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === hugh)
+    const r = apply(s, cmd!)
+    if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('the search did not offer the second copy')
+    const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [0] })
+
+    const names = done.state.players[0].forwards.map((c) => defOf(done.state, c.id).name)
+    expect(names.filter((n) => n === defOf(done.state, standing).name)).toHaveLength(2)
+    expect(done.state.players[0].forwards.map((c) => c.id)).toContain(found[0])
+    ok(done.state)
+  })
+
   it('with no legal target in the deck at all, raises no prompt and still shuffles', () => {
     // `take.min` is 0, so "nothing eligible" is settled as the empty pick rather than treated as a failure —
     // but the deck was still searched, so it must still be shuffled and forgotten.

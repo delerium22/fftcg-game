@@ -178,6 +178,15 @@ describe('deck knowledge survives determinisation (spec C9-5)', () => {
     expect(codesOf(det, 0)).toEqual(codesOf(s, 0))
   })
 
+  it('rejects a deck list with MORE cards than the view can hold', () => {
+    // The other half of conservation. `fill` returns one entry per slot whatever it is handed, so the length
+    // check downstream can never see a surplus — it has to be caught where the cards run out.
+    const s = makeGame({ defs: VANILLA_POOL, decks: DECKS })
+    const view = viewFor(s, 0)
+    const tooMany: [string[], string[]] = [[...DECKS[0], DECKS[0][0] as string], [...DECKS[1]]]
+    expect(() => determinise({ view, decks: tooMany, rng: seedRng(3) })).toThrow(/more cards than/)
+  })
+
   it('preserves "unknown to me, KNOWN TO THEM" — the half a bare count cannot carry', () => {
     // The opponent looked at their own top three. Root cannot name those cards, but must not model an
     // opponent who never looked: the sampler invents identities freely and records that they are known.

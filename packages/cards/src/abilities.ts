@@ -326,7 +326,10 @@ const PRISHE_DAMAGES_OPPONENT: Ability = {
  *   perfect knowledge of their whole deck for the rest of the game.
  *
  * "1 Earth Forward of cost 1" is `cost: 1` EXACT, the same trap C8 called out on the sibling clause: a cost-3
- * Earth Forward must not be findable. Undead Princess (19-052C) is the pool's only legal target.
+ * Earth Forward must not be findable. The starter deck holds TWO findable names — Undead Princess (19-052C)
+ * and Luso (27-125S), five copies between them — and both are non-generic, so the search can put a second
+ * copy of a name already on the field. See the MVP0-SIMPLIFICATION on `putOntoField` for why that is left
+ * alone rather than blocked.
  */
 const HUGH_YURG_SEARCH: Ability = {
   id: '24-063H:search',
