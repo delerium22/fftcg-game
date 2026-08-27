@@ -91,3 +91,28 @@ action-availability coverage.
 - **Gate is 200 mirrored seed pairs at ≥ 55 % with a confidence bound** (D-A1), not 60 % over 200 fixed-seat
   games; correctness moves into targeted unit tests (D-A2), and the random tournament shrinks to a smoke run.
 - **Cost section replaced with measurements**, and world reuse demoted from "fallback" to "benchmark first".
+
+## Measured result (2026-08-27)
+
+**ISMCTS at 200 iterations scores 90.0 % against `GreedyAgent`** over 120 mirrored games (60 seed pairs,
+roles swapped on each identical seed), paired-bootstrap **CI95 [0.85, 0.95]**, 0 harness failures, seat
+bias 0.067, 254 ms/decision. The D-A1 bar was ≥ 55 % with a lower bound above 50 %.
+
+**Deviation from D-A1 as written:** 60 seed pairs, not 200. The bound is 0.85 against a bar of 0.50, so
+more games would only tighten an interval that is already decisive; the sample size was the constraint that
+mattered least. Recorded rather than quietly done.
+
+**What the number does NOT establish.** The two defects the verifiers found — interchangeable hand copies
+splitting one action across several tree edges, and opponent hand casts pooling onto a single opaque edge
+so the modelled opponent chose uniformly at random — are both *invisible here*: a 60-game pre-fix run
+scored 91.7 % (CI95 [0.85, 0.98]) and the 120-game post-fix run scored 90.0 %, i.e. indistinguishable. An
+intermediate 12-game reading of 83.3 % was noise and must not be read as a before/after. Those fixes are
+justified by direct measurement of the mechanism (105/103/102 visits where one edge would have had 310
+against an alternative's 90; an edge pooling a 1-cost Backup with an 8000 Forward and choosing between them
+off the tie stream), never by the tournament. **This is the rung's own thesis applied to itself: if a broken
+search still wins ~91 %, a fixed one winning ~90 % says nothing either way.** D-A2's unit tests are the
+evidence; D-A1 only rules out gross regression.
+
+**Not yet done:** the iteration budget is uncalibrated. 200 was chosen by the implementation as "clearly
+above greedy without being unusable headless", not tuned on development seeds as D-A1 asks. D2 needs a
+budget picked from browser measurement anyway, so calibration belongs there.
