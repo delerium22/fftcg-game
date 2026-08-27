@@ -56,6 +56,28 @@ describe('§11.2.2 paying a cost', () => {
   })
 })
 
+describe('required Elements are a MULTISET, not a set', () => {
+  const E = (e: 'earth' | 'lightning', n = 1) => Array.from({ length: n }, (_, i) => ({ element: e, source: 100 + i }))
+
+  // `[Lightning][Lightning]` needs TWO Lightning CP. Under `elements.every(e => cp.some(...))` the same single
+  // Lightning satisfied both entries, so one Lightning plus one Earth paid a doubled cost. No card in the
+  // MVP0 pool prints a repeated Element, so this was latent — but the requirement type now describes ability
+  // costs too, which is exactly where repeated Elements turn up.
+  it('one Lightning does not pay [Lightning][Lightning]', () => {
+    expect(canPay(2, ['lightning', 'lightning'], [...E('lightning'), ...E('earth')])).toBe(false)
+    expect(canPay(2, ['lightning', 'lightning'], E('lightning', 2))).toBe(true)
+  })
+
+  it('still accepts one CP per DISTINCT element when the requirement is not repeated', () => {
+    expect(canPay(2, ['lightning', 'earth'], [...E('lightning'), ...E('earth')])).toBe(true)
+  })
+
+  it('counts surplus of the wrong element as no help', () => {
+    expect(canPay(3, ['lightning', 'lightning'], [...E('lightning'), ...E('earth', 2)])).toBe(false)
+    expect(canPay(3, ['lightning', 'lightning'], [...E('lightning', 2), ...E('earth')])).toBe(true)
+  })
+})
+
 describe('enumeratePayments', () => {
   it('lists only minimal payments and never uses the cast card, dull backups or the wrong element alone', () => {
     const { s, b1, h1, h2, target } = setup()

@@ -54,12 +54,25 @@ export function generateCp(state: GameState, player: PlayerId, payment: Payment,
   return cp
 }
 
-/** §11.2.2.2–3: total ≥ cost, ≥1 CP of each of the card's elements; cost 0 → no CP may be generated (§11.2.2.4). */
+/**
+ * §11.2.2.2–3: total ≥ cost, and the required Elements are covered; cost 0 → no CP may be generated
+ * (§11.2.2.4).
+ *
+ * `elements` is a MULTISET, not a set. `['lightning', 'lightning']` needs TWO Lightning CP — under the old
+ * `elements.every(e => cp.some(...))` the same single Lightning satisfied both entries, so one Lightning plus
+ * one Earth would have paid a `[Lightning][Lightning]` cost. No card in the MVP0 pool prints a repeated
+ * Element, so this was latent rather than live; it is fixed here because the requirement type now describes
+ * ability costs too, which is exactly where repeated Elements show up.
+ *
+ * `elements` is expected to already be `requiredElements(def)` (Light/Dark exemption applied by the caller).
+ */
 export function canPay(cost: number, elements: readonly Element[], cp: GeneratedCp[]): boolean {
   if (cost === 0) return cp.length === 0   // §11.2.2.4 / §11.2.2.1 last sentence
   if (cp.length < cost) return false
-  // `elements` is expected to already be `requiredElements(def)` (Light/Dark exemption applied by the caller).
-  return elements.every((e) => cp.some((c) => c.element === e))   // §11.2.2.1–2
+  const need = new Map<Element, number>()
+  for (const e of elements) need.set(e, (need.get(e) ?? 0) + 1)
+  for (const [e, n] of need) if (cp.filter((c) => c.element === e).length < n) return false
+  return true   // §11.2.2.1–2
 }
 
 /**

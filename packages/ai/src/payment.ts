@@ -14,16 +14,21 @@ interface Source { kind: 'backup' | 'discard'; id: CardId; elements: Element[]; 
  * spent on fire). Backtracking explores every source-to-element assignment (not just the first that fits) and
  * keeps the cheapest complete one, so it finds a covering assignment whenever one exists.
  */
-function assignRequiredElements(elements: readonly Element[], sources: Source[], canSupply: (s: Source, e: Element) => boolean): Map<Element, Source> | null {
+/**
+ * One distinct source per REQUIREMENT, not per element. The result was keyed `Map<Element, Source>`, which
+ * silently collapsed a repeated requirement: `[Lightning][Lightning]` would consume two sources during the
+ * search but return one entry, so only one was ever spent. Returning pairs keeps each requirement its own.
+ */
+function assignRequiredElements(elements: readonly Element[], sources: Source[], canSupply: (s: Source, e: Element) => boolean): [Element, Source][] | null {
   // Processing scarcest elements first prunes the search fastest but doesn't change correctness — every branch
   // below tries every remaining candidate for the current element and recurses, so it finds a covering
   // assignment (the cheapest one) whenever one exists, regardless of element order.
   const order = [...elements].sort((a, b) => sources.filter((s) => canSupply(s, a)).length - sources.filter((s) => canSupply(s, b)).length)
   const used = new Set<Source>()
-  const rec = (i: number): { assignment: Map<Element, Source>; cost: number } | null => {
-    if (i === order.length) return { assignment: new Map(), cost: 0 }
+  const rec = (i: number): { assignment: [Element, Source][]; cost: number } | null => {
+    if (i === order.length) return { assignment: [], cost: 0 }
     const e = order[i] as Element
-    let best: { assignment: Map<Element, Source>; cost: number } | null = null
+    let best: { assignment: [Element, Source][]; cost: number } | null = null
     for (const s of sources) {
       if (used.has(s) || !canSupply(s, e)) continue
       used.add(s)
@@ -37,9 +42,7 @@ function assignRequiredElements(elements: readonly Element[], sources: Source[],
       // which is why the pre-backtracking greedy pass sorted by it.
       const cost = s.cost + rest.cost
       if (!best || cost < best.cost) {
-        const assignment = new Map(rest.assignment)
-        assignment.set(e, s)
-        best = { assignment, cost }
+        best = { assignment: [...rest.assignment, [e, s] as [Element, Source]], cost }
       }
     }
     return best
