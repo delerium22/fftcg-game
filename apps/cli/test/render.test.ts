@@ -16,7 +16,7 @@ describe('render — a deck look or search (rung C9)', () => {
     s = apply(s, { type: 'mulligan', player: p === 0 ? 1 : 0, redraw: false }).state
     const ids = s.players[looker].deck.slice(0, 3)
     const v = viewFor({ ...s, knownBy: Object.fromEntries(ids.map((id) => [id, 1 << looker])) }, seat)
-    v.pending = { kind: 'chooseFromDeck', player: looker, min: 0, max: 1, count: 3, eligible: [0, 1, 2], to }
+    v.pending = { kind: 'chooseFromDeck', player: looker, min: 0, max: 1, count: 3, to }
     return { v, ids }
   }
 

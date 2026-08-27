@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf } from '@fftcg/engine'
+import { apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -1162,7 +1162,10 @@ describe('20-105C Reeve — "look at the top 3 cards of your deck. Add 1 among t
     expect(r.state.pending?.kind).toBe('chooseFromDeck')
     if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('unreachable')
     expect(r.state.pending.count).toBe(3)
-    expect(r.state.pending.eligible).toEqual([0, 1, 2])   // "1 card among them" — no filter
+    // "1 card among them" — no filter, so every exposed position is a legal answer. The pending carries the
+    // QUESTION; `deckPickCandidates` is what turns it into positions, against whichever deck the caller holds.
+    expect(r.state.pending.filter).toBeUndefined()
+    expect(deckPickCandidates(r.state, r.state.pending)).toEqual([0, 1, 2])
     expect(r.state.pending.min).toBe(1)
     expect(r.state.pending.max).toBe(1)
     // The pending carries no card id at all. That is what makes it valid in every determinisation.
@@ -1234,7 +1237,9 @@ describe('20-074C Miner — "reveal the top 5 cards of your deck. Add 1 Backup a
     expect(r.state.pending?.kind).toBe('chooseFromDeck')
     if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('unreachable')
     expect(r.state.pending.count).toBe(5)
-    expect(r.state.pending.eligible).toEqual([1, 3])   // "1 BACKUP among them" - the Forwards are not offered
+    // "1 BACKUP among them" - the Forwards are not offered.
+    expect(r.state.pending.filter).toEqual({ type: 'backup' })
+    expect(deckPickCandidates(r.state, r.state.pending)).toEqual([1, 3])
     expect(r.state.pending.min).toBe(1)
     expect(r.state.pending.max).toBe(1)
   })
@@ -1325,10 +1330,39 @@ describe('24-063H Hugh Yurg — "you may search for 1 Earth Forward of cost 1 an
     if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('unreachable')
     expect(r.state.pending.count).toBe(before.players[0].deck.length)
     // The two stacked copies are on top, so they are the first two indices — and nothing else qualifies.
-    expect(r.state.pending.eligible).toEqual([0, 1])
+    expect(r.state.pending.filter).toEqual({ type: 'forward', element: 'earth', cost: 1 })
+    expect(deckPickCandidates(r.state, r.state.pending)).toEqual([0, 1])
     expect(r.state.pending.min, '"you MAY search" — declining is legal').toBe(0)
     expect(r.state.pending.max).toBe(1)
     void targets
+  })
+
+  it('tells the opponent WHAT may be taken, never WHICH positions hold it (C9 review HIGH)', () => {
+    // The pending is copied into both seats' views verbatim, so everything on it is public. It used to carry
+    // the resolved index list, and for a search that is a map of the searcher's hidden deck: "positions 4, 12,
+    // 16, 31 and 37 are cost-1 Earth Forwards and nothing else is". The filter is the printed text and public;
+    // the positions are not.
+    const { r } = castHughYurg(2)
+    if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('unreachable')
+    const theirs = viewFor(r.state, 1)
+    expect(theirs.pending?.kind).toBe('chooseFromDeck')
+    expect(JSON.stringify(theirs.pending)).not.toMatch(/\d+,\d+/)   // no index list of any kind survives
+
+    // And the opponent cannot reconstruct it: from their seat every deck slot is `card: null`, so the shared
+    // computation returns nothing for them while the searcher gets both positions.
+    expect(deckPickCandidates(r.state, r.state.pending)).toEqual([0, 1])
+    expect(theirs.fields[0].deck.every((slot) => slot.card === null)).toBe(true)
+  })
+
+  it('answers the question against the deck the CALLER holds, not the one the pending was raised on', () => {
+    // The point of carrying the filter: a determinised world computes eligibility over ITS deck. Simulated
+    // here by answering the same pending against a state whose deck has been re-stacked — the resolved index
+    // list would still say [0, 1] and name two cards that no longer match.
+    const { r } = castHughYurg(2)
+    if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('unreachable')
+    const p0 = r.state.players[0]
+    const rotated = setPlayer(r.state, 0, { ...p0, deck: [...p0.deck.slice(2), ...p0.deck.slice(0, 2)] })
+    expect(deckPickCandidates(rotated, r.state.pending)).toEqual([p0.deck.length - 2, p0.deck.length - 1])
   })
 
   it('is PRIVATE: the controller sees the whole deck, the opponent sees none of it', () => {

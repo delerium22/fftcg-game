@@ -497,10 +497,15 @@ function pendingDigest(view: PlayerView, pending: Pending | null): string {
     case 'chooseMode':
       // Labels are printed wording, and JSON-quoted so a label containing a separator cannot forge one.
       return `${head}/${pending.min}-${pending.max}/${pending.labels.map((l) => JSON.stringify(l)).join(',')}`
-    case 'chooseFromDeck':
-      // Counts and indices only — the pending never held card ids, so there is nothing here to canonicalise
-      // and nothing that could differ between two determinisations of the same position.
-      return `${head}/${pending.min}-${pending.max}/n${pending.count}/e${[...pending.eligible].join(',')}`
+    case 'chooseFromDeck': {
+      // Counts and the printed FILTER — no card ids, and nothing that differs between two determinisations of
+      // the same position. It digested the resolved index list until the C9 review, which was neither: those
+      // positions were computed against the real deck, so two worlds sampling different decks under one
+      // information set produced different keys, splitting the tree on something no observer can see.
+      const f = pending.filter
+      const filter = f === undefined ? '-' : JSON.stringify(Object.keys(f).sort().map((k) => [k, (f as Record<string, unknown>)[k]]))
+      return `${head}/${pending.min}-${pending.max}/n${pending.count}/f${filter}/${pending.to}`
+    }
     default: { const _exhaustive: never = pending; return _exhaustive }
   }
 }

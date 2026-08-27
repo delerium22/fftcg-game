@@ -327,7 +327,8 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
 
       ctx.suspend = {
         kind: 'chooseFromDeck', player: ctx.controller,
-        min: eff.take.min, max: Math.min(eff.take.max, eligible.length), count: exposed.length, eligible, to: eff.to,
+        min: eff.take.min, max: eff.take.max, count: exposed.length, to: eff.to,
+        ...(eff.take.filter ? { filter: eff.take.filter } : {}),
       }
       return
     }
@@ -612,6 +613,22 @@ export function applyChooseTargets(state: GameState, player: PlayerId, targets: 
  * this world-independent: the same command is legal in every determinisation, and which card index 2 names
  * is whatever that world sampled.
  */
+/**
+ * Which of the exposed positions this pending's filter allows, computed from the deck the caller actually has.
+ *
+ * ONE implementation on purpose. It runs on the real state for `legalCommands` and `applyChooseFromDeck`, and
+ * on each determinised state inside the search — and because it reads that state's own deck, a sampled world
+ * answers the question about the cards IT holds. The resolved index list used to travel on the pending
+ * instead, which meant the search enumerated positions computed against a deck it was not looking at.
+ */
+export function deckPickCandidates(state: GameState, pending: Extract<Pending, { kind: 'chooseFromDeck' }>): number[] {
+  const source = state.resolution.active?.source
+  const exposed = state.players[pending.player].deck.slice(0, pending.count)
+  const out: number[] = []
+  exposed.forEach((id, i) => { if (matchesFilter(state, source ?? id, id, pending.filter)) out.push(i) })
+  return out
+}
+
 export function applyChooseFromDeck(state: GameState, player: PlayerId, picks: readonly number[]): [GameState, Event[]] {
   const pending = state.pending
   if (pending?.kind !== 'chooseFromDeck' || pending.player !== player) throw new IllegalCommandError('no deck choice owed by this player')
@@ -619,7 +636,10 @@ export function applyChooseFromDeck(state: GameState, player: PlayerId, picks: r
   if (picks.length < pending.min || picks.length > pending.max) throw new IllegalCommandError(`choose ${pending.min}..${pending.max} cards, got ${picks.length}`)
   for (const i of picks) {
     if (!Number.isInteger(i) || i < 0 || i >= pending.count) throw new IllegalCommandError(`${i} is not one of the exposed cards`)
-    if (!pending.eligible.includes(i)) throw new IllegalCommandError(`${i} is not a legal choice here`)
+  }
+  const eligible = deckPickCandidates(state, pending)
+  for (const i of picks) {
+    if (!eligible.includes(i)) throw new IllegalCommandError(`${i} is not a legal choice here`)
   }
   const { frame } = suspendedNode(state)
   // Extending the path says "the choice at this node is made" — the same marker `applyChooseTargets` writes.

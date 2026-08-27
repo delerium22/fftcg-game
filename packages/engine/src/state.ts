@@ -1,6 +1,6 @@
 import type { Rng } from './rng.js'
 import type { PlayerId, CardDef, Keyword } from './types.js'
-import type { FieldFlag, Resolution } from './abilities.js'
+import type { FieldFlag, Resolution, TargetFilter } from './abilities.js'
 
 export type CardId = number
 export interface CardInstance { id: CardId; code: string; owner: PlayerId }
@@ -49,18 +49,25 @@ export type Pending =
    * know. Carrying a COUNT instead makes it valid in every world at once, exactly as `chooseMode` carries
    * labels and is answered by index.
    *
-   * `count` is how many are exposed; `eligible` are the indices a filter allows. Which CARDS those indices
-   * name is a fact of the view, and the view shows them only to whoever is entitled to see them.
+   * `count` is how many are exposed; `filter` is the restriction the printed text puts on what may be taken.
+   * The QUESTION travels, not the ANSWER: which indices satisfy the filter is computed from the deck, by
+   * whoever holds one — `legalCommands` and `applyChooseFromDeck` on the real state, and the search on each
+   * determinised state.
    *
-   * LIMIT worth stating: `eligible` is itself a hint — "indices 0 and 2 are Backups" says something about
-   * cards a non-audience viewer cannot see. No clause in the pool is both PRIVATE and FILTERED (Reeve is
-   * private and unfiltered, Miner is filtered and public), so nothing leaks today. A private filtered look
-   * would need `eligible` redacted per viewer.
+   * It carried the resolved index list until the C9 code review, and that leaked. This very comment used to
+   * say the shape was safe "because no clause in the pool is both PRIVATE and FILTERED" — and then Hugh
+   * Yurg's search arrived as exactly that, private and filtered, so `eligible: [4,12,16,31,37]` handed the
+   * opponent the positions of every cost-1 Earth Forward in a deck they cannot see. `viewFor` copies the
+   * pending into BOTH seats verbatim, so a precondition about the card pool was never going to hold it.
+   *
+   * Carrying the filter fixes it by construction rather than by redaction, and fixes the search too: the
+   * indices were computed against the REAL deck, so in a determinised world they named cards that did not
+   * match the filter at all, and the observation key split on positions no observer could see.
    */
   // `to` is where a picked card GOES. It is on the pending, not just on the effect, because the button the
   // player clicks has to say it: "Take Undead Princess" for a card that is about to be put onto the field
   // is a label that describes the wrong move.
-  | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; eligible: readonly number[]; to: 'hand' | 'field' }
+  | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; filter?: TargetFilter; to: 'hand' | 'field' }
 export interface GameResult { winner: PlayerId | null; reason: string }   // winner null = draw
 export interface GameState {
   rng: Rng

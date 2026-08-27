@@ -555,7 +555,7 @@ describe('a private deck look cannot be narrated by the wrong seat (rung C9)', (
     // Same command, same view, different destination — "Take Cloud" names the wrong move for a clause that
     // puts the card onto the field. The pending is what carries it.
     const v = lookedView(HUMAN)
-    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 0, max: 1, count: 3, eligible: [1], to: 'field' }
+    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 0, max: 1, count: 3, to: 'field' }
     expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [1] })).toBe(`Play ${nameOf(v, 902)} onto the field`)
     expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [] })).toBe('Find nothing')
   })
