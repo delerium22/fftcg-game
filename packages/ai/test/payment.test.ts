@@ -197,3 +197,42 @@ describe('C6: a Backup that can produce two Elements', () => {
     expect(preferredPaymentFor(s, 0, { amount: 1, requiredElements: ['lightning'], excluded: [] })).toBeNull()
   })
 })
+
+describe('a source covers as many requirements as it generates CP', () => {
+  // Surfaced by the C6 review, as a divergence between two independent implementations of the same matching.
+  // The engine's `assignable` sees the CP array, where a discard appears TWICE (`generateCp` pushes two).
+  // The AI's `assignRequiredElements` saw the SOURCE, and treated it as one slot — so a doubled Element
+  // requirement that one discard covers made the AI find no payment at all and decline to cast a card it
+  // could afford. Latent while no card in the pool prints a repeated Element; a real divergence regardless.
+  const single = (e: 'earth' | 'lightning') =>
+    makeDef({ code: e === 'earth' ? 'T-E1' : 'T-L1', elements: [e], cost: 1, power: 3000 })
+  const POOL = [...VANILLA_POOL, single('earth'), single('lightning')]
+
+  it('lets ONE discard cover a doubled requirement, agreeing with the engine', () => {
+    let s = withHandSize(makeGame({ defs: POOL }), 0, 0)
+    let inHand: number
+    ;[s, inHand] = withHand(s, 0, 'T-L1')   // one Lightning card: discarded it yields TWO Lightning CP
+    const req = { amount: 2, requiredElements: ['lightning', 'lightning'] as const, excluded: [] as number[] }
+
+    // The engine accepts it...
+    const enumerated = enumeratePaymentsFor(s, 0, req)
+    expect(enumerated.length, 'the engine found no payment either — fixture is wrong').toBeGreaterThan(0)
+    // ...and so must the AI, with the same single discard.
+    const preferred = preferredPaymentFor(s, 0, req)
+    expect(preferred, 'the AI declined a payment the engine accepts').not.toBeNull()
+    expect(preferred?.discards.map((d) => d.card)).toEqual([inHand])
+    expect(canPay(req.amount, req.requiredElements, generateCp(s, 0, preferred!, []))).toBe(true)
+  })
+
+  it('does not let one discard cover TWO DIFFERENT Elements', () => {
+    // A discard declares one Element on the Payment and yields two CP of it, so a two-Element card cannot
+    // pay an Earth requirement and a Lightning one by being discarded once.
+    const dual = makeDef({ code: 'T-EL', elements: ['earth', 'lightning'], cost: 1, power: 3000 })
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, dual] }), 0, 0)
+    ;[s] = withHand(s, 0, 'T-EL')
+    const req = { amount: 2, requiredElements: ['earth', 'lightning'] as const, excluded: [] as number[] }
+
+    expect(enumeratePaymentsFor(s, 0, req)).toEqual([])   // the engine refuses it
+    expect(preferredPaymentFor(s, 0, req)).toBeNull()     // and so does the AI
+  })
+})

@@ -24,23 +24,44 @@ function assignRequiredElements(elements: readonly Element[], sources: Source[],
   // below tries every remaining candidate for the current element and recurses, so it finds a covering
   // assignment (the cheapest one) whenever one exists, regardless of element order.
   const order = [...elements].sort((a, b) => sources.filter((s) => canSupply(s, a)).length - sources.filter((s) => canSupply(s, b)).length)
-  const used = new Set<Source>()
+  /**
+   * How many times each source is already spoken for, and — for a discard — which Element it committed to.
+   *
+   * A source covers up to `cp` requirements, not one. A discard yields TWO CP, and the engine's own matcher
+   * sees two entries for it (`generateCp` pushes twice), so treating it as a single slot here made the AI
+   * reject payments the engine accepts: it would fail to find any payment for a doubled Element requirement
+   * that one discard covers, and so decline to cast a card it could afford. Latent while no card in the pool
+   * prints a repeated Element, but it is a divergence between two implementations of the same matching.
+   *
+   * The Element is tracked because a discard DECLARES one on the `Payment` and yields two CP of it: a
+   * two-Element card cannot cover one Earth requirement and one Lightning requirement by being discarded once.
+   */
+  const uses = new Map<Source, { count: number; element: Element }>()
+  const canTake = (s: Source, e: Element): boolean => {
+    const u = uses.get(s)
+    if (!u) return true
+    if (u.count >= s.cp) return false
+    return s.kind === 'backup' ? true : u.element === e
+  }
   const rec = (i: number): { assignment: [Element, Source][]; cost: number } | null => {
     if (i === order.length) return { assignment: [], cost: 0 }
     const e = order[i] as Element
     let best: { assignment: [Element, Source][]; cost: number } | null = null
     for (const s of sources) {
-      if (used.has(s) || !canSupply(s, e)) continue
-      used.add(s)
+      if (!canTake(s, e) || !canSupply(s, e)) continue
+      const before = uses.get(s)
+      // Spending a source a SECOND time costs nothing extra — you discard the card once, whatever it covers.
+      const marginal = before ? 0 : s.cost
+      uses.set(s, { count: (before?.count ?? 0) + 1, element: before?.element ?? e })
       const rest = rec(i + 1)
-      used.delete(s)
+      if (before) uses.set(s, before); else uses.delete(s)
       if (!rest) continue
       // R1: minimise `Source.cost` (what spending the source is WORTH giving up — 1 for a backup, 2 + cardValue
       // for a discard), not `Source.cp` (how much CP it generates). Every discard generates 2 CP, so ranking by
       // `cp` cannot separate two discards and silently falls back to hand order — which threw away an 8000-power
       // forward where a cost-1 summon would do. `cost` also still prefers backups (1) over any discard (>= 2),
       // which is why the pre-backtracking greedy pass sorted by it.
-      const cost = s.cost + rest.cost
+      const cost = marginal + rest.cost
       if (!best || cost < best.cost) {
         best = { assignment: [...rest.assignment, [e, s] as [Element, Source]], cost }
       }
@@ -81,7 +102,14 @@ export function preferredPaymentFor(state: GameState, player: PlayerId, req: CpR
   const chosen = new Set<Source>()
   const declared = new Map<CardId, Element>()
   let total = 0
-  const take = (s: Source, element: Element) => { chosen.add(s); total += s.cp; if (s.kind === 'discard') declared.set(s.id, element) }
+  // Idempotent per source: a source that covers two requirements is still ONE card spent, generating its own
+  // `cp` once. Adding it twice would over-count the CP raised and let the top-up phase stop short.
+  const take = (s: Source, element: Element) => {
+    if (chosen.has(s)) return
+    chosen.add(s)
+    total += s.cp
+    if (s.kind === 'discard') declared.set(s.id, element)
+  }
   // Both kinds now carry the exact set they may count as, so the rule is the same for each (spec C6-1).
   const canSupply = (s: Source, e: Element) => s.elements.includes(e)
 
