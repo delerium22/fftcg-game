@@ -21,7 +21,7 @@ import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, wit
 /** The declared list as a MULTISET read off the state — `withField`/`withHand` mint instances DEFAULT_DECK lacks. */
 const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
   const q = s.players[p]
-  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone].map((id) => s.cards[id]!.code)
+  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame].map((id) => s.cards[id]!.code)
 }) as [string[], string[]]
 
 interface Opts { iterations?: number; seed?: number; cap?: number; c?: number; decks?: [string[], string[]] }
@@ -120,6 +120,28 @@ function childUnder(root: SearchNode, key: ActionKey): SearchNode {
 describe('searchView', () => {
   /** The one duplication in the search: `viewFor`'s projection without its `structuredClone`. If it ever drifts
    *  — most dangerously in WHICH cards it makes visible — every key in the tree is wrong, silently. */
+  /**
+   * The trace below runs on `VANILLA_POOL`, whose defs have no abilities — so nothing ever removes a card
+   * from the game and the trace CANNOT reach a non-empty `removedFromGame`. C7 added that zone to
+   * `searchView`'s FieldView but not to its visible-cards loop, and this guard stayed green throughout: the
+   * one zone it most needed to police was the one its fixture could not produce.
+   *
+   * So the zones are covered explicitly first, by construction, before the trace runs.
+   */
+  it('projects every zone viewFor does, including ones a vanilla trace cannot reach', () => {
+    let s = makeGame()
+    const ps = s.players[0]
+    const moved = ps.deck[0] as CardId
+    const players = [s.players[0], s.players[1]] as typeof s.players
+    players[0] = { ...ps, deck: ps.deck.slice(1), removedFromGame: [...ps.removedFromGame, moved] }
+    s = { ...s, players }
+
+    for (const p of [0, 1] as const) {
+      expect(searchView(s, p)).toEqual(viewFor(s, p))
+      expect(searchView(s, p).cards[moved], `seat ${p} lost the removed card`).toBeDefined()
+    }
+  })
+
   it('produces byte-identical keys to viewFor across a self-play trace', () => {
     let s = makeGame()
     const decks = decksOf(s)

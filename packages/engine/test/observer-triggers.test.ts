@@ -376,7 +376,7 @@ describe('a live state and its DETERMINISATION resolve a zone-change trigger ide
     // account for them or `determinise` rejects a visible card it cannot place.
     const decks = ([0, 1] as const).map((p) => {
       const q = s.players[p]
-      return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone]
+      return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame]
         .map((id) => s.cards[id]!.code)
     }) as [string[], string[]]
     const [det] = determinise({ view: viewFor(s, 0), decks, rng: seedRng(1) })

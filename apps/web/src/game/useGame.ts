@@ -95,6 +95,9 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       return { kind: 'event', text: `${whose} ${name(v, e.card)} activates${text ? `: "${text}"` : ''}` }
     }
     case 'paidToBreakZone': return { kind: 'event', text: `${name(v, e.card)} is put into the Break Zone to pay for it` }
+    // The sibling cost above has said so since C3; without this the card simply vanishes from the Break Zone
+    // with nothing in the log, which is the one thing the amber warnings exist to prevent elsewhere.
+    case 'removedFromGame': return { kind: 'event', text: `${name(v, e.card)} is removed from the game to pay for it` }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${name(v, e.card)}'s ability finds no legal target — nothing happens` }
     case 'dulled': return { kind: 'event', text: `${name(v, e.card)} is dulled` }
     case 'abilityDamage': return { kind: 'event', text: `${name(v, e.source)} deals ${e.amount} damage to ${name(v, e.target)}` }

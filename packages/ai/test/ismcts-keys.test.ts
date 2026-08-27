@@ -16,7 +16,7 @@ import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, wit
  *  Invariant across a game (nothing ever leaves), so `determinise` accepts it from any position. */
 const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
   const q = s.players[p]
-  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone].map((id) => s.cards[id]!.code)
+  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame].map((id) => s.cards[id]!.code)
 }) as [string[], string[]]
 
 const clause = (id: string, effects: readonly Effect[]): Ability => ({ id, trigger: { kind: 'enterField' }, text: `synthetic clause ${id}`, effects })

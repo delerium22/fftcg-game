@@ -8,7 +8,7 @@ import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, wit
 /** withField/withHand MINT extra card instances, so deck lists must be derived from the state under test, not DEFAULT_DECK. */
 const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
   const q = s.players[p]
-  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone].map((id) => s.cards[id]!.code)
+  return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame].map((id) => s.cards[id]!.code)
 }) as [string[], string[]]
 const agent = (s: GameState, seed = 1, depth: 0 | 1 | 2 = 1) => new GreedyAgent({ seed, decks: decksOf(s), depth })
 const hurt = (s: GameState, p: 0 | 1, n: number): GameState => {

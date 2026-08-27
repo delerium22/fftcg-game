@@ -215,6 +215,10 @@ export function searchView(state: GameState, me: PlayerId): PlayerView {
     for (const c of ps.backups) see(c.id)
     for (const id of ps.damageZone) see(id)
     for (const id of ps.breakZone) see(id)
+    // Removed cards are public (spec C7-1), exactly as in `viewFor`. Copying the zone onto the FieldView
+    // without this made `searchView` name a card that `view.cards` had no instance for — and `determinise`
+    // throws "view lacks visible card" on precisely that.
+    for (const id of ps.removedFromGame) see(id)
   }
   return {
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
