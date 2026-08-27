@@ -46,10 +46,15 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'chooseTargets': return c.targets.length ? `Target ${c.targets.map((id) => name(v, id)).join(', ')}` : 'Choose no targets'
     case 'chooseMode': return c.modes.length ? `Choose mode ${c.modes.map((i) => i + 1).join(' + ')}` : 'Choose no modes'
     case 'chooseFromDeck': {
-      if (!c.picks.length) return 'Take nothing'
-      const exposed = v.fields[v.me].deck
+      // A search PLAYS what it finds; a look ADDS it to hand — and the indices are positions in the CHOOSER's
+      // deck, not the viewer's. Both were wrong here until the C9 review: hotseat labelled Hugh Yurg's search
+      // "Take Luso" for a card that goes straight onto the field, and read the wrong player's deck to do it.
+      const field = v.pending?.kind === 'chooseFromDeck' && v.pending.to === 'field'
+      if (!c.picks.length) return field ? 'Find nothing' : 'Take nothing'
+      const exposed = v.fields[c.player].deck
       const named = c.picks.map((i) => exposed[i]?.card).filter((id): id is CardId => id !== null && id !== undefined)
-      return named.length === c.picks.length ? `Take ${named.map((id) => name(v, id)).join(', ')}` : `Take ${c.picks.length} card(s)`
+      const what = named.length === c.picks.length ? named.map((id) => name(v, id)).join(', ') : `${c.picks.length} card(s)`
+      return field ? `Play ${what} onto the field` : `Take ${what}`
     }
     case 'declareAttack': return `Attack with ${c.attackers.map((id) => name(v, id)).join(' + ')}`
     case 'declareBlock': return c.blocker === null ? 'No block' : `Block with ${name(v, c.blocker)}`

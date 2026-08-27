@@ -31,7 +31,7 @@ function assertNoAiHandLeak(state: GameState, view: PlayerView): void {
   }
 }
 
-interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; commandTypes: Set<Command['type']>; orphanStates: number }
+interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; commandTypes: Set<Command['type']>; orphanStates: number; leaks: string[]; deckChoices: number; deckLabels: string[] }
 
 /**
  * Human policies for the sweeps below. Taking the first choice every time is one narrow path through the game;
@@ -76,6 +76,37 @@ const seeking = (type: Command['type']): Policy => (u) => {
  * choice `buildChoiceSet` offers. This is B-A1 (a game reaches a result), B-A2 (only UI-reachable commands are
  * used) and B-A4 (every applied command was in `legalCommands` at the time) without a browser.
  */
+/**
+ * Names the AI can see that the LOG has no right to print.
+ *
+ * The boundary is the narrator's own view — the human's, before the command unioned with after it (see
+ * `narrator`). That union is deliberately wider than the post-state alone, because a card can move from a
+ * public zone into a hidden one and still deserve its name. Anything OUTSIDE the union is a leak.
+ *
+ * Naming by CODE would be wrong here: a card that is hidden in the AI's hand and a second copy of the same
+ * card sitting on the board share a name, and the board one is legitimately printable. Subtracting the whole
+ * narrator view's names is what keeps that from reading as a leak.
+ */
+function leakableNames(before: PlayerView, after: PlayerView, state: GameState): Set<string> {
+  const seen = narrator(before, after)
+  const nameOfCode = (v: PlayerView, id: number): string | undefined => {
+    const code = v.cards[id]?.code
+    return code === undefined ? undefined : v.defs[code]?.name
+  }
+  const allowed = new Set<string>()
+  for (const key of Object.keys(seen.cards)) {
+    const n = nameOfCode(seen, Number(key))
+    if (n !== undefined) allowed.add(n)
+  }
+  const theirs = viewFor(state, AI)
+  const names = new Set<string>()
+  for (const key of Object.keys(theirs.cards)) {
+    const n = nameOfCode(theirs, Number(key))
+    if (n !== undefined && !allowed.has(n)) names.add(n)
+  }
+  return names
+}
+
 function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CARD_DEFS): PlayedGame {
   let state = newGame(seed, defs)
   const agent: Agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
@@ -83,13 +114,26 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
   const commandTypes = new Set<Command['type']>()
   let humanMoves = 0
   let orphanStates = 0
+  const leaks: string[] = []
+  const deckLabels: string[] = []
+  let deckChoices = 0
   for (let step = 0; step < 4000 && !state.result; step++) {
     const view = viewFor(state, HUMAN)
     assertNoAiHandLeak(state, view)
     if (actingPlayer(state) === AI) {
       const before = state
+      // Spec B-A3 held to the LOG, not just to the view: whatever the AI is about to do, none of the lines it
+      // produces may name a card only the AI can see. Computed before the step, because the step is what makes
+      // some of those cards public (a cast lands on the field), and naming them after that is legitimate.
+      const deckPick = state.pending?.kind === 'chooseFromDeck' ? state.pending : null
       const stepped = stepAi(state, agent)
       expect(stepped.state).not.toBe(before)   // stepAi applies exactly one command
+      // The AI's move LABEL is the line the leak hid in, and a text scan cannot police it: this pool has 18
+      // codes across 50 cards, so almost every name is also on something public and a name-based check passes
+      // no matter what. The label itself is what has to be pinned.
+      if (deckPick !== null) { deckChoices++; deckLabels.push(stepped.lines[0]?.text ?? '') }
+      const secret = leakableNames(viewFor(before, HUMAN), viewFor(stepped.state, HUMAN), before)
+      for (const line of stepped.lines) for (const n of secret) if (line.text.includes(n)) leaks.push(`${line.text} — names ${n}`)
       state = stepped.state
       log.push(...stepped.lines)
       continue
@@ -115,7 +159,7 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
     state = result.state
     humanMoves++
   }
-  return { state, log, humanMoves, commandTypes, orphanStates }
+  return { state, log, humanMoves, commandTypes, orphanStates, leaks, deckChoices, deckLabels }
 }
 
 describe('stepAi', () => {
@@ -166,6 +210,41 @@ describe('describeEvent', () => {
   it('reports the result from the human seat', () => {
     expect(describeEvent(view, { type: 'gameOver', result: { winner: HUMAN, reason: 'damage' } })?.text).toContain('you win')
     expect(describeEvent(view, { type: 'gameOver', result: { winner: AI, reason: 'damage' } })?.text).toContain('the AI wins')
+  })
+})
+
+describe('the AI\'s own log lines never name a card the human was not shown (B-A3, rung C9)', () => {
+  /**
+   * The C9 review's HIGH finding — and a lesson about where a guard test has to point.
+   *
+   * `narrateApply` used to label the AI's move from the ACTOR's view. Every command before C9 named cards that
+   * were already public by the time the label was written (a cast lands on the field, a discard in the Break
+   * Zone), so the actor's view cost nothing. `chooseFromDeck` broke that: its label is resolved out of the
+   * chooser's OWN deck slots, so after a private Reeve look the line reads "Take Red Mage" — a card the printed
+   * text showed only the AI — and it goes into the log the human reads.
+   *
+   * A unit test for this already existed and passed, because it handed `describeChoice` a view for a seat that
+   * was NOT the chooser. Production always passes viewer == chooser, so the test exercised the redaction branch
+   * while the app took the other one. This asserts the property over the REAL path instead.
+   */
+  const played = [1, 2, 3, 4, 5, 6].map((seed) => playFullGame(seed))
+
+  it('finds no leaked card name across six full games', () => {
+    expect(played.flatMap((g) => g.leaks)).toEqual([])
+  })
+
+  it('and those games really did reach a deck look — or the guard above proved nothing', () => {
+    expect(played.reduce((n, g) => n + g.deckChoices, 0)).toBeGreaterThan(0)
+  })
+
+  it("labels every AI deck pick with a COUNT, because the human was shown none of those cards", () => {
+    // Reeve and Hugh Yurg are both `audience: 'self'`, so for every deck choice the AI makes in these games
+    // the human's view holds no id for any exposed slot — and the only honest label is therefore the count
+    // form. A label naming a card here IS the leak, whatever the card happens to be called.
+    const labels = played.flatMap((g) => g.deckLabels)
+    expect(labels.length, 'no AI deck pick was labelled at all').toBeGreaterThan(0)
+    const redacted = /^(Take nothing|Find nothing|Take \d+ cards?|Play \d+ cards? onto the field)$/
+    expect(labels.filter((l) => !redacted.test(l))).toEqual([])
   })
 })
 

@@ -495,39 +495,68 @@ describe('activated abilities on the board (C3-A7)', () => {
 })
 
 describe('a private deck look cannot be narrated by the wrong seat (rung C9)', () => {
-  // Blocker 4 of the C9 review — "the browser log leaks the private choice outright" — solved by the VIEW
-  // rather than by narration logic. The opponent's view has `card: null` in those slots, so the same code
-  // physically cannot name a card it was not shown: there is no id there to name.
-  function lookedView(seat: PlayerId): PlayerView {
+  /**
+   * Blocker 4 of the C9 review — "the browser log leaks the private choice outright" — solved by the VIEW
+   * rather than by narration logic: a seat with `card: null` in those slots has no id to name.
+   *
+   * The C9 CODE REVIEW then found two holes in the fixture this block used to have, both worth keeping in
+   * mind: it stacked three copies of ONE code (so naming the wrong index was invisible), and it populated the
+   * HUMAN's deck while asserting from the AI's seat — a deck the code under test never reads. Distinct codes
+   * and the chooser's own deck fix both.
+   */
+  const CODES = [CLOUD, '18-064C', '19-052C'] as const
+
+  /** `looker`'s top three, known to `looker` alone, viewed from `seat`. */
+  function lookedView(seat: PlayerId, looker: PlayerId = HUMAN): PlayerView {
     const v = viewFor(dealtGame(1), seat)
-    const own = v.fields[HUMAN]
-    // Three slots the HUMAN knows; from the AI's seat the same slots carry the mask and no id.
     const ids = [901, 902, 903]
-    ids.forEach((id, i) => { v.cards[id] = { id, code: CLOUD, owner: HUMAN }; own.deck[i] = { card: seat === HUMAN ? id : null, knownBy: 1 } })
+    ids.forEach((id, i) => {
+      v.cards[id] = { id, code: CODES[i] as string, owner: looker }
+      v.fields[looker].deck[i] = { card: seat === looker ? id : null, knownBy: 1 << looker }
+    })
     return v
   }
 
-  it('names the cards for the player who looked', () => {
-    const label = describeChoice(lookedView(HUMAN), { type: 'chooseFromDeck', player: HUMAN, picks: [1] })
-    expect(label).toMatch(/^Take /)
-    expect(label).not.toBe('Take 1 card')
+  const nameOf = (v: PlayerView, id: number): string => v.defs[v.cards[id]!.code]!.name
+
+  it('names the card at the PICKED index — not merely some card', () => {
+    const v = lookedView(HUMAN)
+    // Distinct codes, so an off-by-one or a hard-coded slot shows up as the wrong NAME rather than passing.
+    expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [1] })).toBe(`Take ${nameOf(v, 902)}`)
+    expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [2] })).toBe(`Take ${nameOf(v, 903)}`)
+    expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [0, 2] }))
+      .toBe(`Take ${nameOf(v, 901)} and ${nameOf(v, 903)}`)
   })
 
-  it('says only how many for anyone else', () => {
-    expect(describeChoice(lookedView(AI), { type: 'chooseFromDeck', player: HUMAN, picks: [1] })).toBe('Take 1 card')
-    expect(describeChoice(lookedView(AI), { type: 'chooseFromDeck', player: HUMAN, picks: [0, 2] })).toBe('Take 2 cards')
+  it('says only how many when the viewer is not the one who looked', () => {
+    // The AI looked at ITS deck; the human is the viewer. The indices are positions in the AI's deck, which
+    // this seat holds as `card: null` — so there is nothing to name and the count is the whole truth.
+    const v = lookedView(HUMAN, AI)
+    expect(describeChoice(v, { type: 'chooseFromDeck', player: AI, picks: [1] })).toBe('Take 1 card')
+    expect(describeChoice(v, { type: 'chooseFromDeck', player: AI, picks: [0, 2] })).toBe('Take 2 cards')
+  })
+
+  it("reads the CHOOSER's deck, not the viewer's", () => {
+    // Both seats have known top-three slots, holding different cards. Indexing `v.me`'s deck instead of
+    // `c.player`'s would name the human's own card as the one the AI took.
+    const v = lookedView(HUMAN)                       // the human's three, known to the human
+    v.fields[AI].deck[1] = { card: 904, knownBy: 3 }  // a card BOTH seats can see, in the AI's deck
+    v.cards[904] = { id: 904, code: '18-069C', owner: AI }
+    expect(describeChoice(v, { type: 'chooseFromDeck', player: AI, picks: [1] })).toBe(`Take ${nameOf(v, 904)}`)
+    // ...and the human's own slot 1 is a different card, which must NOT be what the AI's label names.
+    expect(nameOf(v, 902)).not.toBe(nameOf(v, 904))
   })
 
   it('says so plainly when nothing is taken', () => {
     expect(describeChoice(lookedView(HUMAN), { type: 'chooseFromDeck', player: HUMAN, picks: [] })).toBe('Take nothing')
   })
 
-  it("a SEARCH says it plays the card, because that is where the card goes (rung C9)", () => {
-    // Same command, same view, different destination — "Take Cloud" would name the wrong move for a clause
-    // that puts the card onto the field. The pending is what carries it.
+  it('a SEARCH says it PLAYS the card, because that is where the card goes', () => {
+    // Same command, same view, different destination — "Take Cloud" names the wrong move for a clause that
+    // puts the card onto the field. The pending is what carries it.
     const v = lookedView(HUMAN)
     v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 0, max: 1, count: 3, eligible: [1], to: 'field' }
-    expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [1] })).toMatch(/^Play .+ onto the field$/)
+    expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [1] })).toBe(`Play ${nameOf(v, 902)} onto the field`)
     expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [] })).toBe('Find nothing')
   })
 })

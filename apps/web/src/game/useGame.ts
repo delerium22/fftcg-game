@@ -283,15 +283,23 @@ export const narrator = (before: PlayerView, after: PlayerView): PlayerView => (
  * `legalCommands`.
  */
 function narrateApply(
-  state: GameState, actorView: PlayerView, legal: readonly Command[], command: Command,
+  state: GameState, legal: readonly Command[], command: Command,
 ): { state: GameState; lines: LogLine[] } {
   if (!legal.some((c) => sameCommand(c, command))) throw new Error(`agent chose an illegal command: ${command.type}`)
   const before = viewFor(state, HUMAN)
   const result = apply(state, command)
-  // Label the move from the actor's own view, so a card only it can see still reads sensibly; everything after
-  // is narrated from the human's view.
-  const lines = eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, state.resolution.queue)
-  return { state: result.state, lines: [{ kind: 'ai', text: describeChoice(actorView, command) }, ...lines] }
+  // The move label and the events that follow it are narrated from the SAME view, and it is the human's.
+  //
+  // It used to be the ACTOR's, so "a card only it can see still reads sensibly" — which is exactly the leak
+  // C9 found. Every command before C9 labelled itself with cards that were public by the time the label was
+  // written (a cast lands on the field, a discard lands in the Break Zone), so the actor's view added nothing
+  // and cost nothing. `chooseFromDeck` broke that: after a PRIVATE look the actor's view names the card it
+  // picked, and this line goes into the log the human reads — "Take Red Mage" for a card Reeve's printed text
+  // showed only the AI. The narrator view is a human view by construction (see `narrator`), so it physically
+  // cannot name what the human was not shown, and the public-before union keeps every other label intact.
+  const view = narrator(before, viewFor(result.state, HUMAN))
+  const lines = eventLines(view, result.events, state.resolution.queue)
+  return { state: result.state, lines: [{ kind: 'ai', text: describeChoice(view, command) }, ...lines] }
 }
 
 /**
@@ -303,7 +311,7 @@ export function stepAi(state: GameState, agent: Agent): { state: GameState; line
   if (p === null) return { state, lines: [] }
   const actorView = viewFor(state, p)
   const legal = legalCommands(state, p)
-  return narrateApply(state, actorView, legal, agent.decide(actorView, legal))
+  return narrateApply(state, legal, agent.decide(actorView, legal))
 }
 
 // --- the browser's opponent: SO-ISMCTS in a worker (spec D2) -----------------------------------------------
@@ -330,7 +338,7 @@ export function aiHandlers(sink: AiSink): SearchRequestHandlers {
         sink.log({ kind: 'warning', text: `The AI chose ${command.type}, which is not legal in this position — the move was discarded` })
         return false
       }
-      const stepped = narrateApply(forState, viewFor(forState, AI), legal, command)
+      const stepped = narrateApply(forState, legal, command)
       sink.commit(stepped.state, stepped.lines)
       return true
     },
