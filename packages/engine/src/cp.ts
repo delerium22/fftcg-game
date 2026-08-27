@@ -203,7 +203,13 @@ export function pay(state: GameState, player: PlayerId, payment: Payment): [Game
     breakZone: [...ps.breakZone, ...payment.discards.map((d) => d.card)],
   }))
   for (const d of payment.discards) events.push({ type: 'discarded', player, card: d.card, reason: 'cp' })
-  const cp = [...payment.dullBackups.map((id) => defOf(state, id).elements[0] as Element), ...payment.discards.flatMap((d) => [d.element, d.element])]
+  // Read through `backupElements`, exactly as `generateCp` does. Recomputing from `def.elements[0]` here was
+  // the one reader left on the pre-C6 rule, and it made the event disagree with the payment the engine had
+  // just accepted.
+  const cp: readonly Element[][] = [
+    ...payment.dullBackups.map((id) => backupElements(state, id)),
+    ...payment.discards.flatMap((d) => [[d.element], [d.element]]),
+  ]
   events.unshift({ type: 'cpGenerated', player, cp })
   return [s, events]
 }

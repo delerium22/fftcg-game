@@ -9,7 +9,15 @@ export type Event =
   | { type: 'phaseStarted'; phase: Phase; step?: AttackStep }
   | { type: 'activated'; player: PlayerId; cards: CardId[] }
   | { type: 'drew'; player: PlayerId; count: number }
-  | { type: 'cpGenerated'; player: PlayerId; cp: Element[] }
+  /**
+   * One entry per CP generated, each the SET of Elements that CP may count as (spec C6-5).
+   *
+   * A set rather than one Element because since C6 the engine never commits: a dulled Moogle may cover Earth
+   * or Lightning, and which one it "was" is not a fact the rules produce. This used to record the printed
+   * first Element, which after C6 was a guess — and a wrong-looking one, logging `earth` for a CP that had
+   * just paid a Lightning cost.
+   */
+  | { type: 'cpGenerated'; player: PlayerId; cp: readonly (readonly Element[])[] }
   | { type: 'discarded'; player: PlayerId; card: CardId; reason: 'cp' | 'handSize' | 'cost' }
   | { type: 'cast'; player: PlayerId; card: CardId; cardType: CardType }
   /** An activated ability was used (spec C3-1) — activated, NOT triggered; the log must not conflate them. */

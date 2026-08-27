@@ -132,7 +132,9 @@ describe('pay', () => {
     expect(t.players[0].backups.find((c) => c.id === b1)?.status).toBe('dull')
     expect(t.players[0].hand).not.toContain(h1)
     expect(t.players[0].breakZone).toContain(h1)
-    expect(events[0]).toEqual({ type: 'cpGenerated', player: 0, cp: ['earth', 'lightning', 'lightning'] })
+    // C6: one entry per CP, each the SET that CP may count as. These sources are all single-Element, so each
+    // set is a singleton — a Moogle would show ['earth', 'lightning'].
+    expect(events[0]).toEqual({ type: 'cpGenerated', player: 0, cp: [['earth'], ['lightning'], ['lightning']] })
     expect(events[1]).toEqual({ type: 'discarded', player: 0, card: h1, reason: 'cp' })
     expect(events).toHaveLength(2)
   })

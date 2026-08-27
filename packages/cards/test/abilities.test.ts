@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { apply, applyChooseFirst, applyMulligan, canPay, castRequirement, checkInvariants, createGame, defOf, findFieldCard, generateCp, legalCommands, powerOf } from '@fftcg/engine'
+import { apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, defOf, findFieldCard, generateCp, legalCommands, powerOf } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -947,17 +947,30 @@ describe('9-074C Class Tenth Moogle — "… can produce Lightning CP."', () => 
   })
 
   it('applies only from the FIELD (C6-A5)', () => {
-    // "If Class Tenth Moogle is on the field" — in hand or the Break Zone it fixes nothing. This is why C4
-    // made a static's scope explicit rather than assuming statics radiate from the field.
+    // "If Class Tenth Moogle is on the field" — in hand or the Break Zone it fixes nothing.
+    //
+    // The first version of this test placed Moogles in those zones and then paid with a DIFFERENT Backup,
+    // so it asserted nothing that the "does not fix colours for anyone else" test above did not already.
+    // A card off the field cannot be dulled at all, so the observable is `backupElements` itself.
     let s = makeGame()
-    let inHand: CardId; let inBreak: CardId; let plain: CardId
+    let onField: CardId; let inHand: CardId; let inBreak: CardId
+    ;[s, onField] = withField(s, 0, 'backups', '9-074C')
     ;[s, inHand] = withHand(s, 0, '9-074C')
     ;[s, inBreak] = withBreakZone(s, 0, '9-074C')
-    ;[s, plain] = withField(s, 0, 'backups', EARTH_ONLY)
-    void inHand; void inBreak
-    // The only Backup on the field is pure Earth, so a Lightning cost is unpayable however many Moogles are
-    // sitting elsewhere.
-    expect(covers(s, [plain], 1, ['lightning'])).toBe(false)
+
+    expect(backupElements(s, onField).sort()).toEqual(['earth', 'lightning'])
+    expect(backupElements(s, inHand)).toEqual(['earth'])
+    expect(backupElements(s, inBreak)).toEqual(['earth'])
+  })
+
+  it('does not fix colours for the OPPONENT (C6-A5)', () => {
+    // The other half of the scope: a Moogle on the far side of the board is on "the field", but it is not
+    // yours to dull, and its static must not reach your payment.
+    let s = makeGame()
+    let mine: CardId
+    ;[s, mine] = withField(s, 0, 'backups', EARTH_ONLY)
+    ;[s] = withField(s, 1, 'backups', '9-074C')
+    expect(covers(s, [mine], 1, ['lightning'])).toBe(false)
   })
 
   it('keeps its printed clause count honest (C6-A7)', () => {

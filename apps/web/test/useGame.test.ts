@@ -146,7 +146,7 @@ describe('describeEvent', () => {
   it('drops the events the move line already states', () => {
     expect(describeEvent(view, { type: 'cast', player: HUMAN, card: 1, cardType: 'forward' })).toBeNull()
     expect(describeEvent(view, { type: 'attackDeclared', player: HUMAN, attackers: [1] })).toBeNull()
-    expect(describeEvent(view, { type: 'cpGenerated', player: HUMAN, cp: ['fire'] })).toBeNull()
+    expect(describeEvent(view, { type: 'cpGenerated', player: HUMAN, cp: [['fire']] })).toBeNull()
   })
   it('reports the result from the human seat', () => {
     expect(describeEvent(view, { type: 'gameOver', result: { winner: HUMAN, reason: 'damage' } })?.text).toContain('you win')
