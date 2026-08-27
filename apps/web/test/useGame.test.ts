@@ -601,14 +601,27 @@ describe('Luso has no prompt, so the log is the only evidence (spec C2-A5)', () 
 
 describe('the C2 cascade reaches a real game (C2-A8/C2-A13)', () => {
   // Sweep seeds and policies until the SHIPPED observer clauses fire in games that all reach a result.
+  //
+  // Seek COVERAGE, not a count. This used to stop at `caused.length >= 2`, which two Lightning triggers
+  // satisfy just as well as one of each — it only ever passed because the first seeds happened to produce
+  // both. Rung C3 gave the driver six new commands, the trajectories moved, and it stopped on two Lightnings
+  // with no Luso. The bug was in the stopping rule, not in the clauses.
+  const CLAUSES: readonly (readonly [string, (t: string) => boolean])[] = [
+    ['Luso', (t) => t.includes("Luso's ability triggers — Luso dealt")],
+    ['Lightning', (t) => t.includes("Lightning's ability triggers — ") && t.includes('was broken')],
+  ]
   const games: PlayedGame[] = []
   const caused: string[] = []
-  for (let seed = 1; seed <= 24 && caused.length < 2; seed++) {
+  const seen = new Set<string>()
+  for (let seed = 1; seed <= 40 && seen.size < CLAUSES.length; seed++) {
     for (const policy of POLICIES) {
       const played = playFullGame(seed, policy)
       games.push(played)
-      for (const l of played.log) if (l.text.includes('ability triggers — ')) caused.push(l.text)
-      if (caused.length >= 2) break
+      for (const l of played.log) {
+        if (l.text.includes('ability triggers — ')) caused.push(l.text)
+        for (const [name, matches] of CLAUSES) if (matches(l.text)) seen.add(name)
+      }
+      if (seen.size >= CLAUSES.length) break
     }
   }
 
@@ -624,9 +637,7 @@ describe('the C2 cascade reaches a real game (C2-A8/C2-A13)', () => {
   })
 
   it('shows both shipped C2 clauses firing across the sweep', () => {
-    const all = games.flatMap((g) => g.log.map((l) => l.text))
-    expect(all.some((t) => t.includes("Luso's ability triggers — Luso dealt"))).toBe(true)
-    expect(all.some((t) => t.includes("Lightning's ability triggers — ") && t.includes('was broken'))).toBe(true)
+    expect([...seen].sort()).toEqual(['Lightning', 'Luso'])
   })
 })
 

@@ -242,14 +242,17 @@ export function hasResolutionWork(r: Resolution): boolean {
  * Zone`. Lives here so the CLI and the browser cannot drift into describing the same ability differently.
  */
 export function describeAbilityCost(cost: AbilityCost): string {
-  const parts: string[] = []
+  // Icons run together and prose is comma-separated, because that is how the cards print it:
+  // `[2][Dull], put Miner into the Break Zone` — never `[2], [Dull], put ...`.
+  let icons = ''
   if (cost.cp) {
     const els = cost.cp.requiredElements ?? []
-    // A required Element prints as its own icon; a generic cost prints as the number. `[0]` prints as `[0]`.
-    parts.push(els.length ? els.map((e) => `[${e[0]?.toUpperCase()}${e.slice(1)}]`).join('') : `[${cost.cp.amount}]`)
+    // A required Element prints as its own icon; a generic cost prints as the number.
+    icons += els.length ? els.map((e) => `[${e[0]?.toUpperCase()}${e.slice(1)}]`).join('') : `[${cost.cp.amount}]`
   }
-  if (cost.dull) parts.push('[Dull]')
-  if (cost.selfToBreakZone) parts.push('put into the Break Zone')
-  if (cost.selfDiscard) parts.push('discard')
-  return parts.join(', ') || '[0]'
+  if (cost.dull) icons += '[Dull]'
+  const prose: string[] = []
+  if (cost.selfToBreakZone) prose.push('put into the Break Zone')
+  if (cost.selfDiscard) prose.push('discard')
+  return [icons, ...prose].filter(Boolean).join(', ') || '[0]'
 }

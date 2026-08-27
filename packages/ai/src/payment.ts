@@ -1,4 +1,4 @@
-import { canPay, defOf, generateCp, requiredElements, type CardId, type Element, type GameState, type Payment, type PlayerId } from '@fftcg/engine'
+import { canPay, castRequirement, defOf, generateCp, type CardId, type CpRequirement, type Element, type GameState, type Payment, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 
 interface Source { kind: 'backup' | 'discard'; id: CardId; elements: Element[]; cp: number; cost: number }
@@ -14,7 +14,7 @@ interface Source { kind: 'backup' | 'discard'; id: CardId; elements: Element[]; 
  * spent on fire). Backtracking explores every source-to-element assignment (not just the first that fits) and
  * keeps the cheapest complete one, so it finds a covering assignment whenever one exists.
  */
-function assignRequiredElements(elements: Element[], sources: Source[], canSupply: (s: Source, e: Element) => boolean): Map<Element, Source> | null {
+function assignRequiredElements(elements: readonly Element[], sources: Source[], canSupply: (s: Source, e: Element) => boolean): Map<Element, Source> | null {
   // Processing scarcest elements first prunes the search fastest but doesn't change correctness — every branch
   // below tries every remaining candidate for the current element and recurses, so it finds a covering
   // assignment (the cheapest one) whenever one exists, regardless of element order.
@@ -49,13 +49,25 @@ function assignRequiredElements(elements: Element[], sources: Source[], canSuppl
 }
 
 export function preferredPayment(state: GameState, player: PlayerId, card: CardId): Payment | null {
-  const def = defOf(state, card)
-  if (def.cost === 0) return { dullBackups: [], discards: [] }
+  return preferredPaymentFor(state, player, castRequirement(state, card))
+}
+
+/**
+ * As `preferredPayment`, for any requirement — an activated ability's cost as readily as a card's printed one
+ * (spec C3-4). The value-minimising logic is the whole point of using this over `enumeratePaymentsFor`: it is
+ * what stops the AI discarding an 8000-power Forward to pay for a draw.
+ */
+export function preferredPaymentFor(state: GameState, player: PlayerId, req: CpRequirement): Payment | null {
+  const card = req.excluded
+  if (req.amount === 0) return { dullBackups: [], discards: [] }
   const ps = state.players[player]
   const sources: Source[] = []
-  for (const b of ps.backups) if (b.status === 'active') sources.push({ kind: 'backup', id: b.id, elements: defOf(state, b.id).elements, cp: 1, cost: 1 })
+  for (const b of ps.backups) {
+    if (b.status !== 'active' || card.includes(b.id)) continue
+    sources.push({ kind: 'backup', id: b.id, elements: defOf(state, b.id).elements, cp: 1, cost: 1 })
+  }
   for (const id of ps.hand) {
-    if (id === card) continue
+    if (card.includes(id)) continue
     const d = defOf(state, id)
     if (d.elements.includes('light') || d.elements.includes('dark')) continue
     sources.push({ kind: 'discard', id, elements: d.elements, cp: 2, cost: 2 + cardValue(d) })
@@ -67,13 +79,13 @@ export function preferredPayment(state: GameState, player: PlayerId, card: CardI
   const canSupply = (s: Source, e: Element) => (s.kind === 'backup' ? s.elements[0] === e : s.elements.includes(e))   // backups produce elements[0] only (cp.ts)
 
   // §11.2.2.1 / §11.2.1.1: at least one CP of each required element (requiredElements exempts pure Light/Dark).
-  const elements = requiredElements(def)
+  const elements = req.requiredElements
   const assignment = assignRequiredElements(elements, sources, canSupply)
   if (elements.length && !assignment) return null
   if (assignment) for (const [e, s] of assignment) take(s, e)
 
-  for (const s of [...sources].sort((a, b) => a.cost - b.cost)) { if (total >= def.cost) break; if (!chosen.has(s)) take(s, s.elements[0] as Element) }
-  if (total < def.cost) return null
+  for (const s of [...sources].sort((a, b) => a.cost - b.cost)) { if (total >= req.amount) break; if (!chosen.has(s)) take(s, s.elements[0] as Element) }
+  if (total < req.amount) return null
 
   // R5: emit sources in the engine's own order — `enumeratePayments` lists dullBackups in field order and
   // discards in hand order, so a payment built in *selection* order is the same payment but a different object,
@@ -90,7 +102,7 @@ export function preferredPayment(state: GameState, player: PlayerId, card: CardI
         .sort((a, b) => (handOrder.get(a.card) ?? 0) - (handOrder.get(b.card) ?? 0)),
     }
   }
-  const pays = (from: Iterable<Source>): boolean => canPay(def.cost, elements, generateCp(state, player, build(from), card))
+  const pays = (from: Iterable<Source>): boolean => canPay(req.amount, elements, generateCp(state, player, build(from), card))
 
   // R5: the two phases above are each greedy in isolation, so together they can over-spend — the required-element
   // phase takes the cheapest source for the element (often a 1 CP backup), then the top-up phase adds a 2 CP

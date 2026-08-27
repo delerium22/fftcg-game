@@ -126,10 +126,14 @@ describe('16-092C Noel — "EX BURST When Noel enters the field, choose up to 2 
     expect(r.events).toContainEqual({ type: 'abilityNoLegalTarget', card: r.card, abilityId: '16-092C:etb' })
   })
 
-  it('keeps warning about its unimplemented second clause (spec C1-9/C1-A2)', () => {
-    // "[Dull], put Noel into the Break Zone: Dull all the Forwards opponent controls." is a C3 action ability.
+  it('warns about nothing now that C3 landed its second clause', () => {
+    // Until rung C3 this asserted the opposite: Noel's "[Dull], put Noel into the Break Zone: Dull all the
+    // Forwards opponent controls." was unimplemented and the cast had to say so. Both printed clauses now
+    // have ASTs, so the warning must STOP — a card that keeps apologising for a clause it has is as
+    // dishonest as one that stays silent about a clause it lacks. Cloud and Miner still carry that half of
+    // the C1-9 property.
     const r = cast(makeGame(), '16-092C', Array<string>(5).fill(LIGHTNING_BACKUP))
-    expect(r.events).toContainEqual({ type: 'unimplementedAbility', card: r.card, code: '16-092C', clauses: 1 })
+    expect(r.events.some((e) => e.type === 'unimplementedAbility')).toBe(false)
   })
 })
 
@@ -465,16 +469,34 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the ten implemented clauses on, and only those ten', () => {
-    // Five from rung C1, five from C2 — three in stage 1 (Lightning ×2, Luso c1) and two in stage 2
-    // (Luso c2, Prishe c2). Any clause added without a test lands here first.
+  it('loadCards merges the sixteen implemented clauses on, and only those sixteen', () => {
+    // Five from rung C1, five from C2, six from C3's activated abilities. Any clause added without a test
+    // lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
-    expect(implemented).toEqual(['12-120C', '16-092C', '18-124C', '20-103H', '22-068R', '27-124S', '27-125S', '27-127S'])
+    expect(implemented).toEqual([
+      '1-121C', '12-120C', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C', '20-103H',
+      '22-068R', '27-124S', '27-125S', '27-127S',
+    ])
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
-      '12-120C:etb', '16-092C:etb', '18-124C:etb', '20-103H:summon', '22-068R:damages-opponent',
+      '1-121C:haste', '12-120C:etb', '16-092C:dull-all', '16-092C:etb', '18-064C:draw', '18-069C:draw',
+      '18-124C:etb', '19-052C:pump', '20-074C:draw', '20-103H:summon', '22-068R:damages-opponent',
       '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken',
     ])
+  })
+
+  // Spec C3-A6: `ABILITY_CLAUSES` counts PRINTED clauses, implemented or not, so landing a clause must NOT
+  // change it. Reducing Miner from 2 to 1 would silently hide the deck-reveal clause it still does not have.
+  it('landing six clauses did not change any printed-clause count', () => {
+    expect(ABILITY_CLAUSES['20-074C']).toBe(2)   // action landed; the ETB deck reveal is still missing
+    expect(ABILITY_CLAUSES['19-052C']).toBe(2)   // pump landed; remove-from-game is still missing
+    expect(ABILITY_CLAUSES['1-121C']).toBe(1)
+    expect(ABILITY_CLAUSES['18-064C']).toBe(1)
+    // And the cards with a clause still missing must still say so.
+    for (const code of ['20-074C', '19-052C']) {
+      const def = DEFS.find((d) => d.code === code)
+      expect((def?.abilityClauses ?? 0) - (def?.abilities?.length ?? 0)).toBe(1)
+    }
   })
 
   it('every ability id is `<code>:<slug>` for a card that exists, and quotes text the card really prints', () => {

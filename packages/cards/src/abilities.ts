@@ -305,11 +305,121 @@ const PRISHE_DAMAGES_OPPONENT: Ability = {
   }],
 }
 
+// ---------------------------------------------------------------------------
+// Activated abilities (spec C3)
+// ---------------------------------------------------------------------------
+
+/**
+ * The first abilities in this pool a PLAYER chooses to use rather than merely receives. `trigger.kind` is
+ * `'activated'` — not a trigger at all, but it lives in that union so trigger dispatch inertly ignores it and
+ * the compiler still checks every switch.
+ *
+ * Two things about the costs are easy to get wrong and are load-bearing here:
+ *
+ * - The CP cost is NOT the card's printed cost. Red Mage 1-121C costs 2 to cast and its ability costs
+ *   `[Lightning]` — one CP, Lightning. Miner costs 3 to cast and its ability costs a generic `[2]`.
+ * - `dull: true` is what brings the "must be active, and not the turn it entered unless it has Haste" rule
+ *   (§11.6.2.2). Undead Princess has no dull icon, so she may be used while dulled and on the turn she
+ *   arrives — she is the fixture that keeps that gate honest.
+ */
+const RED_MAGE_HASTE: Ability = {
+  id: '1-121C:haste',
+  trigger: {
+    kind: 'activated', sourceZone: 'field',
+    // The source may not dull ITSELF to make this Lightning CP — that one dull would otherwise pay both the
+    // CP and the [Dull]. `generateCp` excludes it (spec C3-5).
+    cost: { cp: { amount: 1, requiredElements: ['lightning'] }, dull: true },
+  },
+  text: '[Lightning][Dull]: Choose 1 Forward. It gains Haste until the end of the turn.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    // "Choose 1 Forward" — either player's, unrestricted. Granting the OPPONENT Haste is legal and useless,
+    // which is the printed text's business, not the engine's.
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{ kind: 'grantKeyword', keyword: 'haste' }],
+  }],
+}
+
+/**
+ * Noel's action. Its cost dulls AND removes its own source, so by the time "dull all the Forwards opponent
+ * controls" resolves, Noel is in the Break Zone — the effect must still resolve in full (spec C3-A2).
+ * `forEach` is untargeted: "all" is not a choice.
+ */
+const NOEL_DULL_ALL: Ability = {
+  id: '16-092C:dull-all',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, selfToBreakZone: true } },
+  text: '[Dull], put Noel into the Break Zone: Dull all the Forwards opponent controls.',
+  effects: [{ kind: 'forEach', from: { zone: 'forwards', controller: 'opponent' }, do: [{ kind: 'dull' }] }],
+}
+
+/**
+ * Miner's action. Miner's OTHER printed clause — the ETB deck reveal — is rung C6, so this is the card's
+ * second printed clause arriving first. That is exactly why commands carry `abilityId` and not an index into
+ * this array (spec C3-2): an index would silently shift when the ETB lands.
+ */
+const MINER_DRAW: Ability = {
+  id: '20-074C:draw',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 2 }, dull: true, selfToBreakZone: true } },
+  text: '[2][Dull], put Miner into the Break Zone: Draw 1 card.',
+  effects: [{ kind: 'draw', count: 1 }],
+}
+
+/**
+ * Undead Princess's first clause. No dull icon and no CP: the entire cost is putting herself into the Break
+ * Zone, which makes her the fixture for two rules at once — that the `[Dull]` restrictions do NOT apply
+ * without the icon, and that a target preflight runs against the POST-cost state. She has already left the
+ * field when targets are computed, so she cannot pump herself, and if she is the only Forward the activation
+ * is illegal rather than a cost paid for nothing (§11.6.5).
+ */
+const UNDEAD_PRINCESS_PUMP: Ability = {
+  id: '19-052C:pump',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { selfToBreakZone: true } },
+  text: 'Put Undead Princess into the Break Zone: Choose 1 Forward. It gains +4000 power until the end of the turn.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{ kind: 'addPower', amount: 4000 }],
+  }],
+}
+
+/**
+ * The two hand-sourced draws. `sourceZone: 'hand'` is what encodes "You can only use this ability if <card>
+ * is in your hand" — an activation precondition, not a cost (spec C3-3). They are otherwise identical, and
+ * they exist in this rung to prove the source zone is real rather than assumed to be the field.
+ */
+const GEOMANCER_DRAW: Ability = {
+  id: '18-064C:draw',
+  trigger: {
+    kind: 'activated', sourceZone: 'hand',
+    cost: { cp: { amount: 1, requiredElements: ['earth'] }, selfDiscard: true },
+  },
+  text: '[Earth], discard Geomancer: Draw 1 card. You can only use this ability if Geomancer is in your hand.',
+  effects: [{ kind: 'draw', count: 1 }],
+}
+
+const RED_MAGE_18_DRAW: Ability = {
+  id: '18-069C:draw',
+  trigger: {
+    kind: 'activated', sourceZone: 'hand',
+    cost: { cp: { amount: 1, requiredElements: ['lightning'] }, selfDiscard: true },
+  },
+  text: '[Lightning], discard Red Mage: Draw 1 card. You can only use this ability if Red Mage is in your hand.',
+  effects: [{ kind: 'draw', count: 1 }],
+}
+
 /** Implemented clauses by card code. A card absent from here has none — every clause it prints still warns. */
 export const ABILITIES: Record<string, readonly Ability[]> = {
+  '1-121C': [RED_MAGE_HASTE],
   '12-120C': [SHANTOTTO_ETB],
-  '16-092C': [NOEL_ETB],
+  // Printed order: the ETB is clause 1, the action clause 2.
+  '16-092C': [NOEL_ETB, NOEL_DULL_ALL],
+  '18-064C': [GEOMANCER_DRAW],
+  '18-069C': [RED_MAGE_18_DRAW],
   '18-124C': [BILLY_BOB_ETB],
+  // Clause 1 only; the "remove from the Break Zone from the game" clause is C4.
+  '19-052C': [UNDEAD_PRINCESS_PUMP],
+  // The card's SECOND printed clause, landing first — its ETB deck reveal is C6.
+  '20-074C': [MINER_DRAW],
   '20-103H': [RAMUH_SUMMON],
   '22-068R': [PRISHE_DAMAGES_OPPONENT],
   '27-124S': [CLOUD_ETB],

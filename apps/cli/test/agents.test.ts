@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { GreedyAgent, IsmctsAgent, RandomAgent } from '@fftcg/ai'
 import { loadCards } from '@fftcg/cards'
+import { actingPlayer, apply, createGame, legalCommands, viewFor } from '@fftcg/engine'
+import type { Agent } from '@fftcg/ai'
 import { parseDeckFile } from '../src/deck.js'
 import { MAX_ITERATIONS, describeAgentSpec, makeAgent, parseAgentSpec, parseDepth, parseIterations, parsePositiveInt, type AgentSpec } from '../src/agents.js'
 import { selfPlay } from '../src/selfplay.js'
+
+const deck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
+const decks = (): [string[], string[]] => { const d = deck(); return [d, d] }
 
 describe('parseAgentSpec', () => {
   it('accepts random', () => { expect(parseAgentSpec('random')).toEqual({ kind: 'random' }) })
@@ -101,4 +106,41 @@ describe('selfPlay determinism', () => {
     const strip = (r: typeof r1) => ({ ...r, msPerDecision: [0, 0] as [number, number] })
     expect(strip(r1)).toEqual(strip(r2))
   }, 60_000)
+})
+
+// ---------------------------------------------------------------------------
+// Rung C3 — the agents must actually USE activated abilities
+// ---------------------------------------------------------------------------
+
+describe('activated abilities reach the agents (C3-A1)', () => {
+  // Being legal is not enough. `candidateCommands` hand-builds the list both agents search, so a command that
+  // exists only in `legalCommands` is invisible to them — the plan review caught exactly that, and this is the
+  // test that would have failed. It asserts the agents CHOOSE an activation over a real sweep, not merely that
+  // one was offered.
+  const chosen = new Map<string, number>()
+  for (let seed = 1; seed <= 40 && chosen.size === 0; seed++) {
+    const d = decks()
+    const defs = loadCards()
+    const agents: [Agent, Agent] = [
+      new GreedyAgent({ seed, decks: d, depth: 1 }),
+      new GreedyAgent({ seed: seed + 1000, decks: d, depth: 1 }),
+    ]
+    let s = createGame({ seed, decks: d, defs })
+    for (let i = 0; i < 800 && !s.result; i++) {
+      const p = actingPlayer(s)
+      if (p === null) break
+      const command = agents[p].decide(viewFor(s, p), legalCommands(s, p))
+      if (command.type === 'activateAbility') chosen.set(command.abilityId, (chosen.get(command.abilityId) ?? 0) + 1)
+      s = apply(s, command).state
+    }
+  }
+
+  it('greedy chooses an activation at least once across the sweep', () => {
+    expect(chosen.size, 'no agent ever used an activated ability — they are legal but unreachable').toBeGreaterThan(0)
+  })
+
+  it('every activation it chose is one of the six C3 clauses', () => {
+    const C3 = ['1-121C:haste', '16-092C:dull-all', '18-064C:draw', '18-069C:draw', '19-052C:pump', '20-074C:draw']
+    for (const id of chosen.keys()) expect(C3).toContain(id)
+  })
 })

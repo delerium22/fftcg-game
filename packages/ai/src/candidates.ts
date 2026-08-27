@@ -1,7 +1,7 @@
-import { abilityOf, actingPlayer, attackCheck, castCheck, defOf, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, activationCheck, attackCheck, castCheck, defOf, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
-import { preferredPayment } from './payment.js'
+import { preferredPayment, preferredPaymentFor } from './payment.js'
 
 const ATTACK_SET_EXPLOSION_THRESHOLD = 6
 
@@ -299,10 +299,37 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
       if (!payment) continue
       out.push({ type: defOf(state, card).type === 'summon' ? 'castSummon' : 'castCharacter', player, card, payment })
     }
+    // C3: activations must be emitted HERE, not merely be legal. This list — not `legalCommands` — is what
+    // both agents search, so a command that exists only in `legalCommands` is invisible to the AI, which
+    // would have shipped an opponent that never used an ability it was holding.
+    out.push(...activationCandidates(state, player))
     out.push({ type: 'pass', player })
   } else if (state.phase === 'attack' && state.attack?.step === 'declaration') {
     for (const attackers of boundedAttackSets(state, player)) out.push({ type: 'declareAttack', player, attackers })
     out.push({ type: 'pass', player })
+  }
+  return out
+}
+
+/**
+ * One activation per (source card, clause), each with the single payment `preferredPaymentFor` likes best.
+ *
+ * One rather than all: `legalCommands` enumerates every minimal payment, and offering the search a dozen
+ * spellings of the same move would multiply the branching factor for a choice that is nearly always
+ * value-dominated. This mirrors what casting already does a few lines above.
+ */
+function activationCandidates(state: GameState, player: PlayerId): Command[] {
+  const out: Command[] = []
+  const ps = state.players[player]
+  const sources = [...ps.hand, ...ps.breakZone, ...ps.forwards.map((c) => c.id), ...ps.backups.map((c) => c.id)]
+  for (const source of sources) {
+    for (const ability of defOf(state, source).abilities ?? []) {
+      if (ability.trigger.kind !== 'activated') continue
+      if (activationCheck(state, player, source, ability.id) !== null) continue
+      const payment = preferredPaymentFor(state, player, abilityCpRequirement(source, ability.trigger.cost))
+      if (!payment) continue
+      out.push({ type: 'activateAbility', player, source, abilityId: ability.id, payment })
+    }
   }
   return out
 }
