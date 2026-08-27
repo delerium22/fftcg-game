@@ -57,7 +57,10 @@ export type Pending =
    * private and unfiltered, Miner is filtered and public), so nothing leaks today. A private filtered look
    * would need `eligible` redacted per viewer.
    */
-  | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; eligible: readonly number[] }
+  // `to` is where a picked card GOES. It is on the pending, not just on the effect, because the button the
+  // player clicks has to say it: "Take Undead Princess" for a card that is about to be put onto the field
+  // is a label that describes the wrong move.
+  | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; eligible: readonly number[]; to: 'hand' | 'field' }
 export interface GameResult { winner: PlayerId | null; reason: string }   // winner null = draw
 export interface GameState {
   rng: Rng

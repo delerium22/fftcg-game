@@ -480,10 +480,10 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty-four implemented clauses on, and only those twenty-four', () => {
+  it('loadCards merges the twenty-five implemented clauses on, and only those twenty-five', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
-    // removal), one from C8 (Hugh Yurg's enters-field observer), two from C9 (Reeve's look and Miner's reveal). Any
+    // removal), one from C8 (Hugh Yurg's enters-field observer), three from C9 (Reeve's look, Miner's reveal and Hugh Yurg's search). Any
     // clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
@@ -496,7 +496,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-074C:etb', '20-103H:summon',
-      '20-105C:etb', '22-068R:damages-opponent', '24-063H:cheap-forward',
+      '20-105C:etb', '22-068R:damages-opponent', '24-063H:cheap-forward', '24-063H:search',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
     ].sort())
@@ -1132,9 +1132,9 @@ describe('24-063H Hugh Yurg — "When a Forward of cost 1 enters your field, …
     void theirs; void ally
   })
 
-  it('still warns about the deck-search clause it does not have (C8-A6)', () => {
+  it('warns about nothing — C9 landed the deck search, so Hugh Yurg is complete', () => {
     expect(ABILITY_CLAUSES['24-063H']).toBe(2)
-    expect(ABILITIES['24-063H']?.length).toBe(1)
+    expect(ABILITIES['24-063H']?.length).toBe(2)
   })
 })
 
@@ -1273,6 +1273,114 @@ describe('20-074C Miner — "reveal the top 5 cards of your deck. Add 1 Backup a
     expect(r.state.players[0].deck.slice(-5)).toEqual(top)
     expect(r.state.players[0].deck.length).toBe(before.players[0].deck.length)
     for (const id of top) expect(r.state.players[0].hand).not.toContain(id)
+    ok(r.state)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C9 — 24-063H Hugh Yurg's search
+// ---------------------------------------------------------------------------
+
+describe('24-063H Hugh Yurg — "you may search for 1 Earth Forward of cost 1 and play it onto the field"', () => {
+  const PRINCESS = '19-052C'   // Undead Princess — the STARTER deck's only Earth Forward of cost 1
+
+  /** What the printed text finds: an Earth Forward of cost 1, EXACTLY 1 (spec C8-3's trap, on this clause too). */
+  const findable = (s: GameState, id: CardId): boolean => {
+    const def = defOf(s, id)
+    return def.type === 'forward' && def.cost === 1 && def.elements.includes('earth')
+  }
+
+  /**
+   * Cast Hugh Yurg for player 0 over a deck holding EXACTLY `copies` legal targets, stacked on top.
+   *
+   * This file's `DECK` is every code in the pool cycled to 50, not the starter list, so it carries several
+   * other cost-1 Earth Forwards. Stripping them first is what makes `eligible` mean what the test says it
+   * means — otherwise the assertion would be reading the pool's contents, not the clause's filter.
+   */
+  function castHughYurg(copies: number) {
+    let s = makeGame()
+    // Hugh Yurg is EARTH, cost 4.
+    ;[s] = withCp(s, 0, Array<string>(4).fill(EARTH_BACKUP))
+    const p0 = s.players[0]
+    // Out of the deck, but not out of the GAME: `checkInvariants` counts every instance, so they go to a real
+    // zone. `removedFromGame` is the quiet one — nothing in the pool reads it, where the Break Zone would make
+    // Undead Princess's own C7 clause activatable and put noise in every assertion below.
+    s = setPlayer(s, 0, {
+      ...p0,
+      deck: p0.deck.filter((id) => !findable(s, id)),
+      removedFromGame: [...p0.removedFromGame, ...p0.deck.filter((id) => findable(s, id))],
+    })
+    let targets: CardId[]
+    ;[s, targets] = withDeckTops(s, 0, Array<string>(copies).fill(PRINCESS))
+    let hugh: CardId
+    ;[s, hugh] = withHand(s, 0, '24-063H')
+    const cmd = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === hugh)
+    expect(cmd, 'Hugh Yurg was not castable').toBeDefined()
+    return { r: apply(s, cmd!), targets, hugh, before: s }
+  }
+
+  it('exposes the WHOLE deck, not a slice, and offers only the cost-1 Earth Forwards', () => {
+    const { r, targets, before } = castHughYurg(2)
+    expect(r.state.pending?.kind).toBe('chooseFromDeck')
+    if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('unreachable')
+    expect(r.state.pending.count).toBe(before.players[0].deck.length)
+    // The two stacked copies are on top, so they are the first two indices — and nothing else qualifies.
+    expect(r.state.pending.eligible).toEqual([0, 1])
+    expect(r.state.pending.min, '"you MAY search" — declining is legal').toBe(0)
+    expect(r.state.pending.max).toBe(1)
+    void targets
+  })
+
+  it('is PRIVATE: the controller sees the whole deck, the opponent sees none of it', () => {
+    const { r } = castHughYurg(1)
+    for (const id of r.state.players[0].deck) {
+      expect(knows(r.state, 0, id), 'the searcher did not see their own deck').toBe(true)
+      expect(knows(r.state, 1, id), 'a search must not show the opponent the deck').toBe(false)
+    }
+    const theirs = viewFor(r.state, 1)
+    expect(theirs.fields[0].deck.every((slot) => slot.card === null)).toBe(true)
+  })
+
+  it('plays the found Forward onto the FIELD, not into hand, and shuffles the rest away', () => {
+    const { r, targets, before } = castHughYurg(1)
+    const found = targets[0]!
+    const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [0] })
+
+    expect(done.state.players[0].forwards.map((c) => c.id)).toContain(found)
+    expect(done.state.players[0].hand, 'a search PLAYS the card; it never touches the hand').not.toContain(found)
+    expect(done.state.players[0].deck).not.toContain(found)
+    expect(done.state.players[0].deck.length).toBe(before.players[0].deck.length - 1)
+    // The shuffle is what pays for the look: nothing left in the deck is known to anyone afterwards.
+    for (const id of done.state.players[0].deck) expect(knows(done.state, 0, id)).toBe(false)
+    ok(done.state)
+  })
+
+  it("triggers Hugh Yurg's OWN second clause — the card combos with itself", () => {
+    // A cost-1 Earth Forward is exactly what the sibling clause watches for, so searching one out raises that
+    // clause's "choose 1 Forward" straight after. This is the whole reason the search goes through
+    // `putOntoField` rather than placing the card itself.
+    const { r } = castHughYurg(1)
+    const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [0] })
+    expect(done.state.pending?.kind, "the watcher clause did not fire on the searched-out Forward").toBe('chooseTargets')
+  })
+
+  it('declining is a legal answer that changes nothing but the order of the deck', () => {
+    const { r, before } = castHughYurg(1)
+    const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [] })
+    expect(done.state.pending).toBeNull()
+    expect(done.state.players[0].deck.length).toBe(before.players[0].deck.length)
+    expect(done.state.players[0].forwards.map((c) => c.id)).not.toContain(before.players[0].deck[0])
+    for (const id of done.state.players[0].deck) expect(knows(done.state, 0, id)).toBe(false)
+    ok(done.state)
+  })
+
+  it('with no legal target in the deck at all, raises no prompt and still shuffles', () => {
+    // `take.min` is 0, so "nothing eligible" is settled as the empty pick rather than treated as a failure —
+    // but the deck was still searched, so it must still be shuffled and forgotten.
+    const { r, before } = castHughYurg(0)
+    expect(before.players[0].deck.some((id) => findable(before, id)), 'the fixture left a findable card in').toBe(false)
+    expect(r.state.pending, 'nothing to find must not leave a prompt standing').toBeNull()
+    for (const id of r.state.players[0].deck) expect(knows(r.state, 0, id)).toBe(false)
     ok(r.state)
   })
 })

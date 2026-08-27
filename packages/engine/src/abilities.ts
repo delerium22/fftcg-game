@@ -78,12 +78,22 @@ export type Effect =
    */
   | {
       readonly kind: 'lookAtDeck'
-      readonly count: number
+      /** How many from the top, or `'all'` — the whole deck, which is what a SEARCH exposes (spec C9). */
+      readonly count: number | 'all'
       /** `self` is a LOOK (private to the controller); `all` is a REVEAL (both players learn the cards). */
       readonly audience: 'self' | 'all'
       readonly take: { readonly min: number; readonly max: number; readonly filter?: TargetFilter }
-      /** Where the ones not taken go. Only the bottom, for now: no clause in the pool puts them back on top. */
-      readonly rest: 'bottom'
+      /**
+       * Where a taken card goes. `field` is Hugh Yurg's "play it onto the field" — it goes through the same
+       * `putOntoField` a cast does, so its own ETB and every watcher fire exactly as if it had been cast.
+       */
+      readonly to: 'hand' | 'field'
+      /**
+       * What happens to the ones not taken. `bottom` keeps them in exposed order; `shuffle` is what makes a
+       * search legal to look at a whole deck — it is the only thing in the engine that calls `forget`, and
+       * without it the controller would keep perfect knowledge of a 40-card deck for the rest of the game.
+       */
+      readonly rest: 'bottom' | 'shuffle'
     }
   /**
    * Act on the card the TRIGGER EVENT is about — Luso's "break **it**" (spec C2-5). Binds `chosen` to the

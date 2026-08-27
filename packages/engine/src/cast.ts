@@ -1,12 +1,11 @@
-import type { CardDef, PlayerId } from './types.js'
-import type { AbilityTrigger } from './abilities.js'
-import type { CardId, FieldCard, GameState } from './state.js'
+import type { PlayerId } from './types.js'
+import type { CardId, GameState } from './state.js'
 import { MAX_BACKUPS, defOf, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { canPay, castRequirement, generateCp, pay } from './cp.js'
-import { enqueueEnterFieldTriggers, enqueueTrigger } from './resolve.js'
+import { dispatchTrigger, putOntoField, warnUnimplemented } from './resolve.js'
 
 export function castCheck(state: GameState, player: PlayerId, card: CardId): string | null {
   if (state.result) return 'game is over'
@@ -48,49 +47,17 @@ function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: P
   return pay(state, player, payment)
 }
 
-/**
- * Coverage is per CLAUSE (spec C1-9). A card with an AST for 1 of its 3 printed clauses must still warn about
- * the other 2, so the log stays honest about what the player is actually getting. `clauses` is omitted when
- * nothing at all is implemented — the vanilla-pool log line keeps the shape it has had since rung A.
- */
-function warnUnimplemented(def: CardDef, card: CardId, events: Event[]): void {
-  const printed = def.abilityClauses ?? (def.hasAbilities ? 1 : 0)
-  const implemented = def.abilities?.length ?? 0
-  const missing = Math.max(0, printed - implemented)
-  if (missing === 0) return
-  if (implemented === 0) events.push({ type: 'unimplementedAbility', card, code: def.code })
-  else events.push({ type: 'unimplementedAbility', card, code: def.code, clauses: missing })
-}
-
-/** Queue every implemented clause with this trigger, in printed order (spec C1-4: no stack, they drain immediately). */
-function dispatch(state: GameState, def: CardDef, card: CardId, controller: PlayerId, trigger: AbilityTrigger): GameState {
-  let s = state
-  for (const ability of def.abilities ?? []) if (ability.trigger.kind === trigger.kind) s = enqueueTrigger(s, card, controller, ability)
-  return s
-}
-
 export function applyCastCharacter(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
   const why = castCheck(state, player, card)
   if (why) throw new IllegalCommandError(why)
   const def = defOf(state, card)
   if (def.type === 'summon') throw new IllegalCommandError('use castSummon for summons')
   const [paid, events] = checkedPay(state, player, card, payment)
-  const fc: FieldCard = { id: card, status: def.type === 'backup' ? 'dull' : 'active', damage: 0, enteredTurn: state.turn, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [] }
-  let s = updatePlayer(paid, player, (ps) => ({
-    ...ps,
-    hand: ps.hand.filter((id) => id !== card),
-    forwards: def.type === 'forward' ? [...ps.forwards, fc] : ps.forwards,
-    backups: def.type === 'backup' ? [...ps.backups, fc] : ps.backups,
-  }))
+  const fromHand = updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) }))
   events.push({ type: 'cast', player, card, cardType: def.type })
-  warnUnimplemented(def, card, events)
-  // `enterField`, not `cast`: C2's Hugh Yurg puts a Character onto the field without casting it (spec C1-2).
-  s = dispatch(s, def, card, player, { kind: 'enterField' })
-  // Then the cards WATCHING an arrival (spec C8-1). After the entering card's own clauses, so a card that
-  // both has an ETB and is watched resolves them in that order — the CR gives simultaneous triggers to the
-  // active player to order, and MVP0 gives them queue order (spec C1-4/C8-4).
-  s = enqueueEnterFieldTriggers(s, card, player)
-  return [s, events]
+  // Placement, the coverage warning and both trigger dispatches are `putOntoField`'s, not this function's:
+  // C9's Hugh Yurg search puts a Character onto the field without casting it and shares every one of them.
+  return [putOntoField(fromHand, card, player, events), events]
 }
 
 export function applyCastSummon(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
@@ -105,7 +72,7 @@ export function applyCastSummon(state: GameState, player: PlayerId, card: CardId
   events.push({ type: 'cast', player, card, cardType: 'summon' })
   warnUnimplemented(def, card, events)
   const resolves = (def.abilities ?? []).some((a) => a.trigger.kind === 'summonResolve')
-  s = dispatch(s, def, card, player, { kind: 'summonResolve' })
+  s = dispatchTrigger(s, def, card, player, 'summonResolve')
   if (!resolves) events.push({ type: 'summonResolvedNoEffect', card })
   return [s, events]
 }

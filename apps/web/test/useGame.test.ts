@@ -183,7 +183,7 @@ describe('a look and a reveal in the log (rung C9)', () => {
   it("names the cards for the human's OWN look", () => {
     const ids = base.players[HUMAN].deck.slice(0, 3)
     const v = viewFor(learn(base, [HUMAN], ids), HUMAN)
-    const line = describeEvent(v, { type: 'deckExposed', player: HUMAN, count: 3, audience: 'self', cards: ids })
+    const line = describeEvent(v, { type: 'deckExposed', player: HUMAN, count: 3, audience: 'self', cards: ids, scope: 'top' })
     expect(line?.text).toContain('You look at the top 3 cards of your deck: ')
     for (const id of ids) expect(line?.text).toContain(nameOf(v, id))
   })
@@ -191,16 +191,37 @@ describe('a look and a reveal in the log (rung C9)', () => {
   it("gives the AI's private look as a bare COUNT — the human is told THAT, not WHICH", () => {
     const ids = base.players[AI].deck.slice(0, 3)
     const v = viewFor(learn(base, [AI], ids), HUMAN)
-    const line = describeEvent(v, { type: 'deckExposed', player: AI, count: 3, audience: 'self', cards: ids })
+    const line = describeEvent(v, { type: 'deckExposed', player: AI, count: 3, audience: 'self', cards: ids, scope: 'top' })
     expect(line?.text).toBe('The AI looks at the top 3 cards of its deck')
   })
 
   it("names every card of the AI's public REVEAL, because the human saw them", () => {
     const ids = base.players[AI].deck.slice(0, 5)
     const v = viewFor(learn(base, [HUMAN, AI], ids), HUMAN)
-    const line = describeEvent(v, { type: 'deckExposed', player: AI, count: 5, audience: 'all', cards: ids })
+    const line = describeEvent(v, { type: 'deckExposed', player: AI, count: 5, audience: 'all', cards: ids, scope: 'top' })
     expect(line?.text).toContain('The AI reveals the top 5 cards of its deck: ')
     for (const id of ids) expect(line?.text).toContain(nameOf(v, id))
+  })
+
+  it('a SEARCH says only that it happened — never a 40-card list', () => {
+    const ids = base.players[HUMAN].deck
+    const v = viewFor(learn(base, [HUMAN], ids), HUMAN)
+    const line = describeEvent(v, { type: 'deckExposed', player: HUMAN, count: ids.length, audience: 'self', cards: ids, scope: 'deck' })
+    expect(line?.text).toBe('You search your deck')
+    // The whole point: naming all of them would be true and useless, and would bury the move that matters.
+    for (const id of ids.slice(0, 5)) expect(line?.text).not.toContain(nameOf(v, id))
+    expect(describeEvent(v, { type: 'deckExposed', player: AI, count: 3, audience: 'self', cards: [], scope: 'deck' })?.text)
+      .toBe('The AI searches its deck')
+  })
+
+  it('names the card a search played, because a card on the field is public', () => {
+    const v = viewFor(base, HUMAN)
+    const onField = base.players[AI].deck[0]!
+    // Narration runs on the POST-apply view, where the card is already on the field and so already visible.
+    const withCard = viewFor(learn(base, [HUMAN, AI], [onField]), HUMAN)
+    expect(describeEvent(withCard, { type: 'playedFromDeck', player: AI, card: onField })?.text)
+      .toBe(`The AI plays ${nameOf(withCard, onField)} onto the field from its deck`)
+    void v
   })
 
   it('says what was added to a hand — by name for the human, unnamed for the AI', () => {

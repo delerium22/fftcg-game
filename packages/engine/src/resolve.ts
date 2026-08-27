@@ -2,10 +2,11 @@ import type { Ability, AbilityTrigger, Effect, Frame, TargetFilter, TargetSpec, 
 // Type-only, so it is erased at compile time and creates no runtime cycle with rules.ts (which imports this module).
 import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
+import { shuffle } from './rng.js'
 import { MAX_RESOLUTION_STEPS } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending } from './state.js'
-import { defOf, findFieldCard, learn, updatePlayer } from './state.js'
-import type { PlayerId } from './types.js'
+import { defOf, findFieldCard, forget, learn, updatePlayer } from './state.js'
+import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
@@ -241,16 +242,33 @@ function runEffects(ctx: Ctx, effects: readonly Effect[], depth: number, onSpine
  */
 function settleLook(ctx: Ctx, eff: Extract<Effect, { kind: 'lookAtDeck' }>, exposed: readonly CardId[], picks: readonly number[]): void {
   const taken = picks.map((i) => exposed[i] as CardId)
-  const rest = exposed.filter((_, i) => !picks.includes(i))
+  const kept = exposed.filter((_, i) => !picks.includes(i))
+  // Whatever was NOT exposed stays under whatever was, in both cases: for a search `below` is empty because
+  // the whole deck was exposed, and the one expression covers the top-N look and the search alike.
+  const below = ctx.state.players[ctx.controller].deck.slice(exposed.length)
+  // MVP0-SIMPLIFICATION (spec C9): "return the other cards to the bottom in any order" keeps the exposed
+  // order. Asking a player to arrange cards going to the BOTTOM of a 40-card deck is a permutation prompt
+  // for something a game this length will almost never reach.
+  let deck = [...below, ...kept]
+  if (eff.rest === 'shuffle') {
+    const [shuffled, rng] = shuffle(ctx.state.rng, deck)
+    deck = shuffled
+    ctx.state = { ...ctx.state, rng }
+  }
   ctx.state = updatePlayer(ctx.state, ctx.controller, (q) => ({
     ...q,
-    // MVP0-SIMPLIFICATION (spec C9): "return the other cards to the bottom in any order" keeps the exposed
-    // order. Asking a player to arrange cards going to the BOTTOM of a 40-card deck is a permutation prompt
-    // for something a game this length will almost never reach.
-    deck: [...q.deck.slice(eff.count), ...rest],
-    hand: [...q.hand, ...taken],
+    deck,
+    hand: eff.to === 'hand' ? [...q.hand, ...taken] : q.hand,
   }))
-  for (const id of taken) ctx.events.push({ type: 'addedToHand', player: ctx.controller, card: id })
+  // The shuffle is what pays for having looked: a player who searched their whole deck legitimately saw all
+  // of it, and then it is randomised, so the knowledge must go with it. `forget` is called on the deck AFTER
+  // the taken cards have left it — a card on its way to the field is public, and re-hiding it would be wrong.
+  if (eff.rest === 'shuffle') ctx.state = forget(ctx.state, deck)
+  for (const id of taken) {
+    if (eff.to === 'hand') { ctx.events.push({ type: 'addedToHand', player: ctx.controller, card: id }); continue }
+    ctx.events.push({ type: 'playedFromDeck', player: ctx.controller, card: id })
+    ctx.state = putOntoField(ctx.state, id, ctx.controller, ctx.events)
+  }
 }
 
 function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): void {
@@ -279,26 +297,37 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       return
     }
     case 'lookAtDeck': {
-      const exposed = ctx.state.players[ctx.controller].deck.slice(0, eff.count)
+      const own = ctx.state.players[ctx.controller].deck
+      const exposed = eff.count === 'all' ? [...own] : own.slice(0, eff.count)
       if (answered) { settleLook(ctx, eff, exposed, ctx.picks); return }
       if (exposed.length === 0) { noLegalTarget(ctx); return }
 
       // Exposing IS the effect that changes what is known — before any choice, and whether or not one
       // follows. `self` is a LOOK, `all` a REVEAL; that is the whole private/public distinction.
+      //
+      // It is also what makes the INDEX answer world-independent for a search (spec C9-5, D-2): every slot
+      // the controller now knows is PINNED by `determinise`, so "index 17" lands on the same card in every
+      // determinisation taken from this point. A search that did not expose first could not be answered by
+      // index at all — the position would name a different card in every world.
       const audience: PlayerId[] = eff.audience === 'all' ? [0, 1] : [ctx.controller]
       ctx.state = learn(ctx.state, audience, exposed)
-      ctx.events.push({ type: 'deckExposed', player: ctx.controller, count: exposed.length, audience: eff.audience, cards: exposed })
+      ctx.events.push({ type: 'deckExposed', player: ctx.controller, count: exposed.length, audience: eff.audience, cards: exposed, scope: eff.count === 'all' ? 'deck' : 'top' })
 
       const eligible = exposed
         .map((id, i) => (matchesFilter(ctx.state, ctx.source, id, eff.take.filter) ? i : -1))
         .filter((i) => i >= 0)
       // "Add 1 Backup among them" with no Backup among them takes nothing — but the look still happened and
       // the cards still go to the bottom, so this settles rather than aborting.
-      if (eff.take.min > eligible.length) { settleLook(ctx, eff, exposed, []); return }
+      //
+      // `eligible.length === 0` is checked SEPARATELY from `min`, and it has to be: Hugh Yurg's search is
+      // "you MAY", so `min` is 0, and `min > 0` alone would raise a prompt offering a choice between zero
+      // and zero cards. A prompt with exactly one legal answer is not a decision — it is a click the player
+      // has to make to continue, and for the AI a tree edge that carries no information.
+      if (eligible.length === 0 || eff.take.min > eligible.length) { settleLook(ctx, eff, exposed, []); return }
 
       ctx.suspend = {
         kind: 'chooseFromDeck', player: ctx.controller,
-        min: eff.take.min, max: Math.min(eff.take.max, eligible.length), count: exposed.length, eligible,
+        min: eff.take.min, max: Math.min(eff.take.max, eligible.length), count: exposed.length, eligible, to: eff.to,
       }
       return
     }
@@ -691,6 +720,56 @@ function enqueueZoneTriggers(state: GameState, occurrences: readonly WatcherOccu
   }
   return s
 }
+/** Queue every implemented clause with this trigger kind, in printed order (spec C1-4: no stack, they drain immediately). */
+export function dispatchTrigger(state: GameState, def: CardDef, card: CardId, controller: PlayerId, kind: AbilityTrigger['kind']): GameState {
+  let s = state
+  for (const ability of def.abilities ?? []) if (ability.trigger.kind === kind) s = enqueueTrigger(s, card, controller, ability)
+  return s
+}
+
+/**
+ * Coverage is per CLAUSE (spec C1-9). A card with an AST for 1 of its 3 printed clauses must still warn about
+ * the other 2, so the log stays honest about what the player is actually getting. `clauses` is omitted when
+ * nothing at all is implemented — the vanilla-pool log line keeps the shape it has had since rung A.
+ */
+export function warnUnimplemented(def: CardDef, card: CardId, events: Event[]): void {
+  const printed = def.abilityClauses ?? (def.hasAbilities ? 1 : 0)
+  const implemented = def.abilities?.length ?? 0
+  const missing = Math.max(0, printed - implemented)
+  if (missing === 0) return
+  if (implemented === 0) events.push({ type: 'unimplementedAbility', card, code: def.code })
+  else events.push({ type: 'unimplementedAbility', card, code: def.code, clauses: missing })
+}
+
+/**
+ * Put a Character onto the field and run everything that arrival owes, whatever brought it there.
+ *
+ * The caller has already removed the card from wherever it came from (hand, for a cast; deck, for C9's Hugh
+ * Yurg search) and pushed its own event for that. This does the rest, and it does it in ONE place on purpose:
+ * a search that grew its own copy of "place, warn, dispatch, notify watchers" would drift from casting exactly
+ * the way `breakCard` drifted from the zone-change dispatch and silently missed ~40% of the breaks its printed
+ * text named. Whatever an arrival owes, it owes here.
+ */
+export function putOntoField(state: GameState, card: CardId, controller: PlayerId, events: Event[]): GameState {
+  const def = defOf(state, card)
+  const fc: FieldCard = {
+    id: card, status: def.type === 'backup' ? 'dull' : 'active', damage: 0,
+    enteredTurn: state.turn, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [],
+  }
+  let s = updatePlayer(state, controller, (ps) => ({
+    ...ps,
+    forwards: def.type === 'forward' ? [...ps.forwards, fc] : ps.forwards,
+    backups: def.type === 'backup' ? [...ps.backups, fc] : ps.backups,
+  }))
+  warnUnimplemented(def, card, events)
+  // The entering card's own clauses first (`enterField`, not `cast` — Hugh Yurg's search never casts anything,
+  // spec C1-2), then the cards WATCHING an arrival (spec C8-1). A card that both has an ETB and is watched
+  // resolves them in that order: the CR gives simultaneous triggers to the active player to order, and MVP0
+  // gives them queue order (spec C1-4/C8-4).
+  s = dispatchTrigger(s, def, card, controller, 'enterField')
+  return enqueueEnterFieldTriggers(s, card, controller)
+}
+
 /**
  * Dispatch `observesEnterField` clauses for one card ARRIVING on a field (spec C8-1) — `observesZoneChange`
  * pointed the other way.

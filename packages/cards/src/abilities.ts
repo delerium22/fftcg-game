@@ -306,6 +306,40 @@ const PRISHE_DAMAGES_OPPONENT: Ability = {
 }
 
 /**
+ * Hugh Yurg's FIRST clause (spec C9) — the pool's only search, and the last clause of the rung.
+ *
+ * It differs from Reeve's look and Miner's reveal on every axis the effect has, which is why it is worth its
+ * own stage rather than a third `count`:
+ *
+ * - `count: 'all'` — a search exposes the WHOLE deck, not a top slice. That is also what makes answering by
+ *   INDEX sound here: exposing pins every slot for the controller, so the index names the same card in every
+ *   determinisation (spec C9-5). A search that chose blind could not be answered positionally at all.
+ * - `audience: 'self'` — you search privately. What becomes public is the card you PLAY, and it becomes
+ *   public by being on the field, not by being revealed.
+ * - `take.min: 0` — "you MAY search". Declining is a legal answer, and `settleLook` handles the empty pick
+ *   as the same move, exactly as Miner's no-Backup path does.
+ * - `to: 'field'` — "play it onto the field", not into hand. It goes through `putOntoField`, so the searched
+ *   Forward's own ETB and every watcher fire as if it had been cast. That includes Hugh Yurg's OWN second
+ *   clause: a cost-1 Earth Forward is exactly what that clause watches for, so searching one out triggers
+ *   the pump. The card is built to combo with itself and the engine has to let it.
+ * - `rest: 'shuffle'` — and this is the only shuffle in the pool. Without it the controller would keep
+ *   perfect knowledge of their whole deck for the rest of the game.
+ *
+ * "1 Earth Forward of cost 1" is `cost: 1` EXACT, the same trap C8 called out on the sibling clause: a cost-3
+ * Earth Forward must not be findable. Undead Princess (19-052C) is the pool's only legal target.
+ */
+const HUGH_YURG_SEARCH: Ability = {
+  id: '24-063H:search',
+  trigger: { kind: 'enterField' },
+  text: 'When Hugh Yurg enters the field, you may search for 1 Earth Forward of cost 1 and play it onto the field.',
+  effects: [{
+    kind: 'lookAtDeck', count: 'all', audience: 'self',
+    take: { min: 0, max: 1, filter: { type: 'forward', element: 'earth', cost: 1 } },
+    to: 'field', rest: 'shuffle',
+  }],
+}
+
+/**
  * Hugh Yurg's second clause (spec C8) — the pool's first ability that watches a card ARRIVE, where C2's
  * watchers all watch one leave.
  *
@@ -384,7 +418,7 @@ const REEVE_ETB: Ability = {
     kind: 'lookAtDeck', count: 3, audience: 'self',
     // "Add 1 card among them" — no filter, so every exposed card is eligible.
     take: { min: 1, max: 1 },
-    rest: 'bottom',
+    to: 'hand', rest: 'bottom',
   }],
 }
 
@@ -510,7 +544,7 @@ const MINER_ETB: Ability = {
   effects: [{
     kind: 'lookAtDeck', count: 5, audience: 'all',
     take: { min: 1, max: 1, filter: { type: 'backup' } },
-    rest: 'bottom',
+    to: 'hand', rest: 'bottom',
   }],
 }
 
@@ -613,7 +647,8 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   '20-105C': [REEVE_ETB],
   '22-068R': [PRISHE_DAMAGES_OPPONENT],
   // Clause 2 only; the ETB deck search is rung C9.
-  '24-063H': [HUGH_YURG_CHEAP_FORWARD],
+  // Printed order: the ETB search is clause 1, the cost-1-Forward watcher clause 2.
+  '24-063H': [HUGH_YURG_SEARCH, HUGH_YURG_CHEAP_FORWARD],
   // Printed order: the ETB is clause 1, the Attack-Phase clause 2.
   '27-124S': [CLOUD_ETB, CLOUD_ATTACK_PHASE],
   '27-125S': [LUSO_DAMAGES_FORWARD, LUSO_DAMAGES_OPPONENT],

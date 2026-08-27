@@ -27,7 +27,11 @@ export type Event =
   // against `audience`: a card the viewer's `PlayerView` does not carry cannot be named, whatever the
   // audience said. Reading the top `count` of the deck instead would name the wrong cards once the
   // nothing-was-eligible path has already put them under (spec C9).
-  | { type: 'deckExposed'; player: PlayerId; count: number; audience: 'self' | 'all'; cards: readonly CardId[] }
+  // `scope` separates "the top N" from "the whole deck": a SEARCH exposes everything, and a log line that
+  // called that "the top 37 cards" would be technically true and useless.
+  | { type: 'deckExposed'; player: PlayerId; count: number; audience: 'self' | 'all'; cards: readonly CardId[]; scope: 'top' | 'deck' }
+  /** A card put onto the field from the deck without being cast — Hugh Yurg's search (spec C9). */
+  | { type: 'playedFromDeck'; player: PlayerId; card: CardId }
   /** A card taken from an exposure into its owner's hand. */
   | { type: 'addedToHand'; player: PlayerId; card: CardId }
   /** A card removed from the game (spec C7-3). Distinct from breaking and from discarding. */

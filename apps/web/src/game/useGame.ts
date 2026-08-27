@@ -101,12 +101,21 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // C9. A look and a reveal differ only in the verb; WHICH cards get named is decided by the view, not by
     // the audience, so this one line is safe for both. The AI's private look reaches the human as a count.
     case 'deckExposed': {
+      const whose = whoDoes(v, e.player, 'your', 'its')
+      // A search exposes the WHOLE deck. Calling that "the top 37 cards" would be true and useless — and
+      // naming all 37 in the log would bury the move that matters, so a search says only that it happened.
+      if (e.scope === 'deck') {
+        return { kind: 'event', text: `${who(v, e.player)} search${e.player === v.me ? '' : 'es'} ${whose} deck` }
+      }
       const verb = e.audience === 'all' ? whoDoes(v, e.player, 'reveal', 'reveals') : whoDoes(v, e.player, 'look at', 'looks at')
       const named = e.cards.filter((id) => v.cards[id] !== undefined)
       const shown = named.length === e.cards.length && named.length > 0 ? `: ${named.map((id) => name(v, id)).join(', ')}` : ''
-      const whose = whoDoes(v, e.player, 'your', "its")
       return { kind: 'event', text: `${who(v, e.player)} ${verb} the top ${e.count} card${e.count === 1 ? '' : 's'} of ${whose} deck${shown}` }
     }
+    // The card a search found is public the moment it lands, so this one always names it — unlike
+    // `addedToHand`, whose card may be one this seat never saw.
+    case 'playedFromDeck':
+      return { kind: 'event', text: `${who(v, e.player)} play${e.player === v.me ? '' : 's'} ${name(v, e.card)} onto the field from ${whoDoes(v, e.player, 'your', 'its')} deck` }
     // The other half: without this a revealed card is added to a hand with nothing in the log saying so, and
     // for the no-eligible path there is no board change at all to infer it from.
     case 'addedToHand': {

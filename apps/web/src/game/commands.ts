@@ -266,10 +266,13 @@ export function describeChoice(v: PlayerView, c: Command): string {
      * opponent has `card: null` there, so the same code physically cannot name a card it must not reveal.
      */
     case 'chooseFromDeck': {
-      if (!c.picks.length) return 'Take nothing'
+      // A search PLAYS what it finds; a look ADDS it to hand. The pending says which, so the button says it too.
+      const field = v.pending?.kind === 'chooseFromDeck' && v.pending.to === 'field'
+      if (!c.picks.length) return field ? 'Find nothing' : 'Take nothing'
       const exposed = v.fields[v.me].deck
       const named = c.picks.map((i) => exposed[i]?.card).filter((id): id is CardId => id !== null && id !== undefined)
-      return named.length === c.picks.length ? `Take ${listNames(v, named)}` : `Take ${c.picks.length} card${c.picks.length === 1 ? '' : 's'}`
+      const what = named.length === c.picks.length ? listNames(v, named) : `${c.picks.length} card${c.picks.length === 1 ? '' : 's'}`
+      return field ? `Play ${what} onto the field` : `Take ${what}`
     }
     // A mode has no card subject, so its button IS the printed wording — never a paraphrase of it.
     case 'chooseMode': return c.modes.length ? c.modes.map((i) => modeLabel(v, i)).join(' + ') : 'None of these'

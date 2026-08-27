@@ -196,6 +196,22 @@ describe('deck knowledge survives determinisation (spec C9-5)', () => {
     }
   })
 
+  it('a SEARCH pins the WHOLE deck, which is what makes an index answer world-independent', () => {
+    // The crux of stage 2d. Hugh Yurg's search is answered by INDEX, like Reeve's look — and an index is only
+    // a meaningful answer if it names the same card in every determinisation. It does, but not by luck: the
+    // search EXPOSES the whole deck first, and an exposed slot is a pinned slot. Take that exposure away and
+    // index 17 is a different card in every world, and the search tree pools statistics for unrelated moves.
+    const base = makeGame({ defs: VANILLA_POOL, decks: DECKS })
+    const all = base.players[0].deck
+    const view = viewFor(learn(base, [0], all), 0)
+
+    const deckAt = (seed: number): string =>
+      determinise({ view, decks: DECKS, rng: seedRng(seed) })[0].players[0].deck.join(',')
+    const worlds = new Set([1, 2, 3, 4, 5, 6, 7, 8].map(deckAt))
+    expect(worlds.size, 'a fully exposed deck was still being resampled').toBe(1)
+    expect(deckAt(1)).toBe(all.join(','))
+  })
+
   it('samples those positions differently across determinisations', () => {
     // The identities are invented, so two worlds should disagree about them — otherwise the search is
     // reasoning about one fixed guess rather than an information set.
