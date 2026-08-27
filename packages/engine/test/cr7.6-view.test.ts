@@ -26,7 +26,7 @@ describe('§7.6 hidden zones', () => {
   it('is isolated from engine state', () => {
     const s = makeGame()
     const v = viewFor(s, 0)
-    v.hand.push(4242); v.fields[0].forwards.push({ id: 4243, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [] }); (v.defs['V-F1'] as { cost: number }).cost = 99
+    v.hand.push(4242); v.fields[0].forwards.push({ id: 4243, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] }); (v.defs['V-F1'] as { cost: number }).cost = 99
     expect(s.players[0].hand).not.toContain(4242)
     expect(s.players[0].forwards).toHaveLength(0)
     expect(s.defs['V-F1']?.cost).toBe(1)

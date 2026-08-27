@@ -19,7 +19,7 @@ describe('§11.4 casting a Character', () => {
     let { s, b1, b2 } = ready(); let f: number
     ;[s, f] = withHand(s, 0, 'V-F2')   // earth cost 2
     const [t, events] = applyCastCharacter(s, 0, f, { dullBackups: [b1, b2], discards: [] })
-    expect(t.players[0].forwards).toEqual([{ id: f, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [] }])
+    expect(t.players[0].forwards).toEqual([{ id: f, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] }])
     expect(t.players[0].hand).not.toContain(f)
     expect(t.players[0].backups.every((b) => b.status === 'dull')).toBe(true)
     expect(events).toContainEqual({ type: 'cast', player: 0, card: f, cardType: 'forward' })

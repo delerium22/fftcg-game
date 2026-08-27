@@ -606,6 +606,40 @@ const UNDEAD_PRINCESS_PUMP: Ability = {
 }
 
 /**
+ * Sphene's `[0]` retrieve (spec C10) — the last buildable clause in the pool, and the only one that reads
+ * something the board does not show: what happened THIS TURN.
+ *
+ * "put in your Break Zone from the field during this turn" is `putIntoBreakZoneFromFieldThisTurn`, a filter
+ * on the INSTANCE rather than the definition. It admits a card paid there as a cost as readily as a broken
+ * one — the printed text says "put … from the field", and a payment is expressly not a break (CR
+ * §15.1.1.3.2) but is still a movement from the field.
+ *
+ * `[0]` is a real cost, not the absence of one: it means the ability costs nothing, which is why `cost` is
+ * an empty CP requirement rather than an omitted field.
+ *
+ * "only during your turn" needs no code — C3-11 already restricts every activated ability to the turn
+ * player. "Only once per turn" is `oncePerTurn`, tracked on Sphene's own `FieldCard` so that two copies
+ * would have separate allowances and a Sphene that left the field and returned has a fresh one (CR §7.4).
+ *
+ * "1 Forward other than Sphene" is `excludeSourceName`, not `excludeSource`: the printed wording excludes
+ * the NAME, so a second Sphene in the Break Zone is no more retrievable than this one.
+ */
+const SPHENE_RETRIEVE: Ability = {
+  id: '27-126S:retrieve',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 0 } }, oncePerTurn: true },
+  text: '[0]: Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn. '
+    + 'Add it to your hand. You can only use this ability during your turn and only once per turn.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: {
+      zone: 'breakZone', controller: 'self',
+      filter: { type: 'forward', excludeSourceName: true, putIntoBreakZoneFromFieldThisTurn: true },
+    },
+    then: [{ kind: 'moveToHand' }],
+  }],
+}
+
+/**
  * The two hand-sourced draws. `sourceZone: 'hand'` is what encodes "You can only use this ability if <card>
  * is in your hand" — an activation precondition, not a cost (spec C3-3). They are otherwise identical, and
  * they exist in this rung to prove the source zone is real rather than assumed to be the field.
@@ -655,6 +689,9 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   // Printed order: the ETB is clause 1, the Attack-Phase clause 2.
   '27-124S': [CLOUD_ETB, CLOUD_ATTACK_PHASE],
   '27-125S': [LUSO_DAMAGES_FORWARD, LUSO_DAMAGES_OPPONENT],
+  // Sphene's static Break Zone protection is clause 1 and stays unimplemented — nothing in this pool
+  // removes an OPPONENT's card, so it has nothing to protect against. See the README.
+  '27-126S': [SPHENE_RETRIEVE],
   '27-127S': [LIGHTNING_ETB, LIGHTNING_OPPONENT_BROKEN],
 }
 

@@ -7,7 +7,7 @@ import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { canPay, generateCp, pay, type CpRequirement } from './cp.js'
 import type { ZoneTransition } from './rules.js'
-import { enqueueZoneChangeTriggers, removeFromField, targetCandidates } from './resolve.js'
+import { enqueueZoneChangeTriggers, forgetBreakZoneArrivals, removeFromField, targetCandidates } from './resolve.js'
 
 /**
  * Activated abilities (spec C3): the transaction from declaration through simultaneous costs, cost triggers,
@@ -113,6 +113,12 @@ export function activationCheck(
   const where = sourceZoneOf(state, player, source)
   if (where === null) return `you do not have ${source}`
   if (where !== sourceZone) return `${abilityId} may only be used from your ${sourceZone}`
+
+  // "You can only use this ability once per turn" (spec C10-1). Tracked on the source's own `FieldCard`, so
+  // two copies have separate allowances and a card that left the field and came back has a fresh one.
+  if (ability.trigger.oncePerTurn && findFieldCard(state, source)?.card.usedThisTurn.includes(abilityId)) {
+    return `${abilityId} has already been used this turn`
+  }
 
   if (cost.dull) {
     // §11.6.2.2 — the dull icon, and ONLY the dull icon, brings the active/entered-this-turn/Haste rule with
@@ -225,6 +231,9 @@ function applyCosts(
     const owner = s.cards[source]?.owner ?? player
     s = updatePlayer(s, player, (ps) => ({ ...ps, breakZone: ps.breakZone.filter((id) => id !== source) }))
     s = updatePlayer(s, owner, (ps) => ({ ...ps, removedFromGame: [...ps.removedFromGame, source] }))
+    // The second Break Zone EXIT, and it has to forget too (spec C10-2) — otherwise the id lingers in the
+    // turn's arrival list naming a card that is no longer there, which is exactly what the invariant forbids.
+    s = forgetBreakZoneArrivals(s, [source])
     events.push({ type: 'removedFromGame', player, card: source })
   }
   if (cost.selfDiscard) {
@@ -277,5 +286,21 @@ export function applyActivateAbility(
     origin: 'activated',
   }
   s = { ...s, resolution: { ...s.resolution, queue: [...s.resolution.queue, frame] } }
+  // Spent, whatever the frame goes on to do — the allowance is consumed by USING the ability, not by it
+  // resolving successfully, so a clause that finds no legal target still costs the turn's use (§11.6.5).
+  if (ability.trigger.oncePerTurn) s = markAbilityUsed(s, source, abilityId)
   return [s, events]
+}
+
+/**
+ * Note a `oncePerTurn` ability as spent on the source's `FieldCard` (spec C10-1). A no-op when the source is
+ * not on the field, which `checkInvariants` rejects as a spec error rather than letting it silently never
+ * limit anything: a `oncePerTurn` ability whose `sourceZone` is `hand` or `breakZone` has no carrier.
+ */
+function markAbilityUsed(state: GameState, source: CardId, abilityId: string): GameState {
+  const loc = findFieldCard(state, source)
+  if (!loc) return state
+  const mark = (c: FieldCard): FieldCard =>
+    (c.id === source && !c.usedThisTurn.includes(abilityId) ? { ...c, usedThisTurn: [...c.usedThisTurn, abilityId] } : c)
+  return updatePlayer(state, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map(mark), backups: ps.backups.map(mark) }))
 }

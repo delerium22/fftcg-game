@@ -50,6 +50,24 @@ describe('§9.2 draw phase', () => {
  */
 const pass = (state: GameState, player: PlayerId): GameState => apply(state, { type: 'pass', player }).state
 
+describe("the turn's Break Zone history clears at the turn boundary (spec C10-3)", () => {
+  it('startTurn clears it for BOTH players', () => {
+    // Pinned on `startTurn` directly, not through a game, because no card in this pool can be broken by the
+    // final End Phase rule-process pass: damage is removed first (§9.5.1.3.1) and clearing a `powerBonus`
+    // cannot drop a printed power to zero. So clearing one phase too early — in `finishEndPhase`'s per-turn
+    // reset, before that pass — is behaviourally identical TODAY and no game-level test can tell. It is
+    // still wrong, and this is where it stops being wrong quietly.
+    const base = makeGame()
+    const seeded: GameState = { ...base, players: [
+      { ...base.players[0], breakZone: [1], putIntoBreakZoneFromFieldThisTurn: [1] },
+      { ...base.players[1], breakZone: [2], putIntoBreakZoneFromFieldThisTurn: [2] },
+    ] }
+    const [after] = startTurn(seeded, seeded.turn + 1, 1)
+    expect(after.players[0].putIntoBreakZoneFromFieldThisTurn).toEqual([])
+    expect(after.players[1].putIntoBreakZoneFromFieldThisTurn).toEqual([])
+  })
+})
+
 describe('§9.3–9.5 passing through phases', () => {
   it('main1 → attack declaration → main2 → end → next turn', () => {
     let s = withHandSize(makeGame(), 0, 5)   // avoid the hand-size discard decision

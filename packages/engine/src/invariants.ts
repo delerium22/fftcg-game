@@ -4,7 +4,18 @@ import type { FieldCard, GameState } from './state.js'
 import { MAX_BACKUPS } from './state.js'
 import { KEYWORDS } from './types.js'
 
-function checkFieldCard(problems: string[], where: string, c: FieldCard): void {
+function checkFieldCard(problems: string[], where: string, c: FieldCard, state: GameState): void {
+  // A `oncePerTurn` marker is only meaningful on a card that HAS such an ability, activated from the field.
+  // This is what makes the spec's promise concrete: put `oncePerTurn` on an ability whose `sourceZone` is
+  // `hand` or `breakZone` and there is no `FieldCard` to carry it, so it would silently never limit anything.
+  if (new Set(c.usedThisTurn).size !== c.usedThisTurn.length) problems.push(`card ${c.id} in ${where} used an ability twice in one turn`)
+  const def = state.defs[state.cards[c.id]?.code ?? '']
+  for (const id of c.usedThisTurn) {
+    const a = def?.abilities?.find((x) => x.id === id)
+    if (!a) problems.push(`card ${c.id} in ${where} recorded unknown ability ${id} as used`)
+    else if (a.trigger.kind !== 'activated' || !a.trigger.oncePerTurn) problems.push(`card ${c.id} in ${where} recorded ${id} as used, but it is not a oncePerTurn activated ability`)
+    else if (a.trigger.sourceZone !== 'field') problems.push(`ability ${id} is oncePerTurn from ${a.trigger.sourceZone}, which has no FieldCard to track it`)
+  }
   if (c.damage < 0) problems.push(`card ${c.id} has negative damage`)
   if (!Number.isInteger(c.powerBonus) || !Number.isFinite(c.powerBonus)) problems.push(`card ${c.id} in ${where} has non-integral powerBonus ${c.powerBonus}`)
   for (const f of c.flags) if (!FIELD_FLAGS.includes(f)) problems.push(`card ${c.id} has unknown flag ${String(f)}`)
@@ -32,10 +43,19 @@ export function checkInvariants(state: GameState): string[] {
     // A zone added to `viewFor` but not here fails silently — `note` is what proves every card is in exactly
     // one place, and the fuzzer runs it after every command under --strict (spec C7-5).
     ps.removedFromGame.forEach((id) => note(id, `P${p} removed`))
+    // Every card the turn recorded as reaching this Break Zone from the field must still BE there (spec
+    // C10-2). A retrieve or a removal that forgot to prune shows up here rather than as a card Sphene can
+    // take twice — and `note` above cannot see it, because this list is not a zone.
+    if (new Set(ps.putIntoBreakZoneFromFieldThisTurn).size !== ps.putIntoBreakZoneFromFieldThisTurn.length) {
+      problems.push(`P${p} recorded a duplicate Break Zone arrival`)
+    }
+    for (const id of ps.putIntoBreakZoneFromFieldThisTurn) {
+      if (!ps.breakZone.includes(id)) problems.push(`card ${id} is recorded as put into P${p}'s Break Zone this turn but is not in it`)
+    }
     for (const zone of ['forwards', 'backups'] as const) {
       for (const c of ps[zone]) {
         note(c.id, `P${p} ${zone}`)
-        checkFieldCard(problems, `P${p} ${zone}`, c)
+        checkFieldCard(problems, `P${p} ${zone}`, c, state)
         const inst = state.cards[c.id]
         if (!inst || !state.defs[inst.code]) problems.push(`field card ${c.id} has no definition`)
       }

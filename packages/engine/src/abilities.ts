@@ -37,6 +37,12 @@ export interface TargetFilter {
   readonly excludeSource?: boolean
   /** "other than Card Name <X>" — excludes every card sharing the source's name (Billy Bob). */
   readonly excludeSourceName?: boolean
+  /**
+   * "put in your Break Zone from the field during this turn" — Sphene's retrieve (spec C10-2). A fact about
+   * the INSTANCE and the state, not the definition, so it is checked in `matchesFilter` and deliberately not
+   * in `matchesDefFilter`, which is definition-only and is what the search's decoder may ask of a view.
+   */
+  readonly putIntoBreakZoneFromFieldThisTurn?: boolean
 }
 
 export interface TargetSpec {
@@ -173,7 +179,18 @@ export type AbilityTrigger =
    * only from hand, and inferring that from "its cost discards itself" would need replacing the moment a
    * Break-Zone ability arrives.
    */
-  | { readonly kind: 'activated'; readonly sourceZone: ActivationSourceZone; readonly cost: AbilityCost }
+  | {
+      readonly kind: 'activated'
+      readonly sourceZone: ActivationSourceZone
+      readonly cost: AbilityCost
+      /**
+       * "You can only use this ability once per turn" (spec C10-1). Tracked on the source's `FieldCard`, so
+       * it is only meaningful for `sourceZone: 'field'` — an ability activated from hand or the Break Zone
+       * has no such carrier, and `checkInvariants` rejects that combination rather than letting it silently
+       * never limit anything.
+       */
+      readonly oncePerTurn?: boolean
+    }
   /**
    * NOT a trigger either, and unlike an activated ability it never RESOLVES at all (spec C4-1). A static
    * ability is simply true, continuously, and the rules consult it: it never reaches the resolution agenda,

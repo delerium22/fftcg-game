@@ -72,11 +72,6 @@ const seeking = (type: Command['type']): Policy => (u) => {
 }
 
 /**
- * Play a whole game headlessly: `stepAi` drives the agent, and the "human" always takes the first non-concede
- * choice `buildChoiceSet` offers. This is B-A1 (a game reaches a result), B-A2 (only UI-reachable commands are
- * used) and B-A4 (every applied command was in `legalCommands` at the time) without a browser.
- */
-/**
  * Names the AI can see that the LOG has no right to print.
  *
  * The boundary is the narrator's own view — the human's, before the command unioned with after it (see
@@ -107,6 +102,11 @@ function leakableNames(before: PlayerView, after: PlayerView, state: GameState):
   return names
 }
 
+/**
+ * Play a whole game headlessly: `stepAi` drives the agent, and the "human" always takes the first non-concede
+ * choice `buildChoiceSet` offers. This is B-A1 (a game reaches a result), B-A2 (only UI-reachable commands are
+ * used) and B-A4 (every applied command was in `legalCommands` at the time) without a browser.
+ */
 function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CARD_DEFS): PlayedGame {
   let state = newGame(seed, defs)
   const agent: Agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
@@ -499,12 +499,17 @@ describe('viewFor hides the AI hand throughout (B-A3)', () => {
     let state = newGame(2)
     const agent = new GreedyAgent({ seed: 2, decks: DECKS, depth: 1 })
     let checked = 0
+    let sawAiHand = false
     for (let step = 0; step < 2000 && !state.result; step++) {
       const view = viewFor(state, HUMAN)
       assertNoAiHandLeak(state, view)
       const visible = new Set<CardId>(Object.keys(view.cards).map(Number))
       for (const id of state.players[AI].deck) expect(visible.has(id)).toBe(false)
       checked++
+      // "There was something to hide", asserted WHILE it was true. Checking the AI's hand after the loop made
+      // this depend on how the trace happened to end: C10 shifted the greedy line and left the AI hand-empty
+      // at the final state, failing a test about leaks for reasons that had nothing to do with leaks.
+      if (state.players[AI].hand.length > 0) sawAiHand = true
       if (actingPlayer(state) === AI) { state = stepAi(state, agent).state; continue }
       const legal = legalCommands(state, HUMAN)
       const next = legal.find((c) => c.type !== 'concede')
@@ -512,7 +517,7 @@ describe('viewFor hides the AI hand throughout (B-A3)', () => {
       state = apply(state, next).state
     }
     expect(checked).toBeGreaterThan(20)
-    expect(state.players[AI].hand.length).toBeGreaterThan(0)   // there was something to hide
+    expect(sawAiHand, 'the AI never held a card, so the leak check proved nothing').toBe(true)
   })
 })
 
@@ -951,7 +956,7 @@ describe('the C2 cascade reaches a real game (C2-A8/C2-A13)', () => {
 // ---------------------------------------------------------------------------
 
 const fieldCard = (id: CardId): FieldCard =>
-  ({ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [] })
+  ({ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })
 
 /** What the board would really hand a mouse: its markup, and the buttons in it. */
 function renderBoard(view: PlayerView, choices: ChoiceSet): string {

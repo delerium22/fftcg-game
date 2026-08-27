@@ -20,12 +20,12 @@ while it thinks (rung D2). It beats the heuristic agent **90.0 %** over 120 mirr
 worker fails for any reason the game falls back to the heuristic agent permanently and says so in
 the log, in amber — a weaker opponent is never silent.
 
-Card abilities are **partly** implemented: **25 of the starter deck's 28 printed ability clauses,
-across 17 of its 19 cards**. Every unimplemented clause plays as if its text box were blank, and the
+Card abilities are **partly** implemented: **26 of the starter deck's 28 printed ability clauses,
+across 18 of its 19 cards**. Every unimplemented clause plays as if its text box were blank, and the
 game log says so in amber whenever such a card hits the field, so the caveat is visible in play
 rather than a silent surprise.
 
-Seven of those twenty-five are **activated abilities** — ones you choose to use, paying a cost in CP,
+Eight of those twenty-six are **activated abilities** — ones you choose to use, paying a cost in CP,
 in dulling, or in the card itself. They appear as ordinary clickable choices on the card, labelled
 with the printed cost. Two are **static** — abilities that are never resolved, only read: Odin costs
 3 less to cast once you have taken 5 damage, and Class Tenth Moogle can produce Lightning CP as well

@@ -583,6 +583,18 @@ describe('observationKey (contract 6)', () => {
       expect(observationKey(withSlot(known)), 'the mask on a VISIBLE slot was dropped').not.toBe(observationKey(withSlot(shared)))
     }
     differs({ ...view, fields: [f0, { ...view.fields[1], handCount: 99 }] }, "opponent's hand size")
+    // C10: two positions differing only in whether a once-per-turn ability is still available, or in WHICH of
+    // two same-code Break Zone cards is retrievable, are different information sets.
+    differs({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, usedThisTurn: ['X:once'] } : c)) }, view.fields[1]] }, 'a spent once-per-turn ability')
+    {
+      const two = [ids.z1!, ids.z1!]   // same code twice, only one of them retrievable
+      const withBz = (elig: readonly number[]): PlayerView => ({
+        ...view,
+        fields: [{ ...f0, breakZone: two, putIntoBreakZoneFromFieldThisTurn: elig }, view.fields[1]],
+      })
+      // Encoded POSITIONALLY: by code alone these two collide, and `z0:0` vs `z0:1` are different actions.
+      expect(observationKey(withBz([])), 'Break Zone eligibility is not in the key').not.toBe(observationKey(withBz(two)))
+    }
     differs({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, damage: 3000 } : c)) }, view.fields[1]] }, 'damage on a forward')
     differs({ ...view, fields: [{ ...f0, forwards: [...f0.forwards].reverse() }, view.fields[1]] }, 'field order (it is what positional refs mean)')
     differs({ ...view, attack: { ...view.attack!, blocker: null } }, 'the blocker')

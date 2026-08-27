@@ -18,6 +18,13 @@ export interface FieldView {
   /** One entry per card, top first. Replaces a bare count: the count is `deck.length`. */
   deck: DeckSlot[]
   handCount: number
+  /**
+   * Public (spec C10-2): the Break Zone is public and everyone saw the card leave the field, so this is
+   * unredacted for both seats. It is on the view because `determinise` rebuilds `PlayerState` field by
+   * field — without it a simulated world forgets what its own Break Zone did this turn and offers, or
+   * refuses, an ability the real game would not.
+   */
+  putIntoBreakZoneFromFieldThisTurn: readonly CardId[]
 }
 export interface PlayerView {
   me: PlayerId; turn: number; turnPlayer: PlayerId; phase: Phase; attack: AttackState | null; priority: PlayerId
@@ -42,7 +49,7 @@ export interface PlayerView {
 export function viewFor(state: GameState, me: PlayerId): PlayerView {
   const field = (p: PlayerId): FieldView => {
     const ps = state.players[p]
-    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length }
+    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length, putIntoBreakZoneFromFieldThisTurn: ps.putIntoBreakZoneFromFieldThisTurn }
   }
   const visibleIds = new Set<CardId>(state.players[me].hand)
   for (const p of [0, 1] as const) {

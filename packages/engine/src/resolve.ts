@@ -133,6 +133,12 @@ function matchesFilter(state: GameState, source: CardId, id: CardId, filter: Tar
   const def = defFor(state, id)
   if (!def) return false
   if (!matchesDefFilter(def, filter)) return false
+  // A fact about the INSTANCE and the state, which is why it lives here and not in `matchesDefFilter`
+  // (spec C10-2). Sphene's "put in your Break Zone from the field during this turn".
+  if (filter.putIntoBreakZoneFromFieldThisTurn) {
+    const anywhere = state.players.some((ps) => ps.putIntoBreakZoneFromFieldThisTurn.includes(id))
+    if (!anywhere) return false
+  }
   if (filter.excludeSource && id === source) return false
   if (filter.excludeSourceName) {
     const src = defFor(state, source)
@@ -446,7 +452,9 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       for (const id of ctx.chosen) {
         const moved = toHand(ctx.state, id)
         if (!moved) continue
-        ctx.state = moved
+        // Leaving the Break Zone forgets the arrival (spec C10-2): come back by a discard this same turn and
+        // you are a new object under CR §7.4, not a card Sphene may retrieve twice.
+        ctx.state = forgetBreakZoneArrivals(moved, [id])
         ctx.events.push({ type: 'returnedToHand', player: ctx.state.cards[id]?.owner ?? ctx.controller, card: id })
       }
       return
@@ -620,13 +628,6 @@ export function applyChooseTargets(state: GameState, player: PlayerId, targets: 
 }
 
 /**
- * Answer a `chooseFromDeck` with INDICES (spec C9-1).
- *
- * Validated against the pending's own `count`/`eligible` rather than against the deck, which is what keeps
- * this world-independent: the same command is legal in every determinisation, and which card index 2 names
- * is whatever that world sampled.
- */
-/**
  * Which of the exposed positions this pending's filter allows, computed from the deck the caller actually has.
  *
  * ONE implementation on purpose. It runs on the real state for `legalCommands` and `applyChooseFromDeck`, and
@@ -642,6 +643,14 @@ export function deckPickCandidates(state: GameState, pending: Extract<Pending, {
   return out
 }
 
+/**
+ * Answer a `chooseFromDeck` with INDICES (spec C9-1).
+ *
+ * The index is what keeps this world-independent: the same command is legal in every determinisation, and
+ * which card index 2 names is whatever that world sampled. Eligibility is recomputed here from the deck the
+ * caller holds — the pending carries the printed FILTER, never a resolved index list, which is what stopped
+ * it leaking a private search's deck positions to the opponent.
+ */
 export function applyChooseFromDeck(state: GameState, player: PlayerId, picks: readonly number[]): [GameState, Event[]] {
   const pending = state.pending
   if (pending?.kind !== 'chooseFromDeck' || pending.player !== player) throw new IllegalCommandError('no deck choice owed by this player')
@@ -796,7 +805,9 @@ export function putOntoField(state: GameState, card: CardId, controller: PlayerI
   const def = defOf(state, card)
   const fc: FieldCard = {
     id: card, status: def.type === 'backup' ? 'dull' : 'active', damage: 0,
-    enteredTurn: state.turn, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [],
+    // A FRESH instance, so `usedThisTurn` starts empty: under CR §7.4 a card entering a zone is a new
+    // object, and a `oncePerTurn` ability spent before it left the field is spendable again now (C10-1).
+    enteredTurn: state.turn, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [],
   }
   let s = updatePlayer(state, controller, (ps) => ({
     ...ps,
@@ -865,5 +876,52 @@ export function enqueueEnterFieldTriggers(state: GameState, card: CardId, contro
 
 export function enqueueZoneChangeTriggers(pre: GameState, post: GameState, transitions: readonly ZoneTransition[]): GameState {
   if (!transitions.length) return post
-  return enqueueZoneTriggers(post, collectWatchers(pre, transitions))
+  return enqueueZoneTriggers(recordBreakZoneArrivals(post, transitions), collectWatchers(pre, transitions))
+}
+
+/**
+ * Remember that these cards reached a Break Zone FROM THE FIELD this turn (spec C10-2) — Sphene's retrieve.
+ *
+ * Here, and not at each call site, for the reason the function above exists at all: every field → Break Zone
+ * path already funnels through it, and the one that once did not silently lost ~40% of its observer triggers.
+ * A future path that forgets this loses its triggers too, which is a loud and already-guarded failure rather
+ * than a quiet wrong answer.
+ *
+ * Keyed by OWNER, not controller: §7.10 puts a broken card in its owner's Break Zone, and "your Break Zone"
+ * means the one it is actually in. They coincide for this pool — nothing here changes control — so the
+ * distinction is unobservable today and is made anyway, because the moment it matters it would be silent.
+ *
+ * Cause-agnostic: a card paid there as a COST is not a break (CR §15.1.1.3.2) but the printed text says
+ * "put in your Break Zone from the field", which admits it.
+ */
+function recordBreakZoneArrivals(state: GameState, transitions: readonly ZoneTransition[]): GameState {
+  let s = state
+  for (const p of [0, 1] as const) {
+    const arrived = transitions.filter((t) => t.owner === p).map((t) => t.card)
+    if (!arrived.length) continue
+    s = updatePlayer(s, p, (ps) => ({
+      ...ps,
+      putIntoBreakZoneFromFieldThisTurn: [...ps.putIntoBreakZoneFromFieldThisTurn, ...arrived.filter((id) => !ps.putIntoBreakZoneFromFieldThisTurn.includes(id))],
+    }))
+  }
+  return s
+}
+
+/**
+ * Forget a card that has LEFT a Break Zone (spec C10-2). Not bookkeeping: a card that goes Break Zone → hand
+ * → Break Zone within one turn is a NEW object in the destination zone under CR §7.4, and must not still be
+ * retrievable. It is also what keeps `checkInvariants`' "every tracked id is in that Break Zone" true, which
+ * a successful retrieve would otherwise break the instant it worked.
+ */
+export function forgetBreakZoneArrivals(state: GameState, ids: readonly CardId[]): GameState {
+  let s = state
+  for (const p of [0, 1] as const) {
+    const ps = s.players[p]
+    if (!ps.putIntoBreakZoneFromFieldThisTurn.some((id) => ids.includes(id))) continue
+    s = updatePlayer(s, p, (q) => ({
+      ...q,
+      putIntoBreakZoneFromFieldThisTurn: q.putIntoBreakZoneFromFieldThisTurn.filter((id) => !ids.includes(id)),
+    }))
+  }
+  return s
 }

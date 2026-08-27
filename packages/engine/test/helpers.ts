@@ -59,7 +59,7 @@ function setPlayer(state: GameState, p: PlayerId, ps: GameState['players'][0]): 
 
 export function withField(state: GameState, player: PlayerId, zone: 'forwards' | 'backups', code: string, over: Partial<FieldCard> = {}): [GameState, CardId] {
   const [s, id] = addInstance(state, player, code)
-  const fc: FieldCard = { id, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], ...over }
+  const fc: FieldCard = { id, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [], ...over }
   const ps = s.players[player]
   return [setPlayer(s, player, { ...ps, [zone]: [...ps[zone], fc] }), id]
 }

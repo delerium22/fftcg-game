@@ -7,7 +7,7 @@ import { viewFor } from '../src/view.js'
 import { determinise, SYNTHETIC_ID_BASE } from '../src/determinise.js'
 import { knows, learn } from '../src/state.js'
 import { nextInt, seedRng } from '../src/rng.js'
-import type { GameState, PlayerId } from '../src/index.js'
+import type { CardId, GameState, PlayerId } from '../src/index.js'
 import { DEFAULT_DECK, VANILLA_POOL, deckOf, makeGame } from './helpers.js'
 
 const DECKS: [string[], string[]] = [DEFAULT_DECK, DEFAULT_DECK]
@@ -176,6 +176,24 @@ describe('deck knowledge survives determinisation (spec C9-5)', () => {
     for (const id of ids) expect(det.cards[id]!.code).toBe(s.cards[id]!.code)
     // And still exactly 50 cards' worth of codes — a pinned card must not ALSO be dealt from the pool.
     expect(codesOf(det, 0)).toEqual(codesOf(s, 0))
+  })
+
+  it("round-trips the turn's Break Zone history (spec C10-2)", () => {
+    // A simulated world that forgot what its own Break Zone did this turn offers, or refuses, an ability the
+    // real game would not. Seeded non-empty on purpose: with the array empty this passes even if
+    // `determinise` drops the field entirely.
+    const base = makeGame({ defs: VANILLA_POOL, decks: DECKS })
+    const moved = base.players[0].deck[0] as CardId
+    const p0 = base.players[0]
+    const s: GameState = { ...base, players: [
+      { ...p0, deck: p0.deck.slice(1), breakZone: [...p0.breakZone, moved], putIntoBreakZoneFromFieldThisTurn: [moved] },
+      base.players[1],
+    ] }
+    const view = viewFor(s, 0)
+    expect(view.fields[0].putIntoBreakZoneFromFieldThisTurn).toEqual([moved])
+    const [det] = determinise({ view, decks: DECKS, rng: seedRng(11) })
+    expect(det.players[0].putIntoBreakZoneFromFieldThisTurn).toEqual([moved])
+    expect(checkInvariants(det)).toEqual([])
   })
 
   it('rejects a deck list with MORE cards than the view can hold', () => {

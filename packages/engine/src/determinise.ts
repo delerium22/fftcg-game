@@ -75,7 +75,7 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     if (p === view.me) { hand = view.hand; deck = fill(order) }
     else { hand = order.slice(0, f.handCount).map(mint); deck = fill(order.slice(f.handCount)) }
     if (deck.length !== f.deck.length || hand.length !== f.handCount) throw new Error(`deck list for player ${p} is inconsistent with the view (unseen ${unseen.length}, expected hand ${f.handCount} + deck ${f.deck.length})`)
-    players.push({ deck, hand, forwards: f.forwards, backups: f.backups, damageZone: f.damageZone, breakZone: f.breakZone, removedFromGame: f.removedFromGame, mulliganDecided: view.mulliganDecided[p] })
+    players.push({ deck, hand, forwards: f.forwards, backups: f.backups, damageZone: f.damageZone, breakZone: f.breakZone, removedFromGame: f.removedFromGame, putIntoBreakZoneFromFieldThisTurn: [...f.putIntoBreakZoneFromFieldThisTurn], mulliganDecided: view.mulliganDecided[p] })
   }
   const state: GameState = {
     rng: r, turn: view.turn, turnPlayer: view.turnPlayer, firstPlayer: view.firstPlayer, phase: view.phase, attack: view.attack,

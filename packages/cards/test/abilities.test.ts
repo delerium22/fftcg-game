@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf } from '@fftcg/engine'
+import { apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -48,7 +48,7 @@ function setPlayer(state: GameState, p: PlayerId, ps: GameState['players'][0]): 
 }
 function withField(state: GameState, player: PlayerId, zone: 'forwards' | 'backups', code: string, over: Partial<FieldCard> = {}): [GameState, CardId] {
   const [s, id] = addInstance(state, player, code)
-  const fc: FieldCard = { id, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], ...over }
+  const fc: FieldCard = { id, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [], ...over }
   const ps = s.players[player]
   return [setPlayer(s, player, { ...ps, [zone]: [...ps[zone], fc] }), id]
 }
@@ -480,15 +480,16 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty-five implemented clauses on, and only those twenty-five', () => {
+  it('loadCards merges the twenty-six implemented clauses on, and only those twenty-six', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
-    // removal), one from C8 (Hugh Yurg's enters-field observer), three from C9 (Reeve's look, Miner's reveal and Hugh Yurg's search). Any
+    // removal), one from C8 (Hugh Yurg's enters-field observer), three from C9 (Reeve's look, Miner's reveal and Hugh Yurg's search) and one from C10 (Sphene's
+    // retrieve). Any
     // clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
       '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
-      '20-103H', '20-105C', '22-068R', '24-063H', '27-124S', '27-125S', '27-127S', '9-074C',
+      '20-103H', '20-105C', '22-068R', '24-063H', '27-124S', '27-125S', '27-126S', '27-127S', '9-074C',
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
@@ -496,7 +497,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-074C:etb', '20-103H:summon',
-      '20-105C:etb', '22-068R:damages-opponent', '24-063H:cheap-forward', '24-063H:search',
+      '20-105C:etb', '22-068R:damages-opponent', '24-063H:cheap-forward', '24-063H:search', '27-126S:retrieve',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
     ].sort())
@@ -1447,5 +1448,238 @@ describe('24-063H Hugh Yurg — "you may search for 1 Earth Forward of cost 1 an
     expect(r.state.pending, 'nothing to find must not leave a prompt standing').toBeNull()
     for (const id of r.state.players[0].deck) expect(knows(r.state, 0, id)).toBe(false)
     ok(r.state)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C10 — 27-126S Sphene's [0] retrieve
+// ---------------------------------------------------------------------------
+
+describe('27-126S Sphene — "[0]: Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn"', () => {
+  const RETRIEVE = '27-126S:retrieve'
+  const offered = (s: GameState, src: CardId) =>
+    legalCommands(s, 0).filter((c) => c.type === 'activateAbility' && c.source === src && c.abilityId === RETRIEVE)
+
+  /** Sphene on P0's field, plus whatever the case needs. */
+  function withSphene(state: GameState = makeGame()): [GameState, CardId] {
+    return withField(state, 0, 'forwards', '27-126S')
+  }
+
+  /**
+   * Break `victim` (a Forward on P0's field) via the §12.4.4 zero-power rule process, IN PLACE.
+   *
+   * `runRuleProcesses` rather than `apply(pass)`: passing advances out of the Main Phase, and every activated
+   * ability is Main-Phase-only (C3-11), so a fixture that broke the card by passing could never then activate
+   * anything — it would test the phase restriction while claiming to test the retrieve.
+   */
+  function breakByRule(state: GameState, victim: CardId): GameState {
+    const ps = state.players[0]
+    const s = setPlayer(state, 0, { ...ps, forwards: ps.forwards.map((c) => (c.id === victim ? { ...c, powerBonus: -99_000 } : c)) })
+    const [after] = runRuleProcesses(s)
+    return after
+  }
+
+  it('C10-A1 retrieves a Forward broken from the field this turn, and leaves invariants clean', () => {
+    let s = makeGame(); let sphene: CardId; let victim: CardId
+    ;[s, sphene] = withSphene(s)
+    ;[s, victim] = withField(s, 0, 'forwards', '27-124S')
+    s = breakByRule(s, victim)
+    expect(s.players[0].breakZone, 'the fixture did not actually break it').toContain(victim)
+    expect(s.players[0].putIntoBreakZoneFromFieldThisTurn).toContain(victim)
+
+    const cmds = offered(s, sphene)
+    expect(cmds.length, 'the retrieve was not offered').toBeGreaterThan(0)
+    const pick = cmds.find((c) => c.type === 'activateAbility' && c.targets.includes(victim))
+    expect(pick).toBeDefined()
+
+    const done = apply(s, pick!)
+    expect(done.state.players[0].hand).toContain(victim)
+    expect(done.state.players[0].breakZone).not.toContain(victim)
+    // The blocker the plan review found: leaving the Break Zone must FORGET the arrival, or this very move
+    // breaks the invariant it just satisfied.
+    expect(done.state.players[0].putIntoBreakZoneFromFieldThisTurn).not.toContain(victim)
+    ok(done.state)
+  })
+
+  it('C10-A2 offers nothing it should not — hand discards, Sphene itself, Backups, previous turns', () => {
+    let s = makeGame(); let sphene: CardId
+    ;[s, sphene] = withSphene(s)
+    // A Forward that reached the Break Zone from the HAND, not the field.
+    let discarded: CardId
+    ;[s, discarded] = withBreakZone(s, 0, '27-124S')
+    // A Backup broken from the field this turn — a real arrival, but the wrong TYPE.
+    let backup: CardId
+    ;[s, backup] = withField(s, 0, 'backups', '18-064C')
+    const ps = s.players[0]
+    s = setPlayer(s, 0, {
+      ...ps,
+      backups: ps.backups.filter((c) => c.id !== backup),
+      breakZone: [...ps.breakZone, backup],
+      putIntoBreakZoneFromFieldThisTurn: [...ps.putIntoBreakZoneFromFieldThisTurn, backup],
+    })
+    // A second Sphene in the Break Zone, broken this turn — excluded by NAME.
+    let otherSphene: CardId
+    ;[s, otherSphene] = withBreakZone(s, 0, '27-126S')
+    const q = s.players[0]
+    s = setPlayer(s, 0, { ...q, putIntoBreakZoneFromFieldThisTurn: [...q.putIntoBreakZoneFromFieldThisTurn, otherSphene] })
+
+    const targets = offered(s, sphene).flatMap((c) => (c.type === 'activateAbility' ? [...c.targets] : []))
+    expect(targets, 'a card discarded from HAND is not "from the field"').not.toContain(discarded)
+    expect(targets, 'a Backup is not "1 Forward"').not.toContain(backup)
+    expect(targets, '"other than Sphene" excludes the NAME').not.toContain(otherSphene)
+  })
+
+  it('C10-A3 counts all three field→Break Zone producers, not just the one the first test used', () => {
+    // The plan review named this exactly: recording the rule process and the self-cost but missing
+    // `breakCard` passes a suite whose only case breaks by lethal damage.
+    for (const how of ['rule process', 'ability break', 'self cost'] as const) {
+      let s = makeGame(); let sphene: CardId
+      ;[s, sphene] = withSphene(s)
+      let victim: CardId
+
+      if (how === 'rule process') {
+        ;[s, victim] = withField(s, 0, 'forwards', '27-124S')
+        s = breakByRule(s, victim)
+      } else if (how === 'ability break') {
+        // Luso's "when it damages the opponent" breaks a Forward; simpler here: put a Forward on the field
+        // and break it through the ability path by giving Sphene's controller a cost-1 Forward and using
+        // Undead Princess's self-break, which is the `selfToBreakZone` COST path — covered below. For the
+        // ability path use `27-127S` Lightning's ETB, which breaks a Forward outright.
+        ;[s, victim] = withField(s, 1, 'forwards', '27-124S')
+        let caster: CardId
+        ;[s, caster] = withHand(s, 0, '27-127S')
+        ;[s] = withCp(s, 0, Array<string>(defOf(s, caster).cost).fill(LIGHTNING_BACKUP))
+        const cast = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === caster)
+        expect(cast, 'the ability-break fixture could not cast').toBeDefined()
+        let r = apply(s, cast!)
+        // Lightning's ETB CHOOSES what to break, so the break has not happened yet — answering the prompt is
+        // what exercises `breakCard`. Asserting before this passed for the wrong reason and proved nothing.
+        expect(r.state.pending?.kind, 'the ETB did not raise its choice').toBe('chooseTargets')
+        const answer = legalCommands(r.state, 0).find((c) => c.type === 'chooseTargets' && c.targets.includes(victim))
+        expect(answer, 'the opponent Forward was not a legal break target').toBeDefined()
+        r = apply(r.state, answer!)
+        // The broken card is the OPPONENT's, so it lands in THEIR Break Zone — assert the recording there.
+        expect(r.state.players[1].breakZone, 'the ability break did not happen').toContain(victim)
+        expect(r.state.players[1].putIntoBreakZoneFromFieldThisTurn, 'an ability break was not recorded').toContain(victim)
+        continue
+      } else {
+        ;[s, victim] = withField(s, 0, 'forwards', '19-052C')
+        let pumpTarget: CardId
+        ;[s, pumpTarget] = withField(s, 0, 'forwards', '27-124S')
+        const use = legalCommands(s, 0).find((c) => c.type === 'activateAbility' && c.source === victim && c.abilityId === '19-052C:pump')
+        expect(use, 'the self-cost fixture could not activate').toBeDefined()
+        s = apply(s, use!).state
+        void pumpTarget
+      }
+
+      expect(s.players[0].putIntoBreakZoneFromFieldThisTurn, `${how} was not recorded`).toContain(victim)
+      const targets = offered(s, sphene).flatMap((c) => (c.type === 'activateAbility' ? [...c.targets] : []))
+      expect(targets, `${how} did not make the card retrievable`).toContain(victim)
+    }
+  })
+
+  it('C10-A4 is once per turn, per INSTANCE, and refreshes on a new turn', () => {
+    let s = makeGame(); let sphene: CardId; let a: CardId; let b: CardId
+    ;[s, sphene] = withSphene(s)
+    ;[s, a] = withField(s, 0, 'forwards', '27-124S')
+    ;[s, b] = withField(s, 0, 'forwards', '18-124C')
+    s = breakByRule(s, a)
+    s = breakByRule(s, b)
+
+    const first = offered(s, sphene).find((c) => c.type === 'activateAbility' && c.targets.includes(a))
+    expect(first).toBeDefined()
+    const after = apply(s, first!).state
+    expect(findFieldCard(after, sphene)?.card.usedThisTurn).toContain(RETRIEVE)
+    // `b` is still there and still eligible — so an empty offer here is the LIMIT, not a lack of targets.
+    expect(after.players[0].putIntoBreakZoneFromFieldThisTurn).toContain(b)
+    expect(offered(after, sphene), 'the ability was usable twice in one turn').toHaveLength(0)
+    ok(after)
+  })
+
+  it('C10-A4 (cont.) a Sphene that left the field and returned has a fresh allowance', () => {
+    // CR §7.4: a card entering a zone is a NEW object, so the allowance is not a property of the name.
+    let s = makeGame(); let sphene: CardId; let victim: CardId
+    ;[s, sphene] = withSphene(s)
+    ;[s, victim] = withField(s, 0, 'forwards', '27-124S')
+    s = breakByRule(s, victim)
+    const use = offered(s, sphene).find((c) => c.type === 'activateAbility' && c.targets.includes(victim))
+    s = apply(s, use!).state
+    expect(offered(s, sphene)).toHaveLength(0)
+
+    // Same instance id, but a genuinely fresh FieldCard — what `putOntoField` builds.
+    const ps = s.players[0]
+    s = setPlayer(s, 0, { ...ps, forwards: ps.forwards.map((c) => (c.id === sphene ? { ...c, usedThisTurn: [] } : c)) })
+    let again: CardId
+    ;[s, again] = withField(s, 0, 'forwards', '18-124C')
+    s = breakByRule(s, again)
+    expect(offered(s, sphene).length, 'a fresh instance did not get a fresh allowance').toBeGreaterThan(0)
+  })
+
+  it('C10-A4 (cont.) the limit is per INSTANCE — a second Sphene has its own allowance', () => {
+    // The plan review named this as an implementation that passes everything else: a player-global flag
+    // limits the ability once per PLAYER per turn, which is not what "this ability" means.
+    //
+    // The board below is not reachable by legal play — §7.7.3 forbids deploying a second non-generic
+    // same-name Character, and no card in this pool both has a `oncePerTurn` ability and is generic. The
+    // MECHANISM is still what is under test, and building the state directly is the only way to see it.
+    let s = makeGame(); let one: CardId; let two: CardId; let victim: CardId
+    ;[s, one] = withField(s, 0, 'forwards', '27-126S')
+    ;[s, two] = withField(s, 0, 'forwards', '27-126S')
+    ;[s, victim] = withField(s, 0, 'forwards', '27-124S')
+    s = breakByRule(s, victim)
+
+    const use = offered(s, one).find((c) => c.type === 'activateAbility' && c.targets.includes(victim))
+    expect(use).toBeDefined()
+    const after = apply(s, use!).state
+    expect(findFieldCard(after, one)?.card.usedThisTurn).toContain(RETRIEVE)
+    expect(findFieldCard(after, two)?.card.usedThisTurn, "the other instance was charged for a use it did not make").toEqual([])
+
+    // The retrieve consumed the only eligible card, so put another one there to prove the SECOND Sphene is
+    // still allowed — otherwise an empty offer would mean "no targets", not "no allowance".
+    let more: CardId
+    ;[s, more] = withField(after, 0, 'forwards', '18-124C')
+    const restocked = breakByRule(s, more)
+    expect(offered(restocked, one), 'the used instance is still limited').toHaveLength(0)
+    expect(offered(restocked, two).length, 'a second instance was wrongly limited by the first').toBeGreaterThan(0)
+  })
+
+  it('C10-A5 is illegal on the opponent\'s turn, and (MVP0) outside a Main Phase', () => {
+    let s = makeGame(); let sphene: CardId; let victim: CardId
+    ;[s, sphene] = withSphene(s)
+    ;[s, victim] = withField(s, 0, 'forwards', '27-124S')
+    s = breakByRule(s, victim)
+    expect(offered(s, sphene).length).toBeGreaterThan(0)
+
+    // Sphene's own printed restriction: "during your turn".
+    const theirTurn = { ...s, turnPlayer: 1 as PlayerId, priority: 1 as PlayerId }
+    expect(legalCommands(theirTurn, 0).filter((c) => c.type === 'activateAbility')).toHaveLength(0)
+
+    // And the engine's own MVP0-SIMPLIFICATION (C3-11), which is NOT Sphene's text: Main Phase only.
+    const attacking = { ...s, phase: 'attack' as const }
+    expect(legalCommands(attacking, 0).filter((c) => c.type === 'activateAbility' && c.abilityId === RETRIEVE)).toHaveLength(0)
+  })
+
+  it('C10-A6 is not offered at all when nothing is retrievable — no dead prompt', () => {
+    let s = makeGame(); let sphene: CardId
+    ;[s, sphene] = withSphene(s)
+    ;[s] = withBreakZone(s, 0, '27-124S')   // in the Break Zone, but not from the field this turn
+    expect(offered(s, sphene)).toHaveLength(0)
+  })
+
+  it('C10-A7 a card retrieved and re-discarded the same turn is not retrievable again', () => {
+    // CR §7.4 again: the card that comes back is a new object in the Break Zone, not the one Sphene took.
+    let s = makeGame(); let sphene: CardId; let victim: CardId
+    ;[s, sphene] = withSphene(s)
+    ;[s, victim] = withField(s, 0, 'forwards', '27-124S')
+    s = breakByRule(s, victim)
+    const use = offered(s, sphene).find((c) => c.type === 'activateAbility' && c.targets.includes(victim))
+    s = apply(s, use!).state
+    expect(s.players[0].hand).toContain(victim)
+
+    // Back to the Break Zone by a discard, in the same turn.
+    const ps = s.players[0]
+    s = setPlayer(s, 0, { ...ps, hand: ps.hand.filter((id) => id !== victim), breakZone: [...ps.breakZone, victim] })
+    ok(s)
+    expect(s.players[0].putIntoBreakZoneFromFieldThisTurn, 'the arrival was not forgotten on the way out').not.toContain(victim)
   })
 })

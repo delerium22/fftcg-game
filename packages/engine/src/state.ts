@@ -12,10 +12,32 @@ export interface FieldCard {
   powerBonus: number
   /** Until-end-of-turn protection `granted` cannot express, e.g. `cannotBeBroken` (spec C1-7). */
   flags: readonly FieldFlag[]
+  /**
+   * Ability ids this INSTANCE has activated this turn, for `oncePerTurn` (spec C10-1).
+   *
+   * On the FieldCard rather than the player: "you can only use this ability once per turn" limits the
+   * ability of that card object, so two copies have separate allowances — and under CR §7.4 a card that
+   * leaves the field and comes back is a NEW object in the destination zone, which a fresh `FieldCard`
+   * models for free. Cleared with the other per-turn flags in the End Phase.
+   */
+  usedThisTurn: readonly string[]
 }
 export interface PlayerState {
   deck: CardId[]        // index 0 = top
   hand: CardId[]
+  /**
+   * Cards that moved FIELD → Break Zone under this player's control this turn (spec C10-2), for Sphene's
+   * "put in your Break Zone from the field during this turn".
+   *
+   * NOT "broken": a card paid there as a cost is expressly not a break (CR §15.1.1.3.2, and this engine
+   * already distinguishes `reason: 'cost'` from `'ability'`), but the printed text says "put … from the
+   * field" and admits both. Recorded in `enqueueZoneChangeTriggers`, the one function every field → Break
+   * Zone path already calls, and PRUNED when a card leaves the Break Zone — a card that goes Break Zone →
+   * hand → Break Zone in one turn is a new object under CR §7.4 and is not retrievable again.
+   *
+   * Public: the Break Zone is public and everyone saw the card leave the field, so nothing is redacted.
+   */
+  putIntoBreakZoneFromFieldThisTurn: CardId[]
   forwards: FieldCard[]
   backups: FieldCard[]
   damageZone: CardId[]

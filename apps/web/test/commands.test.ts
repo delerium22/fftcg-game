@@ -184,7 +184,7 @@ describe('preferredChoices', () => {
 const NOEL = '16-092C', CLOUD = '27-124S', SPHENE = '27-126S', BILLY = '18-124C', REEVE = '20-105C'
 
 const fieldCard = (id: CardId, over: Partial<FieldCard> = {}): FieldCard =>
-  ({ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], ...over })
+  ({ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [], ...over })
 
 /** Register a card instance in a view so the def tables can be looked up for it. */
 function instance(v: PlayerView, id: CardId, code: string, owner = HUMAN): CardId {

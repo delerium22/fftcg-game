@@ -14,6 +14,18 @@ import { drawCards } from './draw.js'
 export function startTurn(state: GameState, turn: number, player: PlayerId): [GameState, Event[]] {
   const events: Event[] = [{ type: 'turnStarted', turn, player }]
   let s: GameState = { ...state, turn, turnPlayer: player, priority: player, attack: null, pending: null }
+  // The turn's Break-Zone arrival history clears HERE, at the actual boundary — not in `finishEndPhase`'s
+  // per-turn reset, which runs BEFORE a final rule-process pass (§9.5.1.4). A card broken by that pass would
+  // be recorded after the clear and stay retrievable into the next turn (spec C10-3).
+  //
+  // No card in THIS pool can be broken by that pass — damage is removed first (§9.5.1.3.1), and clearing a
+  // `powerBonus` cannot drop a printed power to zero — so the two placements are behaviourally identical
+  // today and no game-level test can tell them apart. It is still written at the boundary that is correct
+  // rather than the one that happens to work, and `startTurn` is pinned directly by a unit test.
+  s = { ...s, players: [
+    { ...s.players[0], putIntoBreakZoneFromFieldThisTurn: [] },
+    { ...s.players[1], putIntoBreakZoneFromFieldThisTurn: [] },
+  ] }
   // §9.1 Active Phase
   s = { ...s, phase: 'active' }; events.push({ type: 'phaseStarted', phase: 'active' })
   const dulled: CardId[] = []
@@ -91,8 +103,8 @@ export function finishEndPhase(state: GameState): [GameState, Event[]] {
   for (const p of [0, 1] as const) {
     s = updatePlayer(s, p, (ps) => ({
       ...ps,
-      forwards: ps.forwards.map((c) => ({ ...c, damage: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [] })),
-      backups: ps.backups.map((c) => ({ ...c, granted: [], powerBonus: 0, flags: [] })),
+      forwards: ps.forwards.map((c) => ({ ...c, damage: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })),
+      backups: ps.backups.map((c) => ({ ...c, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })),
     }))
   }
   const [ruled, events] = runRuleProcesses(s)   // §9.5.1.4

@@ -449,6 +449,7 @@ function stateShim(v: PlayerView): GameState {
     deck: [], hand: p === v.me ? [...v.hand] : [],
     forwards: v.fields[p].forwards, backups: v.fields[p].backups,
     damageZone: v.fields[p].damageZone, breakZone: v.fields[p].breakZone, removedFromGame: v.fields[p].removedFromGame,
+    putIntoBreakZoneFromFieldThisTurn: [...v.fields[p].putIntoBreakZoneFromFieldThisTurn],
     mulliganDecided: v.mulliganDecided[p],
   })
   return {
