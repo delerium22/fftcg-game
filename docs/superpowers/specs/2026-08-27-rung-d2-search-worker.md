@@ -99,3 +99,44 @@ and hashed asset loading, MIME and base-path failures all live there. Hence D2-A
 - **Production build and preview added to D2-A7**; the dev probe proved emission, not execution.
 - **Wire contract completed** — discriminated union, config at init, `requestId` on errors, plain strings.
 - **Pacing restated as a deadline** (D2-5).
+
+## Measurement (D2-A2 / D2-A6), taken 2026-08-27
+
+Production preview (`vite build` + `vite preview`, port 5310), Chromium via Playwright, Apple Silicon
+(darwin 25.5.0), default budget **200 iterations**, `rolloutCommandCap` 24, `rolloutApplyCap` 2048.
+Three complete games driven end to end; the numbers below are the second and third, where a patched
+`Worker` constructor recorded every message.
+
+| Quantity | Result |
+|---|---|
+| Worker asset actually served | `GET /assets/worker-DkZKnaJU.js → 200` (hashed production chunk, 52.8 kB) |
+| Searches posted / results received / worker errors | **33 / 33 / 0**, then **34 / 34 / 0** |
+| Worker round trip | **p50 152 ms, p95 240 ms, max 288 ms** |
+| Main-thread `longtask` entries during those searches | **0** (any reported entry would be ≥ 50 ms) |
+| Maximum `requestAnimationFrame` gap | **22 ms**, then **19 ms** |
+| Input delay, real trusted clicks (Event Timing, n = 12) | **0–1 ms** (`processingStart − startTime`) |
+| Search request serialized size | median **14.2 kB**, max 15.4 kB |
+| `postMessage` duration (main-thread cost of posting) | max **0.20 ms** |
+| Fallback warnings logged | **none** |
+
+**Reading the numbers.** The frame gap is the load-bearing one: a 200-iteration search on the main thread
+would have shown a rAF gap of at least its own duration, so a max gap of 19–22 ms across whole games is
+direct evidence the search never ran there. Zero `longtask` entries says the same thing from the other side.
+
+The *first* pass at input delay used synthetic `.click()` and reported a flat 0 ms — worthless, because a
+programmatic click dispatches synchronously and measures nothing. The table's figure is from real Playwright
+input observed through `PerformanceEventTiming`.
+
+**D2-2 resolved.** Leaving `defs` in the per-request view costs 14.2 kB and **0.20 ms** of main-thread
+posting. Revision 1 called this "negligible" without measuring; measured, it is in fact negligible, and
+`Omit<PlayerView,'defs'>` stays unnecessary.
+
+**D2-6 / D2-A7 asserted positively.** Every AI decision in both instrumented games was a completed worker
+round trip (33/33, 34/34, zero errors, zero fallback warnings). This is the assertion the spec asked for —
+not "no warning appeared", which is only evidence of silence.
+
+**D2-A6: the budget does not need reducing.** Round trips of p50 152 ms / p95 240 ms bracket D1's headless
+~254 ms per decision, so the browser affords the **same 200 iterations D1 measured**. The risk the spec
+raised — that the human would face a weaker opponent than the 90.0 % one — did not materialise: the browser
+opponent is the D1 opponent. The budget still has not been *strength*-calibrated (D1's caveat stands); what
+is now known is that the browser is not the thing forcing it down.
