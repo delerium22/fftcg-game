@@ -4,3 +4,7 @@ export * from './evaluate.js'
 export * from './payment.js'
 export * from './candidates.js'
 export * from './greedy.js'
+// Rung D1: the ISMCTS search, its canonical keys, and the worker-safe seam D2 posts across (spec D-7).
+export * from './ismcts/keys.js'
+export * from './ismcts/search.js'
+export * from './ismcts/agent.js'

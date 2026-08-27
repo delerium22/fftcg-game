@@ -6,7 +6,12 @@
   "scripts": {
     "hotseat": "tsx src/main.ts hotseat",
     "selfplay": "tsx src/main.ts selfplay",
-    "deckorder": "tsx src/main.ts deckorder"
+    "deckorder": "tsx src/main.ts deckorder",
+    "mirror": "tsx src/main.ts mirror"
   },
-  "dependencies": { "@fftcg/ai": "workspace:*", "@fftcg/cards": "workspace:*", "@fftcg/engine": "workspace:*" }
+  "dependencies": {
+    "@fftcg/ai": "workspace:*",
+    "@fftcg/cards": "workspace:*",
+    "@fftcg/engine": "workspace:*"
+  }
 }

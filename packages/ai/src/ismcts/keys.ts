@@ -1,4 +1,4 @@
-import type { Command, PlayerId, PlayerView } from '@fftcg/engine'
+import { ELEMENTS, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type TriggerEvent } from '@fftcg/engine'
 
 /**
  * Canonical, cross-determinisation identity for search (spec D-2). **This is the crux of the rung.**
@@ -70,6 +70,412 @@ export interface KeyContract {
   decodeAction(view: PlayerView, key: ActionKey): Command | null
   cardRef(view: PlayerView, id: number, root: PlayerId): CardRef
 }
+
+// ---------------------------------------------------------------------------
+// Grammar
+// ---------------------------------------------------------------------------
+
+/** The one ref that names nothing, and the only place `?` is minted — so `isOpaque` and the index agree. */
+const OPAQUE: CardRef = '?'
+
+/** `|` separates a key's fields, `,` its list items, `@` binds a scalar to a ref. No `CardRef` contains any
+ *  of the three: zone refs are `[a-z]\d:\d+` and hand refs are `h:<code>#<n>` over this pool's code alphabet. */
+const FIELD = '|'
+
+/** Code-unit comparison. `localeCompare` is locale- and ICU-version-dependent, i.e. not deterministic (D-8). */
+const cmpStr = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+
+/** Total order on `ActionKey`/`ObservationKey` for every caller that has to sort keys (D-8). */
+export function compareKeys(a: string, b: string): number {
+  return cmpStr(a, b)
+}
+
+/** Zone refs split into `(zone, index)` so they compare by index NUMERICALLY: plain string order puts `f0:10`
+ *  before `f0:2`, which would silently make a sorted attacker list depend on how full the field is. */
+function refParts(ref: CardRef): readonly [string, number] {
+  const i = ref.lastIndexOf(':')
+  const tail = ref.slice(i + 1)
+  if (i < 0 || !/^\d+$/.test(tail)) return [ref, -1]
+  return [ref.slice(0, i), Number(tail)]
+}
+
+function compareRefs(a: CardRef, b: CardRef): number {
+  const [za, ia] = refParts(a)
+  const [zb, ib] = refParts(b)
+  return cmpStr(za, zb) || ia - ib
+}
+
+const splitList = (s: string): string[] => (s === '' ? [] : s.split(','))
+const joinRefs = (refs: readonly CardRef[]): string => [...refs].sort(compareRefs).join(',')
+
+/** `ref@tag` items — payment discards (element) and party-damage assignments (amount). Sorted by ref first,
+ *  so the tag only ever breaks a tie between two refs that cannot both occur in a legal command anyway. */
+function joinTagged(items: readonly (readonly [CardRef, string])[]): string {
+  return [...items]
+    .sort((a, b) => compareRefs(a[0], b[0]) || cmpStr(a[1], b[1]))
+    .map(([ref, tag]) => `${ref}@${tag}`)
+    .join(',')
+}
+
+function splitTagged(s: string): (readonly [CardRef, string])[] | null {
+  const out: (readonly [CardRef, string])[] = []
+  for (const item of splitList(s)) {
+    const at = item.lastIndexOf('@')
+    if (at < 0) return null
+    out.push([item.slice(0, at), item.slice(at + 1)] as const)
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// cardRef
+// ---------------------------------------------------------------------------
+
+interface RefIndex {
+  readonly byId: ReadonlyMap<CardId, CardRef>
+  /** A ref can name SEVERAL ids: two copies of one code in hand are interchangeable and share a ref. */
+  readonly byRef: ReadonlyMap<CardRef, readonly CardId[]>
+}
+
+/**
+ * One index per `(view, root)`. Sound to cache because `viewFor` returns a `structuredClone` nothing mutates,
+ * and the index is a pure function of the view. The `Map`s are only ever LOOKED UP, never iterated, so no
+ * insertion order can leak into a key (D-8) — the ordering that does appear in keys comes from `sort`.
+ */
+const INDEX_CACHE = new WeakMap<PlayerView, [RefIndex | undefined, RefIndex | undefined]>()
+
+function buildIndex(view: PlayerView, root: PlayerId): RefIndex {
+  const byId = new Map<CardId, CardRef>()
+  const byRef = new Map<CardRef, CardId[]>()
+  const put = (id: CardId, ref: CardRef): void => {
+    byId.set(id, ref)
+    const bucket = byRef.get(ref)
+    if (bucket) bucket.push(id)
+    else byRef.set(ref, [id])
+  }
+  // Public zones, in a fixed order over arrays — position IS the identity, and it is identical in every
+  // determinisation of one view because `determinise` copies the fields across verbatim.
+  for (const p of [0, 1] as const) {
+    const f = view.fields[p]
+    f.forwards.forEach((c, i) => put(c.id, `f${p}:${i}`))
+    f.backups.forEach((c, i) => put(c.id, `b${p}:${i}`))
+    f.damageZone.forEach((id, i) => put(id, `d${p}:${i}`))
+    f.breakZone.forEach((id, i) => put(id, `z${p}:${i}`))
+  }
+  // The root's own hand is the only private zone it can name, and it names it by CODE: a hand position is an
+  // artefact of one world, and `determinise` is free to hand the same numeric id to a different code in the next.
+  if (root === view.me) {
+    for (const id of view.hand) {
+      const code = view.cards[id]?.code
+      if (code === undefined) continue   // a hand card whose instance the view omits cannot be named at all
+      // No occurrence counter: two copies of one code in hand are INTERCHANGEABLE, so casting "the second Red
+      // Mage" is the same move as casting the first. Numbering them split one semantic action into two tree
+      // edges, halving the visits on each — a false split of exactly the kind D-2 exists to prevent, and one
+      // that no win-rate gate would show. Lists keep repeats, so a two-copy discard is still a multiset.
+      put(id, `h:${code}`)
+    }
+  }
+  return { byId, byRef }
+}
+
+function indexFor(view: PlayerView, root: PlayerId): RefIndex {
+  let slots = INDEX_CACHE.get(view)
+  if (!slots) {
+    slots = [undefined, undefined]
+    INDEX_CACHE.set(view, slots)
+  }
+  const hit = slots[root]
+  if (hit) return hit
+  const built = buildIndex(view, root)
+  slots[root] = built
+  return built
+}
+
+export function cardRef(view: PlayerView, id: CardId, root: PlayerId): CardRef {
+  return indexFor(view, root).byId.get(id) ?? OPAQUE
+}
+
+// ---------------------------------------------------------------------------
+// actionKey
+// ---------------------------------------------------------------------------
+
+export function actionKey(view: PlayerView, command: Command): ActionKey {
+  const r = (id: CardId): CardRef => cardRef(view, id, view.me)
+  const head = `${command.type}${FIELD}p${command.player}`
+  switch (command.type) {
+    case 'chooseFirst':
+      return `${head}${FIELD}${command.goFirst ? 'first' : 'second'}`
+    case 'mulligan':
+      return `${head}${FIELD}${command.redraw ? 'redraw' : 'keep'}`
+    case 'castCharacter':
+    case 'castSummon': {
+      // Payment sources are a SET: `generateCp` and `pay` are both order-insensitive, and `enumeratePayments`
+      // emits backups in field order but hand discards in hand order, which differs between worlds.
+      const dull = joinRefs(command.payment.dullBackups.map(r))
+      const discards = joinTagged(command.payment.discards.map((d) => [r(d.card), d.element] as const))
+      return `${head}${FIELD}${r(command.card)}${FIELD}${dull}${FIELD}${discards}`
+    }
+    case 'declareAttack':
+      // `applyDeclareAttack` sorts the party itself, so attacker order carries no meaning to normalise away.
+      return `${head}${FIELD}${joinRefs(command.attackers.map(r))}`
+    case 'declareBlock':
+      return `${head}${FIELD}${command.blocker === null ? '-' : r(command.blocker)}`
+    case 'assignPartyDamage':
+      return `${head}${FIELD}${joinTagged(command.assignments.map((a) => [r(a.target), String(a.amount)] as const))}`
+    case 'discardToHandSize':
+      return `${head}${FIELD}${joinRefs(command.cards.map(r))}`
+    case 'chooseTargets':
+      return `${head}${FIELD}${joinRefs(command.targets.map(r))}`
+    case 'chooseMode':
+      // Mode answers are indices into the pending's printed `labels`, not ids — already world-independent.
+      return `${head}${FIELD}${[...command.modes].sort((a, b) => a - b).join(',')}`
+    case 'pass':
+    case 'concede':
+      return head
+    // A new `Command` variant must fail to compile here rather than collapse into some other action's key.
+    default: { const _exhaustive: never = command; return _exhaustive }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// decodeAction
+// ---------------------------------------------------------------------------
+
+interface DecodeCtx {
+  readonly view: PlayerView
+  readonly player: PlayerId
+  /** Key fields after `<type>|p<n>`, so `args[0]` is the first argument of every variant. */
+  readonly args: readonly string[]
+  /** The id this world gives a ref, or null when this world has no such card (an opaque ref included). */
+  id(ref: string | undefined): CardId | null
+  ids(field: string | undefined): CardId[] | null
+  /** Does this world owe exactly the decision the key answers? A world that diverged does not. */
+  pendingIs<K extends Pending['kind']>(kind: K): Extract<Pending, { kind: K }> | null
+}
+
+type Decoder = (ctx: DecodeCtx) => Command | null
+
+const isElement = (s: string): s is Element => (ELEMENTS as readonly string[]).includes(s)
+
+const distinct = (xs: readonly number[]): boolean => new Set(xs).size === xs.length
+
+/**
+ * One decoder per `Command` variant. A `Record` keyed on `Command['type']` rather than a switch with a `never`
+ * default: the switch subject here is an untrusted string off a key, so it cannot carry the exhaustiveness
+ * check itself — but a missing entry in this record does stop the file compiling.
+ */
+const DECODERS: Record<Command['type'], Decoder> = {
+  chooseFirst: ({ player, args, pendingIs }) => {
+    if (!pendingIs('chooseFirst')) return null
+    const v = args[0]
+    return v === 'first' || v === 'second' ? { type: 'chooseFirst', player, goFirst: v === 'first' } : null
+  },
+  mulligan: ({ player, args, pendingIs }) => {
+    if (!pendingIs('mulligan')) return null
+    const v = args[0]
+    return v === 'redraw' || v === 'keep' ? { type: 'mulligan', player, redraw: v === 'redraw' } : null
+  },
+  castCharacter: (ctx) => decodeCast(ctx, 'castCharacter'),
+  castSummon: (ctx) => decodeCast(ctx, 'castSummon'),
+  declareAttack: ({ view, player, args, ids }) => {
+    if (view.pending) return null
+    const attackers = ids(args[0])
+    return attackers && attackers.length > 0 ? { type: 'declareAttack', player, attackers } : null
+  },
+  declareBlock: ({ player, args, id, pendingIs }) => {
+    if (!pendingIs('declareBlock')) return null
+    if (args[0] === '-') return { type: 'declareBlock', player, blocker: null }
+    const blocker = id(args[0])
+    return blocker === null ? null : { type: 'declareBlock', player, blocker }
+  },
+  assignPartyDamage: ({ player, args, id, pendingIs }) => {
+    if (!pendingIs('assignPartyDamage')) return null
+    const items = splitTagged(args[0] ?? '')
+    if (!items) return null
+    const assignments: { target: CardId; amount: number }[] = []
+    for (const [ref, tag] of items) {
+      const target = id(ref)
+      const amount = Number(tag)
+      if (target === null || !/^\d+$/.test(tag) || !Number.isSafeInteger(amount)) return null
+      assignments.push({ target, amount })
+    }
+    return { type: 'assignPartyDamage', player, assignments }
+  },
+  discardToHandSize: ({ player, args, ids, pendingIs }) => {
+    const pending = pendingIs('discardToHandSize')
+    const cards = ids(args[0])
+    if (!pending || !cards || cards.length !== pending.count || !distinct(cards)) return null
+    return { type: 'discardToHandSize', player, cards }
+  },
+  chooseTargets: ({ player, args, ids, pendingIs }) => {
+    const pending = pendingIs('chooseTargets')
+    const targets = ids(args[0])
+    if (!pending || !targets || !distinct(targets)) return null
+    if (targets.length < pending.min || targets.length > pending.max) return null
+    // `apply` re-checks membership anyway (spec C1-6); checking it here is what makes a key naming a target
+    // this world does not offer decode to null instead of to a command that throws.
+    if (targets.some((t) => !pending.candidates.includes(t))) return null
+    return { type: 'chooseTargets', player, targets }
+  },
+  chooseMode: ({ player, args, pendingIs }) => {
+    const pending = pendingIs('chooseMode')
+    if (!pending) return null
+    const modes: number[] = []
+    for (const s of splitList(args[0] ?? '')) {
+      if (!/^\d+$/.test(s)) return null
+      modes.push(Number(s))
+    }
+    if (modes.length < pending.min || modes.length > pending.max || !distinct(modes)) return null
+    if (modes.some((m) => m >= pending.labels.length)) return null
+    return { type: 'chooseMode', player, modes }
+  },
+  pass: ({ view, player }) => (view.pending ? null : { type: 'pass', player }),
+  concede: ({ player }) => ({ type: 'concede', player }),   // §2.1: always legal
+}
+
+function decodeCast({ view, player, args, id, ids }: DecodeCtx, type: 'castCharacter' | 'castSummon'): Command | null {
+  if (view.pending) return null
+  const card = id(args[0])
+  const dullBackups = ids(args[1])
+  const items = splitTagged(args[2] ?? '')
+  if (card === null || !dullBackups || !items) return null
+  const discards: { card: CardId; element: Element }[] = []
+  for (const [ref, tag] of items) {
+    const src = id(ref)
+    if (src === null || !isElement(tag)) return null
+    discards.push({ card: src, element: tag })
+  }
+  return { type, player, card, payment: { dullBackups, discards } }
+}
+
+export function decodeAction(view: PlayerView, key: ActionKey): Command | null {
+  const parts = key.split(FIELD)
+  const decoder = (DECODERS as Record<string, Decoder | undefined>)[parts[0] ?? '']
+  const player: PlayerId | null = parts[1] === 'p0' ? 0 : parts[1] === 'p1' ? 1 : null
+  if (!decoder || player === null) return null
+  const idx = indexFor(view, view.me)
+  // Consumption spans the WHOLE command, not one list: interchangeable copies share a ref, so a cast whose
+  // payment discards another copy of the card being cast would otherwise decode both to the same id and be
+  // rejected as "cannot discard the card you are casting". Decoding in field order hands out distinct copies.
+  const taken = new Map<CardRef, number>()
+  const take = (ref: CardRef): CardId | null => {
+    const n = taken.get(ref) ?? 0
+    const v = idx.byRef.get(ref)?.[n]
+    if (v === undefined) return null
+    taken.set(ref, n + 1)
+    return v
+  }
+  const ctx: DecodeCtx = {
+    view,
+    player,
+    args: parts.slice(2),
+    id: (ref) => (ref === undefined ? null : take(ref)),
+    ids: (field) => {
+      if (field === undefined) return null
+      const out: CardId[] = []
+      for (const ref of splitList(field)) {
+        const v = take(ref)
+        if (v === null) return null
+        out.push(v)
+      }
+      return out
+    },
+    pendingIs: (kind) => {
+      const p = view.pending
+      return p !== null && p.kind === kind && p.player === player ? (p as Extract<Pending, { kind: typeof kind }>) : null
+    },
+  }
+  return decoder(ctx)
+}
+
+// ---------------------------------------------------------------------------
+// observationKey
+// ---------------------------------------------------------------------------
+
+function fieldDigest(view: PlayerView, p: PlayerId): string {
+  const f = view.fields[p]
+  const code = (id: CardId): string => view.cards[id]?.code ?? OPAQUE
+  // Position is carried by array order, so the digest holds only what a card IS and what has happened to it —
+  // no id survives, which is what makes two worlds that differ only in synthetic numbering agree here.
+  const card = (c: FieldCard): string => [
+    code(c.id), c.status, c.damage, c.enteredTurn, c.attackedThisTurn ? 1 : 0,
+    [...c.granted].sort(cmpStr).join('+'), c.powerBonus, [...c.flags].sort(cmpStr).join('+'),
+  ].join('/')
+  return [
+    `dk${f.deckCount}`, `hd${f.handCount}`,
+    `fw[${f.forwards.map(card).join(',')}]`, `bk[${f.backups.map(card).join(',')}]`,
+    `dz[${f.damageZone.map(code).join(',')}]`, `bz[${f.breakZone.map(code).join(',')}]`,
+  ].join(';')
+}
+
+function triggerDigest(view: PlayerView, e: TriggerEvent | null): string {
+  const r = (id: CardId): CardRef => cardRef(view, id, view.me)
+  if (e === null) return '-'
+  switch (e.kind) {
+    case 'damage':
+      return `dmg.${r(e.source)}.${e.sourceController}.${e.target === null ? '-' : r(e.target)}.${e.victim ?? '-'}.${e.amount}`
+    case 'zoneChange':
+      return `zc.${r(e.card)}.${e.from}.${e.to}.${e.controller}.${e.owner}`
+    default: { const _exhaustive: never = e; return _exhaustive }
+  }
+}
+
+function frameDigest(view: PlayerView, f: Frame | null): string {
+  if (f === null) return '-'
+  const r = (id: CardId): CardRef => cardRef(view, id, view.me)
+  // `path` and `modes` are program-counter indices, already world-independent. `chosen` is a binding whose
+  // order no effect depends on, so it normalises like every other set.
+  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.')].join('/')
+}
+
+function resolutionDigest(view: PlayerView, res: Resolution): string {
+  // `steps` is real, observable resource state (it is what `MAX_RESOLUTION_STEPS` bounds), so two positions
+  // that differ only in how much agenda budget is left are genuinely different positions.
+  return `${frameDigest(view, res.active)}~[${res.queue.map((f) => frameDigest(view, f)).join(',')}]~${res.continuation ?? '-'}~${res.steps}`
+}
+
+function pendingDigest(view: PlayerView, pending: Pending | null): string {
+  if (pending === null) return '-'
+  const r = (id: CardId): CardRef => cardRef(view, id, view.me)
+  const head = `${pending.kind}/${pending.player}`
+  switch (pending.kind) {
+    case 'chooseFirst':
+    case 'mulligan':
+    case 'declareBlock':
+    case 'assignPartyDamage':
+      return head
+    case 'discardToHandSize':
+      return `${head}/${pending.count}`
+    case 'chooseTargets':
+      return `${head}/${pending.min}-${pending.max}/${joinRefs(pending.candidates.map(r))}`
+    case 'chooseMode':
+      // Labels are printed wording, and JSON-quoted so a label containing a separator cannot forge one.
+      return `${head}/${pending.min}-${pending.max}/${pending.labels.map((l) => JSON.stringify(l)).join(',')}`
+    default: { const _exhaustive: never = pending; return _exhaustive }
+  }
+}
+
+export function observationKey(view: PlayerView): ObservationKey {
+  const r = (id: CardId): CardRef => cardRef(view, id, view.me)
+  const at = view.attack
+  // The root's own hand is a MULTISET of codes: hand position is not observable to anyone (`h:` refs are by
+  // code and occurrence), so two worlds that drew the same cards in a different order are the same information set.
+  const hand = view.hand.map((id) => view.cards[id]?.code ?? OPAQUE).sort(cmpStr).join(',')
+  return [
+    `me${view.me}`, `t${view.turn}`, `tp${view.turnPlayer}`, view.phase, `pr${view.priority}`,
+    `fp${view.firstPlayer}`, `mu${view.mulliganDecided.map((b) => (b ? 1 : 0)).join('')}`,
+    `end:${view.result === null ? '-' : `${view.result.winner ?? 'draw'}/${view.result.reason}`}`,
+    `hand[${hand}]`,
+    `F0:${fieldDigest(view, 0)}`,
+    `F1:${fieldDigest(view, 1)}`,
+    `atk:${at === null ? '-' : `${at.step}/${joinRefs(at.attackers.map(r))}/${at.blocker === null ? '-' : r(at.blocker)}`}`,
+    `pend:${pendingDigest(view, view.pending)}`,
+    `res:${resolutionDigest(view, view.resolution)}`,
+  ].join(FIELD)
+}
+
+/** Pins the implementations to the documented contract — a signature drift stops compiling here. */
+export const KEY_CONTRACT: KeyContract = { cardRef, actionKey, observationKey, decodeAction }
 
 // ---------------------------------------------------------------------------
 // The worker-safe search seam (spec D-7)
