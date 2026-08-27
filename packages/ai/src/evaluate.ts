@@ -16,6 +16,18 @@ export interface Weights {
   haste: number
   brave: number
   protection: number
+  /**
+   * Rung C3. The rate at which `powerBonus` — power that EXPIRES at end of turn — counts toward material,
+   * against `forwardPower` for power the card actually has.
+   *
+   * Without this the two are identical, and the arithmetic worked out exactly wrong. Losing an active
+   * 2000-power Undead Princess costs `2×1.2 + 4 + 2×0.8 = 8.0`; giving another Forward +4000 gains
+   * `4×1.2 + 4×0.8 = 8.0`. A dead heat — and `greedyStep` keeps the EARLIER command on a tie, so it would
+   * sacrifice a permanent body for a bonus that vanishes at end of turn, whether or not anything came of it.
+   * The bonus still counts fully toward `threat`, because a temporary bonus really does swing combat THIS
+   * turn; what it must not do is masquerade as a permanent gain.
+   */
+  temporaryPower: number
 }
 
 export const DEFAULT_WEIGHTS: Weights = {
@@ -32,6 +44,7 @@ export const DEFAULT_WEIGHTS: Weights = {
   haste: 1.0,
   brave: 0.6,
   protection: 0.5,
+  temporaryPower: 0.4,
 }
 
 /**
@@ -88,8 +101,14 @@ function material(state: GameState, p: PlayerId, w: Weights): number {
   const ps = state.players[p]
   let v = (DAMAGE_TO_LOSE - ps.damageZone.length) * w.damage
   for (const c of ps.forwards) {
-    v += (powerOf(state, c) / 1000) * w.forwardPower * (c.status === 'dull' ? w.dullFactor : 1) + w.forwardPresence
-    if (c.status === 'active') v += (powerOf(state, c) / 1000) * w.threat   // active-power tempo: this side's own attack-ready threat
+    // Split permanent from until-end-of-turn power: `powerOf` is printed + `powerBonus`, and the two are not
+    // worth the same. `threat` deliberately keeps using the full figure — a temporary bonus does swing combat
+    // this turn, which is exactly what `threat` measures.
+    const total = powerOf(state, c)
+    const permanent = Math.max(0, total - c.powerBonus)
+    const temporary = total - permanent
+    v += ((permanent / 1000) * w.forwardPower + (temporary / 1000) * w.temporaryPower) * (c.status === 'dull' ? w.dullFactor : 1) + w.forwardPresence
+    if (c.status === 'active') v += (total / 1000) * w.threat   // active-power tempo: this side's own attack-ready threat
     v += abilityTerms(state, p, c, true, w)
   }
   for (const c of ps.backups) v += abilityTerms(state, p, c, false, w)

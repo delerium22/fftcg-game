@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, hasResolutionWork, legalCommands, seedRng, viewFor, type Ability, type CardDef, type Command, type GameState } from '@fftcg/engine'
+import { SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, hasResolutionWork, legalCommands, seedRng, viewFor, type Ability, type CardDef, type CardId, type Command, type GameState } from '@fftcg/engine'
 import { GreedyAgent, greedyStep, pruneCandidates, resolveForcedDecisions, scoreCandidates } from '../src/greedy.js'
 import { candidateCommands } from '../src/candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from '../src/evaluate.js'
@@ -18,7 +18,7 @@ const hurt = (s: GameState, p: 0 | 1, n: number): GameState => {
   return { ...s, players }
 }
 const toAttackDeclaration = (s: GameState): GameState => apply(s, { type: 'pass', player: 0 }).state
-const ZERO_WEIGHTS: Weights = { damage: 0, forwardPower: 0, forwardPresence: 0, dullFactor: 0, backup: 0, hand: 0, handQuality: 0, deck: 0, threat: 0, terminal: 0, haste: 0, brave: 0, protection: 0 }
+const ZERO_WEIGHTS: Weights = { damage: 0, forwardPower: 0, forwardPresence: 0, dullFactor: 0, backup: 0, hand: 0, handQuality: 0, deck: 0, threat: 0, terminal: 0, haste: 0, brave: 0, protection: 0, temporaryPower: 0 }
 
 describe('GreedyAgent', () => {
   it('is deterministic per seed and never concedes', () => {
@@ -547,3 +547,50 @@ describe('C2: observer triggers reach the agent', () => {
     expect(observed).toBeGreaterThan(0)   // measured 13 across the three seeds
   })
 })
+
+// ---------------------------------------------------------------------------
+// Rung C3 — a bonus that EXPIRES is not worth a body
+// ---------------------------------------------------------------------------
+
+describe('until-end-of-turn power is discounted against permanent power (C3)', () => {
+  // The exact arithmetic that motivated the `temporaryPower` weight, pinned so a future re-tune cannot
+  // silently restore the tie. With `powerBonus` counted at the same rate as printed power:
+  //   losing an active 2000-power Forward  =  2×forwardPower + forwardPresence + 2×threat  =  8.0
+  //   giving a Forward +4000 until EOT     =  4×forwardPower              + 4×threat       =  8.0
+  // A dead heat, and `greedyStep` keeps the EARLIER command on a tie — so it would trade a permanent body
+  // for a bonus that vanishes at end of turn.
+  const W = DEFAULT_WEIGHTS
+
+  it('scores a permanent 2000-power body above a +4000 bonus that expires', () => {
+    const bodyValue = (2 * W.forwardPower) + W.forwardPresence + (2 * W.threat)
+    const bonusValue = (4 * W.temporaryPower) + (4 * W.threat)
+    expect(bodyValue).toBeGreaterThan(bonusValue)
+  })
+
+  it('would be an exact tie if the bonus were counted as permanent power — which is the bug', () => {
+    const bodyValue = (2 * W.forwardPower) + W.forwardPresence + (2 * W.threat)
+    const asPermanent = (4 * W.forwardPower) + (4 * W.threat)
+    expect(asPermanent).toBeCloseTo(bodyValue, 6)
+  })
+
+  it('still lets a temporary bonus count fully toward this turn\'s threat', () => {
+    // The bonus is discounted as MATERIAL, not as combat relevance: it really does swing a fight this turn.
+    let s = makeGame()
+    let a: CardId; let b: CardId
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    ;[s, b] = withField(s, 0, 'forwards', 'V-F2')
+    const flat = evaluate(s, 0, DEFAULT_WEIGHTS)
+    const pumped = evaluate(setBonus(s, a, 4000), 0, DEFAULT_WEIGHTS)
+    expect(pumped).toBeGreaterThan(flat)
+    // ...but by less than the same power printed on the card would be worth.
+    const permanent = evaluate(setBonus(s, b, 0), 0, DEFAULT_WEIGHTS)
+    expect(pumped - flat).toBeLessThan((4 * DEFAULT_WEIGHTS.forwardPower) + (4 * DEFAULT_WEIGHTS.threat))
+    expect(permanent).toBe(flat)
+  })
+})
+
+function setBonus(state: GameState, id: CardId, bonus: number): GameState {
+  const players = [state.players[0], state.players[1]] as typeof state.players
+  players[0] = { ...players[0], forwards: players[0].forwards.map((c) => (c.id === id ? { ...c, powerBonus: bonus } : c)) }
+  return { ...state, players }
+}
