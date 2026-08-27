@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
-  actingPlayer, apply, createGame, legalCommands, viewFor,
+  actingPlayer, apply, applyChooseFirst, createGame, learn, legalCommands, viewFor,
   type Ability, type CardDef, type CardId, type Command, type Event, type FieldCard, type Frame, type GameState, type PlayerId, type PlayerView,
 } from '@fftcg/engine'
 import { GreedyAgent, type Agent, type SearchDiagnostics, type SearchResult } from '@fftcg/ai'
@@ -166,6 +166,53 @@ describe('describeEvent', () => {
   it('reports the result from the human seat', () => {
     expect(describeEvent(view, { type: 'gameOver', result: { winner: HUMAN, reason: 'damage' } })?.text).toContain('you win')
     expect(describeEvent(view, { type: 'gameOver', result: { winner: AI, reason: 'damage' } })?.text).toContain('the AI wins')
+  })
+})
+
+describe('a look and a reveal in the log (rung C9)', () => {
+  // The narrator redacts against the VIEW, not against the event's `audience` — so one code path serves
+  // Reeve's private look and Miner's public reveal, and neither can name a card this seat was not shown.
+  // Opening hands are dealt by `chooseFirst`, not by `createGame` — and the added-to-hand line needs one.
+  const base = (() => {
+    const s = newGame(1)
+    const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : HUMAN
+    return applyChooseFirst(s, chooser, chooser === HUMAN)[0]
+  })()
+  const nameOf = (v: PlayerView, id: CardId): string => v.defs[v.cards[id]!.code]!.name
+
+  it("names the cards for the human's OWN look", () => {
+    const ids = base.players[HUMAN].deck.slice(0, 3)
+    const v = viewFor(learn(base, [HUMAN], ids), HUMAN)
+    const line = describeEvent(v, { type: 'deckExposed', player: HUMAN, count: 3, audience: 'self', cards: ids })
+    expect(line?.text).toContain('You look at the top 3 cards of your deck: ')
+    for (const id of ids) expect(line?.text).toContain(nameOf(v, id))
+  })
+
+  it("gives the AI's private look as a bare COUNT — the human is told THAT, not WHICH", () => {
+    const ids = base.players[AI].deck.slice(0, 3)
+    const v = viewFor(learn(base, [AI], ids), HUMAN)
+    const line = describeEvent(v, { type: 'deckExposed', player: AI, count: 3, audience: 'self', cards: ids })
+    expect(line?.text).toBe('The AI looks at the top 3 cards of its deck')
+  })
+
+  it("names every card of the AI's public REVEAL, because the human saw them", () => {
+    const ids = base.players[AI].deck.slice(0, 5)
+    const v = viewFor(learn(base, [HUMAN, AI], ids), HUMAN)
+    const line = describeEvent(v, { type: 'deckExposed', player: AI, count: 5, audience: 'all', cards: ids })
+    expect(line?.text).toContain('The AI reveals the top 5 cards of its deck: ')
+    for (const id of ids) expect(line?.text).toContain(nameOf(v, id))
+  })
+
+  it('says what was added to a hand — by name for the human, unnamed for the AI', () => {
+    const v = viewFor(base, HUMAN)
+    const mine = base.players[HUMAN].hand[0]!
+    expect(describeEvent(v, { type: 'addedToHand', player: HUMAN, card: mine })?.text)
+      .toBe(`You add ${nameOf(v, mine)} to your hand`)
+    // The AI's hand is not in this view at all, so the line physically cannot name it (spec B-A3).
+    const theirs = base.players[AI].hand[0]!
+    expect(v.cards[theirs]).toBeUndefined()
+    expect(describeEvent(v, { type: 'addedToHand', player: AI, card: theirs })?.text)
+      .toBe('The AI adds a card to its hand')
   })
 })
 

@@ -287,7 +287,7 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       // follows. `self` is a LOOK, `all` a REVEAL; that is the whole private/public distinction.
       const audience: PlayerId[] = eff.audience === 'all' ? [0, 1] : [ctx.controller]
       ctx.state = learn(ctx.state, audience, exposed)
-      ctx.events.push({ type: 'deckExposed', player: ctx.controller, count: exposed.length, audience: eff.audience })
+      ctx.events.push({ type: 'deckExposed', player: ctx.controller, count: exposed.length, audience: eff.audience, cards: exposed })
 
       const eligible = exposed
         .map((id, i) => (matchesFilter(ctx.state, ctx.source, id, eff.take.filter) ? i : -1))

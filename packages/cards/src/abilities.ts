@@ -493,9 +493,31 @@ const NOEL_DULL_ALL: Ability = {
 }
 
 /**
- * Miner's action. Miner's OTHER printed clause — the ETB deck reveal — is rung C6, so this is the card's
- * second printed clause arriving first. That is exactly why commands carry `abilityId` and not an index into
- * this array (spec C3-2): an index would silently shift when the ETB lands.
+ * Miner's ETB (spec C9) — the PUBLIC half of the pair Reeve forms, and the difference is one field.
+ *
+ * `audience: 'all'` means both players learn all five; `take.filter` means only a Backup among them may be
+ * added. Reeve is private and unfiltered, Miner public and filtered, which is why the pair is worth doing
+ * together: between them they exercise both axes of the same effect.
+ *
+ * With no Backup among the five, nothing is added — but the reveal still happened and the cards still go to
+ * the bottom. `settleLook` handles that as the same move with an empty pick rather than as a failure.
+ */
+const MINER_ETB: Ability = {
+  id: '20-074C:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Miner enters the field, reveal the top 5 cards of your deck. Add 1 Backup among them to your '
+    + 'hand and return the other cards to the bottom of your deck in any order.',
+  effects: [{
+    kind: 'lookAtDeck', count: 5, audience: 'all',
+    take: { min: 1, max: 1, filter: { type: 'backup' } },
+    rest: 'bottom',
+  }],
+}
+
+/**
+ * Miner's action, which landed a rung BEFORE the ETB above it — the card's second printed clause arriving
+ * first. That is exactly why commands carry `abilityId` and not an index into this array (spec C3-2): an
+ * index would have silently shifted when the ETB landed, and this is the card it would have shifted on.
  */
 const MINER_DRAW: Ability = {
   id: '20-074C:draw',
@@ -504,13 +526,6 @@ const MINER_DRAW: Ability = {
   effects: [{ kind: 'draw', count: 1 }],
 }
 
-/**
- * Undead Princess's first clause. No dull icon and no CP: the entire cost is putting herself into the Break
- * Zone, which makes her the fixture for two rules at once — that the `[Dull]` restrictions do NOT apply
- * without the icon, and that a target preflight runs against the POST-cost state. She has already left the
- * field when targets are computed, so she cannot pump herself, and if she is the only Forward the activation
- * is illegal rather than a cost paid for nothing (§11.6.5).
- */
 /**
  * Undead Princess's second clause (spec C7) — her afterlife: already spent once, she pays her own removal
  * from the Break Zone for a smaller version of the same effect.
@@ -535,6 +550,13 @@ const UNDEAD_PRINCESS_REMOVE: Ability = {
   }],
 }
 
+/**
+ * Undead Princess's first clause. No dull icon and no CP: the entire cost is putting herself into the Break
+ * Zone, which makes her the fixture for two rules at once — that the `[Dull]` restrictions do NOT apply
+ * without the icon, and that a target preflight runs against the POST-cost state. She has already left the
+ * field when targets are computed, so she cannot pump herself, and if she is the only Forward the activation
+ * is illegal rather than a cost paid for nothing (§11.6.5).
+ */
 const UNDEAD_PRINCESS_PUMP: Ability = {
   id: '19-052C:pump',
   trigger: { kind: 'activated', sourceZone: 'field', cost: { selfToBreakZone: true } },
@@ -585,8 +607,8 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   '18-124C': [BILLY_BOB_ETB],
   // Printed order: the self-break pump is clause 1, the remove-from-game clause 2.
   '19-052C': [UNDEAD_PRINCESS_PUMP, UNDEAD_PRINCESS_REMOVE],
-  // The card's SECOND printed clause, landing first — its ETB deck reveal is C6.
-  '20-074C': [MINER_DRAW],
+  // Printed order: the ETB reveal is clause 1, the [2][Dull] draw clause 2.
+  '20-074C': [MINER_ETB, MINER_DRAW],
   '20-103H': [RAMUH_SUMMON],
   '20-105C': [REEVE_ETB],
   '22-068R': [PRISHE_DAMAGES_OPPONENT],

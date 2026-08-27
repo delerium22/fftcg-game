@@ -98,6 +98,21 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // The sibling cost above has said so since C3; without this the card simply vanishes from the Break Zone
     // with nothing in the log, which is the one thing the amber warnings exist to prevent elsewhere.
     case 'removedFromGame': return { kind: 'event', text: `${name(v, e.card)} is removed from the game to pay for it` }
+    // C9. A look and a reveal differ only in the verb; WHICH cards get named is decided by the view, not by
+    // the audience, so this one line is safe for both. The AI's private look reaches the human as a count.
+    case 'deckExposed': {
+      const verb = e.audience === 'all' ? whoDoes(v, e.player, 'reveal', 'reveals') : whoDoes(v, e.player, 'look at', 'looks at')
+      const named = e.cards.filter((id) => v.cards[id] !== undefined)
+      const shown = named.length === e.cards.length && named.length > 0 ? `: ${named.map((id) => name(v, id)).join(', ')}` : ''
+      const whose = whoDoes(v, e.player, 'your', "its")
+      return { kind: 'event', text: `${who(v, e.player)} ${verb} the top ${e.count} card${e.count === 1 ? '' : 's'} of ${whose} deck${shown}` }
+    }
+    // The other half: without this a revealed card is added to a hand with nothing in the log saying so, and
+    // for the no-eligible path there is no board change at all to infer it from.
+    case 'addedToHand': {
+      const what = v.cards[e.card] !== undefined ? name(v, e.card) : 'a card'
+      return { kind: 'event', text: `${who(v, e.player)} add${e.player === v.me ? '' : 's'} ${what} to ${whoDoes(v, e.player, 'your', 'its')} hand` }
+    }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${name(v, e.card)}'s ability finds no legal target — nothing happens` }
     case 'dulled': return { kind: 'event', text: `${name(v, e.card)} is dulled` }
     case 'abilityDamage': return { kind: 'event', text: `${name(v, e.source)} deals ${e.amount} damage to ${name(v, e.target)}` }

@@ -54,6 +54,13 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
     for (const id of ps.removedFromGame) visibleIds.add(id)   // public, and visible to BOTH players (spec C7-1)
     // Deck cards this viewer has legitimately seen (spec C9-5) — their instances must be in `cards`, or the
     // id in the slot names nothing.
+    //
+    // MVP0-SIMPLIFICATION (spec C9): knowledge is tracked for DECK positions only. A card publicly revealed by
+    // Miner and then added to its controller's hand stays flagged in `knownBy`, but is deliberately NOT surfaced
+    // here, so the opponent forgets it — where a real player would keep tracking it. Showing it would require
+    // `determinise` to pin a known code into an opponent HAND slot (it samples the whole hand from the unseen
+    // multiset today), which is its own rung. The error runs in the safe direction: the view never shows a card
+    // it should hide, it only fails to remember one it could have shown.
     for (const id of ps.deck) if (knows(state, me, id)) visibleIds.add(id)
   }
   const cards: Record<CardId, CardInstance> = {}

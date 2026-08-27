@@ -93,7 +93,6 @@ export type Effect =
    */
   | { readonly kind: 'onSubject'; readonly do: readonly Effect[] }
 
-/** Until-end-of-turn protection that `granted: Keyword[]` cannot express (spec C1-7). */
 /**
  * Until-end-of-turn protections that `granted: Keyword[]` cannot express (spec C1-7).
  *

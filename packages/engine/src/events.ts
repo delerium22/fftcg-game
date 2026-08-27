@@ -23,7 +23,11 @@ export type Event =
   /** An activated ability was used (spec C3-1) — activated, NOT triggered; the log must not conflate them. */
   | { type: 'abilityActivated'; player: PlayerId; card: CardId; abilityId: string }
   /** Cards exposed off the top of a deck (spec C9). `audience` is who learned them, never which cards. */
-  | { type: 'deckExposed'; player: PlayerId; count: number; audience: 'self' | 'all' }
+  // `cards` is what was exposed, in exposed order. The narrator redacts it against the VIEW rather than
+  // against `audience`: a card the viewer's `PlayerView` does not carry cannot be named, whatever the
+  // audience said. Reading the top `count` of the deck instead would name the wrong cards once the
+  // nothing-was-eligible path has already put them under (spec C9).
+  | { type: 'deckExposed'; player: PlayerId; count: number; audience: 'self' | 'all'; cards: readonly CardId[] }
   /** A card taken from an exposure into its owner's hand. */
   | { type: 'addedToHand'; player: PlayerId; card: CardId }
   /** A card removed from the game (spec C7-3). Distinct from breaking and from discarding. */

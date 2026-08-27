@@ -57,6 +57,15 @@ function withHand(state: GameState, player: PlayerId, code: string): [GameState,
   const ps = s.players[player]
   return [setPlayer(s, player, { ...ps, hand: [...ps.hand, id] }), id]
 }
+/** Stack `codes` on top of `player`'s deck, TOP FIRST, and return their ids in that order. */
+function withDeckTops(state: GameState, player: PlayerId, codes: string[]): [GameState, CardId[]] {
+  let s = state
+  const ids: CardId[] = []
+  for (const code of codes) { let id: CardId; [s, id] = addInstance(s, player, code); ids.push(id) }
+  const ps = s.players[player]
+  return [setPlayer(s, player, { ...ps, deck: [...ids, ...ps.deck] }), ids]
+}
+
 function withBreakZone(state: GameState, player: PlayerId, code: string): [GameState, CardId] {
   const [s, id] = addInstance(state, player, code)
   const ps = s.players[player]
@@ -471,10 +480,10 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty-three implemented clauses on, and only those twenty-three', () => {
+  it('loadCards merges the twenty-four implemented clauses on, and only those twenty-four', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
-    // removal), one from C8 (Hugh Yurg's enters-field observer), one from C9 (Reeve's look). Any
+    // removal), one from C8 (Hugh Yurg's enters-field observer), two from C9 (Reeve's look and Miner's reveal). Any
     // clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
@@ -486,7 +495,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       // a hand-written order just makes the next insertion fail for the wrong reason.
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
-      '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-103H:summon',
+      '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-074C:etb', '20-103H:summon',
       '20-105C:etb', '22-068R:damages-opponent', '24-063H:cheap-forward',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
@@ -501,10 +510,9 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(ABILITY_CLAUSES['1-121C']).toBe(1)
     expect(ABILITY_CLAUSES['18-064C']).toBe(1)
     // And the cards with a clause still missing must still say so.
-    for (const code of ['20-074C']) {
-      const def = DEFS.find((d) => d.code === code)
-      expect((def?.abilityClauses ?? 0) - (def?.abilities?.length ?? 0)).toBe(1)
-    }
+    // Miner is complete as of C9 — both printed clauses have ASTs, and the count still does not move.
+    expect(ABILITY_CLAUSES['20-074C']).toBe(2)
+    expect(ABILITIES['20-074C']?.length).toBe(2)
     // Undead Princess is complete as of C7, so she must now warn about nothing.
     const princess = DEFS.find((d) => d.code === '19-052C')
     expect((princess?.abilityClauses ?? 0) - (princess?.abilities?.length ?? 0)).toBe(0)
@@ -1197,4 +1205,74 @@ describe('20-105C Reeve — "look at the top 3 cards of your deck. Add 1 among t
     expect(mine.fields[0].deck.slice(0, 3).map((d) => d.card)).toEqual(top3)
   })
 
+})
+
+// ---------------------------------------------------------------------------
+// Rung C9 — 20-074C Miner's public reveal
+// ---------------------------------------------------------------------------
+
+describe('20-074C Miner — "reveal the top 5 cards of your deck. Add 1 Backup among them to your hand ..."', () => {
+  const BACKUP = '18-064C'      // Geomancer, a Backup
+  const FORWARD = '27-124S'     // Cloud, a Forward - never eligible for "1 Backup among them"
+
+  /** Cast Miner for player 0 over a deck whose top five are exactly `topFive`. */
+  function castMiner(topFive: string[]) {
+    let s = makeGame()
+    // Miner is EARTH, cost 3.
+    ;[s] = withCp(s, 0, Array<string>(3).fill(EARTH_BACKUP))
+    let top: CardId[]
+    ;[s, top] = withDeckTops(s, 0, topFive)
+    let miner: CardId
+    ;[s, miner] = withHand(s, 0, '20-074C')
+    const cmd = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === miner)
+    expect(cmd, 'Miner was not castable').toBeDefined()
+    return { r: apply(s, cmd!), top, before: s }
+  }
+
+  it('exposes five but offers only the BACKUPS among them, by index', () => {
+    const { r } = castMiner([FORWARD, BACKUP, FORWARD, BACKUP, FORWARD])
+    expect(r.state.pending?.kind).toBe('chooseFromDeck')
+    if (r.state.pending?.kind !== 'chooseFromDeck') throw new Error('unreachable')
+    expect(r.state.pending.count).toBe(5)
+    expect(r.state.pending.eligible).toEqual([1, 3])   // "1 BACKUP among them" - the Forwards are not offered
+    expect(r.state.pending.min).toBe(1)
+    expect(r.state.pending.max).toBe(1)
+  })
+
+  it('is PUBLIC: both players learn all five, which is the whole difference from Reeve', () => {
+    const { r, top } = castMiner([FORWARD, BACKUP, FORWARD, BACKUP, FORWARD])
+    for (const id of top) {
+      expect(knows(r.state, 0, id), 'the controller did not learn what it revealed').toBe(true)
+      expect(knows(r.state, 1, id), 'a REVEAL must tell the opponent too').toBe(true)
+    }
+    // And the opponent's view NAMES them, where Reeve's leaves `card: null`.
+    const theirs = viewFor(r.state, 1)
+    const slots = theirs.fields[0].deck.slice(0, 5)
+    expect(slots.map((d) => d.card)).toEqual(top)
+    expect(slots.map((d) => d.knownBy)).toEqual([3, 3, 3, 3, 3])   // both players' bits
+    for (const id of top) expect(theirs.cards[id]?.code).toBeDefined()
+  })
+
+  it('takes the chosen Backup and bottoms the other four in exposed order', () => {
+    const { r, top, before } = castMiner([FORWARD, BACKUP, FORWARD, BACKUP, FORWARD])
+    const deckBefore = before.players[0].deck.length
+    const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [3] })
+    expect(done.state.players[0].hand).toContain(top[3])
+    expect(done.state.players[0].deck.slice(-4)).toEqual([top[0], top[1], top[2], top[4]])
+    expect(done.state.players[0].deck.length).toBe(deckBefore - 1)
+    expect(done.state.pending).toBeNull()
+    ok(done.state)
+  })
+
+  it('with NO Backup among the five, reveals anyway, takes nothing, and does not hang', () => {
+    // The reveal is the effect; the addition is conditional on it. `settleLook` treats this as the same move
+    // with an empty pick rather than as a failed ability, so nothing is added but the cards still go under.
+    const { r, top, before } = castMiner([FORWARD, FORWARD, FORWARD, FORWARD, FORWARD])
+    expect(r.state.pending, 'no eligible card must not leave a prompt standing').toBeNull()
+    for (const id of top) expect(knows(r.state, 1, id), 'the reveal still happened').toBe(true)
+    expect(r.state.players[0].deck.slice(-5)).toEqual(top)
+    expect(r.state.players[0].deck.length).toBe(before.players[0].deck.length)
+    for (const id of top) expect(r.state.players[0].hand).not.toContain(id)
+    ok(r.state)
+  })
 })
