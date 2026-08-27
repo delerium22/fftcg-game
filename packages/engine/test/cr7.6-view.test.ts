@@ -14,8 +14,12 @@ describe('§7.6 hidden zones', () => {
     for (const id of s.players[1].hand) expect(visible.has(id)).toBe(false)
     for (const id of [...s.players[0].deck, ...s.players[1].deck]) expect(visible.has(id)).toBe(false)
     expect(visible.has(f)).toBe(true)
-    expect(v.fields[1].deckCount).toBe(s.players[1].deck.length)   // 45 after dealing 5
-    expect(JSON.stringify(v)).not.toMatch(/"deck":/)
+    expect(v.fields[1].deck.length).toBe(s.players[1].deck.length)   // 45 after dealing 5
+    // C9 gave `FieldView` a `deck` of SLOTS, so a key named "deck" now exists legitimately. The property this
+    // ever cared about is that no hidden card's identity leaks — assert that, not the absence of a key.
+    // The loops above already prove no hidden id reaches `v.cards`; this proves none reaches a deck SLOT
+    // either, which is the new surface C9 added and the only place a deck id could now appear.
+    for (const side of v.fields) for (const slot of side.deck) expect(slot.card).toBeNull()
     expect(v.firstPlayer).toBe(s.firstPlayer)
     expect(v.mulliganDecided).toEqual([true, true])
   })

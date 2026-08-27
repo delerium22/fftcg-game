@@ -1,8 +1,24 @@
 import type { CardDef, PlayerId } from './types.js'
 import type { AttackState, CardId, CardInstance, FieldCard, GameResult, GameState, Pending, Phase } from './state.js'
+import { knows, knowsBit } from './state.js'
 import type { Resolution } from './abilities.js'
 
-export interface FieldView { forwards: FieldCard[]; backups: FieldCard[]; damageZone: CardId[]; breakZone: CardId[]; removedFromGame: CardId[]; deckCount: number; handCount: number }
+/**
+ * One deck position, as this viewer sees it (spec C9-5).
+ *
+ * `card` is non-null ONLY when this viewer knows what is there; `knownBy` is the full mask either way. The
+ * two are separate because the interesting state is "unknown to me, KNOWN TO THEM": after an opponent looks
+ * at their own top three you cannot name those cards, but you do know they are not guessing, and a
+ * determinisation that forgot it would model an opponent who had never looked.
+ */
+export interface DeckSlot { card: CardId | null; knownBy: number }
+
+export interface FieldView {
+  forwards: FieldCard[]; backups: FieldCard[]; damageZone: CardId[]; breakZone: CardId[]; removedFromGame: CardId[]
+  /** One entry per card, top first. Replaces a bare count: the count is `deck.length`. */
+  deck: DeckSlot[]
+  handCount: number
+}
 export interface PlayerView {
   me: PlayerId; turn: number; turnPlayer: PlayerId; phase: Phase; attack: AttackState | null; priority: PlayerId
   pending: Pending | null; result: GameResult | null; hand: CardId[]; fields: [FieldView, FieldView]
@@ -26,7 +42,7 @@ export interface PlayerView {
 export function viewFor(state: GameState, me: PlayerId): PlayerView {
   const field = (p: PlayerId): FieldView => {
     const ps = state.players[p]
-    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, deckCount: ps.deck.length, handCount: ps.hand.length }
+    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length }
   }
   const visibleIds = new Set<CardId>(state.players[me].hand)
   for (const p of [0, 1] as const) {
@@ -36,6 +52,9 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
     for (const id of ps.damageZone) visibleIds.add(id)
     for (const id of ps.breakZone) visibleIds.add(id)
     for (const id of ps.removedFromGame) visibleIds.add(id)   // public, and visible to BOTH players (spec C7-1)
+    // Deck cards this viewer has legitimately seen (spec C9-5) — their instances must be in `cards`, or the
+    // id in the slot names nothing.
+    for (const id of ps.deck) if (knows(state, me, id)) visibleIds.add(id)
   }
   const cards: Record<CardId, CardInstance> = {}
   for (const id of visibleIds) { const inst = state.cards[id]; if (inst) cards[id] = inst }
@@ -61,4 +80,19 @@ export function visibleKnownBy(state: GameState, cards: Record<CardId, CardInsta
     if (mask !== undefined && mask !== 0) out[id] = mask
   }
   return out
+}
+
+/**
+ * One player's deck as `viewer` sees it (spec C9-5).
+ *
+ * EXPORTED for the same reason `visibleKnownBy` is: `searchView` is a second copy of this projection, and a
+ * field added to one and not the other is how C7's zone silently diverged. One function, two callers.
+ */
+export function deckSlotsFor(state: GameState, owner: PlayerId, viewer: PlayerId): DeckSlot[] {
+  return state.players[owner].deck.map((id) => {
+    const mask = state.knownBy[id] ?? 0
+    // The id is exposed only to a viewer who knows it. `knownBy` is exposed to everyone: that a player looked
+    // is public even when what they saw is not, and it is the half a determinisation must preserve.
+    return { card: (mask & knowsBit(viewer)) !== 0 ? id : null, knownBy: mask }
+  })
 }

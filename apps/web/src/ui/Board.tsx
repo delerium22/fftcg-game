@@ -62,7 +62,7 @@ function Seat({ v, p, active }: { v: PlayerView; p: PlayerId; active: boolean })
     <div className={active ? 'seat seat--active' : 'seat'}>
       <span className={you ? 'seat__name seat__name--you' : 'seat__name'}>{you ? 'You' : 'AI'}</span>
       <div className="seat__stats">
-        <span className="stat"><span className="stat__label">Deck</span><span className="stat__value">{f.deckCount}</span></span>
+        <span className="stat"><span className="stat__label">Deck</span><span className="stat__value">{f.deck.length}</span></span>
         <span className="stat"><span className="stat__label">Hand</span><span className="stat__value">{you ? v.hand.length : f.handCount}</span></span>
         <span className="stat"><span className="stat__label">Break</span><span className="stat__value">{f.breakZone.length}</span></span>
         <span className="stat">

@@ -5,6 +5,7 @@ import { actingPlayer, legalCommands } from '../src/legal.js'
 import { checkInvariants } from '../src/invariants.js'
 import { viewFor } from '../src/view.js'
 import { determinise, SYNTHETIC_ID_BASE } from '../src/determinise.js'
+import { knows, learn } from '../src/state.js'
 import { nextInt, seedRng } from '../src/rng.js'
 import type { GameState, PlayerId } from '../src/index.js'
 import { DEFAULT_DECK, VANILLA_POOL, deckOf, makeGame } from './helpers.js'
@@ -156,5 +157,55 @@ describe('a removed card stays removed (spec C7-A5)', () => {
       expect(v.fields[0].removedFromGame).toContain(removed)
       expect(v.cards[removed], `seat ${seat} cannot see the removed card`).toBeDefined()
     }
+  })
+})
+
+describe('deck knowledge survives determinisation (spec C9-5)', () => {
+  /** Teach `to` about the top `n` of `owner`'s deck. */
+  function look(state: GameState, owner: PlayerId, to: PlayerId[], n: number): { s: GameState; ids: number[] } {
+    const ids = state.players[owner].deck.slice(0, n)
+    return { s: learn(state, to, ids), ids }
+  }
+
+  it('pins what the VIEWER knows: same ids, same codes, same positions', () => {
+    const { s, ids } = look(makeGame({ defs: VANILLA_POOL, decks: DECKS }), 0, [0], 3)
+    const view = viewFor(s, 0)
+    const [det] = determinise({ view, decks: DECKS, rng: seedRng(11) })
+
+    expect(det.players[0].deck.slice(0, 3)).toEqual(ids)
+    for (const id of ids) expect(det.cards[id]!.code).toBe(s.cards[id]!.code)
+    // And still exactly 50 cards' worth of codes — a pinned card must not ALSO be dealt from the pool.
+    expect(codesOf(det, 0)).toEqual(codesOf(s, 0))
+  })
+
+  it('preserves "unknown to me, KNOWN TO THEM" — the half a bare count cannot carry', () => {
+    // The opponent looked at their own top three. Root cannot name those cards, but must not model an
+    // opponent who never looked: the sampler invents identities freely and records that they are known.
+    const { s } = look(makeGame({ defs: VANILLA_POOL, decks: DECKS }), 1, [1], 3)
+    const view = viewFor(s, 0)
+
+    // Root sees the FACT but not the cards.
+    expect(view.fields[1].deck.slice(0, 3).map((d) => d.card)).toEqual([null, null, null])
+    expect(view.fields[1].deck.slice(0, 3).map((d) => d.knownBy)).toEqual([2, 2, 2])
+
+    const [det] = determinise({ view, decks: DECKS, rng: seedRng(11) })
+    const top3 = det.players[1].deck.slice(0, 3)
+    for (const id of top3) {
+      expect(knows(det, 1, id), 'the simulated opponent forgot what it had looked at').toBe(true)
+      expect(knows(det, 0, id), 'root learned something it must not know').toBe(false)
+    }
+  })
+
+  it('samples those positions differently across determinisations', () => {
+    // The identities are invented, so two worlds should disagree about them — otherwise the search is
+    // reasoning about one fixed guess rather than an information set.
+    const { s } = look(makeGame({ defs: VANILLA_POOL, decks: DECKS }), 1, [1], 3)
+    const view = viewFor(s, 0)
+    const codesAt = (seed: number) => {
+      const [d] = determinise({ view, decks: DECKS, rng: seedRng(seed) })
+      return d.players[1].deck.slice(0, 3).map((id) => d.cards[id]!.code).join(',')
+    }
+    const worlds = new Set([1, 2, 3, 4, 5, 6, 7, 8].map(codesAt))
+    expect(worlds.size, 'every determinisation sampled the same three cards').toBeGreaterThan(1)
   })
 })

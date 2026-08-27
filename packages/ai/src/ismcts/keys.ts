@@ -425,10 +425,17 @@ function fieldDigest(view: PlayerView, p: PlayerId): string {
     code(c.id), c.status, c.damage, c.enteredTurn, c.attackedThisTurn ? 1 : 0,
     [...c.granted].sort(cmpStr).join('+'), c.powerBonus, [...c.flags].sort(cmpStr).join('+'),
   ].join('/')
+  // Deck SLOTS, not a bare count (spec C9-5). A position this viewer knows digests as its code — stable
+  // across determinisations, because a known slot is pinned rather than sampled. One it does not know digests
+  // as the mask alone, so "the opponent knows their top three" is a different information set from "they do
+  // not", while never naming a card the viewer cannot see.
+  const slot = (sl: { card: CardId | null; knownBy: number }): string => (sl.card !== null ? code(sl.card) : `?${sl.knownBy}`)
   return [
-    `dk${f.deckCount}`, `hd${f.handCount}`,
+    `dk[${f.deck.map(slot).join(',')}]`, `hd${f.handCount}`,
     `fw[${f.forwards.map(card).join(',')}]`, `bk[${f.backups.map(card).join(',')}]`,
     `dz[${f.damageZone.map(code).join(',')}]`, `bz[${f.breakZone.map(code).join(',')}]`,
+    // Removed cards are public and permanent; two states differing in what has left the game are different.
+    `rm[${f.removedFromGame.map(code).join(',')}]`,
   ].join(';')
 }
 

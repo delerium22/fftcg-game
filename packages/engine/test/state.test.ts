@@ -82,9 +82,10 @@ describe('knownBy: who knows what a hidden card is (spec C9-5)', () => {
   it('the view carries a mask only for cards it can SEE', () => {
     // A mask keyed by an id the viewer cannot see would be an id leak by itself.
     let s = game()
-    const hidden = s.players[1].deck[0] as CardId       // opponent's deck: invisible to player 0
+    const hidden = s.players[1].deck[0] as CardId       // opponent's deck, known only to THEM
     const visible = s.players[0].hand[0] as CardId      // player 0's own hand
-    s = learn(s, [0, 1], [hidden, visible])
+    s = learn(s, [1], [hidden])
+    s = learn(s, [0, 1], [visible])
 
     const v = viewFor(s, 0)
     expect(v.knownBy[visible]).toBeDefined()

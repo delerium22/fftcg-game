@@ -492,7 +492,11 @@ describe('observationKey (contract 6)', () => {
     differs({ ...view, turn: view.turn + 1 }, 'turn')
     differs({ ...view, phase: 'main2' }, 'phase')
     differs({ ...view, priority: 1 }, 'priority')
-    differs({ ...view, fields: [{ ...f0, deckCount: f0.deckCount - 1 }, view.fields[1]] }, 'my deck count')
+    differs({ ...view, fields: [{ ...f0, deck: f0.deck.slice(1) }, view.fields[1]] }, 'my deck count')
+    // C9: two states differing only in WHAT a player knows about their own deck are different information
+    // sets, and the digest must say so — a bare count could not.
+    differs({ ...view, fields: [{ ...f0, deck: [{ card: null, knownBy: 1 }, ...f0.deck.slice(1)] }, view.fields[1]] }, 'my top card is known to me')
+    differs({ ...view, fields: [f0, { ...view.fields[1], deck: [{ card: null, knownBy: 2 }, ...view.fields[1].deck.slice(1)] }] }, 'opponent knows their top card')
     differs({ ...view, fields: [f0, { ...view.fields[1], handCount: 99 }] }, "opponent's hand size")
     differs({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, damage: 3000 } : c)) }, view.fields[1]] }, 'damage on a forward')
     differs({ ...view, fields: [{ ...f0, forwards: [...f0.forwards].reverse() }, view.fields[1]] }, 'field order (it is what positional refs mean)')
