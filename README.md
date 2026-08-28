@@ -117,9 +117,9 @@ Measured strength, all on seeded runs:
 
 | Matchup | Result |
 |---|---|
-| ISMCTS vs greedy, 120 mirrored games, 200 iterations | **78.3 %**, CI95 [70.8, 85.0] |
+| ISMCTS vs greedy, 120 mirrored games, 200 iterations | **75.0 %**, CI95 [66.7, 82.5] |
 | Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
-| ISMCTS in the browser (production build, Apple Silicon) | p50 **283 ms**, p95 1385 ms per decision |
+| ISMCTS in the browser (production build, Apple Silicon) | p50 **183 ms**, p95 604 ms per decision |
 
 **The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; re-run
 with the same command at the current HEAD it is 78.3 %, and 90.0 % now sits outside the confidence
@@ -153,13 +153,28 @@ direction.
 that used to read p50 152 ms / p95 240 ms, so it had rotted by the same cause and further. Tripling the
 budget to buy ten points of strength would have put p95 near four seconds.
 
-Since then the search stopped deep-cloning the card database every iteration (see the D4 spec), and the
-median fell to **283 ms** — but **p95 did not move**, at 1385 ms over 123 searches. That is the useful
-half of the result: the saving lands on cheap decisions, while expensive ones are dominated by the rollout,
-where `determinise` is a small share. And because the coordinator paces AI moves to `AI_STEP_MS` = 600 ms,
-a faster median is invisible to a player anyway — what a player feels is the tail, and the tail is
-unchanged. The win is real for measurement throughput (~22 % more games per hour) and not yet visible in
-play.
+Two changes since then, and the difference between them is the interesting part.
+
+**D4** stopped the search deep-cloning the card database every iteration. The median fell 454 -> 283 ms and
+**p95 did not move at all** (1351 -> 1385 ms): the saving landed on cheap decisions, while expensive ones
+are dominated by the rollout. Since the coordinator paces AI moves to `AI_STEP_MS` = 600 ms, a faster
+median is invisible in play — ~22 % more games per hour for measurement runs, and nothing a player feels.
+
+**D5** halved the rollout command cap, 24 -> 12, after measuring the dial instead of reasoning about it.
+That one reaches the tail, because the rollout is 99.4 % of engine work:
+
+| cap | win rate (120 games) | ms/decision | browser p95 |
+|---|---|---|---|
+| 24 | 78.3 %, CI95 [70.8, 85.0] | 392 ms | 1385 ms |
+| **12** | **75.0 %**, CI95 [66.7, 82.5] | **240 ms** | **604 ms** |
+| 6 | 45.0 % (40 games) | — | — |
+
+The worst case more than halves and lands at the 600 ms pacing floor, so nearly every decision now finishes
+inside the window the player already waits — instead of occasional 1.4-second stalls. The cost is 3.3
+points of win rate, which 120 games cannot distinguish from zero, though it moved the same way in both
+samples, so it is more likely small-but-real than nothing. **The dial has a cliff just below 12**: at 6 the
+agent falls to a coin flip, because a rollout that stops before it reaches informative states is evaluating
+noise.
 
 The numbers carry the harness's own instrumentation overhead and come from one machine under a scripted
 driver, so treat them as indicative.

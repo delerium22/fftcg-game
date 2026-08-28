@@ -47,8 +47,27 @@ export const DEFAULT_EXPLORATION_C = 1
  */
 export const DEFAULT_ITERATIONS = 200
 
-/** D-6: a cap on rollout COMMANDS, not depth — an ability cascade makes a single command arbitrarily deep. */
-export const DEFAULT_ROLLOUT_COMMAND_CAP = 24
+/**
+ * D-6: a cap on rollout COMMANDS, not depth — an ability cascade makes a single command arbitrarily deep.
+ *
+ * 12, lowered from 24 in rung D5 after measuring the dial rather than reasoning about it. The rollout is
+ * 99.4 % of engine work, so this is the only lever that reaches the expensive positions — and those are the
+ * ones a player waits on. Measured, same 20 seed pairs and then 120 games, ONLY the cap differing:
+ *
+ *   cap 24  78.3 % (94/120), CI95 [70.8, 85.0]   392 ms/decision   browser p95 1385 ms
+ *   cap 12  75.0 % (90/120), CI95 [66.7, 82.5]   240 ms/decision   browser p95  604 ms
+ *   cap  6  45.0 % (18/40)                       — collapses; the dial has a CLIFF just below 12
+ *
+ * So: the worst-case wait more than halves and lands at the 600 ms `AI_STEP_MS` pacing floor, meaning
+ * virtually every decision now completes inside the window the player already waits — for a strength
+ * difference of 3.3 points that 120 games cannot distinguish from zero, though it moved the same way in
+ * both samples, so it is likely small-but-real rather than nothing.
+ *
+ * The cliff at 6 is the reason this is a measured constant and not a tuning knob to keep turning down: a
+ * rollout that stops before it reaches informative states evaluates noise, and the agent falls to a coin
+ * flip against the heuristic.
+ */
+export const DEFAULT_ROLLOUT_COMMAND_CAP = 12
 
 /**
  * The hard WORK bound on one rollout, in `apply` calls, covering the settlement tail the command cap cannot.
