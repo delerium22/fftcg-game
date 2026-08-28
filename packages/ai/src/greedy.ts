@@ -1,4 +1,4 @@
-import { SYNTHETIC_ID_BASE, actingPlayer, apply, determinise, hasResolutionWork, legalCommands, seedRng, type CardId, type Command, type GameState, type PlayerId, type PlayerView, type Rng } from '@fftcg/engine'
+import { SYNTHETIC_ID_BASE, actingPlayer, apply, determinise, hasResolutionWork, legalCommands, seedRng, type CardId, type Command, type Event, type GameState, type PlayerId, type PlayerView, type Rng } from '@fftcg/engine'
 import type { Agent } from './agent.js'
 import { candidateCommands } from './candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from './evaluate.js'
@@ -54,6 +54,26 @@ const isForcedDecision = (state: GameState): boolean => {
 }
 
 /**
+ * How much a WASTED ability costs a candidate's score.
+ *
+ * Deliberately far below any real evaluation difference: this is a tie-break, never a judgement. It exists
+ * because `evaluate` prices a BOARD, and two modes of the same ability can leave boards that are equal to the
+ * last bit — Shantotto's "give another Forward Haste" and "protect a Forward you control" both score exactly 0
+ * when she is the only Forward and nothing threatens her. The first is dead (there IS no other Forward) and the
+ * second is live, so with `>` keeping the earlier candidate the AI announced its ability and then did nothing.
+ * Worth zero and impossible are not the same thing, and only the second is visible to the player as a blunder.
+ */
+export const WASTED_ABILITY = 1e-6
+
+/** Counts abilities that found no legal target while a candidate was simulated. Mutable, like `Budget`. */
+export interface Waste { fizzled: number }
+
+const countFizzles = (events: readonly Event[], waste?: Waste): void => {
+  if (!waste) return
+  for (const e of events) if (e.type === 'abilityNoLegalTarget') waste.fizzled++
+}
+
+/**
  * Fast-forward through every forced decision: while one is pending, the acting player `p` answers with
  * `greedyStep`, scored from `p === perspective ? aggression : 1 - aggression` (C4 — keyed on the explicit
  * `perspective` player, not `state.turnPlayer`, so the agent's own defensive decisions are scored from its own
@@ -68,7 +88,7 @@ const isForcedDecision = (state: GameState): boolean => {
  * ever fires while the agenda is non-empty, and answering the pending lets `settle` drain a frame, so each pass
  * either shrinks the agenda or hits the step cap.
  */
-export function resolveForcedDecisions(state: GameState, weights: Weights, aggression: number, perspective: PlayerId, budget?: Budget): GameState {
+export function resolveForcedDecisions(state: GameState, weights: Weights, aggression: number, perspective: PlayerId, budget?: Budget, waste?: Waste): GameState {
   let s = state
   while (!s.result && isForcedDecision(s)) {
     const p = actingPlayer(s)
@@ -76,7 +96,9 @@ export function resolveForcedDecisions(state: GameState, weights: Weights, aggre
     const localAggression = p === perspective ? aggression : 1 - aggression
     const c = greedyStep(s, p, weights, localAggression, budget)
     if (!c) break
-    s = apply(s, c).state
+    const r = apply(s, c)
+    countFizzles(r.events, waste)
+    s = r.state
     if (budget) budget.used++
   }
   return s
@@ -99,10 +121,12 @@ export function greedyStep(state: GameState, player: PlayerId, weights: Weights,
   for (const c of candidateCommands(state, player)) {
     if (i > 0 && !within(budget)) break
     i++
-    const after = apply(state, c).state
+    const waste: Waste = { fizzled: 0 }
+    const r = apply(state, c)
+    countFizzles(r.events, waste)
     if (budget) budget.used++
-    const scored = resolveForcedDecisions(after, weights, aggression, player, budget)
-    const score = evaluate(scored, player, weights, aggression)
+    const scored = resolveForcedDecisions(r.state, weights, aggression, player, budget, waste)
+    const score = evaluate(scored, player, weights, aggression) - waste.fizzled * WASTED_ABILITY
     if (score > bestScore) { best = c; bestScore = score }
   }
   return best
@@ -138,6 +162,9 @@ export interface CandidateScore {
    *  C2-6 couples the two fields: the benign non-null `pendingKind`s above are benign ONLY at a zero agenda, and
    *  `isForcedDecision`'s second clause is what keeps that true now that rule processes run between frames. */
   resolutionQueued: number
+  /** Abilities this candidate announced and could not carry out. Priced at `WASTED_ABILITY` each — a tie-break,
+   *  not a judgement — and exposed so a test can assert the fizzle itself rather than infer it from a score. */
+  fizzled: number
 }
 
 /** Work the agenda still owes: the active frame, the queue, and a system continuation (which only
@@ -158,9 +185,14 @@ export function scoreCandidates(det: GameState, cands: Command[], opts: Candidat
   const perCandidate = Math.max(1, Math.floor(opts.maxSimulations / cands.length))
   return cands.map((cand) => {
     const budget: Budget = { used: 0, cap: perCandidate }
-    let s = apply(det, cand).state
+    // Only the fizzles this candidate CAUSES are counted, not the ones a distant rollout turn stumbles into:
+    // the tie-break is about the decision on the table. So the rollouts below deliberately pass no `waste`.
+    const waste: Waste = { fizzled: 0 }
+    const applied = apply(det, cand)
+    countFizzles(applied.events, waste)
+    let s = applied.state
     budget.used++   // floor: every candidate gets at least one apply regardless of budget
-    s = resolveForcedDecisions(s, opts.weights, opts.aggression, opts.me, budget)
+    s = resolveForcedDecisions(s, opts.weights, opts.aggression, opts.me, budget, waste)
     const rollout = (until: (t: GameState) => boolean) => {
       while (!s.result && until(s) && within(budget)) {
         const p = actingPlayer(s)!
@@ -178,8 +210,8 @@ export function scoreCandidates(det: GameState, cands: Command[], opts: Candidat
     }
     if (opts.depth >= 1) rollout((t) => t.turnPlayer === opts.owner)   // finish the current turn (mine, or the opponent's when I am blocking)
     if (opts.depth >= 2) rollout((t) => t.turnPlayer !== opts.owner)   // and the following turn
-    const score = evaluate(s, opts.me, opts.weights, opts.aggression)
-    return { command: cand, score, turn: s.turn, used: budget.used, pendingKind: s.pending?.kind ?? null, resolutionQueued: agendaSize(s) }
+    const score = evaluate(s, opts.me, opts.weights, opts.aggression) - waste.fizzled * WASTED_ABILITY
+    return { command: cand, score, turn: s.turn, used: budget.used, pendingKind: s.pending?.kind ?? null, resolutionQueued: agendaSize(s), fizzled: waste.fizzled }
   })
 }
 

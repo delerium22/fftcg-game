@@ -316,6 +316,110 @@ describe('GreedyAgent', () => {
     })
   })
 
+  describe('a mode that CANNOT do anything loses a tie to one that can', () => {
+    // Found by playing a browser game. The AI cast Shantotto — "give another Forward Haste" or "protect a
+    // Forward you control" — as its ONLY Forward, with nothing on the board threatening it. Both modes price at
+    // exactly 0 (there is no other Forward to haste; protection is worth nothing with no threat), the tie kept
+    // the earlier candidate, and the log read "Shantotto's ability finds no legal target — nothing happens".
+    // Worth zero and impossible are not the same thing, and only the second looks broken to the player.
+    //
+    // ZERO_WEIGHTS is the point of the fixture, not a shortcut: it forces EVERY board to price identically, so
+    // the only thing that can separate the two modes is the tie-break under test.
+    const TWO_MODES: Ability = {
+      id: 'T-TIE:etb', trigger: { kind: 'enterField' },
+      text: 'When this Character enters the field, choose 1: give a Forward the opponent controls Haste; or give a Forward you control Haste.',
+      effects: [{
+        kind: 'chooseModes', min: 1, max: 1, modes: [
+          // Mode 0 is FIRST, so ordinal preference picks it — and it is the dead one, because the opponent has
+          // no Forwards at all in this fixture.
+          { label: "Give a Forward the opponent controls Haste", effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'grantKeyword', keyword: 'haste' }] }] },
+          { label: 'Give a Forward you control Haste', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'grantKeyword', keyword: 'haste' }] }] },
+        ],
+      }],
+    }
+    const DEFS = [...VANILLA_POOL, makeDef({ code: 'T-TIE', cost: 2, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [TWO_MODES] })]
+
+    /** The source on player 0's field, its ETB on the table, and the opponent's field EMPTY. */
+    const modal = (): GameState => {
+      let s = withHandSize(makeGame({ defs: DEFS }), 0, 0)
+      let src: number
+      ;[s, src] = withField(s, 0, 'forwards', 'T-TIE')
+      s = drainResolution(enqueueTrigger(s, src, 0, TWO_MODES))[0]
+      expect(s.pending?.kind, 'the fixture did not reach the mode choice').toBe('chooseMode')
+      expect(s.players[1].forwards, 'mode 0 is only dead while the opponent has no Forwards').toHaveLength(0)
+      return s
+    }
+
+    it('scoreCandidates prices the fizzle, and only the fizzle', () => {
+      const s = modal()
+      const cands = candidateCommands(s, 0)
+      const scores = scoreCandidates(s, cands, { me: 0, weights: ZERO_WEIGHTS, aggression: 0.5, depth: 0, owner: 0, maxSimulations: 200 })
+      const byMode = (m: number) => scores.find((sc) => sc.command.type === 'chooseMode' && sc.command.modes.join() === String(m))
+      const dead = byMode(0), live = byMode(1)
+      expect(dead, 'mode 0 was not offered').toBeDefined()
+      expect(live, 'mode 1 was not offered').toBeDefined()
+      // The fizzle is asserted directly, not inferred from the score — the score is what it drives, not what it is.
+      expect(dead!.fizzled, 'the dead mode did not report a fizzle').toBe(1)
+      expect(live!.fizzled, 'the live mode fizzled, so the fixture is wrong').toBe(0)
+      expect(live!.score).toBeGreaterThan(dead!.score)
+      // ...and by a hair. A tie-break must never be able to outweigh a real evaluation difference.
+      expect(live!.score - dead!.score).toBeLessThan(1e-3)
+    })
+
+    it('greedyStep picks the live mode even though the dead one is offered first', () => {
+      const s = modal()
+      const first = candidateCommands(s, 0)[0]
+      expect(first, 'the fixture no longer offers the dead mode first, so it proves nothing').toEqual({ type: 'chooseMode', player: 0, modes: [0] })
+      expect(greedyStep(s, 0, ZERO_WEIGHTS, 0.5)).toEqual({ type: 'chooseMode', player: 0, modes: [1] })
+    })
+
+    it('counts a fizzle raised by a forced choice, not only by the candidate own apply', () => {
+      // A cast whose ETB dies immediately reports `abilityNoLegalTarget` inside the CAST's apply, so the
+      // top-level counter alone would cover it. This is the other route: a MODAL ETB survives the cast (it has
+      // modes to offer), the mode is answered inside `resolveForcedDecisions`, and the fizzle happens there.
+      // Without threading the tally through that loop the candidate looks clean, and the AI cannot tell a card
+      // whose ability is about to do nothing from one that has no ability at all.
+      const DEAD_MODAL: Ability = {
+        id: 'T-DEAD:etb', trigger: { kind: 'enterField' },
+        text: 'When this Character enters the field, choose 1: dull a Forward the opponent controls; or return one to their hand.',
+        effects: [{
+          kind: 'chooseModes', min: 1, max: 1, modes: [
+            { label: 'Dull it', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] },
+            { label: 'Return it', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'moveToHand' }] }] },
+          ],
+        }],
+      }
+      // Identical stats to the modal card, and NO ability — so under ZERO_WEIGHTS the two casts price the same
+      // and only the tally can separate them.
+      const CAST_DEFS = [...VANILLA_POOL,
+        makeDef({ code: 'T-DEAD', cost: 1, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [DEAD_MODAL] }),
+        makeDef({ code: 'T-PLAIN', cost: 1, power: 5000 }),
+      ]
+      let s = withHandSize(makeGame({ defs: CAST_DEFS }), 0, 0)
+      let dead: CardId, plain: CardId
+      ;[s, dead] = withHand(s, 0, 'T-DEAD')
+      ;[s, plain] = withHand(s, 0, 'T-PLAIN')
+      for (const b of ['V-B1', 'V-B2', 'V-B3', 'V-B4']) [s] = withField(s, 0, 'backups', b)
+      expect(s.players[1].forwards, 'both modes are only dead while the opponent has no Forwards').toHaveLength(0)
+
+      const cands = candidateCommands(s, 0)
+      const castOf = (id: CardId) => cands.find((c) => c.type === 'castCharacter' && c.card === id)
+      expect(castOf(dead), 'the modal card was not castable').toBeDefined()
+      expect(castOf(plain), 'the plain card was not castable').toBeDefined()
+      const scores = scoreCandidates(s, [castOf(dead)!, castOf(plain)!], { me: 0, weights: ZERO_WEIGHTS, aggression: 0.5, depth: 0, owner: 0, maxSimulations: 400 })
+      expect(scores[0]!.fizzled, 'the fizzle inside the forced mode choice was not counted').toBe(1)
+      expect(scores[1]!.fizzled).toBe(0)
+      expect(scores[1]!.score).toBeGreaterThan(scores[0]!.score)
+    })
+
+    it('the ability actually resolves instead of announcing itself and stopping', () => {
+      const out = resolveForcedDecisions(modal(), ZERO_WEIGHTS, 0.5, 0)
+      expect(out.pending).toBeNull()
+      expect(out.players[0].forwards, 'the source left the field, so there is nothing to check').toHaveLength(1)
+      expect(out.players[0].forwards[0]!.granted, 'nothing was granted — the clause still did nothing').toContain('haste')
+    })
+  })
+
   describe('C1: a scored state never has an unresolved ABILITY either (Codex MAJOR — R4 by a new route)', () => {
     // `resolveCombat` drained only `declareBlock`/`assignPartyDamage`, so a `chooseMode → chooseTargets` chain
     // reached `evaluate` with the ability UNRESOLVED: the cast is priced as a body that did nothing, exactly the
