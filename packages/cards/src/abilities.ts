@@ -722,14 +722,31 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
  * app — which imports `data/cards.json` directly because the package index reads the file with `node:fs`
  * (see `apps/web/src/deck.ts`) — can call this and play the SAME ability game the CLI does.
  */
+/**
+ * Clauses left unimplemented ON PURPOSE, because nothing in this pool can make them matter.
+ *
+ * Each entry is a claim about the whole card pool, and `abilities.test.ts` proves it — if a future card adds
+ * the effect that would make one of these reachable, that test fails and the entry must go, taking the
+ * suppressed warning with it. Nothing is suppressed on the strength of this comment alone.
+ */
+export const INERT_CLAUSES: Record<string, { readonly count: number; readonly why: string }> = {
+  // "All cards in your Break Zone cannot be removed from the game by your opponent's Summons or abilities."
+  // `Effect` has no removal member, so no ability can remove anything from anyone's Break Zone. The engine's
+  // only removal is the `selfRemoveFromGame` COST — a card paying with itself, out of its own Break Zone,
+  // which is neither an opponent's doing nor something this clause would stop.
+  '27-126S': { count: 1, why: "no effect in the pool removes a card from the game; the only removal is a card's own cost" },
+}
+
 export function withAbilities(defs: readonly CardDef[]): CardDef[] {
   return defs.map((def) => {
     const abilities = ABILITIES[def.code]
     const clauses = ABILITY_CLAUSES[def.code]
+    const inert = INERT_CLAUSES[def.code]
     return {
       ...def,
       ...(abilities ? { abilities } : {}),
       ...(clauses === undefined ? {} : { abilityClauses: clauses }),
+      ...(inert === undefined ? {} : { inertClauses: inert.count }),
     }
   })
 }

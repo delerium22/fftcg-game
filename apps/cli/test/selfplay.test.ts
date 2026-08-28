@@ -16,7 +16,12 @@ describe('self-play with the real Vol. 2 pool', () => {
     expect(r.failures).toEqual([])
     expect(r.completed).toBe(20)
     expect(r.wins[0] + r.wins[1] + r.draws).toBe(20)
-    expect(r.unimplementedAbilities).toBeGreaterThan(0)   // proves the warning path fires on real cards
+    // ZERO, and that is the claim: every printed clause in this pool is either implemented or proven inert
+    // (see INERT_CLAUSES). This used to assert `> 0` to prove the warning path fires — Sphene's static was
+    // the last card keeping that true, and it warned about a clause nothing in the pool can reach. The
+    // warning path is still proven, on synthetic defs, in the engine's own per-clause coverage tests.
+    // If a future card arrives short a clause, this fails, which is the more useful thing to be told.
+    expect(r.unimplementedAbilities, 'a printed clause is unimplemented and not declared inert').toBe(0)
     expect(r.agents).toEqual(['random', 'random'])
     expect(r.search).toEqual([null, null])                // D-A4: no search ran, so no counters — not zeros
   })

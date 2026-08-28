@@ -859,7 +859,9 @@ export function dispatchTrigger(state: GameState, def: CardDef, card: CardId, co
 export function warnUnimplemented(def: CardDef, card: CardId, events: Event[]): void {
   const printed = def.abilityClauses ?? (def.hasAbilities ? 1 : 0)
   const implemented = def.abilities?.length ?? 0
-  const missing = Math.max(0, printed - implemented)
+  // `inertClauses` are unimplemented AND unreachable, so they are not missing in any sense the player can
+  // observe — see `CardDef.inertClauses`, and the proof obligation the cards package carries for each one.
+  const missing = Math.max(0, printed - implemented - (def.inertClauses ?? 0))
   if (missing === 0) return
   if (implemented === 0) events.push({ type: 'unimplementedAbility', card, code: def.code })
   else events.push({ type: 'unimplementedAbility', card, code: def.code, clauses: missing })

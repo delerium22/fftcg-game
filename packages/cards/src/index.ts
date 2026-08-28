@@ -20,4 +20,4 @@ export function cardDb(): Map<string, CardDef> {
 }
 
 export { parseDeckFile } from './deck.js'
-export { ABILITIES, ABILITY_CLAUSES, withAbilities } from './abilities.js'
+export { ABILITIES, ABILITY_CLAUSES, INERT_CLAUSES, withAbilities } from './abilities.js'

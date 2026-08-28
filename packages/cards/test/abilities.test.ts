@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { actingPlayer, apply, applyChooseFirst, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
-import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
+import type { CardDef, CardId, Event, FieldCard, GameState, PlayerId } from '@fftcg/engine'
+import { actingPlayer, apply, applyChooseFirst, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
+import { ABILITIES, ABILITY_CLAUSES, INERT_CLAUSES, loadCards } from '../src/index.js'
 
 /**
  * The five rung-C1 clauses, tested against the REAL defs from `loadCards()` and the printed text quoted in
@@ -550,6 +550,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       const stripped: CardDef = { ...def }
       delete stripped.abilities
       delete stripped.abilityClauses
+      delete stripped.inertClauses
       expect(stripped).toEqual(source)
     }
   })
@@ -2028,5 +2029,96 @@ describe('the button text for an activated clause (found by playing)', () => {
         expect(out, `${ability.id}: lost "${sentence}"`).toContain(sentence.replace(/\.$/, ''))
       }
     }
+  })
+})
+
+describe('clauses left unimplemented ON PURPOSE (found by playing)', () => {
+  /**
+   * Sphene prints a static that protects your Break Zone from an opponent removing cards from the game. The
+   * pool cannot do that to anyone, so the clause is unreachable — but the log warned "Sphene has 1 more
+   * ability clause that is not implemented yet" in every game Sphene was cast, which tells the player
+   * something was lost when nothing was. A warning that cries wolf is worse than no warning, because the EX
+   * Burst ones are real.
+   *
+   * Suppressing it is a claim about the whole POOL, so these tests are the proof obligation, not the comment.
+   */
+
+  /**
+   * The codes this file actually PROVES inert, one test each. `INERT_CLAUSES` may not contain anything else:
+   * a reason string is prose, and prose cannot be checked (Codex MAJOR — a future entry could hide a real
+   * gap behind a long, false explanation). Adding an entry without adding its proof fails here.
+   */
+  const PROVEN = ['27-126S']
+
+  it('nothing is declared inert without a proof in this file', () => {
+    expect(Object.keys(INERT_CLAUSES).sort(), 'an inert entry has no proof test — add one, or drop the entry').toEqual([...PROVEN].sort())
+  })
+
+  it('every inert entry names a real card, a real gap, and a reason', () => {
+    const defs = new Map(loadCards().map((d) => [d.code, d]))
+    expect(Object.keys(INERT_CLAUSES).length, 'nothing is declared inert, so this proves nothing').toBeGreaterThan(0)
+    for (const [code, entry] of Object.entries(INERT_CLAUSES) as [string, { count: number; why: string }][]) {
+      const def = defs.get(code)
+      expect(def, `${code} is not in the pool`).toBeDefined()
+      expect(entry.why.length, `${code} suppresses a warning without saying why`).toBeGreaterThan(20)
+      const printed = def!.abilityClauses ?? (def!.hasAbilities ? 1 : 0)
+      const implemented = def!.abilities?.length ?? 0
+      // Cannot declare more clauses inert than are actually missing — that would suppress a real gap.
+      expect(printed - implemented, `${code} declares ${entry.count} inert but only ${printed - implemented} are unimplemented`)
+        .toBeGreaterThanOrEqual(entry.count)
+    }
+  })
+
+  it("PROOF for Sphene: only a card's OWN activation cost can remove anything from the game", () => {
+    // The claim is about REACHABILITY, so the guard watches the transition, not the vocabulary. An earlier
+    // version of this walked ability ASTs rejecting effect kinds matching /remove/i, and Codex broke it in
+    // one line: `{ kind: 'moveCard', to: 'removedFromGame' }` is a removal that never says "remove". A
+    // `banish` effect, a generic `moveToZone`, a rule process or an EX Burst writing the zone directly would
+    // all have passed too — so the guarantee the comment claimed was simply false.
+    //
+    // There is exactly one way into that zone, so that is what is pinned: the engine appends to
+    // `removedFromGame` in ONE file, and it appends the activating card itself, paying its own cost out of
+    // its own Break Zone. Neither an opponent's doing, nor anything Sphene's clause would stop.
+    const dir = new URL('../../engine/src/', import.meta.url)
+    const APPEND = /removedFromGame:\s*\[\s*\.\.\./          // an append, not `[]` construction or a copy
+    const writers = readdirSync(dir).filter((f) => f.endsWith('.ts'))
+      .filter((f) => APPEND.test(readFileSync(new URL(f, dir), 'utf8')))
+    expect(writers.length, 'no file appends to removedFromGame at all — the pattern has drifted').toBeGreaterThan(0)
+    expect(writers, "a new path removes cards from the game — revisit INERT_CLAUSES['27-126S']").toEqual(['activate.ts'])
+
+    const activate = readFileSync(new URL('activate.ts', dir), 'utf8')
+    const line = activate.split('\n').find((l) => APPEND.test(l))!
+    expect(line, 'the removal no longer appends the activating card itself').toContain('source')
+    expect(activate, 'the removal is no longer gated on the self-cost').toContain('selfRemoveFromGame')
+
+    // And the secondary check the AST walk was always good for: the costs that DO remove are self-costs paid
+    // from the card's own Break Zone.
+    for (const clauses of Object.values(ABILITIES)) {
+      for (const a of clauses) {
+        if (a.trigger.kind !== 'activated' || a.trigger.cost.selfRemoveFromGame !== true) continue
+        expect(a.trigger.sourceZone, `${a.id} removes itself from somewhere other than its own Break Zone`).toBe('breakZone')
+      }
+    }
+  })
+
+  it('Sphene no longer warns, and a card with a REAL gap still does', () => {
+    const defs = loadCards()
+    const sphene = defs.find((d) => d.code === '27-126S')!
+    const events: Event[] = []
+    warnUnimplemented(sphene, 1 as CardId, events)
+    expect(events, 'Sphene still warns about a clause that cannot do anything').toEqual([])
+
+    // The suppression must be surgical: the same card with the inert marker removed warns again, and so does
+    // any card that really is short a clause.
+    const unmarked: CardDef = { ...sphene, inertClauses: 0 }
+    const stillWarns: Event[] = []
+    warnUnimplemented(unmarked, 1 as CardId, stillWarns)
+    expect(stillWarns, 'the suppression is not doing the work — Sphene was silent for some other reason').toHaveLength(1)
+
+    const genuinelyShort: CardDef = { ...sphene, abilityClauses: 5, inertClauses: 1 }
+    const short: Event[] = []
+    warnUnimplemented(genuinelyShort, 1 as CardId, short)
+    expect(short).toHaveLength(1)
+    expect(short[0]?.type === 'unimplementedAbility' && short[0].clauses, 'the inert clause was not subtracted from a real gap').toBe(3)
   })
 })

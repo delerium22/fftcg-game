@@ -17,7 +17,10 @@ marked below with what it changed, because the reasons are the substance of this
   Summons or abilities") is a **no-op in this pool**. The only removal anywhere is Undead Princess paying
   her own `selfRemoveFromGame` cost — the controller's own card, not "by your opponent's". Implementing it
   means adding an enforcement point to a code path with no caller: the "static that nothing consults" this
-  project has already declined three times. It stays unimplemented and keeps warning; the README says why.
+  project has already declined three times. It stays unimplemented.
+  **Superseded 2026-08-29:** it no longer WARNS either. Found by playing — the amber line fired in every game
+  Sphene was cast, telling the player something was lost when nothing was. It is now declared inert in
+  `INERT_CLAUSES`, with a test proving the engine has exactly one path into the removed-from-game zone.
 - **Prishe's "when chosen"** is order-critical: a Summon choosing a 5000 Prishe and dealing 5000 kills it
   unless the +2000 lands FIRST. With no stack (MVP0), the choosing ability must pause mid-frame while the
   pump resolves — the agenda preemption deferred as C2-13. Implementing it without that ordering would be
@@ -135,4 +138,5 @@ per-instance; a stale un-pruned history entry; and code-only key encoding.
 ## What stays unimplemented after this rung
 
 26 of 28. Sphene's static (no-op in this pool) and Prishe's "when chosen" (agenda preemption, C2-13). The
-README states both; the in-game log keeps warning on those cards.
+README states both; the in-game log kept warning on those cards. **Superseded 2026-08-29** for Sphene's
+static, which is now proven inert and silent — see `INERT_CLAUSES`.

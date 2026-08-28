@@ -18,11 +18,18 @@ server.
 The browser opponent is the **ISMCTS search**, running in a Web Worker so the board never freezes
 while it thinks (rung D2). It beats the heuristic agent **78.3 %** over 120 mirrored games. If the
 worker fails for any reason the game falls back to the heuristic agent permanently and says so in
-the log, in amber — a weaker opponent is never silent.
+the log, in amber — a weaker opponent is never silent. A clause proven unreachable does NOT warn: a
+warning that fires when nothing was lost teaches the player to ignore the ones that matter, and the EX
+Burst warnings matter. Each such suppression is a claim about the pool that `packages/cards` proves.
 
-Card abilities are **partly** implemented: **27 of the starter deck's 28 printed ability clauses,
-across 18 of its 19 cards**. Every unimplemented clause plays as if its text box were blank, and the
-game log says so in amber whenever such a card hits the field, so the caveat is visible in play
+Card abilities are implemented to **27 of the starter deck's 28 printed ability clauses**. The 28th —
+Sphene's "cards in your Break Zone cannot be removed from the game by your opponent" — is left out
+deliberately, because nothing in this pool can remove a card from anyone's Break Zone: the engine's only
+removal is a card paying its OWN activation cost out of its own Break Zone. It plays as if its text box
+were blank, and that is indistinguishable from playing it correctly.
+
+An unimplemented clause plays as if its text box were blank, and the game log says so in amber whenever
+such a card hits the field, so the caveat is visible in play
 rather than a silent surprise.
 
 Eight of those twenty-seven are **activated abilities** — ones you choose to use, paying a cost in CP,
