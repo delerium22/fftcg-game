@@ -119,20 +119,22 @@ Measured strength, all on seeded runs:
 |---|---|
 | ISMCTS vs greedy, 120 mirrored games, 200 iterations | **78.3 %**, CI95 [70.8, 85.0] |
 | Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
-| ISMCTS in the browser (production build, Apple Silicon) | p50 **152 ms**, p95 240 ms per decision |
+| ISMCTS in the browser (production build, Apple Silicon) | p50 **454 ms**, p95 1351 ms per decision |
 
 **The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; re-run
 with the same command at the current HEAD it is 78.3 %, and 90.0 % now sits outside the confidence
 interval, so this is not sampling noise. What changed in between is the CARD POOL: rungs C5–C10 added
-removal, search, a Break-Zone retrieve and several combat tricks. Two plausible causes, neither of them
-yet tested — a fixed 200-iteration budget covers a smaller share of a wider tree, and games now run 13.6
-turns, giving a search fewer turns to compound an edge. They are stated as hypotheses because that is what
-they are; the measurement is the fact.
+removal, search, a Break-Zone retrieve and several combat tricks. The leading explanation — that a fixed
+200-iteration budget now covers a smaller share of a wider tree — is tested below and holds up. A second,
+untested one is that games now run 13.6 turns, giving a search fewer turns to compound an edge.
 
 Full breakdowns: [`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`](docs/superpowers/specs/2026-08-26-heuristic-ai-design.md)
 (greedy) and [`docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md`](docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md)
-(ISMCTS), whose figures are the ones measured when those rungs landed. The 200-iteration budget was chosen because the browser comfortably affords it, **not** because it
-was calibrated for strength. That caveat used to end "more iterations have not been shown to be worth
+(ISMCTS), whose figures are the ones measured when those rungs landed.
+
+The 200-iteration budget was chosen because the browser comfortably afforded it at the time, **not**
+because it was calibrated for strength — and it no longer affords it as comfortably as that sentence
+implied. That caveat used to end "more iterations have not been shown to be worth
 their latency"; they now have been. Over the same 20 seed pairs, changing only the budget:
 
 | Budget | Result |
@@ -144,7 +146,21 @@ At 600 the search lands back on the figure it scored before the card pool widene
 the branching explanation the likely one: the search did not get worse, its budget stopped covering the
 tree. The intervals overlap, so on two independent runs alone this is support rather than proof — but it
 is the same seeds and the same opponent, and the point estimate moves ten points in the predicted
-direction. What it costs in the browser has not been measured, so the shipped default is still 200.
+direction.
+
+**The default stays 200 anyway, and the measurement is why.** The browser latency above was re-measured
+with `scripts/measure-worker.js` at the same time: p50 454 ms, p95 **1351 ms** over 65 searches across
+four games on a production preview. That row used to read p50 152 ms / p95 240 ms, so it had rotted by the
+same cause and further — the widening pool made every iteration more expensive. Tripling the budget to buy
+ten points of strength would put p95 near four seconds. The numbers carry the harness's own instrumentation
+overhead and come from one machine under a scripted driver, so treat them as indicative; they are not
+5.6x-off-the-old-figure indicative by accident.
+
+**The real lesson is that a fixed ITERATION count is the wrong control variable.** It holds work constant
+and lets responsiveness drift, which is exactly backwards for an opponent a human waits on — and it is why
+both of these numbers rotted silently as cards were added. A time-boxed budget ("search until 250 ms, then
+answer") holds responsiveness constant instead, spends more iterations on cheap states than expensive ones,
+and cannot rot as the pool grows. That is what most MCTS engines do, and it is the obvious next rung.
 
 ## Card images
 
