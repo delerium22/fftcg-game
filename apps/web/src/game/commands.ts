@@ -26,8 +26,28 @@ function defFor(v: PlayerView, id: CardId): CardDef | undefined {
 }
 
 /** Card names only — the board already shows the art and the id, so the CLI's `Name (CODE)` is noise in a GUI. */
-function name(v: PlayerView, id: CardId): string {
+function bareName(v: PlayerView, id: CardId): string {
   return defFor(v, id)?.name ?? v.cards[id]?.code ?? `#${id}`
+}
+
+/**
+ * The card's name, qualified with whose it is when the OTHER field holds one of the same name.
+ *
+ * Both seats play the same deck, so a mirror is ordinary rather than exotic: found by playing, with a Shantotto
+ * on each side, where "Give Haste to Shantotto" named neither of them. The clause was right — its own text says
+ * "a Forward other than Shantotto", so it had to be the other copy — but the log gave the player no way to see
+ * that, and a log that cannot be checked against the board is worse than no log.
+ *
+ * Only FIELD cards are qualified. A card in hand or the Break Zone is not one of a facing pair the player is
+ * trying to tell apart, and "Cast your Shantotto" says nothing the sentence did not already.
+ */
+function name(v: PlayerView, id: CardId): string {
+  const bare = bareName(v, id)
+  const where = whereIs(v, id)
+  if (!where || where.zone === 'breakZone') return bare
+  const other = (1 - where.p) as PlayerId
+  const twin = [...v.fields[other].forwards, ...v.fields[other].backups].some((c) => bareName(v, c.id) === bare)
+  return twin ? `${possessive(v, where.p)} ${bare}` : bare
 }
 
 /** "A", "A and B", "A, B and C" — target sets are read aloud off a button, so a bare comma list reads badly. */
@@ -71,10 +91,11 @@ export function describeTriggerCause(v: PlayerView, ev: TriggerCause): string {
   // Not every trip to the Break Zone is a break. A card put there to PAY for its own ability was not broken
   // (§15.1.1.3.2), and reporting it as one would tell the player something about the board that is false —
   // it also reads as though their own card had been destroyed by the opponent.
-  if (ev.kind === 'enteredField') return `${possessive(v, ev.controller)} ${name(v, ev.card)} entered the field`
+  // `bareName` here and below: the possessive is already in the sentence, and `name` would double it.
+  if (ev.kind === 'enteredField') return `${possessive(v, ev.controller)} ${bareName(v, ev.card)} entered the field`
   if (ev.kind === 'zoneChange') {
     const how = ev.reason === 'cost' ? 'was put into the Break Zone' : 'was broken'
-    return `${possessive(v, ev.controller)} ${name(v, ev.card)} ${how}`
+    return `${possessive(v, ev.controller)} ${bareName(v, ev.card)} ${how}`
   }
   if (ev.victim !== null) return `${name(v, ev.source)} dealt damage to ${ev.victim === v.me ? 'you' : 'the AI'}`
   return `${name(v, ev.source)} dealt ${ev.amount} damage to ${ev.target === null ? 'a Forward' : name(v, ev.target)}`

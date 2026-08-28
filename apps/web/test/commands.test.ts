@@ -8,7 +8,7 @@ import {
 import { GreedyAgent, preferredPayment } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { makeGame, withField } from '../../../packages/engine/test/helpers.js'
-import { buildChoiceSet, describeChoice, fieldCardDisplay, preferredChoices, promptFor, sameCommand, samePayment } from '../src/game/commands.js'
+import { buildChoiceSet, describeChoice, describeTriggerCause, fieldCardDisplay, preferredChoices, promptFor, sameCommand, samePayment } from '../src/game/commands.js'
 import { AI, HUMAN } from '../src/game/types.js'
 import { Card } from '../src/ui/Card.js'
 import { stepAi } from '../src/game/useGame.js'
@@ -448,6 +448,46 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
     v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
     expect(describeChoice(v, targets([904]))).toBe('Give Haste to Cloud')
     expect(promptFor(v)).toBe('Noel: choose 1 Forward the AI controls to give Haste and dull')
+  })
+
+  it('says WHOSE card when the same name is on both fields', () => {
+    // Found by playing. Both seats play the same deck, so a mirror is ordinary: with a Shantotto on each side
+    // the log read "Give Haste to Shantotto" and named neither. The clause was right — its own text says "a
+    // Forward other than Shantotto", so it could only be the other copy — but nothing let the player check
+    // that against the board.
+    const HASTE: Ability = {
+      id: 'X:haste', trigger: { kind: 'enterField' },
+      text: 'Choose 1 Forward. It gains Haste.',
+      effects: [{
+        kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' },
+        then: [{ kind: 'grantKeyword', keyword: 'haste' }],
+      }],
+    }
+    const v = suspendedView(HASTE, NOEL)
+    const theirs = instance(v, 906, CLOUD, AI)
+    const mine = instance(v, 907, CLOUD, HUMAN)
+    const lone = instance(v, 908, BILLY, AI)
+    v.fields[AI].forwards = [fieldCard(theirs), fieldCard(lone)]
+    v.fields[HUMAN].forwards = [fieldCard(mine)]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [theirs, mine, lone] }
+
+    expect(describeChoice(v, targets([906]))).toBe("Give Haste to the AI's Cloud")
+    expect(describeChoice(v, targets([907]))).toBe('Give Haste to your Cloud')
+    // A card with no twin is NOT qualified — the point is to separate a facing pair, not to annotate the board.
+    expect(describeChoice(v, targets([908]))).toBe(`Give Haste to ${v.defs[BILLY]!.name}`)
+  })
+
+  it('does not say whose card TWICE when the sentence already does', () => {
+    // `describeTriggerCause` leads with the possessive itself, so it reads the bare name — otherwise the
+    // qualification the test above added would produce "your your Cloud was broken".
+    const v = suspendedView(DULL_EXACTLY_1, NOEL)
+    const theirs = instance(v, 909, CLOUD, AI)
+    const mine = instance(v, 910, CLOUD, HUMAN)
+    v.fields[AI].forwards = [fieldCard(theirs)]
+    v.fields[HUMAN].forwards = [fieldCard(mine)]
+    const line = describeTriggerCause(v, { kind: 'zoneChange', card: mine, controller: HUMAN })
+    expect(line).toBe(`your ${v.defs[CLOUD]!.name} was broken`)
+    expect(line).not.toContain('your your')
   })
 
   it('names EVERY effect the choice applies, not just the first', () => {
