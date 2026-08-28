@@ -5,7 +5,7 @@ import { loadCards } from '@fftcg/cards'
 import { actingPlayer, apply, createGame, legalCommands, viewFor } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { parseDeckFile } from '../src/deck.js'
-import { MAX_ITERATIONS, describeAgentSpec, makeAgent, parseAgentSpec, parseDepth, parseIterations, parsePositiveInt, type AgentSpec } from '../src/agents.js'
+import { MAX_ITERATIONS, MAX_ROLLOUT_CAP, describeAgentSpec, makeAgent, parseAgentSpec, parseDepth, parseIterations, parsePositiveInt, parseRolloutCap, type AgentSpec } from '../src/agents.js'
 import { selfPlay } from '../src/selfplay.js'
 
 const deck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
@@ -63,6 +63,50 @@ describe('D1: parsePositiveInt (shared by ismcts:N, --iterations, --pairs, --gam
   it('parseIterations applies the shared cap', () => {
     expect(parseIterations('500')).toBe(500)
     expect(() => parseIterations(String(MAX_ITERATIONS + 1))).toThrow()
+  })
+})
+
+describe('the rollout cap is a measurable dial (spec D5)', () => {
+  it('parseRolloutCap validates like every other unbounded flag', () => {
+    expect(parseRolloutCap('12')).toBe(12)
+    expect(() => parseRolloutCap('0')).toThrow()
+    expect(() => parseRolloutCap('1.5')).toThrow()
+    expect(() => parseRolloutCap(' 8')).toThrow()
+    expect(() => parseRolloutCap(String(MAX_ROLLOUT_CAP + 1))).toThrow()
+  })
+
+  it('is part of the agent LABEL, so a tournament says which cap produced its number', () => {
+    // Without this, two runs at different caps report the same `agents` field and the measurements cannot
+    // be told apart afterwards — which makes them useless for comparing against each other.
+    expect(describeAgentSpec({ kind: 'ismcts', iterations: 200, rolloutCap: 6 })).toBe('ismcts:200/cap6')
+    expect(describeAgentSpec({ kind: 'ismcts', iterations: 200 })).toBe('ismcts:200')
+  })
+
+  it('actually reaches the search, and a smaller cap does less rollout work', () => {
+    // The label and the parser can both be right while the value never reaches `searchIsmcts`. The only
+    // proof that it does is the work actually falling, which `rolloutApplies` counts.
+    const d = decks()
+    const work = (cap: number | undefined): number => {
+      const spec: AgentSpec = cap === undefined
+        ? { kind: 'ismcts', iterations: 30 }
+        : { kind: 'ismcts', iterations: 30, rolloutCap: cap }
+      const agent = makeAgent(spec, 1, d) as IsmctsAgent
+      let s = createGame({ seed: 5, decks: d, defs: loadCards() })
+      const p = actingPlayer(s) as 0 | 1
+      s = apply(s, { type: 'chooseFirst', player: p, goFirst: true }).state
+      // Mulligan order follows whoever is asked; taking it from the state avoids "player 0 is not acting".
+      for (let i = 0; i < 2; i++) {
+        const m = actingPlayer(s) as 0 | 1
+        s = apply(s, { type: 'mulligan', player: m, redraw: false }).state
+      }
+      const actor = actingPlayer(s) as 0 | 1
+      agent.decide(viewFor(s, actor), legalCommands(s, actor))
+      return agent.lastDiagnostics?.rolloutApplies ?? -1
+    }
+    const wide = work(undefined)
+    const narrow = work(2)
+    expect(wide, 'no rollout work was recorded — the probe measures nothing').toBeGreaterThan(0)
+    expect(narrow, 'a smaller cap did not reduce rollout work, so the flag never reaches the search').toBeLessThan(wide)
   })
 })
 

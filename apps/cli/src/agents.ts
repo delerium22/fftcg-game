@@ -3,7 +3,7 @@ import { GreedyAgent, IsmctsAgent, RandomAgent, type Agent } from '@fftcg/ai'
 export type AgentSpec =
   | { kind: 'random' }
   | { kind: 'greedy'; depth?: 0 | 1 | 2 }
-  | { kind: 'ismcts'; iterations?: number }
+  | { kind: 'ismcts'; iterations?: number; rolloutCap?: number }
 
 /** Upper bound on `ismcts:N`. Not a performance claim — a typo guard, so `ismcts:100000000` fails at the flag
  *  rather than after an hour of wall clock. D1's measured floor is ~107 µs per determinisation. */
@@ -31,6 +31,13 @@ export function parsePositiveInt(s: string, what: string, max: number): number {
 
 export const parseIterations = (s: string): number => parsePositiveInt(s, 'iterations', MAX_ITERATIONS)
 
+/**
+ * Upper bound on `--rollout-cap`. A rollout walks COMMANDS, and a game is over long before 4096 of them, so
+ * anything larger is a typo rather than an intent — the same typo-guard role `MAX_ITERATIONS` plays.
+ */
+export const MAX_ROLLOUT_CAP = 4096
+export const parseRolloutCap = (s: string): number => parsePositiveInt(s, 'rollout cap', MAX_ROLLOUT_CAP)
+
 /** Parses `random | greedy | greedy:0..2 | ismcts | ismcts:N`; throws on anything else. */
 export function parseAgentSpec(s: string): AgentSpec {
   if (s === 'random') return { kind: 'random' }
@@ -46,7 +53,10 @@ export function parseAgentSpec(s: string): AgentSpec {
 export function describeAgentSpec(spec: AgentSpec): string {
   if (spec.kind === 'random') return 'random'
   if (spec.kind === 'greedy') return spec.depth === undefined ? 'greedy' : `greedy:${spec.depth}`
-  return spec.iterations === undefined ? 'ismcts' : `ismcts:${spec.iterations}`
+  // The rollout cap is part of the agent's IDENTITY, not a hidden setting: a tournament that cannot say
+  // which cap produced its number is a measurement nobody can compare against another one.
+  const base = spec.iterations === undefined ? 'ismcts' : `ismcts:${spec.iterations}`
+  return spec.rolloutCap === undefined ? base : `${base}/cap${spec.rolloutCap}`
 }
 
 /**
@@ -62,5 +72,9 @@ export function makeAgent(spec: AgentSpec, seed: number, decks: [string[], strin
   }
   // exactOptionalPropertyTypes: an explicit `iterations: undefined` is not the same as an absent key, so the
   // default has to come from the search's own options rather than from a spread of a possibly-undefined field.
-  return new IsmctsAgent(spec.iterations === undefined ? { seed, decks } : { seed, decks, iterations: spec.iterations })
+  return new IsmctsAgent({
+    seed, decks,
+    ...(spec.iterations === undefined ? {} : { iterations: spec.iterations }),
+    ...(spec.rolloutCap === undefined ? {} : { rolloutCommandCap: spec.rolloutCap }),
+  })
 }
