@@ -634,6 +634,33 @@ function suspendedNode(state: GameState): { frame: Frame; node: Effect } {
  * decides what happens — hand-writing the power change here would bypass `addPower`, the engine's single
  * power-modifying authority, and let the card's text and the code drift apart.
  */
+/** The effect kinds that can raise a `Pending`. A shape containing any of them cannot be applied inline. */
+const SUSPENDING_EFFECTS: ReadonlySet<Effect['kind']> = new Set(['chooseTargets', 'chooseModes', 'lookAtDeck'])
+
+/**
+ * Reject an `observesChosen` clause whose effects could suspend — by SHAPE, before running anything.
+ *
+ * Checking `ctx.suspend` afterwards is not the same test and was the first version of this guard: a
+ * `chooseTargets` with no legal candidates does not suspend, it reports `abilityNoLegalTarget` and returns.
+ * So a mis-authored clause passed on an empty board and threw later, mid-effect, the first time a candidate
+ * existed — with earlier effects in the same clause already applied. Validity is a property of the AST, not
+ * of today's board, so it is decided from the AST.
+ */
+function assertCannotSuspend(ability: Ability): void {
+  const walk = (effects: readonly Effect[]): void => {
+    for (const e of effects) {
+      if (SUSPENDING_EFFECTS.has(e.kind)) {
+        throw new Error(`ability ${ability.id}: an observesChosen clause must not contain ${e.kind} — it is applied inline and has nowhere to suspend to (spec C11)`)
+      }
+      if (e.kind === 'chooseTargets') walk(e.then)
+      else if (e.kind === 'forEach') walk(e.do)
+      else if (e.kind === 'onSubject') walk(e.do)
+      else if (e.kind === 'chooseModes') for (const m of e.modes) walk(m.effects)
+    }
+  }
+  walk(ability.effects)
+}
+
 export function dispatchChosenTriggers(state: GameState, chosen: readonly CardId[], events: Event[]): GameState {
   let s = state
   for (const id of chosen) {
@@ -641,8 +668,11 @@ export function dispatchChosenTriggers(state: GameState, chosen: readonly CardId
     if (!loc) continue   // only a card ON THE FIELD can be pumped; a Break Zone target has no FieldCard
     for (const ability of defOf(s, id).abilities ?? []) {
       if (ability.trigger.kind !== 'observesChosen') continue
+      assertCannotSuspend(ability)
       // The controller is whoever's field the chosen card is on — NOT whoever did the choosing. An
-      // opponent's Summon targeting Prishe still pumps Prishe, and her controller is the one who owns her.
+      // opponent's Summon targeting Prishe still pumps Prishe, controlled by the player whose field she is
+      // on (CR §11.8.5). `findFieldCard`'s `owner` is that field HOLDER, i.e. the controller; it coincides
+      // with `CardInstance.owner` throughout this pool because nothing here changes control.
       events.push({ type: 'abilityTriggered', player: loc.owner, card: id, abilityId: ability.id })
       const ctx: Ctx = {
         state: s, events, source: id, controller: loc.owner, abilityId: ability.id,
@@ -651,7 +681,9 @@ export function dispatchChosenTriggers(state: GameState, chosen: readonly CardId
       }
       runEffects(ctx, ability.effects, 0, false)
       if (ctx.suspend) {
-        throw new Error(`ability ${ability.id}: an observesChosen clause must not suspend — it is applied inline (spec C11)`)
+        // Unreachable given the shape check above; kept as the belt to that braces, because a new suspending
+        // effect kind added to the executor and not to `SUSPENDING_EFFECTS` would otherwise resume here.
+        throw new Error(`ability ${ability.id}: an observesChosen clause suspended despite passing the shape check (spec C11)`)
       }
       s = { ...ctx.state, resolution: { ...ctx.state.resolution, steps: ctx.steps } }
     }

@@ -1894,6 +1894,76 @@ describe('22-068R Prishe — "When Prishe is chosen by a Summon or an ability, P
     expect(powerOfId(ended, prishe), 'the pump outlived the turn').toBe(5000)
   })
 
+  it('C11-A4 pumps TWICE when ONE frame chooses her in two modal nodes', () => {
+    // The same-frame half of the cardinality criterion, which the first pass substituted two separate
+    // activations for — two FRAMES, which a per-frame dedupe would also pass. Ramuh selects up to 2 of its
+    // 3 modes and each mode raises its OWN target choice, so choosing Prishe twice inside one frame is
+    // reachable, and an implementation deduplicating per frame pumps her once.
+    let s = makeGame()
+    let prishe: CardId; let ramuh: CardId
+    ;[s, prishe] = withField(s, 0, 'forwards', '22-068R')
+    ;[s] = withCp(s, 0, Array<string>(2).fill(LIGHTNING_BACKUP))
+    ;[s, ramuh] = withHand(s, 0, '20-103H')
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castSummon' && c.card === ramuh)
+    expect(cast, 'Ramuh was not castable').toBeDefined()
+    let r = apply(s, cast!)
+    expect(r.state.pending?.kind).toBe('chooseMode')
+
+    // Modes 0 (dull) and 2 (Haste) both choose a Forward and neither damages her, so two choices land on
+    // the same Prishe inside one frame.
+    r = apply(r.state, { type: 'chooseMode', player: 0, modes: [0, 2] })
+    let choices = 0
+    while (r.state.pending?.kind === 'chooseTargets') {
+      const pick = legalCommands(r.state, 0).find((c) => c.type === 'chooseTargets' && c.targets.includes(prishe))
+      expect(pick, `target choice ${choices + 1} could not take Prishe`).toBeDefined()
+      r = apply(r.state, pick!)
+      choices++
+    }
+    expect(choices, 'the fixture did not produce TWO target choices in one frame').toBe(2)
+    expect(powerOfId(r.state, prishe), 'two choices in one frame pumped her only once').toBe(5000 + 4000)
+  })
+
+  it('C11-A3 (cont.) an `onSubject` binding is NOT a choice — Prishe pumps once, not twice', () => {
+    // Luso's c2 mode 1 CHOOSES a Forward and deals it 3000; that damage fires his c1, whose `onSubject`
+    // binds the SAME card ("break it") — a card the printed text names, which nobody chose. So Prishe must
+    // pump exactly once, from the choice. Hooking chosen-dispatch into the `onSubject` binding would pump
+    // her twice, and every other test here would stay green.
+    let s = makeGame()
+    let luso: CardId; let prishe: CardId
+    ;[s, luso] = withField(s, 0, 'forwards', '27-125S')     // earth 3000
+    ;[s, prishe] = withField(s, 1, 'forwards', '22-068R')   // 5000, so 3000 is not lethal even unpumped
+    const hit = attackUnblocked(s, [luso])
+    let t = apply(hit.state, { type: 'chooseMode', player: 0, modes: [0] })
+
+    const pick = legalCommands(t.state, 0).find((c) => c.type === 'chooseTargets' && c.targets.includes(prishe))
+    expect(pick, 'Luso could not choose Prishe').toBeDefined()
+    t = apply(t.state, pick!)
+
+    // She IS broken — c1's "break it" is unconditional, not damage-based — and that is what proves the
+    // `onSubject` path actually ran. What it must not have done is count as a second choosing.
+    expect(t.state.players[1].breakZone, 'the onSubject break never happened, so this proves nothing').toContain(prishe)
+    const pumps = t.events.filter((e) => e.type === 'abilityTriggered' && e.abilityId === '22-068R:chosen')
+    expect(pumps, 'the onSubject binding was treated as a second choosing').toHaveLength(1)
+    const bumps = t.events.filter((e) => e.type === 'powerModified' && e.card === prishe)
+    expect(bumps).toHaveLength(1)
+    ok(t.state)
+  })
+
+  it('C11-A5 emits the trigger BEFORE the power change, in the real event stream', () => {
+    // The narrator test hands `eventLines` the two events already in order, so it cannot see the engine
+    // emitting them the other way round. This reads the order off a real `apply`.
+    const { s, prishe, card } = board('16-092C', Array<string>(5).fill(LIGHTNING_BACKUP), 1, 0)
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === card)
+    const r = apply(s, cast!)
+    const pick = legalCommands(r.state, 0).find((c) => c.type === 'chooseTargets' && c.targets.includes(prishe))
+    const done = apply(r.state, pick!)
+    const trigger = done.events.findIndex((e) => e.type === 'abilityTriggered' && e.abilityId === '22-068R:chosen')
+    const power = done.events.findIndex((e) => e.type === 'powerModified' && e.card === prishe)
+    expect(trigger, 'no trigger event').toBeGreaterThanOrEqual(0)
+    expect(power, 'no power event').toBeGreaterThanOrEqual(0)
+    expect(trigger, 'the power change was announced before the clause that caused it').toBeLessThan(power)
+  })
+
   it('C11-A6 does not mutate the state it was handed', () => {
     // An in-place `powerBonus += 2000` passes every test above while corrupting sibling search branches,
     // because `searchView` shares structure with the live state and `apply` is relied on to be immutable.
