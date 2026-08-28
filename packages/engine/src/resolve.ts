@@ -235,7 +235,7 @@ function step(ctx: Ctx): void {
 
 function noLegalTarget(ctx: Ctx): void {
   // Spec C1-7: an ability that cannot legally resolve is a NO-OP that logs, never an error.
-  ctx.events.push({ type: 'abilityNoLegalTarget', card: ctx.source, abilityId: ctx.abilityId })
+  ctx.events.push({ type: 'abilityNoLegalTarget', card: ctx.source, abilityId: ctx.abilityId, controller: ctx.controller })
 }
 
 function runEffects(ctx: Ctx, effects: readonly Effect[], depth: number, onSpine: boolean): void {
@@ -333,6 +333,7 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       const pending: Extract<Pending, { kind: 'chooseFromDeck' }> = {
         kind: 'chooseFromDeck', player: ctx.controller,
         min: eff.take.min, max: eff.take.max, count: exposed.length, to: eff.to,
+        scope: eff.count === 'all' ? 'deck' : 'top',
         ...(eff.take.filter ? { filter: eff.take.filter } : {}),
       }
       // Asked through the SAME function that will validate the answer, and against the same state. Computing

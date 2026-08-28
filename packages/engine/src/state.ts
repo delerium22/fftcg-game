@@ -89,7 +89,12 @@ export type Pending =
   // `to` is where a picked card GOES. It is on the pending, not just on the effect, because the button the
   // player clicks has to say it: "Take Undead Princess" for a card that is about to be put onto the field
   // is a label that describes the wrong move.
-  | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; filter?: TargetFilter; to: 'hand' | 'field' }
+  //
+  // `scope` is the SEMANTIC shape of the look — a whole-deck search or a top-N peek. It is carried for the same
+  // reason `to` is: it cannot be recovered downstream. The UI read `count === deck.length` as "a search", which
+  // is equally true of a top-3 peek at a 3-card deck, so a peek was described as a search on exactly the turns
+  // a deck is running out (Codex MAJOR). Mirrors `deckExposed.scope`, and comes from the same `eff.count`.
+  | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; scope: 'deck' | 'top'; filter?: TargetFilter; to: 'hand' | 'field' }
 export interface GameResult { winner: PlayerId | null; reason: string }   // winner null = draw
 export interface GameState {
   rng: Rng

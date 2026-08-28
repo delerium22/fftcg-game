@@ -301,7 +301,7 @@ describe('an ability with no legal target is a no-op that logs (spec C1-7)', () 
     const [t, events] = fire(s, src)   // the opponent controls no Forwards
     expect(t.pending).toBeNull()
     expect(t.resolution.active).toBeNull()
-    expect(events).toContainEqual({ type: 'abilityNoLegalTarget', card: src, abilityId: ID })
+    expect(events).toContainEqual({ type: 'abilityNoLegalTarget', card: src, abilityId: ID, controller: 0 })
     expect(JSON.stringify(t.players)).toBe(JSON.stringify(s.players))
     ok(t)
   })

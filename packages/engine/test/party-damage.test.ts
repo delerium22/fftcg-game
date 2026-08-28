@@ -195,7 +195,7 @@ describe('C2-A7: TargetFilter.types selects Characters out of the Break Zone (sp
 
   it('a Break Zone holding nothing but Summons is a logged no-op (spec C1-7)', () => {
     const { r } = prisheAfterDamage(['V-S1', 'V-S2'])
-    expect(r.events).toContainEqual({ type: 'abilityNoLegalTarget', card: r.state.players[0].forwards[0]?.id as CardId, abilityId: RETRIEVE })
+    expect(r.events).toContainEqual({ type: 'abilityNoLegalTarget', card: r.state.players[0].forwards[0]?.id as CardId, abilityId: RETRIEVE, controller: 0 })
     expect(r.state.pending).toBeNull()
     ok(r.state)
   })

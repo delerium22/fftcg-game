@@ -361,9 +361,10 @@ describe('GreedyAgent', () => {
       // The fizzle is asserted directly, not inferred from the score — the score is what it drives, not what it is.
       expect(dead!.fizzled, 'the dead mode did not report a fizzle').toBe(1)
       expect(live!.fizzled, 'the live mode fizzled, so the fixture is wrong').toBe(0)
-      expect(live!.score).toBeGreaterThan(dead!.score)
-      // ...and by a hair. A tie-break must never be able to outweigh a real evaluation difference.
-      expect(live!.score - dead!.score).toBeLessThan(1e-3)
+      // EXACTLY equal, not merely close: the tally is kept out of the score so a fizzle cannot move it, and
+      // that is what makes the tie-break provably unable to outweigh a real evaluation difference (Codex
+      // MINOR — subtracting an epsilon instead lost to a genuine +1e-7 advantage).
+      expect(live!.score, 'the tally leaked into the score').toBe(dead!.score)
     })
 
     it('greedyStep picks the live mode even though the dead one is offered first', () => {
@@ -409,7 +410,99 @@ describe('GreedyAgent', () => {
       const scores = scoreCandidates(s, [castOf(dead)!, castOf(plain)!], { me: 0, weights: ZERO_WEIGHTS, aggression: 0.5, depth: 0, owner: 0, maxSimulations: 400 })
       expect(scores[0]!.fizzled, 'the fizzle inside the forced mode choice was not counted').toBe(1)
       expect(scores[1]!.fizzled).toBe(0)
-      expect(scores[1]!.score).toBeGreaterThan(scores[0]!.score)
+      expect(scores[1]!.score, 'the tally leaked into the score').toBe(scores[0]!.score)
+    })
+
+    it('a real evaluation advantage always beats the tie-break, however small', () => {
+      // The guarantee the arithmetic version could not make. Under weights where the live mode is worth a
+      // GENUINE but tiny amount less than the dead one, the dead one must still win: evaluation decides, and
+      // the fizzle count is consulted only when evaluation is exactly level.
+      // The live mode adds POWER rather than Haste, purely so the fixture has a lever `evaluate` definitely
+      // moves: granting Haste to a Forward that can already attack prices at exactly 0, which would make this
+      // a second copy of the tie test rather than a test of what breaks a tie.
+      const POWER_MODES: Ability = {
+        id: 'T-PWR:etb', trigger: { kind: 'enterField' },
+        text: 'When this Character enters the field, choose 1: give a Forward the opponent controls +1000 power; or give a Forward you control +1000 power.',
+        effects: [{
+          kind: 'chooseModes', min: 1, max: 1, modes: [
+            { label: 'Theirs', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'addPower', amount: 1000 }] }] },
+            { label: 'Yours', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'addPower', amount: 1000 }] }] },
+          ],
+        }],
+      }
+      const PWR_DEFS = [...VANILLA_POOL, makeDef({ code: 'T-PWR', cost: 2, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [POWER_MODES] })]
+      let s = withHandSize(makeGame({ defs: PWR_DEFS }), 0, 0)
+      let src: CardId
+      ;[s, src] = withField(s, 0, 'forwards', 'T-PWR')
+      s = drainResolution(enqueueTrigger(s, src, 0, POWER_MODES))[0]
+      expect(s.pending?.kind).toBe('chooseMode')
+      expect(s.players[1].forwards, 'mode 0 is only dead while the opponent has no Forwards').toHaveLength(0)
+
+      // Negative, so the mode that actually does something is genuinely — if absurdly — the worse play.
+      const w: Weights = { ...ZERO_WEIGHTS, temporaryPower: -1e-9 }
+      const scores = scoreCandidates(s, candidateCommands(s, 0), { me: 0, weights: w, aggression: 0.5, depth: 0, owner: 0, maxSimulations: 200 })
+      const dead = scores.find((sc) => sc.command.type === 'chooseMode' && sc.command.modes.join() === '0')!
+      const live = scores.find((sc) => sc.command.type === 'chooseMode' && sc.command.modes.join() === '1')!
+      expect(dead.fizzled).toBe(1)
+      expect(dead.score, 'the fixture no longer gives the dead mode a real advantage').toBeGreaterThan(live.score)
+      expect(greedyStep(s, 0, w, 0.5), 'the tie-break overrode a real evaluation difference').toEqual({ type: 'chooseMode', player: 0, modes: [0] })
+    })
+
+    it("does not charge the agent for the OPPONENT's ability finding nothing", () => {
+      // Codex MAJOR, with a repro: breaking an opponent's only Forward can strand THEIR observer trigger, and
+      // an unfiltered tally read that as the agent's own waste — so the agent avoided the break for exactly
+      // the reason it should have preferred it. The tally counts `controller === me` and nothing else.
+      // Every part of this is from the WATCHER's controller's point of view: it watches THEIR OWN Forwards go
+      // to the Break Zone, and then wants another of THEIR OWN. Breaking their only Forward therefore fires
+      // the clause and leaves it nothing to pick — a fizzle that belongs to them, caused by the agent.
+      const WATCHER: Ability = {
+        id: 'T-WATCH:watch',
+        trigger: { kind: 'observesZoneChange', from: 'field', to: 'breakZone', whose: 'self', of: 'forward' },
+        text: 'When a Forward you control is put into the Break Zone, choose 1 Forward you control. Dull it.',
+        effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'dull' }] }],
+      }
+      const ROOT: Ability = {
+        id: 'T-ROOT:modal', trigger: { kind: 'enterField' },
+        text: 'When this Character enters the field, choose 1: break a Forward the opponent controls; or dull one.',
+        effects: [{
+          kind: 'chooseModes', min: 1, max: 1, modes: [
+            { label: 'Break it', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'breakCard' }] }] },
+            { label: 'Dull it', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] },
+          ],
+        }],
+      }
+      const WATCH_DEFS = [...VANILLA_POOL,
+        makeDef({ code: 'T-WATCH', type: 'backup', power: null, hasAbilities: true, abilityClauses: 1, abilities: [WATCHER] }),
+        makeDef({ code: 'T-ROOT', hasAbilities: true, abilityClauses: 1, abilities: [ROOT] }),
+      ]
+      let s = withHandSize(makeGame({ defs: WATCH_DEFS }), 0, 0)
+      let src: CardId
+      ;[s, src] = withField(s, 0, 'forwards', 'T-ROOT')
+      ;[s] = withField(s, 1, 'backups', 'T-WATCH')   // the OPPONENT's watcher
+      ;[s] = withField(s, 1, 'forwards', 'V-F1')     // their only Forward: breaking it strands the watcher
+      s = drainResolution(enqueueTrigger(s, src, 0, ROOT))[0]
+      expect(s.pending?.kind, 'the fixture did not reach the mode choice').toBe('chooseMode')
+
+      const scores = scoreCandidates(s, candidateCommands(s, 0), { me: 0, weights: ZERO_WEIGHTS, aggression: 0.5, depth: 0, owner: 0, maxSimulations: 200 })
+      const brk = scores.find((sc) => sc.command.type === 'chooseMode' && sc.command.modes.join() === '0')!
+      expect(brk.fizzled, "the opponent's stranded watcher was charged to the agent").toBe(0)
+      // And the fixture really does strand it, so the zero above means "not counted", never "never happened".
+      // The chain is driven by hand because the break lands one choice AFTER the mode: `resolveForcedDecisions`
+      // returns a state, not the events, and the events are the whole point here.
+      let t = apply(s, brk.command)
+      const events = [...t.events]
+      for (let i = 0; i < 10 && t.state.pending; i++) {
+        const p = actingPlayer(t.state)
+        if (p === null) break
+        const c = greedyStep(t.state, p, ZERO_WEIGHTS, 0.5)
+        if (!c) break
+        t = apply(t.state, c)
+        events.push(...t.events)
+      }
+      expect(t.state.players[1].forwards, 'the break did not happen').toHaveLength(0)
+      const stranded = events.filter((e) => e.type === 'abilityNoLegalTarget' && e.abilityId === WATCHER.id)
+      expect(stranded, 'the watcher was never stranded, so the fixture proves nothing').toHaveLength(1)
+      expect(stranded[0]!.type === 'abilityNoLegalTarget' && stranded[0]!.controller, "the stranded clause is not the opponent's").toBe(1)
     })
 
     it('the ability actually resolves instead of announcing itself and stopping', () => {

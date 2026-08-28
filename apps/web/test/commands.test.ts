@@ -2,11 +2,12 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
-  actingPlayer, apply, createGame, legalCommands, viewFor,
+  actingPlayer, apply, createGame, drainResolution, enqueueTrigger, legalCommands, viewFor,
   type Ability, type CardDef, type CardId, type Command, type FieldCard, type GameState, type Payment, type Pending, type PlayerId, type PlayerView, type TriggerEvent,
 } from '@fftcg/engine'
 import { GreedyAgent, preferredPayment } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
+import { makeGame, withField } from '../../../packages/engine/test/helpers.js'
 import { buildChoiceSet, describeChoice, fieldCardDisplay, preferredChoices, promptFor, sameCommand, samePayment } from '../src/game/commands.js'
 import { AI, HUMAN } from '../src/game/types.js'
 import { Card } from '../src/ui/Card.js'
@@ -388,6 +389,67 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
     expect(describeChoice(nestedView(1), targets([901]))).toBe('Give Haste to Cloud')
   })
 
+  it("says a repeated verb ONCE — Cloud protects, it does not 'protect and protect'", () => {
+    // Codex MINOR: the collapse only fired when the second phrase had something after the verb, so Cloud's two
+    // flags — both bare "Protect" — rendered "Protect and protect Cloud" on the button.
+    const TWO_FLAGS: Ability = {
+      id: 'X:flags', trigger: { kind: 'attackPhaseBegins' },
+      text: 'Choose 1 Forward you control. It cannot be broken and cannot be returned by your opponent.',
+      effects: [{
+        kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' },
+        then: [{ kind: 'grantFlag', flag: 'cannotBeBroken' }, { kind: 'grantFlag', flag: 'cannotBeReturnedByOpponent' }],
+      }],
+    }
+    const v = suspendedView(TWO_FLAGS, NOEL)
+    const id = instance(v, 903, CLOUD, AI)
+    v.fields[AI].forwards = [fieldCard(id)]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
+    expect(describeChoice(v, targets([903]))).toBe('Protect Cloud')
+    // The prompt still distinguishes the two protections, because they differ after the verb.
+    expect(promptFor(v)).toBe("Noel: choose 1 Forward the AI controls to protect from being broken and from the opponent's return effects")
+  })
+
+  it('an effect repeated with nothing to distinguish it is said once, not doubled', () => {
+    // The bare-repeat case on the PROMPT side. Cloud does not reach it — its two protections differ after the
+    // verb — so without this the line that drops the repeat is untested, and "to dull and dull" would ship the
+    // first time a clause repeated a bare effect.
+    const TWICE: Ability = {
+      id: 'X:twice', trigger: { kind: 'enterField' },
+      text: 'Choose 1 Forward. Dull it.',
+      effects: [{
+        kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' },
+        then: [{ kind: 'dull' }, { kind: 'dull' }],
+      }],
+    }
+    const v = suspendedView(TWICE, NOEL)
+    const id = instance(v, 905, CLOUD, AI)
+    v.fields[AI].forwards = [fieldCard(id)]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
+    expect(promptFor(v)).toBe('Noel: choose 1 Forward the AI controls to dull')
+    expect(describeChoice(v, targets([905]))).toBe('Dull Cloud')
+  })
+
+  it('does not fuse DIFFERENT verbs around one target — the button says one, the prompt says both', () => {
+    // Codex MINOR: the trailing "to" was stripped from every non-final phrase, which is only sound when a
+    // later phrase shares the verb. "Give Haste to" + "Dull" fused into "Give Haste and dull Cloud", which
+    // reads as though Cloud were the Haste. No card in the pool mixes verbs, so the button degrades to its
+    // first effect rather than inventing a sentence; the prompt, which has no such seam, still names both.
+    const MIXED: Ability = {
+      id: 'X:mixed', trigger: { kind: 'enterField' },
+      text: 'Choose 1 Forward. It gains Haste and is dulled.',
+      effects: [{
+        kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' },
+        then: [{ kind: 'grantKeyword', keyword: 'haste' }, { kind: 'dull' }],
+      }],
+    }
+    const v = suspendedView(MIXED, NOEL)
+    const id = instance(v, 904, CLOUD, AI)
+    v.fields[AI].forwards = [fieldCard(id)]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
+    expect(describeChoice(v, targets([904]))).toBe('Give Haste to Cloud')
+    expect(promptFor(v)).toBe('Noel: choose 1 Forward the AI controls to give Haste and dull')
+  })
+
   it('names EVERY effect the choice applies, not just the first', () => {
     // Found by playing: Hugh Yurg's watcher is "+2000 power AND Brave", and the prompt said only "+2000
     // power". Brave is the half that decides whether the Forward dulls to attack, so a player picking on
@@ -513,27 +575,67 @@ describe('activated abilities on the board (C3-A7)', () => {
   })
 })
 
+const HUGH_YURG = '24-063H'   // "search for 1 Earth Forward of cost 1" — the pool's only whole-deck search (REEVE, the top-N look, is declared above)
+
+/**
+ * A REAL `chooseFromDeck` pending: the printed clause is enqueued on a real state and resolved by the real
+ * executor, so the pending under test is the one the browser is actually handed — `scope` included.
+ *
+ * `deckSize` trims the deck first, which is the whole point of the Reeve case: a top-3 look at a 3-card deck
+ * is the state where a count-based guess at "is this a search" goes wrong.
+ */
+function deckPending(code: string, deckSize?: number): PlayerView {
+  // Read off the defs the APP ships, so the fixture cannot drift from the clause the browser resolves.
+  const ability = CARD_DEFS.find((d) => d.code === code)?.abilities?.find((a) => a.effects[0]?.kind === 'lookAtDeck')
+  if (!ability) throw new Error(`${code} has no lookAtDeck clause — the fixture is stale`)
+  let s = makeGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+  let src: CardId
+  ;[s, src] = withField(s, HUMAN, 'forwards', code)
+  if (deckSize !== undefined) {
+    const me = s.players[HUMAN]
+    const players = [s.players[0], s.players[1]] as typeof s.players
+    players[HUMAN] = { ...me, deck: me.deck.slice(0, deckSize) }
+    s = { ...s, players }
+  }
+  s = drainResolution(enqueueTrigger(s, src, HUMAN, ability))[0]
+  return viewFor(s, HUMAN)
+}
+
 describe('the prompt strip says what a deck choice is (rung C9)', () => {
   // Codex's C9 finding 5: `promptFor` had no `chooseFromDeck` branch, so it fell through to the PHASE line and
   // told the player to "cast, attack, or pass" while the only legal answers were deck picks.
   const withPending = (over: Partial<Extract<Pending, { kind: 'chooseFromDeck' }>>): PlayerView => {
     const v = viewFor(dealtGame(1), HUMAN)
-    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 1, max: 1, count: 3, to: 'hand', ...over }
+    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 1, max: 1, count: 3, scope: 'top', to: 'hand', ...over }
     return v
   }
 
-  it('calls a whole-deck SEARCH "your deck", not "the 44 cards you looked at"', () => {
+  it('calls a whole-deck SEARCH "your deck" and a top-N look what it is — from the REAL engine', () => {
     // Found by playing: Hugh Yurg's search exposes the whole deck, and the prompt read "choose up to 1 card
     // among the 44 cards you looked at" — true, and nothing a person would say.
-    const v = viewFor(dealtGame(1), HUMAN)
-    const deckSize = v.fields[HUMAN].deck.length
-    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 0, max: 1, count: deckSize, to: 'field' }
-    expect(promptFor(v)).toContain('in your deck')
-    expect(promptFor(v)).not.toContain('you looked at')
+    //
+    // Both pendings are raised by resolving the actual printed clauses, not hand-built. The first version of
+    // this test set `count` to the deck length itself and so DEFINED the whole-deck case as the heuristic it
+    // was testing (Codex MAJOR); it could not have caught the false positive the third case below pins.
+    const search = deckPending(HUGH_YURG)
+    expect(search.pending?.kind).toBe('chooseFromDeck')
+    expect(promptFor(search)).toContain('in your deck')
+    expect(promptFor(search)).not.toContain('you looked at')
 
-    // A top-N look is still described as what it is.
-    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 1, max: 1, count: 3, to: 'hand' }
+    const look = deckPending(REEVE)
+    expect(promptFor(look)).toContain('among the 3 cards you looked at')
+  })
+
+  it('a top-3 look at a 3-card deck is still a LOOK, not a search', () => {
+    // The false positive `count === deck.length` could not see: Reeve exposes the top 3 of a deck with exactly
+    // 3 cards left, so the count equals the deck length while the clause is a peek. A player at 3 cards is one
+    // draw from losing and reads that prompt carefully — telling them they are searching their deck is the
+    // worst possible moment to be wrong about which effect is running.
+    const v = deckPending(REEVE, 3)
+    expect(v.pending?.kind === 'chooseFromDeck' && v.pending.count).toBe(3)
+    expect(v.fields[HUMAN].deck, 'the fixture no longer has count === deck length, so it proves nothing').toHaveLength(3)
     expect(promptFor(v)).toContain('among the 3 cards you looked at')
+    expect(promptFor(v)).not.toContain('in your deck')
   })
 
   it('names the choice instead of falling through to the phase', () => {
@@ -610,7 +712,7 @@ describe('a private deck look cannot be narrated by the wrong seat (rung C9)', (
     // Same command, same view, different destination — "Take Cloud" names the wrong move for a clause that
     // puts the card onto the field. The pending is what carries it.
     const v = lookedView(HUMAN)
-    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 0, max: 1, count: 3, to: 'field' }
+    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 0, max: 1, count: 3, scope: 'top', to: 'field' }
     expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [1] })).toBe(`Play ${nameOf(v, 902)} onto the field`)
     expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [] })).toBe('Find nothing')
   })

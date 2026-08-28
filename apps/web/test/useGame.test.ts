@@ -585,7 +585,7 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
   })
 
   it('reports a clause that found nothing to hit rather than staying silent', () => {
-    expect(describeEvent(view, { type: 'abilityNoLegalTarget', card: anyCard, abilityId: DULL_TWO.id })?.text).toContain('no legal target')
+    expect(describeEvent(view, { type: 'abilityNoLegalTarget', card: anyCard, abilityId: DULL_TWO.id, controller: HUMAN })?.text).toContain('no legal target')
   })
 
   it('narrates what the clause DID to the board', () => {

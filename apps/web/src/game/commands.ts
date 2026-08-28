@@ -187,32 +187,56 @@ function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTarg
   const verbs = node.then.map(verbOf).filter((w): w is { imperative: string; purpose: string } => w !== null)
   if (!verbs.length) return null
   return {
-    // A transitive imperative carries a TRAILING "to" that `describeChoice` completes with the target names
-    // ("Give +2000 power to" + " Cloud"). Only the last phrase may keep it, or the join grows a stray "to"
-    // mid-sentence: "Give +2000 power to and Brave to Cloud".
-    imperative: joinClauses(verbs.map((w, i) => (i === verbs.length - 1 ? w.imperative : w.imperative.replace(/ to$/, '')))),
-    // Every purpose is an infinitive; the "to" is stripped off all of them so the verbs line up for the
-    // repeated-verb collapse below, then re-attached once in front of the joined phrase.
-    purpose: `to ${joinClauses(verbs.map((w) => w.purpose.replace(/^to /, '')))}`,
+    imperative: joinImperatives(verbs.map((w) => w.imperative)),
+    // Every purpose is an infinitive; the "to" comes off all of them so the verbs line up for the collapse,
+    // and goes back on once in front of the joined phrase.
+    purpose: `to ${joinPurposes(verbs.map((w) => w.purpose.replace(/^to /, '')))}`,
   }
 }
 
+const leadVerb = (phrase: string): string => phrase.split(' ')[0]?.toLowerCase() ?? ''
+
 /**
- * Join the phrases of a multi-effect clause the way the printed card text does.
+ * Join the purpose phrases of a multi-effect clause the way the printed text joins them.
  *
- * A repeated leading verb is dropped: "give +2000 power" + "give Brave" is printed "gains +2000 power and
- * Brave", not "gains +2000 power and gains Brave". Where the verbs genuinely differ they both survive, with
- * the tail lower-cased because it is no longer starting a sentence — "Dull and give Haste".
+ * A repeated verb is said once: "give +2000 power" + "give Brave" is printed "gains +2000 power and Brave",
+ * and Cloud's two protections read "protect from being broken and from the opponent's return effects". A
+ * repeat with nothing after the verb adds nothing at all and is dropped rather than doubled. Differing verbs
+ * both survive, the later one lower-cased because it is no longer starting a sentence: "dull and give Haste".
  */
-function joinClauses(phrases: readonly string[]): string {
-  const out = [phrases[0]!]
-  for (let i = 1; i < phrases.length; i++) {
-    const prevVerb = out[i - 1]!.split(' ')[0]!.toLowerCase()
-    const [verb, ...rest] = phrases[i]!.split(' ')
-    out.push(verb!.toLowerCase() === prevVerb && rest.length ? rest.join(' ')
-      : verb!.charAt(0).toLowerCase() + verb!.slice(1) + (rest.length ? ` ${rest.join(' ')}` : ''))
+function joinPurposes(phrases: readonly string[]): string {
+  const out: string[] = []
+  let lastVerb = ''
+  for (const phrase of phrases) {
+    const [verb, ...rest] = phrase.split(' ')
+    // Against the last verb SEEN, not the last phrase kept — a collapsed phrase no longer starts with one.
+    const same = leadVerb(phrase) === lastVerb
+    lastVerb = leadVerb(phrase)
+    if (same && !rest.length) continue
+    if (same) { out.push(rest.join(' ')); continue }
+    const lowered = `${verb!.charAt(0).toLowerCase()}${verb!.slice(1)}`
+    out.push(out.length === 0 ? phrase : [lowered, ...rest].join(' '))
   }
   return out.join(' and ')
+}
+
+/**
+ * The same join for the BUTTON, which has a seam the prompt does not: a transitive imperative ends in a
+ * trailing "to" that `describeChoice` completes with the target names ("Give +2000 power to" + " Cloud").
+ *
+ * So only a shared verb can be fused. "Give Haste to" and "Dull" name the same card but not in the same
+ * shape, and any fusion of them lies about which effect the target belongs to — "Give Haste and dull Cloud"
+ * reads as though Cloud were the Haste. Nothing in the pool needs it (Hugh Yurg is Give + Give, Cloud is
+ * Protect + Protect), so a mixed clause labels the button with its first effect and leaves the full list to
+ * the prompt above it, which has no seam to get wrong.
+ */
+function joinImperatives(phrases: readonly string[]): string {
+  const first = phrases[0]!
+  if (phrases.some((p) => leadVerb(p) !== leadVerb(first))) return first
+  const tail = phrases.at(-1)!.endsWith(' to') ? ' to' : ''
+  const head = first.replace(/ to$/, '').split(' ')[0]!
+  const objects = phrases.map((p) => p.replace(/ to$/, '').split(' ').slice(1).join(' ')).filter((o) => o !== '')
+  return objects.length ? `${head} ${objects.join(' and ')}${tail}` : `${head}${tail}`
 }
 
 type Where = { p: PlayerId; zone: 'forwards' | 'backups' | 'breakZone' }
@@ -356,10 +380,9 @@ export function promptFor(v: PlayerView): string {
         const { min, max, count, to } = v.pending
         const what = to === 'field' ? 'to play onto the field' : 'to add to your hand'
         // A SEARCH exposes the whole deck, and "among the 44 cards you looked at" is a true sentence nobody
-        // would say. The exposed cards are still IN the deck while the choice stands, so a count equal to the
-        // deck length is exactly the whole-deck case.
-        const whole = count === v.fields[v.me].deck.length
-        const among = whole ? 'in your deck' : `among the ${count} card${count === 1 ? '' : 's'} you looked at`
+        // would say. Which of the two it is comes from the pending's `scope`: inferring it from `count ===
+        // deck.length` called a top-3 peek at a 3-card deck a search (Codex MAJOR).
+        const among = v.pending.scope === 'deck' ? 'in your deck' : `among the ${count} card${count === 1 ? '' : 's'} you looked at`
         return caused(v, sourced(v, `Choose ${countPhrase(min, max)} card${max === 1 ? '' : 's'} ${among} ${what}`))
       }
     }

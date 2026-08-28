@@ -455,7 +455,7 @@ describe('chooseFromDeck keys name the CARD, not the position (rung C9)', () => 
     }
     return {
       ...base, cards, fields,
-      pending: { kind: 'chooseFromDeck', player: chooser, min: 0, max: 1, count: order.length, to: 'hand',
+      pending: { kind: 'chooseFromDeck', player: chooser, min: 0, max: 1, count: order.length, scope: 'top', to: 'hand',
         ...(filter ? { filter: filter as never } : {}) },
     }
   }

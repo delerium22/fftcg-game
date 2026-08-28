@@ -132,7 +132,7 @@ describe('16-092C Noel — "EX BURST When Noel enters the field, choose up to 2 
   it('is a logged no-op when the opponent controls no Forwards', () => {
     const r = cast(makeGame(), '16-092C', Array<string>(5).fill(LIGHTNING_BACKUP))
     expect(r.state.pending).toBeNull()
-    expect(r.events).toContainEqual({ type: 'abilityNoLegalTarget', card: r.card, abilityId: '16-092C:etb' })
+    expect(r.events).toContainEqual({ type: 'abilityNoLegalTarget', card: r.card, abilityId: '16-092C:etb', controller: 0 })
   })
 
   it('warns about nothing now that C3 landed its second clause', () => {
@@ -272,7 +272,7 @@ describe('18-124C Billy Bob — "When Billy Bob enters the field, choose 1 Forwa
   it('is a logged no-op with an empty Break Zone, not an error (spec C1-7)', () => {
     const r = cast(makeGame(), '18-124C', [EARTH_BACKUP, EARTH_BACKUP, LIGHTNING_BACKUP])
     expect(r.state.pending).toBeNull()
-    expect(r.events).toContainEqual({ type: 'abilityNoLegalTarget', card: r.card, abilityId: '18-124C:etb' })
+    expect(r.events).toContainEqual({ type: 'abilityNoLegalTarget', card: r.card, abilityId: '18-124C:etb', controller: 0 })
     expect(r.events.some((e) => e.type === 'unimplementedAbility')).toBe(false)
     ok(r.state)
   })

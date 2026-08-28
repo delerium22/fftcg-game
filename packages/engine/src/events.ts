@@ -57,7 +57,9 @@ export type Event =
   // --- ability resolution (spec C1-3) ---
   | { type: 'abilityTriggered'; player: PlayerId; card: CardId; abilityId: string }
   /** The clause had no legal target, so it did nothing. Never an error — half the pool can find itself here. */
-  | { type: 'abilityNoLegalTarget'; card: CardId; abilityId: string }
+  /** `controller` is whose ability found nothing — an agent must not price the OPPONENT's wasted ability as
+   *  its own loss, and a narrator that says "your ability" needs the same answer (Codex MAJOR). */
+  | { type: 'abilityNoLegalTarget'; card: CardId; abilityId: string; controller: PlayerId }
   | { type: 'dulled'; card: CardId }
   | { type: 'abilityDamage'; source: CardId; target: CardId; amount: number }
   | { type: 'powerModified'; card: CardId; amount: number }
