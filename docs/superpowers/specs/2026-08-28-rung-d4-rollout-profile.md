@@ -106,6 +106,18 @@ that clone the returned state aliases the view's own hand, field arrays, `FieldC
 not computationally required. It would save a few more percent end-to-end for a much larger maintenance
 surface, so it stays.
 
+## Measured result
+
+| | |
+|---|---|
+| `determinise()` — EARLY / MID / LATE, median of 12 alternating runs each | **3.24x / 3.24x / 3.30x** faster |
+| end to end, `selfplay --p0 ismcts:200` | 392.0 -> **304.5 ms/decision** (~22 %) |
+| exact replay, 20 mirrored pairs on identical seeds | **32/40 both before and after** — identical, not "within noise" |
+
+Better than the ~2x predicted; the extra is most likely the allocation that is no longer happening.
+The end-to-end figure compares a 6-game run against the 120-game tournament's number, so the sample sizes
+differ and it is indicative rather than exact — but 22 % is far outside the spread of either.
+
 ## Explicitly NOT in this rung
 
 The 124,000 applies per decision. That is the real structural cost and no micro-optimisation touches it —

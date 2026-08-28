@@ -81,5 +81,17 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     rng: r, turn: view.turn, turnPlayer: view.turnPlayer, firstPlayer: view.firstPlayer, phase: view.phase, attack: view.attack,
     priority: view.priority, pending: view.pending, resolution: view.resolution, players: [players[0]!, players[1]!], cards, knownBy, defs: view.defs, result: view.result,
   }
-  return [structuredClone(state), r]
+  // Everything EXCEPT `defs` is copied; `defs` travels by reference (spec D4).
+  //
+  // The card database is immutable reference data — built once by `loadCards`, thereafter only read by code,
+  // key and ability id — and it is 17.9 KiB against 4.9 KiB for the whole rest of the state. Cloning it here
+  // made `structuredClone` 12 % of ALL search CPU, because this runs once per iteration, 200 times per
+  // decision: a deep copy of the entire card list, 200 times, for a value that never changes.
+  //
+  // The rest of the clone stays. It is not needed by the search — `apply` is immutable and the search only
+  // reads — but this returns an exported, mutable `GameState`, and without it the result would alias the
+  // caller's own view down to its `FieldCard`s and `resolution`. That is an API boundary, not an
+  // optimisation, so it is kept even where it is not computationally required.
+  const { defs, ...rest } = state
+  return [{ ...structuredClone(rest), defs }, r]
 }

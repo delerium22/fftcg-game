@@ -160,6 +160,61 @@ describe('a removed card stays removed (spec C7-A5)', () => {
   })
 })
 
+
+describe('determinise shares the card database and copies everything else (spec D4)', () => {
+  /**
+   * `structuredClone` was 12 % of all search CPU, and `defs` — immutable reference data, 17.9 KiB against
+   * 4.9 KiB for the whole rest of the state — was 62 % of each clone. This runs once per ITERATION, so the
+   * search was deep-copying the entire card list 200 times per decision for a value that never changes.
+   */
+
+  /** Every object identity reachable from `root`, so two graphs can be checked for sharing. */
+  function identities(root: unknown, stop?: unknown): Set<object> {
+    const seen = new Set<object>()
+    const walk = (v: unknown): void => {
+      if (v === null || typeof v !== 'object' || v === stop) return
+      if (seen.has(v as object)) return
+      seen.add(v as object)
+      for (const k of Object.keys(v as object)) walk((v as Record<string, unknown>)[k])
+    }
+    walk(root)
+    return seen
+  }
+
+  function midGame(defs = VANILLA_POOL): { view: ReturnType<typeof viewFor>; decks: [string[], string[]]; state: GameState } {
+    let s = makeGame({ defs, decks: DECKS })
+    const p0 = s.players[0]
+    s = { ...s, players: [{ ...p0, breakZone: [...p0.breakZone, p0.deck[0] as CardId], deck: p0.deck.slice(1) }, s.players[1]] }
+    return { view: viewFor(s, 0), decks: DECKS, state: s }
+  }
+
+  it('D4-A1 shares `defs` and NOTHING else — checked over the whole object graph', () => {
+    const { view, decks } = midGame()
+    const [det] = determinise({ view, decks, rng: seedRng(11) })
+    expect(det.defs, 'defs is meant to travel by reference').toBe(view.defs)
+
+    // Everything else must be disjoint. An implementation that copied the zone ARRAYS but shared the
+    // `FieldCard`s, `pending.candidates` or `resolution.active.path` inside them would pass a per-array
+    // check and still alias, so both graphs are walked with `defs` excluded.
+    const shared = [...identities(det, det.defs)].filter((o) => identities(view, view.defs).has(o))
+    expect(shared, 'the determinised state aliases the view outside defs').toEqual([])
+  })
+
+  it('D4-A2 is value-identical to the OLD whole-state clone', () => {
+    // A reference implementation of the previous semantics. Comparing two runs of the CURRENT code would
+    // prove only repeatability — after a bad change both copies are identically wrong.
+    const legacy = (v: ReturnType<typeof viewFor>, d: [string[], string[]], seed: number): GameState => {
+      const [out] = determinise({ view: v, decks: d, rng: seedRng(seed) })
+      return structuredClone(out)   // what the old code returned: a clone of the whole thing, defs included
+    }
+    const { view, decks } = midGame()
+    const [now] = determinise({ view, decks, rng: seedRng(11) })
+    expect(now).toEqual(legacy(view, decks, 11))
+    expect(checkInvariants(now)).toEqual([])
+  })
+
+})
+
 describe('deck knowledge survives determinisation (spec C9-5)', () => {
   /** Teach `to` about the top `n` of `owner`'s deck. */
   function look(state: GameState, owner: PlayerId, to: PlayerId[], n: number): { s: GameState; ids: number[] } {

@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
+import { actingPlayer, apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -1681,5 +1681,54 @@ describe('27-126S Sphene — "[0]: Choose 1 Forward other than Sphene put in you
     s = setPlayer(s, 0, { ...ps, hand: ps.hand.filter((id) => id !== victim), breakZone: [...ps.breakZone, victim] })
     ok(s)
     expect(s.players[0].putIntoBreakZoneFromFieldThisTurn, 'the arrival was not forgotten on the way out').not.toContain(victim)
+  })
+})
+
+describe('nothing in the engine writes to the card database (spec D4-A3)', () => {
+  /**
+   * `determinise` stopped deep-cloning `defs` because the card database is immutable reference data —
+   * cloning it was 12 % of all search CPU for a value that never changes. That holds only while nothing
+   * writes to it, and a comment saying so is not a guard. This freezes the REAL defs, RECURSIVELY, and then
+   * plays a game: any write throws at its source, because ES modules are strict.
+   *
+   * It lives here rather than beside `determinise` because the engine's own tests cannot see this package,
+   * and a pool with NO abilities never reaches the code that reads a def. An earlier version of this test
+   * sat in `determinise.test.ts` over `VANILLA_POOL`, and a deliberate write into a `CardDef` sailed
+   * straight through it — `matchesDefFilter` was never called at all.
+   */
+  function deepFreeze(v: unknown): void {
+    if (v === null || typeof v !== 'object' || Object.isFrozen(v)) return
+    Object.freeze(v)
+    for (const k of Object.keys(v as object)) deepFreeze((v as Record<string, unknown>)[k])
+  }
+
+  it('plays a whole game over deeply frozen defs without a single write', () => {
+    const frozen = loadCards()
+    frozen.forEach(deepFreeze)
+    let s = createGame({ seed: 3, decks: [DECK, DECK], defs: frozen })
+    deepFreeze(s.defs)
+
+    const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : 0
+    ;[s] = applyChooseFirst(s, chooser, chooser === 0)
+    ;[s] = applyMulligan(s, 0, false)
+    ;[s] = applyMulligan(s, 1, false)
+
+    let casts = 0
+    let abilityPrompts = 0
+    for (let step = 0; step < 400 && !s.result; step++) {
+      const p = actingPlayer(s)
+      if (p === null) break
+      const legal = legalCommands(s, p).filter((c) => c.type !== 'concede')
+      if (!legal.length) break
+      // Prefer a cast, so ability text actually resolves rather than both sides passing to a quiet end.
+      const cmd = legal.find((c) => c.type === 'castCharacter' || c.type === 'castSummon') ?? legal[0]
+      if (!cmd) break
+      if (cmd.type === 'castCharacter' || cmd.type === 'castSummon') casts++
+      s = apply(s, cmd).state
+      if (s.pending && s.pending.kind !== 'chooseFirst' && s.pending.kind !== 'mulligan') abilityPrompts++
+    }
+    // The guard is worthless if the game never exercised an ability.
+    expect(casts, 'no card was ever cast, so no ability code ran').toBeGreaterThan(3)
+    expect(abilityPrompts, 'no ability ever raised a choice').toBeGreaterThan(0)
   })
 })
