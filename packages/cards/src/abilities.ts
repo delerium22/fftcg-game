@@ -40,7 +40,7 @@ export const ABILITY_CLAUSES: Record<string, number> = {
   '20-074C': 2,   // ETB reveal 5 | [2][Dull], self-break: draw 1
   '20-103H': 1,   // Summon, modal — the three quoted actions are one clause
   '20-105C': 1,   // EX BURST ETB look at top 3
-  '22-068R': 2,   // when chosen: +2000 (deferred, spec C2-13) | on damaging the opponent: Break Zone retrieval
+  '22-068R': 2,   // when chosen: +2000 | on damaging the opponent: Break Zone retrieval
   '24-063H': 2,   // ETB search | when a cost-1 Forward enters your field
   '27-124S': 2,   // ETB mass pump | at the beginning of the Attack Phase
   '27-125S': 2,   // on damaging a Forward: break it | on damaging the opponent: modal — both C2, so 0 warnings
@@ -287,12 +287,33 @@ const LUSO_DAMAGES_OPPONENT: Ability = {
 }
 
 /**
+ * Prishe's FIRST clause (spec C11) — the last clause in the pool blocked on a missing mechanic rather than
+ * on being a no-op, and the only one that fires on being TARGETED.
+ *
+ * The ordering is the card. A Summon that chooses a 5000 Prishe and deals 5000 damage kills her unless the
+ * +2000 lands first, so this cannot be applied after the choosing ability resolves — it has to land at the
+ * moment the choice is fixed. `dispatchChosenTriggers` does that inline, which is why the effect here must
+ * stay choice-free: an inline application has nowhere to suspend to, and a `chooseTargets` under this
+ * trigger is rejected loudly rather than silently dropped.
+ *
+ * `onSubject` and `forEach` deliberately do NOT count as "chosen": they bind a card the printed text names
+ * (Luso's "break IT", Cloud's "all the Forwards you control"), and nobody chose it.
+ */
+const PRISHE_CHOSEN: Ability = {
+  id: '22-068R:chosen',
+  trigger: { kind: 'observesChosen' },
+  text: 'When Prishe is chosen by a Summon or an ability, Prishe gains +2000 power until the end of the turn.',
+  effects: [{ kind: 'addPower', amount: 2000 }],
+}
+
+/**
  * Prishe's second clause: the same player-damage trigger and the same "1 Character" retrieval as Luso's mode 2,
  * without the modal wrapper. `min: 1` over a Break Zone holding no Character is a logged no-op (spec C1-7).
  *
- * Prishe's FIRST clause ("When Prishe is chosen by a Summon or an ability, …") is deliberately out of scope
- * (spec C2-13): it would have to fire while a frame is already mid-flight choosing its targets, and the agenda
- * cannot preempt an active frame — the one thing spec C2-A9 pins that it must never do. It keeps warning.
+ * Prishe's FIRST clause was deferred here as C2-13, on the grounds that it must fire while a frame is
+ * already mid-flight choosing targets and the agenda cannot preempt an active frame. C11 landed it anyway,
+ * without preemption: its effect cannot suspend, so it is applied inline where the choice is fixed. See
+ * `PRISHE_CHOSEN` above.
  */
 const PRISHE_DAMAGES_OPPONENT: Ability = {
   id: '22-068R:damages-opponent',
@@ -682,7 +703,8 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   '20-074C': [MINER_ETB, MINER_DRAW],
   '20-103H': [RAMUH_SUMMON],
   '20-105C': [REEVE_ETB],
-  '22-068R': [PRISHE_DAMAGES_OPPONENT],
+  // Printed order: the when-chosen pump is clause 1, the damage retrieval clause 2.
+  '22-068R': [PRISHE_CHOSEN, PRISHE_DAMAGES_OPPONENT],
   // Clause 2 only; the ETB deck search is rung C9.
   // Printed order: the ETB search is clause 1, the cost-1-Forward watcher clause 2.
   '24-063H': [HUGH_YURG_SEARCH, HUGH_YURG_CHEAP_FORWARD],

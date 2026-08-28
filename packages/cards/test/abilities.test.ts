@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { actingPlayer, apply, applyChooseFirst, applyMulligan, backupElements, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
+import { actingPlayer, apply, applyChooseFirst, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -385,11 +385,14 @@ describe('22-068R Prishe — "When Prishe deals damage to your opponent, choose 
     ok(t)
   })
 
-  it('keeps warning about its unimplemented "when chosen" clause (spec C2-13)', () => {
-    // "When Prishe is chosen by a Summon or an ability, …" must fire while a frame is already mid-flight
-    // choosing targets, and the agenda deliberately cannot preempt an active frame (spec C2-A9).
+  it('warns about nothing — C11 landed the when-chosen clause', () => {
+    // It was deferred because "when Prishe is chosen" must fire while a frame is mid-flight choosing
+    // targets, which the agenda cannot preempt (C2-13). C11 landed it WITHOUT preemption: the effect is
+    // choice-free, so it is applied inline where the choice is fixed.
     const r = cast(makeGame(), '22-068R', [EARTH_BACKUP, EARTH_BACKUP])
-    expect(r.events).toContainEqual({ type: 'unimplementedAbility', card: r.card, code: '22-068R', clauses: 1 })
+    expect(r.events.some((e) => e.type === 'unimplementedAbility')).toBe(false)
+    expect(ABILITY_CLAUSES['22-068R']).toBe(2)
+    expect(ABILITIES['22-068R']?.length).toBe(2)
   })
 })
 
@@ -458,11 +461,11 @@ describe('27-125S Luso — "When Luso deals damage to a Forward, break it." and 
     ok(t.state)
   })
 
-  it('C2-A10: Luso and Lightning warn about nothing; Prishe keeps its one deferred clause', () => {
+  it('C2-A10: Luso, Lightning and (since C11) Prishe all warn about nothing', () => {
     // Lightning costs 7, which is more CP than five Backups (§7.7.4) can make, so its coverage is asserted on
     // the tables rather than on a live cast.
     const missing = (code: string) => (ABILITY_CLAUSES[code] as number) - (ABILITIES[code]?.length ?? 0)
-    expect([missing('27-125S'), missing('27-127S'), missing('22-068R')]).toEqual([0, 0, 1])
+    expect([missing('27-125S'), missing('27-127S'), missing('22-068R')]).toEqual([0, 0, 0])
     const r = cast(makeGame(), '27-125S', [EARTH_BACKUP])
     expect(r.events.some((e) => e.type === 'unimplementedAbility')).toBe(false)
   })
@@ -480,7 +483,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty-six implemented clauses on, and only those twenty-six', () => {
+  it('loadCards merges the twenty-seven implemented clauses on, and only those twenty-seven', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
     // removal), one from C8 (Hugh Yurg's enters-field observer), three from C9 (Reeve's look, Miner's reveal and Hugh Yurg's search) and one from C10 (Sphene's
@@ -497,7 +500,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-074C:etb', '20-103H:summon',
-      '20-105C:etb', '22-068R:damages-opponent', '24-063H:cheap-forward', '24-063H:search', '27-126S:retrieve',
+      '20-105C:etb', '22-068R:chosen', '22-068R:damages-opponent', '24-063H:cheap-forward', '24-063H:search', '27-126S:retrieve',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
     ].sort())
@@ -1730,5 +1733,138 @@ describe('nothing in the engine writes to the card database (spec D4-A3)', () =>
     // The guard is worthless if the game never exercised an ability.
     expect(casts, 'no card was ever cast, so no ability code ran').toBeGreaterThan(3)
     expect(abilityPrompts, 'no ability ever raised a choice').toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung C11 — 22-068R Prishe's "when chosen"
+// ---------------------------------------------------------------------------
+
+describe('22-068R Prishe — "When Prishe is chosen by a Summon or an ability, Prishe gains +2000 power"', () => {
+  const RAMUH = '20-103H'   // modal Summon: its modes include damage and a separate target choice
+
+  /** Prishe on `owner`'s field, plus enough CP for `caster` to cast `code`. */
+  function board(code: string, cp: string[], prisheOwner: PlayerId = 0, caster: PlayerId = 0) {
+    let s = makeGame()
+    let prishe: CardId
+    ;[s, prishe] = withField(s, prisheOwner, 'forwards', '22-068R')
+    ;[s] = withCp(s, caster, cp)
+    let card: CardId
+    ;[s, card] = withHand(s, caster, code)
+    return { s, prishe, card }
+  }
+
+  it('C11-A1 a 5000 Prishe chosen by a 5000-damage Summon SURVIVES — the ordering IS the card', () => {
+    // Ramuh's second mode is exactly "Choose 1 Forward. Deal it 5000 damage." Prishe is 5000: she dies if
+    // the damage lands first and lives at 7000 if the pump does. The assertion is SURVIVAL.
+    //
+    // Every step is asserted rather than skipped. An earlier version of this test bailed out with `return`
+    // when a step was not reached, which would have passed without ever choosing Prishe at all.
+    const { s: start, prishe, card } = board(RAMUH, Array<string>(2).fill(LIGHTNING_BACKUP), 1, 0)
+    const cast = legalCommands(start, 0).find((c) => c.type === 'castSummon' && c.card === card)
+    expect(cast, 'Ramuh was not castable').toBeDefined()
+    const summoned = apply(start, cast!)
+    expect(summoned.state.pending?.kind, 'Ramuh did not raise its mode choice').toBe('chooseMode')
+
+    // Mode index 1 is the damage mode; take only that one.
+    const modes = apply(summoned.state, { type: 'chooseMode', player: 0, modes: [1] })
+    expect(modes.state.pending?.kind, 'the damage mode did not raise a target choice').toBe('chooseTargets')
+
+    const pick = legalCommands(modes.state, 0).find((c) => c.type === 'chooseTargets' && c.targets.includes(prishe))
+    expect(pick, 'Prishe was not a legal target for the damage mode').toBeDefined()
+    const done = apply(modes.state, pick!)
+
+    // `toBeDefined()` would NOT do here: `findFieldCard` returns null when the card is gone, and null is
+    // "defined" — the assertion would pass on a broken Prishe and fail later with an unreadable TypeError.
+    const alive = findFieldCard(done.state, prishe)
+    expect(alive, 'Prishe was broken — the +2000 did not land before the 5000 damage').not.toBeNull()
+    expect(done.state.players[1].breakZone).not.toContain(prishe)
+    expect(powerOfId(done.state, prishe)).toBe(7000)
+    expect(alive?.card.damage).toBe(5000)
+    ok(done.state)
+  })
+
+  it('C11-A2 fires on an answered PROMPT, including for the OPPONENT\'s ability', () => {
+    // Noel's ETB chooses up to 2 Forwards the opponent controls. P0 casts it; Prishe is P1's. The pump is
+    // the CHOSEN card's, not the chooser's — a helper scanning only the acting player's field would miss it.
+    const { s, prishe, card } = board('16-092C', Array<string>(5).fill(LIGHTNING_BACKUP), 1, 0)
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === card)
+    expect(cast, 'Noel was not castable').toBeDefined()
+    const r = apply(s, cast!)
+    expect(r.state.pending?.kind).toBe('chooseTargets')
+    const pick = legalCommands(r.state, 0).find((c) => c.type === 'chooseTargets' && c.targets.includes(prishe))
+    expect(pick, 'the opponent Prishe was not a legal target').toBeDefined()
+
+    const before = powerOfId(r.state, prishe)
+    const done = apply(r.state, pick!)
+    expect(powerOfId(done.state, prishe), "an opponent's ability choosing Prishe still pumps her").toBe(before + 2000)
+    expect(done.events.some((e) => e.type === 'abilityTriggered' && e.abilityId === '22-068R:chosen')).toBe(true)
+    ok(done.state)
+  })
+
+  it('C11-A4 pumps ONCE for a choice that took Prishe and a bystander', () => {
+    // Noel takes "up to 2". A wrong implementation multiplying by `targets.length` gives +4000.
+    let s = makeGame()
+    let prishe: CardId; let bystander: CardId; let noel: CardId
+    ;[s, prishe] = withField(s, 1, 'forwards', '22-068R')
+    ;[s, bystander] = withField(s, 1, 'forwards', '27-124S')
+    ;[s] = withCp(s, 0, Array<string>(5).fill(LIGHTNING_BACKUP))
+    ;[s, noel] = withHand(s, 0, '16-092C')
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === noel)
+    const r = apply(s, cast!)
+    const both = legalCommands(r.state, 0).find((c) =>
+      c.type === 'chooseTargets' && c.targets.includes(prishe) && c.targets.includes(bystander))
+    expect(both, 'no choice took both Forwards').toBeDefined()
+
+    const before = powerOfId(r.state, prishe)
+    const done = apply(r.state, both!)
+    expect(powerOfId(done.state, prishe), 'the pump was multiplied by the number of targets').toBe(before + 2000)
+  })
+
+  it('C11-A3 does NOT fire when nobody chose her', () => {
+    // Cloud's ETB is an untargeted `forEach` over "all the Forwards you control" — it pumps Prishe, but it
+    // never CHOOSES her, so the when-chosen clause must not add its own +2000 on top.
+    let s = makeGame()
+    let prishe: CardId; let cloud: CardId
+    ;[s, prishe] = withField(s, 0, 'forwards', '22-068R')
+    ;[s] = withCp(s, 0, Array<string>(3).fill(EARTH_BACKUP))
+    ;[s, cloud] = withHand(s, 0, '27-124S')
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === cloud)
+    expect(cast, 'Cloud was not castable').toBeDefined()
+    const done = apply(s, cast!)
+    // Cloud gives +3000 to each Forward its controller has. Exactly that, with no when-chosen pump.
+    expect(powerOfId(done.state, prishe)).toBe(5000 + 3000)
+    expect(done.events.some((e) => e.type === 'abilityTriggered' && e.abilityId === '22-068R:chosen')).toBe(false)
+  })
+
+  it('C11-A4 (cont.) stacks across separate choosings, and expires at end of turn', () => {
+    let s = makeGame()
+    let prishe: CardId
+    ;[s, prishe] = withField(s, 0, 'forwards', '22-068R')
+    // Two separate Red Mage activations, each choosing Prishe: +2000 then +4000.
+    for (let i = 0; i < 2; i++) {
+      let mage: CardId
+      ;[s, mage] = withField(s, 0, 'backups', '1-121C')
+      ;[s] = withCp(s, 0, [LIGHTNING_BACKUP])
+      const use = legalCommands(s, 0).find((c) =>
+        c.type === 'activateAbility' && c.source === mage && c.targets.includes(prishe))
+      expect(use, `activation ${i + 1} was not offered`).toBeDefined()
+      s = apply(s, use!).state
+      expect(powerOfId(s, prishe)).toBe(5000 + 2000 * (i + 1))
+    }
+    const [ended] = finishEndPhase(s)
+    expect(powerOfId(ended, prishe), 'the pump outlived the turn').toBe(5000)
+  })
+
+  it('C11-A6 does not mutate the state it was handed', () => {
+    // An in-place `powerBonus += 2000` passes every test above while corrupting sibling search branches,
+    // because `searchView` shares structure with the live state and `apply` is relied on to be immutable.
+    const { s, prishe, card } = board('16-092C', Array<string>(5).fill(LIGHTNING_BACKUP), 1, 0)
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === card)
+    const r = apply(s, cast!)
+    const pick = legalCommands(r.state, 0).find((c) => c.type === 'chooseTargets' && c.targets.includes(prishe))
+    const snapshot = JSON.stringify(r.state)
+    apply(r.state, pick!)
+    expect(JSON.stringify(r.state), 'applyChooseTargets mutated its input state').toBe(snapshot)
   })
 })

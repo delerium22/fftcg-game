@@ -7,7 +7,7 @@ import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { canPay, generateCp, pay, type CpRequirement } from './cp.js'
 import type { ZoneTransition } from './rules.js'
-import { enqueueZoneChangeTriggers, forgetBreakZoneArrivals, removeFromField, targetCandidates } from './resolve.js'
+import { dispatchChosenTriggers, enqueueZoneChangeTriggers, forgetBreakZoneArrivals, removeFromField, targetCandidates } from './resolve.js'
 
 /**
  * Activated abilities (spec C3): the transaction from declaration through simultaneous costs, cost triggers,
@@ -285,6 +285,10 @@ export function applyActivateAbility(
     path: declares ? [0, 0] : [], chosen: declares ? [...targets] : [], modes: [], triggerEvent: null,
     origin: 'activated',
   }
+  // The OTHER place a target becomes fixed (spec C11). An activated ability declares its targets with the
+  // command and never passes through the prompt path, so a hook only in `applyChooseTargets` would leave
+  // Prishe pumped by a Summon and silently not pumped by an activated ability.
+  s = dispatchChosenTriggers(s, declares ? targets : [], events)
   s = { ...s, resolution: { ...s.resolution, queue: [...s.resolution.queue, frame] } }
   // Spent, whatever the frame goes on to do — the allowance is consumed by USING the ability, not by it
   // resolving successfully, so a clause that finds no legal target still costs the turn's use (§11.6.5).

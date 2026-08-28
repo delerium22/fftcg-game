@@ -613,6 +613,52 @@ function suspendedNode(state: GameState): { frame: Frame; node: Effect } {
   return { frame, node }
 }
 
+/**
+ * Fire every `observesChosen` clause on the cards a choice just fixed (spec C11) — Prishe's "when Prishe is
+ * chosen by a Summon or an ability, Prishe gains +2000 power until the end of the turn".
+ *
+ * INLINE, not through the agenda. The clause has to land BEFORE the choosing ability continues — that is
+ * the whole card: a Summon choosing a 5000 Prishe and dealing 5000 kills her unless the +2000 arrives
+ * first — and the agenda cannot preempt a frame that is already executing (spec C2-13). An effect that
+ * cannot suspend needs no preemption, so it runs here instead.
+ *
+ * MVP0-SIMPLIFICATION (spec C11): this is NOT the CR ordering in every case, and the case is in this deck.
+ * Ramuh can deal lethal damage in one selected mode and raise a second target prompt in the SAME frame, and
+ * the engine leaves the lethally damaged Forward on the field until that frame finishes. Choose Prishe with
+ * that second prompt and this gives `pump → Ramuh continues → break`, where a preempting frame would give
+ * `break → Ramuh continues` — so `powerModified` and `broken` come out in the opposite order, and anything
+ * watching that break sees a different agenda. It ships because the engine has no stack at all: every
+ * ability already resolves immediately, which is a larger deviation of exactly this class.
+ *
+ * The effects are run through the REAL executor with the chosen card bound as `chosen`, so the AST is what
+ * decides what happens — hand-writing the power change here would bypass `addPower`, the engine's single
+ * power-modifying authority, and let the card's text and the code drift apart.
+ */
+export function dispatchChosenTriggers(state: GameState, chosen: readonly CardId[], events: Event[]): GameState {
+  let s = state
+  for (const id of chosen) {
+    const loc = findFieldCard(s, id)
+    if (!loc) continue   // only a card ON THE FIELD can be pumped; a Break Zone target has no FieldCard
+    for (const ability of defOf(s, id).abilities ?? []) {
+      if (ability.trigger.kind !== 'observesChosen') continue
+      // The controller is whoever's field the chosen card is on — NOT whoever did the choosing. An
+      // opponent's Summon targeting Prishe still pumps Prishe, and her controller is the one who owns her.
+      events.push({ type: 'abilityTriggered', player: loc.owner, card: id, abilityId: ability.id })
+      const ctx: Ctx = {
+        state: s, events, source: id, controller: loc.owner, abilityId: ability.id,
+        path: [], chosen: [id], modes: [], picks: [], triggerEvent: null,
+        resume: [], suspend: null, steps: s.resolution.steps,
+      }
+      runEffects(ctx, ability.effects, 0, false)
+      if (ctx.suspend) {
+        throw new Error(`ability ${ability.id}: an observesChosen clause must not suspend — it is applied inline (spec C11)`)
+      }
+      s = { ...ctx.state, resolution: { ...ctx.state.resolution, steps: ctx.steps } }
+    }
+  }
+  return s
+}
+
 export function applyChooseTargets(state: GameState, player: PlayerId, targets: readonly CardId[]): [GameState, Event[]] {
   if (state.pending?.kind !== 'chooseTargets' || state.pending.player !== player) throw new IllegalCommandError('no target choice owed by this player')
   const { frame, node } = suspendedNode(state)
@@ -624,7 +670,10 @@ export function applyChooseTargets(state: GameState, player: PlayerId, targets: 
   for (const id of targets) if (!candidates.includes(id)) throw new IllegalCommandError(`${id} is not a legal target`)
   // Extending the path by one level says "the choice at this node is made" — resume runs `then`, not the prompt.
   const active: Frame = { ...frame, chosen: [...targets], path: [...frame.path, 0] }
-  return [{ ...state, pending: null, resolution: { ...state.resolution, active } }, []]
+  // "When <this> is chosen" fires HERE, before the choosing ability resumes (spec C11).
+  const events: Event[] = []
+  const after = dispatchChosenTriggers(state, targets, events)
+  return [{ ...after, pending: null, resolution: { ...after.resolution, active } }, events]
 }
 
 /**

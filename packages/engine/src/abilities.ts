@@ -192,6 +192,17 @@ export type AbilityTrigger =
       readonly oncePerTurn?: boolean
     }
   /**
+   * "When <this> is chosen by a Summon or an ability" — Prishe (spec C11).
+   *
+   * Dispatched INLINE, at the two points a target becomes fixed, rather than through the resolution agenda:
+   * the effect must not be able to suspend, because an inline application has nowhere to suspend to, and
+   * `dispatchChosenTriggers` rejects a suspending shape loudly rather than dropping it.
+   *
+   * Not the same as a preempting frame, and the difference is reachable — see the MVP0-SIMPLIFICATION on
+   * `dispatchChosenTriggers`.
+   */
+  | { readonly kind: 'observesChosen' }
+  /**
    * NOT a trigger either, and unlike an activated ability it never RESOLVES at all (spec C4-1). A static
    * ability is simply true, continuously, and the rules consult it: it never reaches the resolution agenda,
    * emits no event, and consumes no resolution steps.
