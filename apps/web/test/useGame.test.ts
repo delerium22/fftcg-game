@@ -1,4 +1,5 @@
-import { createElement } from 'react'
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
@@ -17,7 +18,7 @@ import {
 } from '../src/game/search/coordinator.js'
 import type { WorkerRequestMessage, WorkerResponseMessage, WorkerSearchRequest } from '../src/game/search/protocol.js'
 import {
-  AI_STEP_MS, aiHandlers, createAiSearch, describeEvent, eventLines, narrator, stepAi,
+  AI_STEP_MS, aiHandlers, aiIsThinking, createAiSearch, describeEvent, eventLines, narrator, stepAi, useGame,
   type AiSearch, type AiSink,
 } from '../src/game/useGame.js'
 
@@ -1254,5 +1255,126 @@ describe('the hook drives the search worker (rung D2)', () => {
     h.clock.advance(10 * AI_STEP_MS)
     expect(h.commits).toHaveLength(0)
     expect(h.lines).toHaveLength(0)
+  })
+})
+
+const SEED = 4   // any seed whose opening hands do not stall the probe's walk to the first AI decision
+
+describe('"The AI is thinking" is derived from the state, never stored beside it', () => {
+  // Found by playing: a driven click landed on a card the board had already made selectable while the strip
+  // still read "The AI is thinking". The flag was a `useState` cleared inside the effect that requests the
+  // search, so it lagged one render behind `choices` — for one commit the board accepted a move the strip
+  // said was not the player's to make.
+  //
+  // There is no React renderer in this suite, so the one-render timing is not what is asserted here. The fix
+  // is structural: ONE definition, read in the render body from the same `state` the choices come from, which
+  // is what makes the two unable to disagree. What is asserted is the invariant that was violated.
+
+  it('is the question "does the AI have the move", and nothing else', () => {
+    let s = newGame(3)
+    for (let i = 0; i < 60 && actingPlayer(s) !== AI; i++) {
+      const p = actingPlayer(s)
+      if (p === null) break
+      const legal = legalCommands(s, p).filter((c) => c.type !== 'concede')   // conceding ends the walk
+      if (!legal.length) break
+      expect(aiIsThinking(s), 'said thinking while the human held the move').toBe(false)
+      s = apply(s, legal[0]!).state
+    }
+    expect(actingPlayer(s), 'the walk never reached an AI decision').toBe(AI)
+    expect(aiIsThinking(s)).toBe(true)
+    // A finished game is not thinking, whoever happens to hold the turn.
+    expect(aiIsThinking({ ...s, result: { winner: HUMAN, reason: 'test' } })).toBe(false)
+  })
+
+  it('the HOOK never publishes "thinking" alongside a live human choice — rendered, across commits', () => {
+    // The test that actually pins the bug, and the reason this suite now has a DOM: the defect was a stale
+    // RENDER, and `renderToStaticMarkup` never runs an effect, so nothing server-rendered could see it. The
+    // other tests here pin the predicate's truth table and would pass against the old stored flag — Codex
+    // restored the `useState` while keeping the helper exported and watched them both stay green (MAJOR).
+    //
+    // This records what the hook publishes on EVERY render, then drives a real AI decision through the
+    // injected transport and clock. With the flag stored and cleared in an effect, the commit that hands the
+    // turn back publishes `aiThinking: true` beside the human's choices — one render before the effect
+    // catches up. Derived from the same `state` the choices come from, that pair cannot occur.
+    const clock = new TestClock()
+    const transports: TestTransport[] = []
+    const createTransport: SearchTransportFactory = (h) => { const t = new TestTransport(h); transports.push(t); return t }
+    const seen: { thinking: boolean; human: number }[] = []
+    let api: GameApi | null = null
+
+    function Probe(): null {
+      const game = useGame(SEED, { clock, createTransport })
+      // Concede is legal in every position, the AI's turn included, so it is not a LIVE human choice.
+      seen.push({ thinking: game.aiThinking, human: game.choices.all.filter((c) => c.command.type !== 'concede').length })
+      api = game
+      return null
+    }
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => { root.render(createElement(Probe)) })
+
+    // A shadow of the same game, so the reply can carry a command that is genuinely legal where it lands.
+    let shadow = newGame(SEED)
+    const playable = (s: GameState, p: PlayerId): Command[] => legalCommands(s, p).filter((c) => c.type !== 'concede')
+
+    for (let i = 0; i < 20 && !api!.aiThinking; i++) {
+      const next = api!.choices.all.find((c) => c.command.type !== 'concede')
+      if (!next) break
+      shadow = apply(shadow, next.command).state
+      act(() => { api!.choose(next) })
+    }
+    expect(api!.aiThinking, 'the probe never reached an AI decision').toBe(true)
+    expect(actingPlayer(shadow), 'the shadow drifted from the hook').toBe(AI)
+
+    // Keep feeding the AI real moves until it hands a decision BACK. That hand-back is the whole window: one
+    // move is not enough, because the AI usually still holds the turn afterwards and the human is owed nothing.
+    const before = seen.length
+    let handedBack = false
+    for (let i = 0; i < 40 && !handedBack; i++) {
+      const t = transports.at(-1)
+      expect(t, 'no transport was created').toBeDefined()
+      const req = t!.searches.at(-1)
+      expect(req, 'the hook never asked for a search').toBeDefined()
+      const move = playable(shadow, AI)[0]
+      expect(move, 'the AI has no non-concede move here').toBeDefined()
+      shadow = apply(shadow, move!).state
+      act(() => { t!.handlers.message(resultMessage(shadow, req!.requestId, move)) })
+      act(() => { clock.advance(AI_STEP_MS) })
+      handedBack = playable(shadow, HUMAN).length > 0 && actingPlayer(shadow) === HUMAN
+    }
+    expect(handedBack, 'the AI never handed a decision back, so the stale window was never entered').toBe(true)
+    expect(seen.length, 'the AI moves produced no re-render, so nothing was observed').toBeGreaterThan(before)
+
+    const liar = seen.find((r) => r.thinking && r.human > 0)
+    expect(liar, 'a render published "the AI is thinking" beside a live human choice').toBeUndefined()
+
+    act(() => { root.unmount() })
+    host.remove()
+  })
+
+  it('is never true on a state where the human is owed a decision — swept over a whole game', () => {
+    // Swept rather than sampled: whatever the game throws up — a blocker, a target, a mode, a deck pick — the
+    // strip must not be claiming the AI has the move.
+    let state = newGame(11)
+    const agent = new GreedyAgent({ seed: 11, decks: DECKS, depth: 1 })
+    let humanDecisions = 0
+    for (let i = 0; i < 600 && !state.result; i++) {
+      if (actingPlayer(state) === AI) {
+        expect(aiIsThinking(state)).toBe(true)
+        state = stepAi(state, agent).state
+        continue
+      }
+      const legal = legalCommands(state, HUMAN).filter((c) => c.type !== 'concede')
+      if (!legal.length) break
+      humanDecisions++
+      expect(aiIsThinking(state), 'the strip would say "thinking" while the human is owed a decision').toBe(false)
+      state = apply(state, legal[0]!).state
+    }
+    // The game must actually END. A count alone would let a dead end after the 21st decision pass as a sweep
+    // (Codex MINOR) — and a sweep that stops early is exactly the shape that stops covering the late game.
+    expect(state.result, 'the sweep stopped before the game finished, so it swept nothing it claims to').not.toBeNull()
+    expect(humanDecisions, 'the sweep never asked the human anything').toBeGreaterThan(20)
   })
 })

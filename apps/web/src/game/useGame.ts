@@ -420,17 +420,27 @@ const newGame = (seed: number): GameState => createGame({ seed, decks: DECKS, de
 
 const openingLog = (): LogLine[] => [{ kind: 'phase', text: 'New game — you are P0, the AI is P1' }]
 
-export function useGame(seed?: number): GameApi {
+/**
+ * Is the game waiting on the AI? This is the ONE definition — the prompt strip's "thinking" line, the inert
+ * board, and the effect that requests a search all read it, so none of them can drift from the others.
+ *
+ * A finished game needs no clause of its own: `actingPlayer` already returns null once `result` is set.
+ */
+export const aiIsThinking = (state: GameState): boolean => actingPlayer(state) === AI
+
+export function useGame(seed?: number, seams?: SearchSeams): GameApi {
   const seedRef = useRef<number>(seed ?? Date.now() % 2_147_483_647)
+  // The same seam `createAiSearch` already takes, lifted one level so the HOOK can be rendered in a test with
+  // a clock and transport under the test's control. Production passes nothing and gets a real worker.
+  const seamsRef = useRef<SearchSeams>(seams ?? {})
   // Spec B3: the ground truth lives here and only `viewFor(state, HUMAN)` ever leaves the hook. `stateRef` is
   // the authority `choose` reads, so two clicks inside one render can't both apply to the same stale state.
   const [state, setState] = useState<GameState>(() => newGame(seedRef.current))
   const stateRef = useRef<GameState>(state)
   const searchRef = useRef<AiSearch | null>(null)
   // Lazy for the same reason the game itself is: `useRef(createAiSearch(...))` would build one every render.
-  searchRef.current ??= createAiSearch(() => stateRef.current, seedRef.current)
+  searchRef.current ??= createAiSearch(() => stateRef.current, seedRef.current, seamsRef.current)
   const [log, setLog] = useState<LogLine[]>(openingLog)
-  const [aiThinking, setAiThinking] = useState(false)
 
   const commit = useCallback((next: GameState, lines: LogLine[]) => {
     stateRef.current = next
@@ -473,7 +483,6 @@ export function useGame(seed?: number): GameApi {
     searchRef.current?.restart(next)
     setState(game)
     setLog(openingLog())
-    setAiThinking(false)
   }, [])
 
   // Spec B7 + D2: one AI move per decision, searched off the main thread. Re-running on every `state` change is
@@ -481,8 +490,7 @@ export function useGame(seed?: number): GameApi {
   // cleanup invalidates synchronously, so StrictMode's mount→unmount→mount double-invoke discards the first
   // request rather than stepping the AI twice.
   useEffect(() => {
-    if (state.result || actingPlayer(state) !== AI) { setAiThinking(false); return }
-    setAiThinking(true)
+    if (!aiIsThinking(state)) return
     const search = searchRef.current as AiSearch
     search.request(state, handlers)
     return () => { search.invalidate() }
@@ -495,5 +503,11 @@ export function useGame(seed?: number): GameApi {
   // Disposal has to be synchronous with unmount, the same way every other invalidation here is.
   useLayoutEffect(() => () => { searchRef.current?.dispose() }, [])
 
-  return { view, choices, log, aiThinking, choose, restart }
+  // DERIVED, never stored. It was a `useState` cleared inside the effect below, so it lagged one render behind
+  // `choices`: the instant an AI move handed the turn back, the board rendered the human's blocker choice as
+  // clickable while the strip still read "The AI is thinking" (found by playing — a driven click landed in
+  // exactly that window). Computing it here, from the same `state` the choices came from, makes the two
+  // disagreeing impossible rather than merely unlikely, and fixes the mirror case for free: the strip no
+  // longer shows a stale human prompt for a render after the AI takes over.
+  return { view, choices, log, aiThinking: aiIsThinking(state), choose, restart }
 }

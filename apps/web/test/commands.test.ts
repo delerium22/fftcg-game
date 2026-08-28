@@ -306,8 +306,39 @@ describe('effective power on the board (spec C1-7)', () => {
     expect(out).toContain(`--dmg:${(2000 / (printed + 3000)) * 100}`.slice(0, 10))
     // the player can see WHY it survived and why it hits harder than the printed number
     for (const badge of ['+3000', 'Haste', 'Unbreakable']) expect(out).toContain(badge)
-    expect(out).toContain('plus 3000 power this turn')
     expect(out).toContain('unbreakable')
+    // Found by playing: the spoken label read "power 11000 of 11000, plus 4000 power this turn", and the
+    // "of" number ALREADY includes the bonus — so the sentence invited the reader to add it a second time and
+    // arrive at 15000. It has to say the bonus is part of the number just given, and that it will go away.
+    expect(out).toContain(`including 3000 that expires at the end of the turn`)
+    expect(out).not.toContain('plus 3000 power this turn')
+  })
+
+  it('says nothing about a power modifier on a card that HAS no power', () => {
+    // Codex MINOR: the prose is spoken as part of the power phrase, and a Backup has no power phrase — so it
+    // read "backup, including 3000 that expires at the end of the turn", included in nothing. Nothing in the
+    // pool pumps a Backup, but the component takes the props and must not produce a sentence about nothing.
+    const def = v.defs[REEVE]!
+    const shown = fieldCardDisplay(v, fieldCard(backup, { powerBonus: 3000 }))
+    expect(shown.power, 'the fixture is not a powerless card, so it proves nothing').toBeNull()
+    const out = renderToStaticMarkup(createElement(Card, {
+      code: def.code, name: def.name, cost: def.cost, elements: def.elements, type: def.type,
+      power: shown.power, powerBonus: shown.powerBonus,
+    }))
+    expect(out).not.toContain('including 3000')
+    expect(out).not.toContain('+3000')
+  })
+
+  it('says a NEGATIVE power modifier is a reduction already applied, not one still to come', () => {
+    const def = v.defs[NOEL]!
+    const shown = fieldCardDisplay(v, fieldCard(forward, { powerBonus: -3000 }))
+    const out = renderToStaticMarkup(createElement(Card, {
+      code: def.code, name: def.name, cost: def.cost, elements: def.elements, type: def.type,
+      power: shown.power, powerBonus: shown.powerBonus,
+    }))
+    expect(out).toContain(`power ${printed - 3000} of ${printed - 3000}`)
+    expect(out).toContain('reduced by 3000 until the end of the turn')
+    expect(out).not.toContain('minus 3000 power this turn')
   })
 })
 

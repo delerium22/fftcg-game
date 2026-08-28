@@ -72,8 +72,20 @@ export function Card(props: CardProps): JSX.Element {
   if (power !== null && damage > 0) vars['--dmg'] = `${Math.min(100, (damage / power) * 100)}%`
 
   // Why this Forward survived, or hit harder than its printed power. Badges, not prose: the whole card is 96px.
+  // A power modifier is spoken as part of the power phrase ("power 9000 of 11000, including 3000 that
+  // expires…"), so on a card with no power there is nothing for it to be "included" in — the sentence would
+  // read "backup, including 3000 that expires at the end of the turn" (Codex MINOR). Nothing in the pool pumps
+  // a Backup, but the component's contract allows it — and a +3000 badge on a card with no power is no more
+  // meaningful than the sentence, so both stand down together.
+  const modifier = powerBonus === 0 || power === null ? []
+    : [{
+        badge: powerBonus > 0 ? `+${powerBonus}` : `${powerBonus}`,
+        said: powerBonus > 0
+          ? `including ${powerBonus} that expires at the end of the turn`
+          : `reduced by ${Math.abs(powerBonus)} until the end of the turn`,
+      }]
   const buffs = [
-    ...(powerBonus === 0 ? [] : [{ badge: powerBonus > 0 ? `+${powerBonus}` : `${powerBonus}`, said: `${powerBonus > 0 ? 'plus' : 'minus'} ${Math.abs(powerBonus)} power this turn` }]),
+    ...modifier,
     ...granted.map((k) => ({ badge: KEYWORD_LABEL[k], said: `${KEYWORD_LABEL[k]} granted` })),
     ...flags.map((f) => ({ badge: FLAG_LABEL[f], said: FLAG_LABEL[f].toLowerCase() })),
   ]
