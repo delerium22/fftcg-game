@@ -44,7 +44,15 @@ export function describeCommand(v: PlayerView, c: Command): string {
       return `Cast ${name(v, c.card)} paying: ${pay.join(', ') || 'nothing'}`
     }
     case 'chooseTargets': return c.targets.length ? `Target ${c.targets.map((id) => name(v, id)).join(', ')}` : 'Choose no targets'
-    case 'chooseMode': return c.modes.length ? `Choose mode ${c.modes.map((i) => i + 1).join(' + ')}` : 'Choose no modes'
+    // The printed WORDING, not an ordinal. "Choose mode 1" tells a player nothing about what mode 1 does,
+    // and the engine already carries the labels on the pending precisely so a renderer need not guess — the
+    // browser has read them since rung C1. Found by playing the hotseat: a modal ability offered
+    // "Choose mode 1 + 2" with the effects nowhere on screen.
+    case 'chooseMode': {
+      if (!c.modes.length) return 'Choose no modes'
+      const labels = v.pending?.kind === 'chooseMode' ? v.pending.labels : []
+      return c.modes.map((i) => labels[i] ?? `mode ${i + 1}`).join(' + ')
+    }
     case 'chooseFromDeck': {
       // A search PLAYS what it finds; a look ADDS it to hand. Which cards the indices name is
       // `pickedDeckCards`' rule, shared with the browser — both renderers got it wrong the same two ways.

@@ -108,3 +108,31 @@ describe('render — an activated ability names what it DOES, not only what it c
     expect(checked, 'no activated clause was checked, so this proves nothing').toBeGreaterThan(3)
   })
 })
+
+describe('render — a modal choice says what the modes DO', () => {
+  // Found by playing the hotseat: a modal ability offered "Choose mode 1 + 2", with the effects nowhere on
+  // screen. The engine carries the printed wordings on the pending for exactly this reason, and the browser
+  // has read them since rung C1 — the terminal was rendering an ordinal.
+  const defs = loadCards()
+
+  it('prints the printed wording, not the index', () => {
+    const s = createGame({ seed: 1, decks: [deck, deck], defs })
+    const v = viewFor(s, 0)
+    v.pending = {
+      kind: 'chooseMode', player: 0, min: 1, max: 2,
+      labels: ['Choose 1 Forward. Dull it.', 'Choose 1 Forward. Deal it 5000 damage.', 'Choose 1 Forward. It gains Haste.'],
+    }
+    expect(describeCommand(v, { type: 'chooseMode', player: 0, modes: [0] }))
+      .toBe('Choose 1 Forward. Dull it.')
+    expect(describeCommand(v, { type: 'chooseMode', player: 0, modes: [0, 2] }))
+      .toBe('Choose 1 Forward. Dull it. + Choose 1 Forward. It gains Haste.')
+    expect(describeCommand(v, { type: 'chooseMode', player: 0, modes: [] })).toBe('Choose no modes')
+  })
+
+  it('falls back to an ordinal only when the wording is genuinely missing', () => {
+    const s = createGame({ seed: 1, decks: [deck, deck], defs })
+    const v = viewFor(s, 0)
+    v.pending = { kind: 'chooseMode', player: 0, min: 1, max: 1, labels: [] }
+    expect(describeCommand(v, { type: 'chooseMode', player: 0, modes: [1] })).toBe('mode 2')
+  })
+})
