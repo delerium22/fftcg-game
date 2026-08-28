@@ -69,21 +69,42 @@ a future mutation, not a comment saying there isn't one.
 
 ## Acceptance
 
-- **D4-A1** `determinise` no longer deep-clones `defs`: the returned state's `defs` is reference-identical
-  to the view's, and every OTHER part is still a copy — mutating a returned player array must not touch the
-  view (asserted per field, not spot-checked).
-- **D4-A2** Search output is unchanged: same seed, same view, same chosen command AND same diagnostics as
-  before the change, over the existing seed set.
-- **D4-A3** The immutability the change relies on is asserted, not assumed: a guard that fails if the engine
-  ever writes to `defs` (freeze in strict/test mode, or an equality check across a full self-play run).
-- **D4-A4** Measured: `determinise()` gets materially faster on the same fixture (expect ~2x from the
-  numbers above), and a `selfplay --p0 ismcts:200` run is faster end to end. Report both, and report the
-  win-rate check below even if the timing improves.
-- **D4-A5** Strength is unchanged: the search does the same work, so the mirror tournament must land within
-  noise of 78.3 %. A change in win rate means the search is no longer doing what it did, which would be a
-  defect and not a bonus.
+Revised after the Codex plan review, which confirmed the change is safe for every current production caller
+— no write, freeze, or identity comparison on `defs` anywhere outside test fixtures — and then found four of
+these five criteria too weak to prove it.
+
+- **D4-A1** No aliasing beyond `defs`. Asserted by walking BOTH object graphs: the set of object identities
+  reachable from the view and from the returned state must be disjoint, **except** `defs` and everything
+  beneath it. Array-level checks are not enough — a wrong implementation that copies every zone array while
+  sharing the `FieldCard` objects, `pending.candidates`, and `resolution.active.path` inside them would pass
+  those and still alias. Nested leaves are mutated explicitly to prove it.
+- **D4-A2** Value-identical to the OLD semantics, against a real baseline. The existing determinism test
+  compares two runs of the SAME implementation, so after a bad change both copies are identically wrong.
+  The test therefore keeps a reference implementation of the old whole-state clone and asserts the new
+  `determinise` deep-equals it for the same view and RNG — on `CARD_DEFS` positions with real ability-
+  bearing definitions, not just `VANILLA_POOL`.
+- **D4-A3** The immutability the change relies on is ENFORCED in a test, not asserted in a comment: a
+  RECURSIVE freeze of the actual `defs` handed to a search, which then runs a full search over
+  ability-bearing cards. A shallow `Object.freeze` would miss `defs[code].cost = …` and every nested
+  ability/effect write, and freezing in production would be pointless — `viewFor` and `postMessage` both
+  hand out unfrozen clones.
+- **D4-A4** Measured with spread, not a single number: `determinise()` on EARLY, MID and LATE states,
+  alternating old/new order, reporting median and range. JSON byte size is a proxy for allocation, not a
+  measurement of it, so the "MB of garbage" figure stays labelled as the proxy it is.
+- **D4-A5** EXACT replay, not "within noise". The search has fixed iterations and explicit RNG streams, so a
+  reference-only change must produce an identical command trace on identical seeds — "within noise" could
+  bless a real regression. The 78.3 % tournament figure stays as a sanity check on top, not as the gate.
 
 Verified by mutation.
+
+## Deliberately not doing: removing the rest of the clone
+
+The remaining non-`defs` clone (4.9 KiB, ~0.038 ms) is probably unnecessary for the search — `apply` is
+immutable and the search only reads. But `determinise` returns a mutable, exported `GameState`, and without
+that clone the returned state aliases the view's own hand, field arrays, `FieldCard` objects, `attack`,
+`pending`, `resolution` and visible `CardInstance`s. The clone is an API-isolation boundary even where it is
+not computationally required. It would save a few more percent end-to-end for a much larger maintenance
+surface, so it stays.
 
 ## Explicitly NOT in this rung
 
