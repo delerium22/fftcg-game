@@ -766,7 +766,9 @@ const triggered = (player: PlayerId, card: CardId, abilityId: string): Event => 
 describe('the log says WHY an observer trigger fired (spec C2-5)', () => {
   it('names the card whose break fired it, not just the watcher', () => {
     const out = texts(c2View(), [{ type: 'broken', card: ids.prishe }, triggered(HUMAN, ids.lightning, LIGHTNING_WATCH)])
-    expect(out[0]).toBe('Prishe is broken')
+    // Qualified because this fixture deliberately holds a Prishe on each side — and the cause line below
+    // has always said "the AI's Prishe", so the bare event line was the inconsistent one.
+    expect(out[0]).toBe("the AI's Prishe is broken")
     expect(out[1]).toContain("Lightning's ability triggers — the AI's Prishe was broken")
     // the printed wording is still quoted after the cause — rung C1's contract, unchanged
     expect(out[1]).toContain('It gains Haste until the end of the turn.')
@@ -894,7 +896,7 @@ describe('Luso has no prompt, so the log is the only evidence (spec C2-A5)', () 
     const v = c2View()
     for (const hit of [abilityHit(3000), combatHit(3000)]) {
       const out = texts(v, [hit, triggered(HUMAN, ids.luso, LUSO_DAMAGES)])
-      expect(out[1]).toContain("Luso's ability triggers — Luso dealt 3000 damage to Prishe")
+      expect(out[1]).toContain("Luso's ability triggers — Luso dealt 3000 damage to the AI's Prishe")
       expect(out[1]).toContain('When Luso deals damage to a Forward, break it.')
     }
   })
@@ -905,7 +907,7 @@ describe('Luso has no prompt, so the log is the only evidence (spec C2-A5)', () 
     const lethal = texts(c2View(), [abilityHit(7000), { type: 'broken', card: ids.victim }, triggered(HUMAN, ids.luso, LUSO_DAMAGES)])
     const survives = texts(c2View(), [abilityHit(3000), triggered(HUMAN, ids.luso, LUSO_DAMAGES), { type: 'brokenByAbility', card: ids.victim, source: ids.luso }])
     const trigger = (out: string[]): number => out.findIndex((t) => t.includes('ability triggers'))
-    expect(trigger(lethal)).toBeGreaterThan(lethal.indexOf('Prishe is broken'))
+    expect(trigger(lethal)).toBeGreaterThan(lethal.indexOf("the AI's Prishe is broken"))
     expect(lethal.some((t) => t.includes('is broken by Luso'))).toBe(false)
     expect(trigger(survives)).toBeLessThan(survives.findIndex((t) => t.includes('is broken by Luso')))
     expect(lethal).not.toEqual(survives)
@@ -919,7 +921,7 @@ describe('Luso has no prompt, so the log is the only evidence (spec C2-A5)', () 
       { type: 'battleDamage', source: ids.luso, target: ids.victim, amount: 3000 },
       triggered(HUMAN, ids.luso, LUSO_DAMAGES),
     ])
-    expect(out[2]).toContain('Luso dealt 3000 damage to Prishe')
+    expect(out[2]).toContain("Luso dealt 3000 damage to the AI's Prishe")
     expect(out[2]).not.toContain('Sphene')
   })
 
@@ -931,7 +933,7 @@ describe('Luso has no prompt, so the log is the only evidence (spec C2-A5)', () 
       triggered(HUMAN, ids.luso, LUSO_DAMAGES),
       triggered(HUMAN, ids.lightning, LIGHTNING_WATCH),
     ])
-    expect(out.find((t) => t.startsWith("Luso's"))).toContain('Luso dealt 7000 damage to Prishe')
+    expect(out.find((t) => t.startsWith("Luso's"))).toContain("Luso dealt 7000 damage to the AI's Prishe")
     expect(out.find((t) => t.startsWith("Lightning's"))).toContain("the AI's Prishe was broken")
   })
 })
@@ -1483,5 +1485,74 @@ describe('every move line says WHO made the move (not just what colour it is)', 
     // And the two seats really are both present, so the check is not passing on one of them alone.
     expect(moves.some((l) => l.kind === 'ai')).toBe(true)
     expect(moves.some((l) => l.kind === 'human')).toBe(true)
+  })
+})
+
+describe('a mirror match names both sides of a trade (found by playing)', () => {
+  // Both seats play the SAME deck, so a trade between two copies of one card is ordinary. It produced this:
+  //
+  //   Billy Bob deals 8000 damage to Billy Bob
+  //   Billy Bob deals 8000 damage to Billy Bob
+  //   Billy Bob is broken
+  //   Billy Bob is broken
+  //
+  // Four lines and no way to know which one died. The move lines had been fixed for this a few commits
+  // earlier; the EVENT lines had their own copy of `name` that had not, and the two drifted the moment one
+  // was changed. There is now one implementation, and this is the case that forced it to look past the
+  // FIELDS: by the time a break is narrated the card is in the Break Zone, so a field-only rule went quiet
+  // exactly when it was needed.
+  //
+  // What this does NOT prove is that OWNER rather than location is the key — in this pool nothing changes
+  // control, so a card's owner and whichever zone holds it always agree, and a location-keyed rule produces
+  // the same four strings (Codex MINOR). The distinction only becomes observable if a card can steal one.
+
+  const BILLY = '18-124C'
+  /** A dealt game — hands come from `chooseFirst`, not `createGame`. */
+  const dealt = (seed: number): GameState => {
+    const g = newGame(seed)
+    const chooser = g.pending?.kind === 'chooseFirst' ? g.pending.player : HUMAN
+    return applyChooseFirst(g, chooser, chooser === HUMAN)[0]
+  }
+
+  const mirrorView = (): PlayerView => {
+    const v = viewFor(dealt(3), HUMAN)
+    const mine = 960, theirs = 961
+    v.cards[mine] = { id: mine, code: BILLY, owner: HUMAN }
+    v.cards[theirs] = { id: theirs, code: BILLY, owner: AI }
+    // Both already broken, which is the state the damage lines are narrated against.
+    v.fields[HUMAN].breakZone = [mine]
+    v.fields[AI].breakZone = [theirs]
+    return v
+  }
+
+  it('says whose card dealt the damage and whose died — with both already in the Break Zone', () => {
+    const v = mirrorView()
+    const out = eventLines(v, [
+      { type: 'battleDamage', source: 960, target: 961, amount: 8000 },
+      { type: 'battleDamage', source: 961, target: 960, amount: 8000 },
+      { type: 'broken', card: 960 },
+      { type: 'broken', card: 961 },
+    ]).map((l) => l.text)
+    expect(out[0]).toBe("your Billy Bob deals 8000 damage to the AI's Billy Bob")
+    expect(out[1]).toBe("the AI's Billy Bob deals 8000 damage to your Billy Bob")
+    expect(out[2]).toBe('your Billy Bob is broken')
+    expect(out[3]).toBe("the AI's Billy Bob is broken")
+    // The point, stated as the property rather than the strings: no two of these lines are the same.
+    expect(new Set(out).size, 'two lines are identical, so the trade is still unreadable').toBe(4)
+  })
+
+  it('stays quiet when the only twin is in your own HAND', () => {
+    // The rule earns its noise only against a twin ON THE TABLE — a card in your hand is not something you
+    // can confuse with one in play. The first version of this test did not prove that: seed 3's hand holds no
+    // Billy Bob, so the fixture had no twin at all, and a mutant that scanned hands too passed it unchanged
+    // (Codex MAJOR). The twin has to actually be there for its exclusion to mean anything.
+    const v = viewFor(dealt(3), HUMAN)
+    const onTable = 962, inHand = 963
+    v.cards[onTable] = { id: onTable, code: BILLY, owner: HUMAN }
+    v.cards[inHand] = { id: inHand, code: BILLY, owner: HUMAN }
+    v.fields[HUMAN].breakZone = [onTable]
+    v.hand = [...v.hand, inHand]
+    expect(v.hand, 'the hand twin is not in hand, so the exclusion is untested').toContain(inHand)
+    expect(eventLines(v, [{ type: 'broken', card: onTable }])[0]?.text).toBe('Billy Bob is broken')
   })
 })

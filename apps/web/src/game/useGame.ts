@@ -5,7 +5,7 @@ import {
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { buildChoiceSet, describeChoice, describeTriggerCause, preferredChoices, sameCommand, type TriggerCause } from './commands.js'
+import { buildChoiceSet, describeChoice, describeTriggerCause, name, preferredChoices, sameCommand, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
@@ -17,11 +17,7 @@ const PHASE_LABEL: Record<string, string> = {
   main1: 'Main Phase 1', attack: 'Attack Phase', main2: 'Main Phase 2', end: 'End Phase',
 }
 
-function name(v: PlayerView, id: number): string {
-  const inst = v.cards[id]
-  if (!inst) return `#${id}`
-  return v.defs[inst.code]?.name ?? inst.code
-}
+
 const who = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'You' : 'The AI')
 const whoDoes = (v: PlayerView, p: PlayerId, mine: string, theirs: string): string => (p === v.me ? mine : theirs)
 

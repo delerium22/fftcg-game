@@ -31,23 +31,46 @@ function bareName(v: PlayerView, id: CardId): string {
 }
 
 /**
- * The card's name, qualified with whose it is when the OTHER field holds one of the same name.
+ * The card's name, qualified with whose it is when another VISIBLE card of the same name belongs to the
+ * other player.
  *
- * Both seats play the same deck, so a mirror is ordinary rather than exotic: found by playing, with a Shantotto
- * on each side, where "Give Haste to Shantotto" named neither of them. The clause was right — its own text says
- * "a Forward other than Shantotto", so it had to be the other copy — but the log gave the player no way to see
- * that, and a log that cannot be checked against the board is worse than no log.
+ * Both seats play the same deck, so a mirror is the normal case, not an exotic one. Found by playing twice
+ * over. The first time it was a choice — "Give Haste to Shantotto" with a Shantotto on each side. The second
+ * time was worse, because it was combat:
  *
- * Only FIELD cards are qualified. A card in hand or the Break Zone is not one of a facing pair the player is
- * trying to tell apart, and "Cast your Shantotto" says nothing the sentence did not already.
+ *   Billy Bob deals 8000 damage to Billy Bob
+ *   Billy Bob deals 8000 damage to Billy Bob
+ *   Billy Bob is broken
+ *   Billy Bob is broken
+ *
+ * Four lines, and no way to know which Billy Bob died. That case is also why this looks past the FIELDS, as
+ * the first version did not: by the time a break is narrated the card has left the field for the Break Zone,
+ * so a field-only rule goes quiet exactly when the player most needs it.
+ *
+ * A twin counts when it is on the TABLE — the other player's forwards, backups or Break Zone. All three are
+ * public and available to narration (the Break Zone is shown as a count, not as cards, but its contents are
+ * not secret). Hands and decks are excluded because their contents are hidden or irrelevant to a board
+ * label; the damage zone and the removed-from-game pile are excluded because they are inert and permanent,
+ * and counting them would qualify a card for the rest of the game to no purpose.
+ *
+ * KNOWN LIMIT: this keys on `owner`, which is sound only because nothing in this pool changes control, so a
+ * card's owner and its holder always agree. A card that could steal a Forward would break it two ways —
+ * `possessive` would say "your Forward" for one the opponent controls, and two copies owned by one player
+ * but split across the fields would both qualify the same way, resolving nothing. Fixing that needs the
+ * controller ON the event, not a lookup here: events are narrated after the fact, and a stolen Forward is
+ * already back in its owner's Break Zone by then.
  */
-function name(v: PlayerView, id: CardId): string {
+export function name(v: PlayerView, id: CardId): string {
   const bare = bareName(v, id)
-  const where = whereIs(v, id)
-  if (!where || where.zone === 'breakZone') return bare
-  const other = (1 - where.p) as PlayerId
-  const twin = [...v.fields[other].forwards, ...v.fields[other].backups].some((c) => bareName(v, c.id) === bare)
-  return twin ? `${possessive(v, where.p)} ${bare}` : bare
+  const mine = v.cards[id]?.owner
+  if (mine === undefined) return bare
+  const other = (1 - mine) as PlayerId
+  // Only twins ON THE TABLE count — the two fields and the two Break Zones, all four public and all four
+  // rendered. A copy in your HAND is not something you can confuse with a card in play, and counting it
+  // would qualify half the board for no reason.
+  const f = v.fields[other]
+  const inPlay = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.breakZone]
+  return inPlay.some((tid) => bareName(v, tid) === bare) ? `${possessive(v, mine)} ${bare}` : bare
 }
 
 /** "A", "A and B", "A, B and C" — target sets are read aloud off a button, so a bare comma list reads badly. */
