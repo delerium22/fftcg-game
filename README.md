@@ -16,7 +16,7 @@ imports, so the whole game — rules, opponent, and card database — runs clien
 server.
 
 The browser opponent is the **ISMCTS search**, running in a Web Worker so the board never freezes
-while it thinks (rung D2). It beats the heuristic agent **90.0 %** over 120 mirrored games. If the
+while it thinks (rung D2). It beats the heuristic agent **78.3 %** over 120 mirrored games. If the
 worker fails for any reason the game falls back to the heuristic agent permanently and says so in
 the log, in amber — a weaker opponent is never silent.
 
@@ -117,13 +117,21 @@ Measured strength, all on seeded runs:
 
 | Matchup | Result |
 |---|---|
-| ISMCTS vs greedy, 120 mirrored games, 200 iterations | **90.0 %** |
+| ISMCTS vs greedy, 120 mirrored games, 200 iterations | **78.3 %**, CI95 [70.8, 85.0] |
 | Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
 | ISMCTS in the browser (production build, Apple Silicon) | p50 **152 ms**, p95 240 ms per decision |
 
+**The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; re-run
+with the same command at the current HEAD it is 78.3 %, and 90.0 % now sits outside the confidence
+interval, so this is not sampling noise. What changed in between is the CARD POOL: rungs C5–C10 added
+removal, search, a Break-Zone retrieve and several combat tricks. Two plausible causes, neither of them
+yet tested — a fixed 200-iteration budget covers a smaller share of a wider tree, and games now run 13.6
+turns, giving a search fewer turns to compound an edge. They are stated as hypotheses because that is what
+they are; the measurement is the fact.
+
 Full breakdowns: [`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`](docs/superpowers/specs/2026-08-26-heuristic-ai-design.md)
 (greedy) and [`docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md`](docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md)
-(ISMCTS). One caveat worth stating plainly: the 200-iteration budget was chosen because the browser
+(ISMCTS), whose figures are the ones measured when those rungs landed. One caveat worth stating plainly: the 200-iteration budget was chosen because the browser
 comfortably affords it, **not** because it was calibrated for strength — more iterations have not
 been shown to be worth their latency.
 
