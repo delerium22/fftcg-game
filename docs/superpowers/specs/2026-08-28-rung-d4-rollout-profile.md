@@ -118,6 +118,16 @@ Better than the ~2x predicted; the extra is most likely the allocation that is n
 The end-to-end figure compares a 6-game run against the 120-game tournament's number, so the sample sizes
 differ and it is indicative rather than exact — but 22 % is far outside the spread of either.
 
+**In the browser, the median improved and the TAIL did not.** Re-measured on a production preview over 123
+searches: p50 454 -> **283 ms**, p95 1351 -> **1385 ms** (unchanged within run-to-run variation). The
+saving lands on cheap decisions; expensive ones are dominated by the rollout, where `determinise` is a
+small share. And since the coordinator paces AI moves to `AI_STEP_MS` = 600 ms, a faster median is
+invisible to a player: what a player waits on is the tail, and the tail did not move.
+
+So this rung is worth ~22 % of measurement throughput and, as yet, nothing a player can feel. That is not
+a reason to revert it — it is the same reasoning that deferred D3, applied to its own result — but it does
+say plainly where the next lever is, and it is the one below.
+
 ## Explicitly NOT in this rung
 
 The 124,000 applies per decision. That is the real structural cost and no micro-optimisation touches it —

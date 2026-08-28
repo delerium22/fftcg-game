@@ -119,7 +119,7 @@ Measured strength, all on seeded runs:
 |---|---|
 | ISMCTS vs greedy, 120 mirrored games, 200 iterations | **78.3 %**, CI95 [70.8, 85.0] |
 | Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
-| ISMCTS in the browser (production build, Apple Silicon) | p50 **454 ms**, p95 1351 ms per decision |
+| ISMCTS in the browser (production build, Apple Silicon) | p50 **283 ms**, p95 1385 ms per decision |
 
 **The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; re-run
 with the same command at the current HEAD it is 78.3 %, and 90.0 % now sits outside the confidence
@@ -148,13 +148,21 @@ tree. The intervals overlap, so on two independent runs alone this is support ra
 is the same seeds and the same opponent, and the point estimate moves ten points in the predicted
 direction.
 
-**The default stays 200 anyway, and the measurement is why.** The browser latency above was re-measured
-with `scripts/measure-worker.js` at the same time: p50 454 ms, p95 **1351 ms** over 65 searches across
-four games on a production preview. That row used to read p50 152 ms / p95 240 ms, so it had rotted by the
-same cause and further — the widening pool made every iteration more expensive. Tripling the budget to buy
-ten points of strength would put p95 near four seconds. The numbers carry the harness's own instrumentation
-overhead and come from one machine under a scripted driver, so treat them as indicative; they are not
-5.6x-off-the-old-figure indicative by accident.
+**The default stays 200 anyway, and the measurement is why.** Re-measured with
+`scripts/measure-worker.js` on a production preview, latency was p50 454 ms and p95 **1351 ms** — a row
+that used to read p50 152 ms / p95 240 ms, so it had rotted by the same cause and further. Tripling the
+budget to buy ten points of strength would have put p95 near four seconds.
+
+Since then the search stopped deep-cloning the card database every iteration (see the D4 spec), and the
+median fell to **283 ms** — but **p95 did not move**, at 1385 ms over 123 searches. That is the useful
+half of the result: the saving lands on cheap decisions, while expensive ones are dominated by the rollout,
+where `determinise` is a small share. And because the coordinator paces AI moves to `AI_STEP_MS` = 600 ms,
+a faster median is invisible to a player anyway — what a player feels is the tail, and the tail is
+unchanged. The win is real for measurement throughput (~22 % more games per hour) and not yet visible in
+play.
+
+The numbers carry the harness's own instrumentation overhead and come from one machine under a scripted
+driver, so treat them as indicative.
 
 **The real lesson is that a fixed ITERATION count is the wrong control variable.** It holds work constant
 and lets responsiveness drift, which is exactly backwards for an opponent a human waits on — and it is why
