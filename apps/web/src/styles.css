@@ -467,7 +467,9 @@ body {
   line-height: 1.55;
 }
 
-/* The kinds are LogLine['kind'] — colour is the only separator, so each one is distinct. */
+/* The kinds are LogLine['kind'], each a distinct colour. Colour is a SECOND channel, never the only one: a
+   move line names its actor in the text ("You: ", "The AI: ") because colour reaches neither a screen reader
+   nor a colour-blind player, and is not there at all when the log is read as text. */
 .log__line { color: var(--ink-2); }
 .log__line + .log__line { margin-top: var(--s1); }
 

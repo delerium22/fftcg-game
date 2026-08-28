@@ -331,8 +331,24 @@ function narrateApply(
   // card it had just put onto the field. Pre-command view, post-command cards: the cards union is the only
   // part that has to look forward, so a cast can still name the card it just made public.
   const label = describeChoice({ ...before, cards: view.cards }, command)
-  return { state: result.state, lines: [{ kind: 'ai', text: label }, ...lines] }
+  return { state: result.state, lines: [moveLine(AI, label), ...lines] }
 }
+
+/**
+ * A move line, with the player who made it IN THE TEXT.
+ *
+ * The two move lines were the only lines in the log with no subject — every event line already says "You draw
+ * 1 card" or "The AI draws 2 cards" — and the seat was carried by colour alone (`--gold` against `#8fb6c9`).
+ * Colour is not available to a screen reader, is not available to a colour-blind player, and is not there at
+ * all when the log is read as text.
+ *
+ * Found by playing, on the very first line of a game: the AI held the first-player choice, and its move
+ * appeared as a bare "Let the opponent go first" directly above "YOU TAKE THE FIRST TURN". Both are correct —
+ * the AI chose to go second — but read as one voice they contradict each other, and the outcome line names the
+ * beneficiary rather than the chooser, so nothing on screen said who had decided.
+ */
+export const moveLine = (actor: PlayerId, label: string): LogLine =>
+  ({ kind: actor === HUMAN ? 'human' : 'ai', text: `${actor === HUMAN ? 'You' : 'The AI'}: ${label}` })
 
 /**
  * Apply exactly ONE command for whoever is currently acting, chosen by `agent`, and return the resulting state
@@ -471,7 +487,7 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
     const before = viewFor(current, HUMAN)
     const result = apply(current, choice.command)
     const lines = eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, current.resolution.queue)
-    commit(result.state, [{ kind: 'human', text: describeChoice(before, choice.command) }, ...lines])
+    commit(result.state, [moveLine(HUMAN, describeChoice(before, choice.command)), ...lines])
   }, [commit])
 
   const restart = useCallback((): void => {

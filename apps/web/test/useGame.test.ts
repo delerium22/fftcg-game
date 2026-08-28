@@ -18,7 +18,7 @@ import {
 } from '../src/game/search/coordinator.js'
 import type { WorkerRequestMessage, WorkerResponseMessage, WorkerSearchRequest } from '../src/game/search/protocol.js'
 import {
-  AI_STEP_MS, aiHandlers, aiIsThinking, createAiSearch, describeEvent, eventLines, narrator, stepAi, useGame,
+  AI_STEP_MS, aiHandlers, aiIsThinking, createAiSearch, describeEvent, eventLines, moveLine, narrator, stepAi, useGame,
   type AiSearch, type AiSink,
 } from '../src/game/useGame.js'
 
@@ -253,7 +253,9 @@ describe('the AI\'s own log lines never name a card the human was not shown (B-A
     // what the human's own view holds at the picked slots, which is exactly what the redaction keys on.
     const labels = played.flatMap((g) => g.deckLabels)
     expect(labels.length, 'no AI deck pick was labelled at all').toBeGreaterThan(0)
-    const redacted = /^(Take nothing|Find nothing|Take \d+ cards?|Play \d+ cards? onto the field)$/
+    // The `The AI: ` prefix is part of the assertion, not tolerated by it: a move line that lost its actor
+    // would fail here too, and the redaction is still anchored to the whole line.
+    const redacted = /^The AI: (Take nothing|Find nothing|Take \d+ cards?|Play \d+ cards? onto the field)$/
     const leaked = labels.filter((l) => !l.allPublic && !redacted.test(l.text))
     expect(leaked).toEqual([])
   })
@@ -321,7 +323,7 @@ describe("an AI move label reads the pending it ANSWERED, not the one that repla
       }
     }
     expect(labels.length, 'no AI search was answered — the assertion would prove nothing').toBeGreaterThan(0)
-    for (const l of labels) expect(l).toMatch(/^(Play \d+ cards? onto the field|Find nothing)$/)
+    for (const l of labels) expect(l).toMatch(/^The AI: (Play \d+ cards? onto the field|Find nothing)$/)
   })
 })
 
@@ -1376,5 +1378,110 @@ describe('"The AI is thinking" is derived from the state, never stored beside it
     // (Codex MINOR) — and a sweep that stops early is exactly the shape that stops covering the late game.
     expect(state.result, 'the sweep stopped before the game finished, so it swept nothing it claims to').not.toBeNull()
     expect(humanDecisions, 'the sweep never asked the human anything').toBeGreaterThan(20)
+  })
+})
+
+describe('every move line says WHO made the move (not just what colour it is)', () => {
+  // Found by playing, on the first line of a game. The AI held the first-player choice, so the log opened:
+  //
+  //   Let the opponent go first
+  //   YOU TAKE THE FIRST TURN
+  //
+  // Both correct — the AI chose to go second — but the first line has no subject and the second names the
+  // beneficiary rather than the chooser, so the pair reads as one voice contradicting itself. The seat was
+  // carried by `kind` alone, which is styling: gold against blue-grey. That is nothing to a screen reader,
+  // nothing to a colour-blind player, and nothing when the log is read as text.
+
+  /** The AI's own first-player choice, taken from a seed where the engine hands it that decision. */
+  const aiChoosesFirst = (): { state: GameState; lines: LogLine[] } | null => {
+    for (let seed = 1; seed < 60; seed++) {
+      const s = newGame(seed)
+      if (s.pending?.kind === 'chooseFirst' && s.pending.player === AI) {
+        return stepAi(s, new GreedyAgent({ seed, decks: DECKS, depth: 1 }))
+      }
+    }
+    return null
+  }
+
+  it("names the AI on the AI's own first-player choice — the exact line that read as the human's", () => {
+    const stepped = aiChoosesFirst()
+    expect(stepped, 'no seed under 60 gives the AI the first-player choice').not.toBeNull()
+    const move = stepped!.lines[0]!
+    expect(move.kind).toBe('ai')
+    expect(move.text, 'the move line still has no subject').toMatch(/^The AI: /)
+    expect(move.text).toMatch(/^The AI: (Take the first turn|Let the opponent go first)$/)
+  })
+
+  it("marks the HUMAN's move where production actually writes it — inside the hook's `choose`", () => {
+    // Codex MAJOR: the sweep below builds the human line by calling `moveLine` itself, which is the same
+    // function production calls but NOT the same call site. Codex reverted `choose` alone to a bare line and
+    // all 71 tests here stayed green. The human line is assembled inside the hook, so the only place it can
+    // honestly be checked is a rendered hook — which is what the DOM in this suite is for.
+    const clock = new TestClock()
+    const createTransport: SearchTransportFactory = (h) => new TestTransport(h)
+    // A seed whose OPENING decision belongs to the human — SEED gives it to the AI, and this test is about
+    // what the hook writes when the human clicks, so it must start with the human on the clock.
+    let humanFirst = -1
+    for (let seed = 1; seed < 60 && humanFirst < 0; seed++) {
+      const g = newGame(seed)
+      if (g.pending?.kind === 'chooseFirst' && g.pending.player === HUMAN) humanFirst = seed
+    }
+    expect(humanFirst, 'no seed under 60 opens with the human on the clock').toBeGreaterThan(0)
+
+    let api: GameApi | null = null
+    function Probe(): null { api = useGame(humanFirst, { clock, createTransport }); return null }
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => { root.render(createElement(Probe)) })
+
+    const choice = api!.choices.all.find((c) => c.command.type !== 'concede')
+    expect(choice, 'the opening position offered the human nothing to do').toBeDefined()
+    act(() => { api!.choose(choice!) })
+
+    const mine = api!.log.filter((l) => l.kind === 'human')
+    expect(mine.length, 'the hook logged no human move at all').toBeGreaterThan(0)
+    expect(mine.at(-1)!.text, "the hook wrote the human's move with no subject").toMatch(/^You: /)
+
+    act(() => { root.unmount() })
+    host.remove()
+  })
+
+  it('marks both seats, over a whole game, and leaves no move line subject-less', () => {
+    // Swept: the move lines are the ONLY ones in the log without a subject of their own, so the invariant is
+    // that no `human`/`ai` line escapes unmarked — not that one particular label got a prefix.
+    //
+    // This covers the AI's call site for real (`stepAi` is production) but NOT the human's, which lives inside
+    // the hook — the test above is the one that pins that. Kept separate deliberately: this one sweeps every
+    // LABEL a whole game produces, which the single rendered choice above cannot.
+    let state = newGame(11)
+    const agent = new GreedyAgent({ seed: 11, decks: DECKS, depth: 1 })
+    const log: LogLine[] = []
+    for (let i = 0; i < 600 && !state.result; i++) {
+      if (actingPlayer(state) === AI) {
+        const stepped = stepAi(state, agent)
+        log.push(...stepped.lines)
+        state = stepped.state
+        continue
+      }
+      const legal = legalCommands(state, HUMAN).filter((c) => c.type !== 'concede')
+      if (!legal.length) break
+      const before = viewFor(state, HUMAN)
+      const result = apply(state, legal[0]!)
+      // `moveLine` itself, not a hand-written prefix — the human seat is produced inside the hook, so the
+      // only honest way to sweep it here is to call the same function the hook calls.
+      log.push(moveLine(HUMAN, describeChoice(before, legal[0]!)))
+      log.push(...eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, state.resolution.queue))
+      state = result.state
+    }
+    expect(state.result, 'the sweep stopped before the game finished').not.toBeNull()
+    const moves = log.filter((l) => l.kind === 'human' || l.kind === 'ai')
+    expect(moves.length, 'no move lines were produced').toBeGreaterThan(20)
+    const bare = moves.filter((l) => !/^(You|The AI): /.test(l.text))
+    expect(bare, 'a move line went into the log with no actor').toEqual([])
+    // And the two seats really are both present, so the check is not passing on one of them alone.
+    expect(moves.some((l) => l.kind === 'ai')).toBe(true)
+    expect(moves.some((l) => l.kind === 'human')).toBe(true)
   })
 })
