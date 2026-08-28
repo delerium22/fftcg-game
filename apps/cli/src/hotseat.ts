@@ -21,12 +21,37 @@ function describeEvent(e: Event): string | null {
   }
 }
 
+/**
+ * Thrown when input runs out — Ctrl-D, or a piped stdin reaching its end.
+ *
+ * Without it `rl.question` simply never settles: node reports "Detected unsettled top-level await" and the
+ * process exits 13, which is what a player pressing Ctrl-D used to get instead of a quit.
+ */
+class InputEnded extends Error {}
+
 export async function hotseat(opts: { seed: number; decks: [string[], string[]]; defs: CardDef[] }, io?: HotseatIo): Promise<void> {
   const rl = io ? null : createInterface({ input: stdin, output: stdout })
-  const realIo: HotseatIo = { ask: (p) => rl!.question(p), print: (l) => console.log(l), clear: () => console.clear() }
+  // `question` does not reject on close by itself, so closing has to abort it.
+  const ended = new AbortController()
+  rl?.on('close', () => { ended.abort() })
+  const realIo: HotseatIo = {
+    ask: async (p) => {
+      try {
+        return await rl!.question(p, { signal: ended.signal })
+      } catch (e) {
+        // ONLY the abort means the input is gone. A blanket catch relabels every readline failure as a tidy
+        // "input ended" and exits 0, which would hide a real fault behind a friendly message.
+        if (ended.signal.aborted) throw new InputEnded()
+        throw e
+      }
+    },
+    print: (l) => console.log(l),
+    clear: () => console.clear(),
+  }
   const term = io ?? realIo
   let s = createGame(opts)
   let lastPlayer: number | null = null
+  try {
   while (!s.result) {
     const p = actingPlayer(s)!
     if (p !== lastPlayer) {
@@ -43,17 +68,40 @@ export async function hotseat(opts: { seed: number; decks: [string[], string[]];
     if (nonConcede.length === 1 && nonConcede[0]?.type === 'pass') {
       choice = nonConcede[0]; term.print('(auto-pass: nothing else to do)')
     } else {
-      legal.forEach((c, i) => term.print(`  ${i}: ${describeCommand(view, c)}`))
+      // Concede LAST, for the reason the browser sorts it last too: `legalCommands` returns it first (it is
+      // legal in every position, §2.1), which made it option 0 — the lowest number, and the one a stray
+      // keystroke lands on.
+      const ordered = [...nonConcede, ...legal.filter((c) => c.type === 'concede')]
+      ordered.forEach((c, i) => term.print(`  ${i}: ${describeCommand(view, c)}`))
       for (;;) {
-        const answer = await term.ask(`P${p}> `)
+        const answer = (await term.ask(`P${p}> `)).trim()
+        // Blank input is REJECTED rather than parsed. `Number('')` is 0, and 0 used to be Concede, so a bare
+        // Enter at the prompt ended the game — the single most likely accidental keystroke, and the whole
+        // reason this loop now reads the way it does. `Number(' ')` and `Number('\n')` are 0 as well.
+        if (answer === '') { term.print('enter a number from the list'); continue }
         const i = Number(answer)
-        if (Number.isInteger(i) && legal[i]) { choice = legal[i]; break }
-        term.print('enter a number from the list')
+        const picked = Number.isInteger(i) ? ordered[i] : undefined
+        if (!picked) { term.print('enter a number from the list'); continue }
+        // The one irreversible move in the game asks first, as it does in the browser.
+        if (picked.type === 'concede') {
+          const yes = (await term.ask('Concede the game? This cannot be undone [y/N] ')).trim().toLowerCase()
+          if (yes !== 'y' && yes !== 'yes') { term.print('still playing'); continue }
+        }
+        choice = picked
+        break
       }
     }
     const r = apply(s, choice!)
     s = r.state
     for (const e of r.events) { const line = describeEvent(e); if (line) term.print(line) }
+  }
+  } catch (e) {
+    if (!(e instanceof InputEnded)) throw e
+    // Ctrl-C closes the interface too, so this covers an interrupt as well as a real end-of-input; the
+    // wording deliberately does not claim to know which.
+    term.print('\ninput closed — leaving the game unfinished')
+    rl?.close()
+    return
   }
   term.clear()
   term.print(renderView(viewFor(s, 0)))
