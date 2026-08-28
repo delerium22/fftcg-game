@@ -16,7 +16,9 @@ imports, so the whole game — rules, opponent, and card database — runs clien
 server.
 
 The browser opponent is the **ISMCTS search**, running in a Web Worker so the board never freezes
-while it thinks (rung D2). It beats the heuristic agent **78.3 %** over 120 mirrored games. If the
+while it thinks (rung D2). It beats the heuristic agent comfortably — the measured figure lives in
+[Measured strength](#ai-opponent) and is stated once, there, because this line used to carry its own copy
+and drifted: it still read 78.3 % after the shipped rollout cap changed the answer to 75.0 %. If the
 worker fails for any reason the game falls back to the heuristic agent permanently and says so in
 the log, in amber — a weaker opponent is never silent. A clause proven unreachable does NOT warn: a
 warning that fires when nothing was lost teaches the player to ignore the ones that matter, and the EX
