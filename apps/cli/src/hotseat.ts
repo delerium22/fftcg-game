@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import { actingPlayer, apply, createGame, legalCommands, viewFor, type CardDef, type Event } from '@fftcg/engine'
-import { describeCommand, renderView } from './render.js'
+import { askingBecause, describeCommand, renderView } from './render.js'
 
 export interface HotseatIo {
   ask(prompt: string): Promise<string>
@@ -64,6 +64,10 @@ export async function hotseat(opts: { seed: number; decks: [string[], string[]];
     const legal = legalCommands(s, p)
     const nonConcede = legal.filter((c) => c.type !== 'concede')
     term.print('\n' + renderView(view))
+    // Why this choice is being asked, when an ability raised it. The menu alone names the cards; this names
+    // the clause acting on them.
+    const because = askingBecause(view)
+    if (because !== null) term.print(because)
     let choice
     if (nonConcede.length === 1 && nonConcede[0]?.type === 'pass') {
       choice = nonConcede[0]; term.print('(auto-pass: nothing else to do)')

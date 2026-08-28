@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { createGame, apply, viewFor, legalCommands, actingPlayer } from '@fftcg/engine'
+import { createGame, apply, viewFor, legalCommands, actingPlayer, type PlayerView } from '@fftcg/engine'
 import { cardDb, loadCards } from '@fftcg/cards'
 import { readFileSync } from 'node:fs'
 import { parseDeckFile } from '../src/deck.js'
-import { describeCommand, renderView } from '../src/render.js'
+import { askingBecause, describeCommand, renderView } from '../src/render.js'
 
 const deck = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 describe('render — a deck look or search (rung C9)', () => {
@@ -134,5 +134,55 @@ describe('render — a modal choice says what the modes DO', () => {
     const v = viewFor(s, 0)
     v.pending = { kind: 'chooseMode', player: 0, min: 1, max: 1, labels: [] }
     expect(describeCommand(v, { type: 'chooseMode', player: 0, modes: [1] })).toBe('mode 2')
+  })
+})
+
+describe('render — the terminal says WHY it is asking', () => {
+  // Found by playing: the menu offered "0: Target Lightning (27-127S)" at 5 of 7 damage, with nothing on
+  // screen saying whether that Lightning was about to be dulled, damaged, broken or buffed. The browser
+  // answers this with a prompt above its buttons; the terminal had only the numbered list.
+  const defs = loadCards()
+  const NOEL = '16-092C'
+
+  const suspended = (code: string, abilityId: string): PlayerView => {
+    const s = createGame({ seed: 1, decks: [deck, deck], defs })
+    const v = viewFor(s, 0)
+    const src = 900
+    v.cards[src] = { id: src, code, owner: 0 }
+    v.resolution = { active: { abilityId, source: src, controller: 0, path: [], chosen: [], modes: [], triggerEvent: null }, queue: [], continuation: null, steps: 1 }
+    return v
+  }
+
+  it('names the clause acting on the cards, from the card own printed text', () => {
+    const v = suspended(NOEL, `${NOEL}:etb`)
+    const line = askingBecause(v)
+    expect(line, 'no line at all').not.toBeNull()
+    // A TRIGGERED clause has no "cost: effect" colon, so the whole printed text comes through — and that is
+    // what the player needs: "EX BURST When Noel enters the field, choose up to 2 Forwards opponent
+    // controls. Dull them." I expected only the tail here and was wrong about the code, not the other way
+    // round; the full sentence is more use in a terminal with nothing else on screen.
+    expect(line).toContain('Dull them')
+    expect(line, 'the source card is not named').toContain(v.defs[NOEL]!.name)
+    expect(line).toContain('When Noel enters the field')
+  })
+
+  it('shows only the EFFECT half of an activated clause, not the cost it already paid', () => {
+    // Where the "cost: effect" split does matter. Geomancer prints "[Earth], discard Geomancer: Draw 1 card"
+    // — by the time a choice is on the table the cost is spent, and repeating it is noise.
+    const GEO = '18-064C'
+    const v = suspended(GEO, `${GEO}:draw`)
+    const line = askingBecause(v) ?? ''
+    expect(line).toContain('Draw 1 card')
+    expect(line, 'the spent cost is still being quoted').not.toContain('[Earth]')
+  })
+
+  it('says nothing when no clause is running, rather than inventing a reason', () => {
+    const s = createGame({ seed: 1, decks: [deck, deck], defs })
+    expect(askingBecause(viewFor(s, 0)), 'invented a reason with no agenda frame').toBeNull()
+  })
+
+  it('says nothing when the frame names a clause the defs do not have', () => {
+    const v = suspended(NOEL, 'no-such-clause')
+    expect(askingBecause(v), 'invented a reason for an unknown clause').toBeNull()
   })
 })

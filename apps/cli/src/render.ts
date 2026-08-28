@@ -16,6 +16,30 @@ function fieldCard(v: PlayerView, c: FieldCard): string {
   return `[${c.id}] ${d?.name ?? '?'}${power}${flags ? ` {${flags}}` : ''}`
 }
 
+/**
+ * WHY the terminal is asking, from the clause's own printed text.
+ *
+ * The browser answers this in two places — the button carries the verb, and a prompt above it carries the
+ * fuller purpose — and the terminal has only a numbered menu. So it offered "0: Target Lightning (27-127S)"
+ * with nothing saying whether that Lightning was about to be dulled, damaged, broken or buffed; found by
+ * playing, at 5 of 7 damage, where the answer decides the game.
+ *
+ * The first attempt at this was to move the browser's verb-building into the engine and call it per option.
+ * A plan review refused that, and was right: the browser deliberately DROPS detail from the button because
+ * its prompt carries the rest, so the terminal would have inherited "Protect Cloud" and still not said what
+ * Cloud was being protected from. Printing the clause instead needs no invented English at all — the card
+ * already says it, and `describeAbilityEffect` already extracts the effect half.
+ */
+export function askingBecause(v: PlayerView): string | null {
+  const frame = v.resolution.active
+  if (!frame) return null
+  const code = v.cards[frame.source]?.code
+  const ability = code === undefined ? undefined : v.defs[code]?.abilities?.find((a) => a.id === frame.abilityId)
+  if (!ability) return null
+  const effect = describeAbilityEffect(ability)
+  return effect === null ? null : `  ${name(v, frame.source)} — ${effect}`
+}
+
 export function renderView(v: PlayerView): string {
   const opp = v.me === 0 ? 1 : 0
   const step = v.attack ? ` / ${v.pending?.kind === 'assignPartyDamage' ? 'assign party damage' : v.attack.step}` : ''

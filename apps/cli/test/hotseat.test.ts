@@ -182,3 +182,45 @@ describe('running out of input quits instead of crashing', () => {
     expect(code, 'a closed stdin is not a crash').toBe(0)
   }, 60_000)
 })
+
+describe('the hotseat prints WHY a choice is being asked', () => {
+  /**
+   * The integration half. `render.test.ts` proves `askingBecause` builds the right line; nothing proved the
+   * hotseat ever CALLS it — deleting the print left every test green, which is precisely the gap the E1 plan
+   * review predicted for a helper tested in isolation.
+   */
+  it('a full game shows at least one clause explaining a choice', async () => {
+    const deck = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
+    const defs = loadCards()
+    const lines: string[] = []
+    let rng: Rng = seedRng(11)
+    let asks = 0
+    const io: HotseatIo = {
+      print(l) { for (const x of l.split('\n')) lines.push(x) },
+      clear() {},
+      async ask(prompt) {
+        if (++asks > 5000) throw new Error('stuck')
+        if (prompt.startsWith('Pass the device')) return ''
+        if (/Concede the game/.test(prompt)) return 'n'
+        let turn = -1
+        for (let i = lines.length - 1; i >= 0; i--) if (/^=== Turn/.test(lines[i] ?? '')) { turn = i; break }
+        const menu: { i: number; desc: string }[] = []
+        for (let i = turn + 1; i < lines.length; i++) {
+          const m = /^\s*(\d+): (.*)$/.exec(lines[i] ?? '')
+          if (m) menu.push({ i: Number(m[1]), desc: m[2] as string })
+        }
+        const pool = menu.filter((e) => e.desc !== 'Concede')
+        const [idx, next] = nextInt(rng, Math.max(1, pool.length))
+        rng = next
+        return String((pool[idx] ?? menu[0])!.i)
+      },
+    }
+    await hotseat({ seed: 11, decks: [deck, deck], defs }, io)
+
+    // "  Noel (16-092C) — When Noel enters the field, choose up to 2 Forwards opponent controls. Dull them."
+    const explained = lines.filter((l) => /^ {2}\S.* \(\d+-\d+[A-Z]\) — \S/.test(l))
+    expect(explained.length, 'no choice in a whole game was explained — the line is never printed').toBeGreaterThan(0)
+    // ...and it is a real clause, not an empty dash.
+    expect(explained[0]!.split(' — ')[1]!.length).toBeGreaterThan(10)
+  }, 120_000)
+})

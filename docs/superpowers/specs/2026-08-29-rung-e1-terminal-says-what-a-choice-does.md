@@ -1,7 +1,9 @@
 # Rung E1 — the terminal says what a choice does
 
-> **STATUS: SPEC, awaiting plan review.** Half of it is already built and committed (the modal wording);
-> this specifies the half that moves code between packages, which is the half worth reviewing first.
+> **STATUS: the modal half is BUILT; the target half is NOT, and the plan review was right to refuse it.**
+> The defect is real and still open. What the review killed is the idea that moving the browser's wording
+> into the engine would fix it — it would not have, for a reason I had not seen. Read *Plan review outcome*
+> before treating the design above as a plan.
 
 ## Why
 
@@ -71,3 +73,50 @@ halves move together or the prompt breaks.
   shared one walks a nested `chooseModes → chooseTargets` path, which is where the duplicate earned its
   comment.
 - **E1-A5** Full gates green; `selfplay --games 200 --seed 1` still completes 200/200.
+
+---
+
+## Plan review outcome — refused, and the refusal found the real shape
+
+**CRITICAL: this rung would not have fixed the defect it was written for.** The browser says what a choice
+does in TWO places, and I proposed to move only one of them. The button carries `imperative`; the prompt
+above it carries the fuller `purpose`. Cloud is the clearest case, and the browser pins the split
+deliberately:
+
+- button: `Protect Cloud`
+- prompt: `… to protect from being broken and from the opponent's return effects`
+
+`joinImperatives` goes further and DISCARDS every effect after the first when the verbs differ, on the
+explicit grounds that the prompt carries the complete meaning. The terminal has no prompt. So calling the
+moved helper from `describeCommand` would have given the hotseat `Protect Cloud (27-124S)` — which still
+does not say what it grants, which is exactly the complaint. E1-A2 would then have blessed the incomplete
+string and the rung would have closed with the player no better off.
+
+Four MAJORs behind it, each checkable:
+
+1. There are **three** copies of the AST walk, not two: the browser's `nodeAt`, the engine's `effectAt`, and
+   a third in the AI's `candidates.ts`. All three are equivalent today, so unifying is safe — but E1-A4's
+   "the duplicate disappears" was false while the AI copy stayed, and drift there would affect move quality,
+   not just wording.
+2. `describeTargetVerb` is **not** analogous to its proposed neighbours. `describeAbilityCost` and
+   `describeAbilityEffect` render text the CARD prints; `verbOf` invents English from semantic nodes — it
+   says "Return" where every shipped `moveToHand` card says "Add it to your hand". Moving a front-end
+   paraphrase into the engine would promote it to domain API. If it is to be shared, it belongs in a
+   `packages/ui-text`, over a pure engine traversal.
+3. E1-A3 asked for a test that REACHES a state the engine's own invariants forbid — a `chooseTargets`
+   pending with no active frame. The existing web test manufactures it by deleting the frame, which is a
+   legitimate defensive test but necessarily hypothetical, and the criterion should say so.
+4. E1-A2 was ambiguous and gameable: the pool has 19 distinct `chooseTargets` SITES, not one per clause, and
+   a table keyed by ability id cannot express Shantotto's or Ramuh's several. Worse, it could be satisfied
+   by calling the new helper directly while `describeCommand` still returned its unconditional `Target`.
+
+## What to do instead
+
+Give the terminal the thing the browser has and it lacks: **a line above the menu saying what is being asked
+and why**, from the clause's own printed text. That needs no invented English, no cross-package move and no
+new domain API — `describeAbilityEffect` already extracts the effect half of a printed ability, and the
+resolution frame already names the clause.
+
+Separately, and independently of any wording: extract ONE pure `effectAtPath` helper and have the engine, the
+AI and the UI all consume it, retiring all three copies. Keep `targetVerb`'s heuristic whole-AST fallback out
+of it — engine validation must reject an invalid program counter, not guess.
