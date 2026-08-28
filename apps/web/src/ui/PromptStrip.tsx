@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { PlayerView } from '@fftcg/engine'
 import type { Choice, ChoiceSet } from '../game/types.js'
@@ -64,6 +64,30 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
   // body is also active before the player has touched anything — so it grabbed focus on first mount, which is
   // an unrequested context change (WCAG 3.2.5) rather than a restoration. `hadFocus` records that the player
   // was actually in the strip, which is what makes a later `body` mean lost.
+  // Conceding asks once (found by playing: it did not).
+  //
+  // It is the only irreversible thing in the strip, it is one click, and it sits next to the buttons you
+  // actually want — `Pass` is its neighbour all game. This project had already mitigated the hazard twice
+  // without removing it: `Board` sorts it last precisely because `legalCommands` would otherwise make it
+  // "the leftmost, most-reachable button on the strip all game", and the focus restoration above refuses to
+  // land on it because the next Enter would end the game. Asking is the mitigation those two imply.
+  //
+  // A second click rather than a modal: the strip is already how every decision is made here, and a dialog
+  // would be the only one in the app. The arming resets on any change of position, so it can never be left
+  // armed across a turn and surprise someone later.
+  const [armed, setArmed] = useState(false)
+  // Disarm on any change of POSITION, and `choices` is what says the position moved: `useGame` memoises it
+  // per game state, so its identity changes for every game action and holds still for a log-only re-render.
+  //
+  // The offer text alone is not enough, and believing it was is how this shipped broken the first time.
+  // Codex reproduced it against real engine choices: arm Concede, then click a card whose single cast
+  // `Board` submits directly without going through this strip — the game advances, but it is still your Main
+  // Phase and the strip still offers exactly `Pass | Concede`, so a text signature never changes and one
+  // later click concedes. The offer is kept as a second key because it also moves within a single `choices`
+  // (selecting a card widens the strip), and `yours` because the seat changing is a position change too.
+  const offered = shown.map((c) => `${c.command.type}:${c.label}`).join('|')
+  useEffect(() => { setArmed(false) }, [choices, offered, yours])
+
   const actions = useRef<HTMLDivElement>(null)
   const hadFocus = useRef(false)
   useEffect(() => {
@@ -95,11 +119,28 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
             data-command={c.command.type}
             className={c.command.type === 'concede' ? 'btn btn--danger' : c.command.type === 'pass' ? 'btn btn--ghost' : 'btn btn--primary'}
             style={isAbility(c) ? ABILITY_BTN : undefined}
-            onClick={() => onChoose(c)}
+            onClick={(e) => {
+              // Both mechanisms are needed, and the second only looks redundant. The effect above disarms
+              // when the POSITION changes, which covers almost every action; this covers an action that
+              // leaves the same offer standing, where the arming would otherwise survive into a fatal click.
+              if (c.command.type !== 'concede') { setArmed(false); onChoose(c); return }
+              if (!armed) { setArmed(true); return }
+              // A double-click delivers two `click` events before `dblclick`, so the same gesture that arms
+              // would confirm — one flick of the finger and the game is over, which is the hazard this whole
+              // control exists to remove. `detail` is the click count: 2+ means the second half of a
+              // double-click, and 0 means a keyboard activation, which is deliberate by definition.
+              if (e.detail > 1) return
+              onChoose(c)
+            }}
           >
-            {c.label}
+            {c.command.type === 'concede' && armed ? 'Concede game' : c.label}
           </button>
         ))}
+        {yours && armed && (
+          <button className="btn btn--ghost" data-command="cancel-concede" onClick={() => { setArmed(false) }}>
+            Keep playing
+          </button>
+        )}
       </div>
     </div>
   )

@@ -42,10 +42,18 @@ const choice = (label: string, type: 'pass' | 'concede' | 'castCharacter'): Choi
 
 const emptySet = (): ChoiceSet => ({ all: [], byCard: new Map(), loose: [], prompt: 'Main Phase 1 — cast, attack, or pass' })
 
-function render(shown: Choice[], who: 0 | 1 = HUMAN): void {
+/** Every choice the strip actually submitted, so a click that must NOT act can be asserted on. */
+let chosen: Choice[] = []
+/**
+ * `choices` identity is a SEPARATE axis from the labels on the strip, and that is the point: `useGame`
+ * memoises it per game state, so a game action changes it even when the strip still reads `Pass | Concede`.
+ * Passing a fresh set is how a test says "the game moved".
+ */
+function render(shown: Choice[], who: 0 | 1 = HUMAN, choices: ChoiceSet = emptySet()): void {
   const v = seat(base(), who)
   const el = (): JSX.Element => createElement(PromptStrip, {
-    view: v, choices: emptySet(), shown: who === HUMAN ? shown : [], aiThinking: who !== HUMAN, onChoose: () => {},
+    view: v, choices, shown: who === HUMAN ? shown : [], aiThinking: who !== HUMAN,
+    onChoose: (c: Choice) => { chosen.push(c) },
   })
   if (!root) {
     host = document.createElement('div')
@@ -103,5 +111,114 @@ describe('the keyboard keeps its place across a prompt change', () => {
     render([choice('Concede', 'concede')])
     const active = document.activeElement as HTMLElement | null
     expect(active?.getAttribute('data-command'), 'focus is sitting on Concede — the next Enter loses the game').not.toBe('concede')
+  })
+})
+
+describe('conceding asks once', () => {
+  const concedeBtn = (): HTMLButtonElement =>
+    document.querySelector<HTMLButtonElement>('.prompt__actions button[data-command="concede"]')!
+
+  it('does not concede on the first click', () => {
+    chosen = []
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')])
+    act(() => { concedeBtn().click() })
+    expect(chosen, 'one click ended the game').toEqual([])
+    expect(concedeBtn().textContent, 'the button gives no sign it is armed').toBe('Concede game')
+  })
+
+  it('concedes on the second', () => {
+    chosen = []
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')])
+    act(() => { concedeBtn().click() })
+    act(() => { concedeBtn().click() })
+    expect(chosen.map((c) => c.command.type), 'the second click did not go through').toEqual(['concede'])
+  })
+
+  it('disarms when the position changes, so it cannot surprise you a turn later', () => {
+    chosen = []
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')])
+    act(() => { concedeBtn().click() })
+    expect(concedeBtn().textContent).toBe('Concede game')
+
+    // The AI takes the turn and hands it back. `Board` still computes the off-turn Concede choice — gating
+    // happens later, on `yours` — so passing `[]` here would be a fixture nothing in the app produces, and
+    // Codex showed it lets several dependency mutants live.
+    render([choice('Concede', 'concede')], AI, emptySet())
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')], HUMAN, emptySet())
+    expect(concedeBtn().textContent, 'still armed a turn later').toBe('Concede')
+    act(() => { concedeBtn().click() })
+    expect(chosen, 'the stale arming conceded the game').toEqual([])
+  })
+
+
+  it('disarms when the GAME moves, even if the strip still reads the same', () => {
+    // The CRITICAL Codex reproduced against real engine choices. Arm Concede, then take an action whose
+    // single choice `Board` submits directly — a card cast — and the game advances while the strip still
+    // offers exactly `Pass | Concede`. Keyed on the offer text alone, nothing changes and one later click
+    // ends the game. `choices` identity is what actually says the position moved.
+    chosen = []
+    const before = emptySet()
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')], HUMAN, before)
+    act(() => { concedeBtn().click() })
+    expect(concedeBtn().textContent, 'the fixture never armed').toBe('Concede game')
+
+    // Same seat, same two labels — only the game state moved.
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')], HUMAN, emptySet())
+    expect(concedeBtn().textContent, 'still armed after the game moved').toBe('Concede')
+    act(() => { concedeBtn().click() })
+    expect(chosen, 'a stale arming conceded the game').toEqual([])
+  })
+
+  it('disarms when selecting a card widens the strip, within the same position', () => {
+    // `choices` identity alone is not enough. Selecting a card is Board-local state — the game has not moved,
+    // so `choices` is the same object — but the strip now offers that card's actions alongside Pass and
+    // Concede. Arming must not survive into a longer list the player is now reading.
+    chosen = []
+    const same = emptySet()
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')], HUMAN, same)
+    act(() => { concedeBtn().click() })
+    expect(concedeBtn().textContent).toBe('Concede game')
+
+    render([choice('Cast Sphene', 'castCharacter'), choice('Pass', 'pass'), choice('Concede', 'concede')], HUMAN, same)
+    expect(concedeBtn().textContent, 'still armed after the offer widened').toBe('Concede')
+    act(() => { concedeBtn().click() })
+    expect(chosen, 'a stale arming conceded the game').toEqual([])
+  })
+
+  it('a double-click does not concede', () => {
+    // Two `click` events land before `dblclick`, so one flick of the finger would arm and confirm.
+    chosen = []
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')])
+    // Separate `act`s, so React has actually processed the arming before the second click lands. Both in one
+    // act and neither click sees `armed`, so the test passes without the guard and proves nothing — which is
+    // how the first version of it was written.
+    act(() => { concedeBtn().dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 })) })
+    expect(concedeBtn().textContent, 'the first click did not arm, so the second proves nothing').toBe('Concede game')
+    act(() => { concedeBtn().dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 })) })
+    expect(chosen, 'a double-click ended the game').toEqual([])
+    expect(concedeBtn().textContent, 'the double-click also lost the arming').toBe('Concede game')
+  })
+
+  it('offers a way back', () => {
+    chosen = []
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')])
+    act(() => { concedeBtn().click() })
+    const cancel = document.querySelector<HTMLButtonElement>('button[data-command="cancel-concede"]')
+    expect(cancel, 'no way to change your mind').not.toBeNull()
+    act(() => { cancel!.click() })
+    expect(concedeBtn().textContent).toBe('Concede')
+    expect(chosen).toEqual([])
+  })
+
+  it('disarms when you press something else', () => {
+    chosen = []
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')])
+    act(() => { concedeBtn().click() })
+    const pass = [...document.querySelectorAll<HTMLButtonElement>('.prompt__actions button')].find((b) => b.textContent === 'Pass')!
+    act(() => { pass.click() })
+    expect(chosen.map((c) => c.command.type)).toEqual(['pass'])
+    // Same position, still offering Concede — and it must be back to needing two clicks.
+    render([choice('Pass', 'pass'), choice('Concede', 'concede')])
+    expect(concedeBtn().textContent).toBe('Concede')
   })
 })
