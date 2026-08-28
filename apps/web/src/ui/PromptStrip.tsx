@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { PlayerView } from '@fftcg/engine'
 import type { Choice, ChoiceSet } from '../game/types.js'
@@ -51,6 +52,35 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
     // the same sentence rather than as the standing instruction it is.
     : cardOnly ? `${choices.prompt} · click a highlighted card`
     : choices.prompt
+  // RESTORE focus, never seize it (found by playing with the keyboard).
+  //
+  // Every control the strip offers is replaced when the prompt changes, so the button the player just pressed
+  // is unmounted and the browser drops focus to `document.body`. On a mouse that is invisible; on a keyboard
+  // it means tabbing in from the top of the document after every single AI turn, past the whole board and log.
+  // Focus styling was always deliberate here — the cyan ring is one of the three signals the CSS says must
+  // never be confused — so the intent was there and only this was missing.
+  //
+  // PROVENANCE, not `document.body`. The first version inferred "focus was lost" from body being active, and
+  // body is also active before the player has touched anything — so it grabbed focus on first mount, which is
+  // an unrequested context change (WCAG 3.2.5) rather than a restoration. `hadFocus` records that the player
+  // was actually in the strip, which is what makes a later `body` mean lost.
+  const actions = useRef<HTMLDivElement>(null)
+  const hadFocus = useRef(false)
+  useEffect(() => {
+    const el = actions.current
+    if (!el) return undefined
+    const mark = (): void => { hadFocus.current = true }
+    el.addEventListener('focusin', mark)
+    return () => { el.removeEventListener('focusin', mark) }
+  }, [])
+
+  useEffect(() => {
+    if (!yours || !hadFocus.current || document.activeElement !== document.body) return
+    // `[data-command]`, not a CSS class: the first version excluded Concede by `.btn--danger`, which ties
+    // whether the game can be conceded by accident to a styling token.
+    actions.current?.querySelector<HTMLButtonElement>('button:not([data-command="concede"])')?.focus()
+  }, [yours, shown])
+
   return (
     <div className="prompt table__prompt">
       <span className={yours ? 'prompt__phase prompt__phase--yours' : 'prompt__phase'}>{phase}</span>
@@ -58,10 +88,11 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
         {text}
         {aiThinking && <span className="thinking" aria-hidden="true"><span /><span /><span /></span>}
       </span>
-      <div className="prompt__actions" style={ACTIONS_WRAP}>
+      <div className="prompt__actions" style={ACTIONS_WRAP} ref={actions}>
         {yours && shown.map((c, i) => (
           <button
-            key={i}
+            key={`${c.command.type}:${c.label}:${i}`}
+            data-command={c.command.type}
             className={c.command.type === 'concede' ? 'btn btn--danger' : c.command.type === 'pass' ? 'btn btn--ghost' : 'btn btn--primary'}
             style={isAbility(c) ? ABILITY_BTN : undefined}
             onClick={() => onChoose(c)}
