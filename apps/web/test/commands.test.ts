@@ -387,6 +387,25 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
     expect(describeChoice(nestedView(0), targets([901]))).toBe('Dull Cloud')
     expect(describeChoice(nestedView(1), targets([901]))).toBe('Give Haste to Cloud')
   })
+
+  it('names EVERY effect the choice applies, not just the first', () => {
+    // Found by playing: Hugh Yurg's watcher is "+2000 power AND Brave", and the prompt said only "+2000
+    // power". Brave is the half that decides whether the Forward dulls to attack, so a player picking on
+    // power alone was picking blind.
+    const BOTH: Ability = {
+      id: 'X:both', trigger: { kind: 'enterField' }, text: 'Choose 1 Forward. It gains +2000 power and Brave.',
+      effects: [{
+        kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' },
+        then: [{ kind: 'addPower', amount: 2000 }, { kind: 'grantKeyword', keyword: 'brave' }],
+      }],
+    }
+    const v = suspendedView(BOTH, NOEL)
+    const id = instance(v, 902, CLOUD, AI)
+    v.fields[AI].forwards = [fieldCard(id)]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
+    expect(promptFor(v)).toBe('Noel: choose 1 Forward the AI controls to give +2000 power and Brave')
+    expect(describeChoice(v, targets([902]))).toBe('Give +2000 power and Brave to Cloud')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -502,6 +521,20 @@ describe('the prompt strip says what a deck choice is (rung C9)', () => {
     v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 1, max: 1, count: 3, to: 'hand', ...over }
     return v
   }
+
+  it('calls a whole-deck SEARCH "your deck", not "the 44 cards you looked at"', () => {
+    // Found by playing: Hugh Yurg's search exposes the whole deck, and the prompt read "choose up to 1 card
+    // among the 44 cards you looked at" — true, and nothing a person would say.
+    const v = viewFor(dealtGame(1), HUMAN)
+    const deckSize = v.fields[HUMAN].deck.length
+    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 0, max: 1, count: deckSize, to: 'field' }
+    expect(promptFor(v)).toContain('in your deck')
+    expect(promptFor(v)).not.toContain('you looked at')
+
+    // A top-N look is still described as what it is.
+    v.pending = { kind: 'chooseFromDeck', player: HUMAN, min: 1, max: 1, count: 3, to: 'hand' }
+    expect(promptFor(v)).toContain('among the 3 cards you looked at')
+  })
 
   it('names the choice instead of falling through to the phase', () => {
     const line = promptFor(withPending({}))

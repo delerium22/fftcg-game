@@ -181,8 +181,38 @@ function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTarg
   let node: Extract<Effect, { kind: 'chooseTargets' }> | null = exact?.kind === 'chooseTargets' ? exact : null
   if (!node) { walk(active.ability.effects); node = found.length === 1 ? found[0] ?? null : null }
   if (!node) return null
-  for (const e of node.then) { const w = verbOf(e); if (w) return w }
-  return null
+  // EVERY effect the choice applies, not just the first. Hugh Yurg's clause is "+2000 power AND Brave", and
+  // naming only the power made the prompt understate what the player was deciding — Brave is the half that
+  // changes whether the Forward dulls to attack, so a player picking purely on power is picking blind.
+  const verbs = node.then.map(verbOf).filter((w): w is { imperative: string; purpose: string } => w !== null)
+  if (!verbs.length) return null
+  return {
+    // A transitive imperative carries a TRAILING "to" that `describeChoice` completes with the target names
+    // ("Give +2000 power to" + " Cloud"). Only the last phrase may keep it, or the join grows a stray "to"
+    // mid-sentence: "Give +2000 power to and Brave to Cloud".
+    imperative: joinClauses(verbs.map((w, i) => (i === verbs.length - 1 ? w.imperative : w.imperative.replace(/ to$/, '')))),
+    // Every purpose is an infinitive; the "to" is stripped off all of them so the verbs line up for the
+    // repeated-verb collapse below, then re-attached once in front of the joined phrase.
+    purpose: `to ${joinClauses(verbs.map((w) => w.purpose.replace(/^to /, '')))}`,
+  }
+}
+
+/**
+ * Join the phrases of a multi-effect clause the way the printed card text does.
+ *
+ * A repeated leading verb is dropped: "give +2000 power" + "give Brave" is printed "gains +2000 power and
+ * Brave", not "gains +2000 power and gains Brave". Where the verbs genuinely differ they both survive, with
+ * the tail lower-cased because it is no longer starting a sentence — "Dull and give Haste".
+ */
+function joinClauses(phrases: readonly string[]): string {
+  const out = [phrases[0]!]
+  for (let i = 1; i < phrases.length; i++) {
+    const prevVerb = out[i - 1]!.split(' ')[0]!.toLowerCase()
+    const [verb, ...rest] = phrases[i]!.split(' ')
+    out.push(verb!.toLowerCase() === prevVerb && rest.length ? rest.join(' ')
+      : verb!.charAt(0).toLowerCase() + verb!.slice(1) + (rest.length ? ` ${rest.join(' ')}` : ''))
+  }
+  return out.join(' and ')
 }
 
 type Where = { p: PlayerId; zone: 'forwards' | 'backups' | 'breakZone' }
@@ -325,7 +355,11 @@ export function promptFor(v: PlayerView): string {
       case 'chooseFromDeck': {
         const { min, max, count, to } = v.pending
         const what = to === 'field' ? 'to play onto the field' : 'to add to your hand'
-        const among = `among the ${count} card${count === 1 ? '' : 's'} you looked at`
+        // A SEARCH exposes the whole deck, and "among the 44 cards you looked at" is a true sentence nobody
+        // would say. The exposed cards are still IN the deck while the choice stands, so a count equal to the
+        // deck length is exactly the whole-deck case.
+        const whole = count === v.fields[v.me].deck.length
+        const among = whole ? 'in your deck' : `among the ${count} card${count === 1 ? '' : 's'} you looked at`
         return caused(v, sourced(v, `Choose ${countPhrase(min, max)} card${max === 1 ? '' : 's'} ${among} ${what}`))
       }
     }
