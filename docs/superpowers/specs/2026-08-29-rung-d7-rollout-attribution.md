@@ -88,14 +88,19 @@ fixture built to satisfy it.
 - **D7-A4** With a profile attached, the search returns the identical command too: measuring must not move
   the thing being measured.
 - **D7-A5** The counters are reachable from the CLI on a normal run, so the measurement is reproducible by
-  someone who did not write it.
+  someone who did not write it. **This was CLAIMED and not met.** The subcommand was added to `main.ts`'s
+  dispatch and nowhere else, so `pnpm --filter @fftcg/cli run profile` failed for want of a package script
+  and the bare form collided with pnpm's own built-in `profile`. The only thing that worked was the ad-hoc
+  `pnpm exec tsx src/main.ts profile` — which is precisely the someone-who-wrote-it path the criterion
+  exists to rule out. Fixed 2026-08-29, with a wiring test that fails if any dispatched subcommand lacks a
+  script, runs the wrong one, or is missing from the README.
 - **D7-A6** Full gates green; `selfplay --games 200 --seed 1` still completes 200/200.
 
 ---
 
 ## Result
 
-`pnpm exec tsx src/main.ts profile --games N --seed S --iterations 200`, from `apps/cli`:
+`pnpm --filter @fftcg/cli run profile --games N --seed S --iterations 200`:
 
 | share of rollout applies | 3 games, seed 1 | 6 games, seed 11 |
 |---|---|---|

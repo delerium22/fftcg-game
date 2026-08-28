@@ -60,7 +60,11 @@ pnpm --filter @fftcg/cli selfplay --games 200 --seed 1                 # random-
 pnpm --filter @fftcg/cli selfplay --games 200 --seed 1 --p0 greedy --p1 random --fast   # greedy AI vs random
 pnpm --filter @fftcg/cli mirror --pairs 60 --a ismcts --b greedy --fast                 # ISMCTS vs greedy, seats swapped
 pnpm --filter @fftcg/cli deckorder --seed 1                            # print a seeded deck order
+pnpm --filter @fftcg/cli run profile --games 3 --seed 1                 # where a rollout's applies go (rung D7)
 ```
+
+Note the `run` in that last one. `profile` collides with pnpm's own built-in `profile` command, exactly as
+`fetch` does below, so it needs `run` to reach the package script.
 
 `mirror` is the honest way to compare two agents: it plays every seed twice with the seats swapped,
 so a seat advantage cannot masquerade as a strength difference, and reports a **paired-bootstrap
