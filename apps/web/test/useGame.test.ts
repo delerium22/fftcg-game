@@ -1599,6 +1599,17 @@ describe('a mirror match names both sides of a trade (found by playing)', () => 
     const line = describeEvent(v, { type: 'abilityActivated', player: HUMAN, card: mine, abilityId: 'x' })?.text ?? ''
     expect(line).toMatch(/^Your Billy Bob activates/)
     expect(line, 'the possessive is doubled').not.toContain('Your your')
+
+    // And with NO twin: the line must STILL open with the possessive, because it is the sentence's own and
+    // not a disambiguation. Without this, swapping `ownedCard` back to `qualifiedName` here survives — the
+    // twin case above is satisfied either way (Codex MINOR).
+    const alone = viewFor(dealt(3), HUMAN)
+    const solo = 984
+    alone.cards[solo] = { id: solo, code: BILLY, owner: AI }
+    alone.fields[AI].forwards = [...alone.fields[AI].forwards, fieldCardFor(solo)]
+    expect(alone.fields[HUMAN].forwards.some((c) => c.id === solo), 'the fixture has a twin after all').toBe(false)
+    expect(describeEvent(alone, { type: 'abilityActivated', player: AI, card: solo, abilityId: 'x' })?.text)
+      .toMatch(/^The AI's Billy Bob activates/)
   })
 
   it('stays quiet when the only twin is in your own HAND', () => {

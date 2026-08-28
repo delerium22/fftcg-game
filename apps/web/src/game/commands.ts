@@ -26,7 +26,7 @@ function defFor(v: PlayerView, id: CardId): CardDef | undefined {
 }
 
 /** Card names only — the board already shows the art and the id, so the CLI's `Name (CODE)` is noise in a GUI. */
-export function bareName(v: PlayerView, id: CardId): string {
+function bareName(v: PlayerView, id: CardId): string {
   return defFor(v, id)?.name ?? v.cards[id]?.code ?? `#${id}`
 }
 
@@ -74,7 +74,26 @@ const cardIsOnTable = (v: PlayerView, p: PlayerId, id: CardId): boolean => table
 const namedCardOnTable = (v: PlayerView, p: PlayerId, named: string): boolean =>
   tableIds(v, p).some((id) => bareName(v, id) === named)
 
-export function name(v: PlayerView, id: CardId): string {
+/**
+ * A card named with the possessive IN the phrase: "your Billy Bob", "the AI's Billy Bob".
+ *
+ * For a sentence that supplies whose it is ITSELF — a trigger cause, an activation, a cost line. Those must
+ * use the bare name, and five call sites each composed `possessive` and `bareName` by hand, in two different
+ * capitalisations. One of them then used `qualifiedName` instead and produced "Your your Billy Bob" the
+ * moment the AI held a twin in play.
+ *
+ * Composing it once removes the duplication that caused that; it does NOT make the mistake impossible, and
+ * the first draft of this comment overclaimed that it did. These return ordinary strings, so a caller can
+ * still write `${'${whose}'} ${'${ownedCard(...)}'}`; preventing it outright would need whole-sentence builders.
+ * What it does buy: `bareName` and `possessive` are no longer exported, so there is one obvious way to do it
+ * and no half-built pattern inviting the other.
+ *
+ * Lower case: most uses are mid-sentence. `capitalise` is exported for the ones that start one.
+ */
+export const ownedCard = (v: PlayerView, owner: PlayerId, id: CardId): string =>
+  `${possessive(v, owner)} ${bareName(v, id)}`
+
+export function qualifiedName(v: PlayerView, id: CardId): string {
   const bare = bareName(v, id)
   const mine = v.cards[id]?.owner
   if (mine === undefined) return bare
@@ -92,7 +111,7 @@ export function name(v: PlayerView, id: CardId): string {
 
 /** "A", "A and B", "A, B and C" — target sets are read aloud off a button, so a bare comma list reads badly. */
 function listNames(v: PlayerView, ids: readonly CardId[]): string {
-  const names = ids.map((id) => name(v, id))
+  const names = ids.map((id) => qualifiedName(v, id))
   return names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`
 }
 
@@ -118,7 +137,7 @@ export type TriggerCause =
   /** A card arrived on a field (spec C8). `controller` is whose field, which is what the wording turns on. */
   | { readonly kind: 'enteredField'; readonly card: CardId; readonly controller: PlayerId }
 
-export const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' : "the AI's")
+const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' : "the AI's")
 
 /**
  * WHY a clause fired, as a phrase (spec C2-5). This is the whole point of C2's narration: an observer trigger
@@ -132,16 +151,16 @@ export function describeTriggerCause(v: PlayerView, ev: TriggerCause): string {
   // (§15.1.1.3.2), and reporting it as one would tell the player something about the board that is false —
   // it also reads as though their own card had been destroyed by the opponent.
   // `bareName` here and below: the possessive is already in the sentence, and `name` would double it.
-  if (ev.kind === 'enteredField') return `${possessive(v, ev.controller)} ${bareName(v, ev.card)} entered the field`
+  if (ev.kind === 'enteredField') return `${ownedCard(v, ev.controller, ev.card)} entered the field`
   if (ev.kind === 'zoneChange') {
     const how = ev.reason === 'cost' ? 'was put into the Break Zone' : 'was broken'
-    return `${possessive(v, ev.controller)} ${bareName(v, ev.card)} ${how}`
+    return `${ownedCard(v, ev.controller, ev.card)} ${how}`
   }
-  if (ev.victim !== null) return `${name(v, ev.source)} dealt damage to ${ev.victim === v.me ? 'you' : 'the AI'}`
-  return `${name(v, ev.source)} dealt ${ev.amount} damage to ${ev.target === null ? 'a Forward' : name(v, ev.target)}`
+  if (ev.victim !== null) return `${qualifiedName(v, ev.source)} dealt damage to ${ev.victim === v.me ? 'you' : 'the AI'}`
+  return `${qualifiedName(v, ev.source)} dealt ${ev.amount} damage to ${ev.target === null ? 'a Forward' : qualifiedName(v, ev.target)}`
 }
 
-const capitalise = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}`
+export const capitalise = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}`
 
 // ---------------------------------------------------------------------------
 // Ability wording (rung C1)
@@ -162,7 +181,7 @@ function activeAbility(v: PlayerView): { ability: Ability; frame: Frame } | null
 /** Prefix a prompt with the card that is asking, e.g. `Noel: choose up to 2 …`. */
 function sourced(v: PlayerView, text: string): string {
   const active = activeAbility(v)
-  return active ? `${name(v, active.frame.source)}: ${text.charAt(0).toLowerCase()}${text.slice(1)}` : text
+  return active ? `${qualifiedName(v, active.frame.source)}: ${text.charAt(0).toLowerCase()}${text.slice(1)}` : text
 }
 
 /**
@@ -361,8 +380,8 @@ export function describeChoice(v: PlayerView, c: Command): string {
     case 'mulligan': return c.redraw ? 'Mulligan (redraw 5)' : 'Keep hand'
     case 'castCharacter':
     case 'castSummon': {
-      const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
-      return pay.length ? `Cast ${name(v, c.card)} paying: ${pay.join(', ')}` : `Cast ${name(v, c.card)} (free)`
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${qualifiedName(v, id)}`), ...c.payment.discards.map((d) => `discard ${qualifiedName(v, d.card)} as ${d.element}`)]
+      return pay.length ? `Cast ${qualifiedName(v, c.card)} paying: ${pay.join(', ')}` : `Cast ${qualifiedName(v, c.card)} (free)`
     }
     /*
      * `legalCommands` pre-enumerates whole target SETS — one command per legal combination of `min..max`
@@ -394,16 +413,16 @@ export function describeChoice(v: PlayerView, c: Command): string {
     // The printed cost is part of the label: a player choosing to spend a card needs to see what it costs
     // before clicking, not after (spec C3-A7).
     case 'activateAbility': {
-      const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${qualifiedName(v, id)}`), ...c.payment.discards.map((d) => `discard ${qualifiedName(v, d.card)} as ${d.element}`)]
       const cost = activatedCostOf(v, c.source, c.abilityId)
       const clause = defFor(v, c.source)?.abilities?.find((a) => a.id === c.abilityId)
       const does = clause ? describeAbilityEffect(clause) : null
-      return `${name(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${pay.length ? ` — paying ${pay.join(', ')}` : ''}`
+      return `${qualifiedName(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${pay.length ? ` — paying ${pay.join(', ')}` : ''}`
     }
-    case 'declareAttack': return `Attack with ${c.attackers.map((id) => name(v, id)).join(' + ')}`
-    case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${name(v, c.blocker)}`
-    case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${name(v, a.target)}`).join(', ')}`
-    case 'discardToHandSize': return `Discard ${c.cards.map((id) => name(v, id)).join(', ')}`
+    case 'declareAttack': return `Attack with ${c.attackers.map((id) => qualifiedName(v, id)).join(' + ')}`
+    case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${qualifiedName(v, c.blocker)}`
+    case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${qualifiedName(v, a.target)}`).join(', ')}`
+    case 'discardToHandSize': return `Discard ${c.cards.map((id) => qualifiedName(v, id)).join(', ')}`
     case 'pass': return 'Pass'
     case 'concede': return 'Concede'
   }

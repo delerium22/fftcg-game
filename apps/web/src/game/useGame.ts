@@ -5,7 +5,7 @@ import {
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { bareName, buildChoiceSet, describeChoice, describeTriggerCause, name, possessive, preferredChoices, sameCommand, type TriggerCause } from './commands.js'
+import { buildChoiceSet, capitalise, describeChoice, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
@@ -59,21 +59,21 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // needs its own entry. Only the hand-limit discard is a thing the player did not otherwise see.
     case 'discarded':
       return e.reason === 'handSize'
-        ? { kind: 'event', text: `${who(v, e.player)} discard${e.player === v.me ? '' : 's'} ${name(v, e.card)} to the hand limit` }
+        ? { kind: 'event', text: `${who(v, e.player)} discard${e.player === v.me ? '' : 's'} ${qualifiedName(v, e.card)} to the hand limit` }
         : null
     // B-A6 + C1-9: coverage is per CLAUSE. `clauses` counts the ones still missing on a card that DOES have an
     // implemented clause; its absence means the whole text box is unimplemented and the card played as vanilla.
     case 'unimplementedAbility': return e.clauses === undefined
-      ? { kind: 'warning', text: `${name(v, e.card)} (${e.code}) has abilities that are not implemented yet — played as vanilla` }
-      : { kind: 'warning', text: `${name(v, e.card)} (${e.code}) has ${e.clauses} more ability clause${e.clauses === 1 ? '' : 's'} that ${e.clauses === 1 ? 'is' : 'are'} not implemented yet` }
+      ? { kind: 'warning', text: `${qualifiedName(v, e.card)} (${e.code}) has abilities that are not implemented yet — played as vanilla` }
+      : { kind: 'warning', text: `${qualifiedName(v, e.card)} (${e.code}) has ${e.clauses} more ability clause${e.clauses === 1 ? '' : 's'} that ${e.clauses === 1 ? 'is' : 'are'} not implemented yet` }
     // These three name a subject that has already LEFT the table — the damage zone, the removed pile — so
     // `name` cannot qualify it and the sentence has to. The event's own `player` is the authority; a lookup
     // would be guessing about a card that is no longer anywhere to look (Codex MAJOR).
-    case 'exBurstSkipped': return { kind: 'warning', text: `EX Burst on ${possessive(v, e.player)} ${bareName(v, e.card)} skipped (not implemented)` }
-    case 'battleDamage': return { kind: 'event', text: `${name(v, e.source)} deals ${e.amount} damage to ${name(v, e.target)}` }
+    case 'exBurstSkipped': return { kind: 'warning', text: `EX Burst on ${ownedCard(v, e.player, e.card)} skipped (not implemented)` }
+    case 'battleDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
     case 'playerDamaged': return { kind: 'event', text: `${who(v, e.player)} take${e.player === v.me ? '' : 's'} 1 damage` }
-    case 'broken': return { kind: 'event', text: `${name(v, e.card)} is broken` }
-    case 'putIntoBreakZone': return { kind: 'event', text: `${name(v, e.card)} is put into the Break Zone (0 power)` }
+    case 'broken': return { kind: 'event', text: `${qualifiedName(v, e.card)} is broken` }
+    case 'putIntoBreakZone': return { kind: 'event', text: `${qualifiedName(v, e.card)} is put into the Break Zone (0 power)` }
     // --- ability resolution (rung C1). The choice itself is already a move line — the human's from `choose`,
     // the AI's from `stepAi` — so these narrate what triggered and what it DID, closing the loop between the
     // printed text box and the board state the player is looking at.
@@ -84,7 +84,7 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'abilityTriggered': {
       const text = abilityText(v, e.card, e.abilityId)
       const why = cause ? ` — ${describeTriggerCause(v, cause)}` : ''
-      return { kind: 'event', text: `${name(v, e.card)}'s ability triggers${why}${text ? `: "${text}"` : ''}` }
+      return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability triggers${why}${text ? `: "${text}"` : ''}` }
     }
     // C3: ACTIVATED, not triggered. The distinction is the whole of what this rung added for the player —
     // "triggers" would report a move they deliberately made as something that merely happened to them.
@@ -93,13 +93,12 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       // `bareName`, because the sentence already opens with the possessive — `name` would produce
       // "Your your Billy Bob activates" whenever the AI held a twin in play (Codex MINOR, shipped in the
       // commit before this one). Same reason `describeTriggerCause` has always used the bare name.
-      const whose = e.player === v.me ? 'Your' : "The AI's"
-      return { kind: 'event', text: `${whose} ${bareName(v, e.card)} activates${text ? `: "${text}"` : ''}` }
+      return { kind: 'event', text: `${capitalise(ownedCard(v, e.player, e.card))} activates${text ? `: "${text}"` : ''}` }
     }
-    case 'paidToBreakZone': return { kind: 'event', text: `${name(v, e.card)} is put into the Break Zone to pay for it` }
+    case 'paidToBreakZone': return { kind: 'event', text: `${qualifiedName(v, e.card)} is put into the Break Zone to pay for it` }
     // The sibling cost above has said so since C3; without this the card simply vanishes from the Break Zone
     // with nothing in the log, which is the one thing the amber warnings exist to prevent elsewhere.
-    case 'removedFromGame': return { kind: 'event', text: `${e.player === v.me ? 'Your' : "The AI's"} ${bareName(v, e.card)} is removed from the game to pay for it` }
+    case 'removedFromGame': return { kind: 'event', text: `${capitalise(ownedCard(v, e.player, e.card))} is removed from the game to pay for it` }
     // C9. A look and a reveal differ only in the verb; WHICH cards get named is decided by the view, not by
     // the audience, so this one line is safe for both. The AI's private look reaches the human as a count.
     case 'deckExposed': {
@@ -111,28 +110,28 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       }
       const verb = e.audience === 'all' ? whoDoes(v, e.player, 'reveal', 'reveals') : whoDoes(v, e.player, 'look at', 'looks at')
       const named = e.cards.filter((id) => v.cards[id] !== undefined)
-      const shown = named.length === e.cards.length && named.length > 0 ? `: ${named.map((id) => name(v, id)).join(', ')}` : ''
+      const shown = named.length === e.cards.length && named.length > 0 ? `: ${named.map((id) => qualifiedName(v, id)).join(', ')}` : ''
       return { kind: 'event', text: `${who(v, e.player)} ${verb} the top ${e.count} card${e.count === 1 ? '' : 's'} of ${whose} deck${shown}` }
     }
     // The card a search found is public the moment it lands, so this one always names it — unlike
     // `addedToHand`, whose card may be one this seat never saw.
     case 'playedFromDeck':
-      return { kind: 'event', text: `${who(v, e.player)} play${e.player === v.me ? '' : 's'} ${name(v, e.card)} onto the field from ${whoDoes(v, e.player, 'your', 'its')} deck` }
+      return { kind: 'event', text: `${who(v, e.player)} play${e.player === v.me ? '' : 's'} ${qualifiedName(v, e.card)} onto the field from ${whoDoes(v, e.player, 'your', 'its')} deck` }
     // The other half: without this a revealed card is added to a hand with nothing in the log saying so, and
     // for the no-eligible path there is no board change at all to infer it from.
     case 'addedToHand': {
-      const what = v.cards[e.card] !== undefined ? name(v, e.card) : 'a card'
+      const what = v.cards[e.card] !== undefined ? qualifiedName(v, e.card) : 'a card'
       return { kind: 'event', text: `${who(v, e.player)} add${e.player === v.me ? '' : 's'} ${what} to ${whoDoes(v, e.player, 'your', 'its')} hand` }
     }
-    case 'abilityNoLegalTarget': return { kind: 'event', text: `${name(v, e.card)}'s ability finds no legal target — nothing happens` }
-    case 'dulled': return { kind: 'event', text: `${name(v, e.card)} is dulled` }
-    case 'abilityDamage': return { kind: 'event', text: `${name(v, e.source)} deals ${e.amount} damage to ${name(v, e.target)}` }
-    case 'powerModified': return { kind: 'event', text: `${name(v, e.card)} gets ${e.amount >= 0 ? '+' : ''}${e.amount} power until the end of the turn` }
-    case 'keywordGranted': return { kind: 'event', text: `${name(v, e.card)} gains ${KEYWORD_LABEL[e.keyword]} until the end of the turn` }
-    case 'flagGranted': return { kind: 'event', text: `${name(v, e.card)} ${FLAG_LABEL[e.flag]}` }
-    case 'returnedToHand': return { kind: 'event', text: `${name(v, e.card)} returns to ${whoDoes(v, e.player, 'your hand', "the AI's hand")}` }
-    case 'brokenByAbility': return { kind: 'event', text: `${name(v, e.card)} is broken by ${name(v, e.source)}` }
-    case 'breakPrevented': return { kind: 'event', text: `${name(v, e.card)} survives — it ${FLAG_LABEL[e.flag]}` }
+    case 'abilityNoLegalTarget': return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability finds no legal target — nothing happens` }
+    case 'dulled': return { kind: 'event', text: `${qualifiedName(v, e.card)} is dulled` }
+    case 'abilityDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
+    case 'powerModified': return { kind: 'event', text: `${qualifiedName(v, e.card)} gets ${e.amount >= 0 ? '+' : ''}${e.amount} power until the end of the turn` }
+    case 'keywordGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} gains ${KEYWORD_LABEL[e.keyword]} until the end of the turn` }
+    case 'flagGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} ${FLAG_LABEL[e.flag]}` }
+    case 'returnedToHand': return { kind: 'event', text: `${qualifiedName(v, e.card)} returns to ${whoDoes(v, e.player, 'your hand', "the AI's hand")}` }
+    case 'brokenByAbility': return { kind: 'event', text: `${qualifiedName(v, e.card)} is broken by ${qualifiedName(v, e.source)}` }
+    case 'breakPrevented': return { kind: 'event', text: `${qualifiedName(v, e.card)} survives — it ${FLAG_LABEL[e.flag]}` }
     case 'gameOver': return { kind: 'result', text: `Game over — ${e.result.winner === null ? 'a draw' : e.result.winner === v.me ? 'you win' : 'the AI wins'} (${e.result.reason})` }
     // `cast`/`attackDeclared`/`blockDeclared`/`cpGenerated` restate the move line; `activated` and
     // `summonResolvedNoEffect` are noise (the latter doubles up on `unimplementedAbility` for every summon in the pool).
