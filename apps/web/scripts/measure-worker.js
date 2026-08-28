@@ -40,6 +40,22 @@
  * straight to Playwright's `page.addInitScript` fails with "Unexpected token 'export'" — the injection is
  * silently a no-op and the run is blind again, exactly as if nothing had been tried. Strip the `export`
  * keywords for that path, and trust `instrumentationValid` either way.
+ *
+ * A RECIPE THAT WORKS, found by needing it: evaluating after `page.goto` is a coin flip — it wins when the
+ * human moves first and loses when the AI does, and two of four runs came back `instrumentationValid: false`
+ * (0 searches posted against 43 committed AI moves — the guard doing its job). Instead, serve a copy of the
+ * built page with this file appended to it:
+ *
+ *   1. `pnpm --filter @fftcg/web build`, then copy `dist/index.html` to `dist/measure.html`.
+ *   2. Write this file to `dist/harness-boot.js` with the `export` keywords stripped and
+ *      `window.__harness = { instrument, drive, summarise }; window.__harness.instrument();` appended.
+ *   3. Reference it from a CLASSIC script at the END of `<body>`, not in `<head>`:
+ *      `<script src="/harness-boot.js"></script>`. A classic script runs the moment it is parsed, which is
+ *      still before the deferred module bundle — while `<head>` is too early, because `instrument()` needs
+ *      `document.body` for its probe button and throws on null without it.
+ *   4. `pnpm --filter @fftcg/web preview`, drive `measure.html`, and every run comes back valid.
+ *
+ * `dist/` is git-ignored, so none of that is committed; this comment is the artifact.
  */
 export function instrument() {
   const w = window

@@ -119,14 +119,24 @@ Measured strength, all on seeded runs:
 |---|---|
 | ISMCTS vs greedy, 120 mirrored games, 200 iterations | **75.0 %**, CI95 [66.7, 82.5] |
 | Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
-| ISMCTS in the browser (production build, Apple Silicon) | p50 **183 ms**, p95 604 ms per decision |
+| ISMCTS in the browser (production build, Apple Silicon) | p50 **77–215 ms**, p95 **127–1021 ms** per decision, over 5 games |
 
-**The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; re-run
-with the same command at the current HEAD it is 78.3 %, and 90.0 % now sits outside the confidence
-interval, so this is not sampling noise. What changed in between is the CARD POOL: rungs C5–C10 added
+**The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; by rung D3
+it was 78.3 %, and re-measured at rung D7 over the same 120 mirrored games it is 75.0 % — with 90.0 % well
+outside the confidence interval, so this is not sampling noise. What changed in between is the CARD POOL: rungs C5–C10 added
 removal, search, a Break-Zone retrieve and several combat tricks. The leading explanation — that a fixed
 200-iteration budget now covers a smaller share of a wider tree — is tested below and holds up. A second,
 untested one is that games now run 13.6 turns, giving a search fewer turns to compound an edge.
+
+**The browser figure is a RANGE because a single number would be a fiction.** Measured over five full games
+on a production preview, per-game p50 runs 77–215 ms and per-game p95 runs 127–1021 ms — an eight-fold
+spread in the tail, because the expensive decisions are the wide boards and how many of those a game reaches
+varies. Quoting one game's p95, as this table used to, describes that game and nothing else.
+
+What did NOT vary: **zero long tasks in all five runs**, and a worst frame gap of 21–47 ms. The search runs
+in a worker (rung D2) and the main thread is never blocked, so a slow decision is a wait with a "thinking"
+indicator, not a frozen page — and `AI_STEP_MS` (600 ms) already paces the median, so most decisions are
+presented on the same beat regardless. The tail is a patience question, not a jank one.
 
 Full breakdowns: [`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`](docs/superpowers/specs/2026-08-26-heuristic-ai-design.md)
 (greedy) and [`docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md`](docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md)
