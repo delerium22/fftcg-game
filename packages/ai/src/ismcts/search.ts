@@ -4,7 +4,7 @@ import {
 } from '@fftcg/engine'
 import { candidateCommands } from '../candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from '../evaluate.js'
-import { greedyStep, resolveForcedDecisions } from '../greedy.js'
+import { greedyStep, newRolloutProfile, resolveForcedDecisions, type Budget, type RolloutProfile } from '../greedy.js'
 import {
   actionKey, compareKeys, decodeAction, isOpaque, observationKey,
   type ActionKey, type ObservationKey, type SearchDiagnostics, type SearchInput, type SearchResult,
@@ -301,6 +301,8 @@ export interface RolloutResult {
 export function rolloutToCap(
   state: GameState, root: PlayerId, cap: number, weights: Weights = DEFAULT_WEIGHTS,
   counters?: Counters | undefined, applyCap: number = DEFAULT_ROLLOUT_APPLY_CAP,
+  /** D7: diagnostic attribution, accumulated ACROSS rollouts when one is passed. Absent in play. */
+  profile?: RolloutProfile,
 ): RolloutResult {
   // TWO bounds, because one cannot do both jobs.
   //
@@ -316,7 +318,11 @@ export function rolloutToCap(
   // leaf is always fully resolved, it just chooses more cheaply once the budget is gone. Settlement itself
   // terminates because every forced decision strictly advances, and a true cascade cycle is caught by the
   // engine's own `MAX_RESOLUTION_STEPS`.
-  const budget = { used: 0, cap: applyCap }
+  const budget: Budget = { used: 0, cap: applyCap, ...(profile ? { profile } : {}) }
+  // One profile is shared across every rollout of a search, so the per-rollout working state must be reset
+  // here: `command` left at the last rollout's total made `firstRefusalAtCommand` report the PREVIOUS
+  // rollout's depth for a refusal that happened on this one's first command (Codex MINOR).
+  if (profile) { profile.command = 0; profile.inTail = false }
   let s = state
   let commands = 0
   while (!s.result && commands < cap) {
@@ -326,9 +332,13 @@ export function rolloutToCap(
     if (!c) break
     s = apply(s, c).state
     budget.used++
+    if (profile) profile.loopAdvanceApplies++
     commands++
+    if (profile) profile.command = commands
   }
+  if (profile) profile.inTail = true
   if (!s.result) s = resolveForcedDecisions(s, weights, ROLLOUT_AGGRESSION, root, budget)
+  if (profile) profile.inTail = false
   if (counters) counters.rolloutApplies += budget.used
   return { state: s, reward: leafReward(s, root, weights, counters), commands, applies: budget.used }
 }
@@ -371,6 +381,8 @@ export function searchTree(input: SearchInput): SearchTree {
   const decks = sortedDecks(input.decks)
   const streams = makeStreams(input.seed)
   const counters = newCounters()
+  // D7: one profile for the WHOLE search, accumulated across every rollout it runs.
+  const profile = input.profile === true ? newRolloutProfile() : undefined
   const rootNode = createNode(root)
   counters.nodes++
   /** Fallback only: `decodeAction` against the LIVE view is the authority for what the root key means. */
@@ -449,7 +461,7 @@ export function searchTree(input: SearchInput): SearchTree {
       if (expansion) break
     }
 
-    const rollout = rolloutToCap(state, root, input.rolloutCommandCap, DEFAULT_WEIGHTS, counters)
+    const rollout = rolloutToCap(state, root, input.rolloutCommandCap, DEFAULT_WEIGHTS, counters, DEFAULT_ROLLOUT_APPLY_CAP, profile)
     counters.maxCommandDepth = Math.max(counters.maxCommandDepth, commands + rollout.commands)
     backpropagate(path, rollout.reward)
   }
@@ -476,11 +488,14 @@ export function searchTree(input: SearchInput): SearchTree {
   if (!command) throw new Error(`searchIsmcts: root action ${best.key} does not decode against the live view`)
 
   // What the counters mean (D-A4), because two of them are easy to misread: `rolloutApplies` includes the
-  // applies `greedyStep` spends scoring its own candidates — that is where ~95 % of the time goes, so counting
-  // only the commands it chose would report a cost an order of magnitude below the real one. `evaluations`
+  // applies `greedyStep` spends scoring its own candidates, so counting only the commands it chose would
+  // report a cost an order of magnitude below the real one. This comment used to add "that is where ~95 % of
+  // the time goes", which was never measured — rung D7 exists because that division was assumed. `rollout`
+  // carries the real split when a run asks for it. `evaluations`
   // counts the search's own leaf evaluations only (one per simulation that did not end in a terminal), not
   // greedy's internal ones, which track its applies. `maxCommandDepth` is tree commands plus rollout commands.
   const diagnostics: SearchDiagnostics = {
+    ...(profile ? { rollout: profile } : {}),
     determinisations: counters.determinisations,
     treeApplies: counters.treeApplies,
     rolloutApplies: counters.rolloutApplies,

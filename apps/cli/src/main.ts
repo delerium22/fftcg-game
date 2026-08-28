@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_ITERATIONS } from '@fftcg/ai'
 import { loadCards } from '@fftcg/cards'
+import { profileSearch } from './profile.js'
 import type { AgentSpec } from './agents.js'
 import { MAX_ITERATIONS, parseAgentSpec, parseDepth, parseIterations, parsePositiveInt, parseRolloutCap } from './agents.js'
 import { parseDeckFile } from './deck.js'
@@ -53,11 +54,12 @@ function withDefaults(spec: AgentSpec, depth: 0 | 1 | 2, iterations: number, rol
 }
 
 const usage = [
-  'usage: <hotseat|selfplay|mirror|deckorder> [options]',
+  'usage: <hotseat|selfplay|mirror|profile|deckorder> [options]',
   '  agent spec: random | greedy[:0-2] | ismcts[:N]',
   '  selfplay: [--seed N] [--games N] [--p0 spec] [--p1 spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--fast]',
   '  mirror:   [--seed N] [--pairs N] [--a spec] [--b spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--bootstrap N] [--fast]',
   '            plays every seed twice with the seats swapped; every score is agent A\'s (spec D-A1)',
+  '  profile:  [--seed N] [--games N] [--iterations N]   (rung D7: where a rollout\'s applies go)',
   '  common:   [--deck path]',
 ].join('\n')
 
@@ -69,7 +71,7 @@ function parsed<T>(f: () => T): T {
 
 if (cmd === 'hotseat') {
   await hotseat({ seed, decks: [deck, deck], defs })
-} else if (cmd === 'selfplay' || cmd === 'mirror') {
+} else if (cmd === 'selfplay' || cmd === 'mirror' || cmd === 'profile') {
   // C7: --depth gets the same 0-2 integer validation as greedy:N, instead of `Number(...)` silently coercing
   // any garbage input (including NaN) into the 0|1|2 type. D1: --iterations likewise, for ismcts:N.
   const depth = parsed(() => parseDepth(flag('depth', '1')))
@@ -78,6 +80,14 @@ if (cmd === 'hotseat') {
   // default rather than pinning it to whatever this file happens to think the default is.
   const rawCap = flag('rollout-cap', '')
   const rolloutCap = rawCap === '' ? null : parsed(() => parseRolloutCap(rawCap))
+  if (cmd === 'profile') {
+    // D7: where a rollout's applies go. Its own command because it answers one question and reports a shape
+    // of its own; `selfplay`'s report stays the strength/cost report it already is.
+    const games = parsed(() => parsePositiveInt(flag('games', '3'), 'games', 10_000))
+    const r = profileSearch({ games, seed, decks: [deck, deck], defs, iterations })
+    console.log(JSON.stringify(r, null, 2))
+    process.exit(r.mismatchedDecisions === 0 ? 0 : 1)
+  }
   if (cmd === 'selfplay') {
     const agents: [AgentSpec, AgentSpec] = parsed(() => [
       withDefaults(parseAgentSpec(flag('p0', 'random')), depth, iterations, rolloutCap),

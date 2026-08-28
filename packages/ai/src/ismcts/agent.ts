@@ -4,6 +4,8 @@ import { DEFAULT_EXPLORATION_C, DEFAULT_ITERATIONS, DEFAULT_ROLLOUT_COMMAND_CAP,
 import type { SearchDiagnostics, SearchInput } from './keys.js'
 
 export interface IsmctsOptions {
+  /** D7: collect the rollout apply attribution. Diagnostic only; off in play. */
+  profile?: boolean
   seed: number
   /** Both players' publicly declared 50-card lists — the same open-decklist assumption `determinise` documents. */
   decks: [string[], string[]]
@@ -42,6 +44,8 @@ export class IsmctsAgent implements Agent {
   private readonly iterations: number
   private readonly rolloutCommandCap: number
   private readonly explorationC: number
+  /** D7: ask each search for its rollout apply attribution. Off unless a measurement turns it on. */
+  private readonly profile: boolean
   readonly needsLegalCommands = false
   /** Last decision's counters (spec D-A4). `null` before the first `decide`, and on the non-acting fallback. */
   lastDiagnostics: SearchDiagnostics | null = null
@@ -52,6 +56,7 @@ export class IsmctsAgent implements Agent {
     this.iterations = opts.iterations ?? DEFAULT_ITERATIONS
     this.rolloutCommandCap = opts.rolloutCommandCap ?? DEFAULT_ROLLOUT_COMMAND_CAP
     this.explorationC = opts.explorationC ?? DEFAULT_EXPLORATION_C
+    this.profile = opts.profile ?? false
   }
 
   decide(view: PlayerView, legal: Command[]): Command {
@@ -73,6 +78,7 @@ export class IsmctsAgent implements Agent {
       seed,
       rolloutCommandCap: this.rolloutCommandCap,
       explorationC: this.explorationC,
+      ...(this.profile ? { profile: true } : {}),
     }
     const { command, diagnostics } = searchIsmcts(input)
     this.lastDiagnostics = diagnostics

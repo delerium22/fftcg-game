@@ -3,7 +3,7 @@ import { GreedyAgent, IsmctsAgent, RandomAgent, type Agent } from '@fftcg/ai'
 export type AgentSpec =
   | { kind: 'random' }
   | { kind: 'greedy'; depth?: 0 | 1 | 2 }
-  | { kind: 'ismcts'; iterations?: number; rolloutCap?: number }
+  | { kind: 'ismcts'; iterations?: number; rolloutCap?: number; profile?: boolean }
 
 /** Upper bound on `ismcts:N`. Not a performance claim — a typo guard, so `ismcts:100000000` fails at the flag
  *  rather than after an hour of wall clock. D1's measured floor is ~107 µs per determinisation. */
@@ -76,5 +76,6 @@ export function makeAgent(spec: AgentSpec, seed: number, decks: [string[], strin
     seed, decks,
     ...(spec.iterations === undefined ? {} : { iterations: spec.iterations }),
     ...(spec.rolloutCap === undefined ? {} : { rolloutCommandCap: spec.rolloutCap }),
+    ...(spec.profile === true ? { profile: true } : {}),
   })
 }

@@ -29,7 +29,70 @@ export interface GreedyOptions {
   maxSimulations?: number | undefined
 }
 
-interface Budget { used: number; cap: number }
+/**
+ * Diagnostic-only attribution of a rollout's `apply` calls (rung D7). Absent in play, and absent by default.
+ *
+ * Rung D6 proposed a cheaper rollout policy and its plan review refused it, because the premise was inferred:
+ * `budget.used` lumps together candidate scoring, the recursive scoring of forced block / party-damage / mode
+ * / target choices, and the applies that merely advance.
+ *
+ * The scopes are named for the CALL SITE, not for a causal story, and that is deliberate — the first version
+ * of this called them `policy` and `forced` and the code review showed the names claimed more than the
+ * counters know:
+ *
+ *  - `loop` is the rollout's own `greedyStep`. It is NOT "the policy's own move": when a chosen command
+ *    leaves a pending, the next turn of the rollout loop answers that FORCED decision, and it lands here.
+ *  - `resolver` is `greedyStep` reached through `resolveForcedDecisions` while a candidate is being scored.
+ *  - `tail` is the single settlement call after the command cap. It was previously mixed into `resolver`,
+ *    which made "evaluation" and "trajectory" impossible to separate — the tail advances the real rollout.
+ *
+ * Every apply lands in exactly ONE bucket and the six sum to `used`. That identity is the point: it is the
+ * one thing a miscount cannot satisfy by accident.
+ */
+export interface RolloutProfile {
+  /** `greedyStep` called by the rollout LOOP — its own move, or a forced pending left by the last one. */
+  loopGenerated: number
+  loopScored: number
+  loopScoringApplies: number
+  /** `greedyStep` reached through `resolveForcedDecisions` while SCORING a candidate. */
+  resolverGenerated: number
+  resolverScored: number
+  resolverScoringApplies: number
+  /** `greedyStep` inside the final settlement call, after the command cap. */
+  tailGenerated: number
+  tailScored: number
+  tailScoringApplies: number
+  /** Applies that ADVANCE rather than score, by the same three scopes. */
+  loopAdvanceApplies: number
+  resolverAdvanceApplies: number
+  tailAdvanceApplies: number
+  /** How often `within(budget)` refused another candidate, and the loop command where it first did (-1: never). */
+  refusals: number
+  firstRefusalAtCommand: number
+  /** Working state: resolver nesting, whether the tail is running, and which loop command is in flight. */
+  depth: number
+  inTail: boolean
+  command: number
+}
+
+export const newRolloutProfile = (): RolloutProfile => ({
+  loopGenerated: 0, loopScored: 0, loopScoringApplies: 0,
+  resolverGenerated: 0, resolverScored: 0, resolverScoringApplies: 0,
+  tailGenerated: 0, tailScored: 0, tailScoringApplies: 0,
+  loopAdvanceApplies: 0, resolverAdvanceApplies: 0, tailAdvanceApplies: 0,
+  refusals: 0, firstRefusalAtCommand: -1, depth: 0, inTail: false, command: 0,
+})
+
+/** The six apply buckets, which must equal `budget.used` for a rollout (spec D7-A1). */
+export const profiledApplies = (p: RolloutProfile): number =>
+  p.loopScoringApplies + p.resolverScoringApplies + p.tailScoringApplies
+  + p.loopAdvanceApplies + p.resolverAdvanceApplies + p.tailAdvanceApplies
+
+/** Which scope an apply belongs to right now, from the working state alone. */
+const scopeOf = (p: RolloutProfile): 'loop' | 'resolver' | 'tail' =>
+  p.depth > 0 ? 'resolver' : p.inTail ? 'tail' : 'loop'
+
+export interface Budget { used: number; cap: number; profile?: RolloutProfile }
 const within = (b: Budget | undefined): boolean => !b || b.used < b.cap
 
 /**
@@ -104,16 +167,29 @@ const better = (score: number, fizzled: number, bestScore: number, bestFizzled: 
  */
 export function resolveForcedDecisions(state: GameState, weights: Weights, aggression: number, perspective: PlayerId, budget?: Budget, waste?: Waste): GameState {
   let s = state
-  while (!s.result && isForcedDecision(s)) {
-    const p = actingPlayer(s)
-    if (p === null) break
-    const localAggression = p === perspective ? aggression : 1 - aggression
-    const c = greedyStep(s, p, weights, localAggression, budget)
-    if (!c) break
-    const r = apply(s, c)
-    countFizzles(r.events, perspective, waste)
-    s = r.state
-    if (budget) budget.used++
+  // D7: everything under this call is a decision the policy did not choose to face. The depth is held for the
+  // whole loop, so the `greedyStep` below sees it too — that is what makes the scope free of a parameter.
+  const prof = budget?.profile
+  if (prof) prof.depth++
+  try {
+    while (!s.result && isForcedDecision(s)) {
+      const p = actingPlayer(s)
+      if (p === null) break
+      const localAggression = p === perspective ? aggression : 1 - aggression
+      const c = greedyStep(s, p, weights, localAggression, budget)
+      if (!c) break
+      const r = apply(s, c)
+      countFizzles(r.events, perspective, waste)
+      s = r.state
+      if (budget) budget.used++
+      // Depth is already raised here, so an advancing apply inside the TAIL still reads as `resolver`; the
+      // tail's own scope is decided by `inTail` only when depth returns to zero. Take the outer reading.
+      if (prof) { if (prof.inTail && prof.depth === 1) prof.tailAdvanceApplies++; else prof.resolverAdvanceApplies++ }
+    }
+  } finally {
+    // `finally` because `greedyStep` can throw (the engine's resolution-step cap), and a depth left raised
+    // would misattribute every later apply in the run.
+    if (prof) prof.depth--
   }
   return s
 }
@@ -133,13 +209,34 @@ export function greedyStep(state: GameState, player: PlayerId, weights: Weights,
   let bestScore = -Infinity
   let bestFizzled = Infinity
   let i = 0
-  for (const c of candidateCommands(state, player)) {
-    if (i > 0 && !within(budget)) break
+  const prof = budget?.profile
+  // Read ONCE, before the loop: the nested `resolveForcedDecisions` below raises and lowers the depth inside
+  // each iteration, so reading it per-iteration would be reading it at the wrong moment.
+  const scope = prof ? scopeOf(prof) : 'loop'
+  const cands = candidateCommands(state, player)
+  if (prof) {
+    if (scope === 'resolver') prof.resolverGenerated += cands.length
+    else if (scope === 'tail') prof.tailGenerated += cands.length
+    else prof.loopGenerated += cands.length
+  }
+  for (const c of cands) {
+    if (i > 0 && !within(budget)) {
+      if (prof) {
+        prof.refusals++
+        if (prof.firstRefusalAtCommand < 0) prof.firstRefusalAtCommand = prof.command
+      }
+      break
+    }
     i++
     const waste: Waste = { fizzled: 0 }
     const r = apply(state, c)
     countFizzles(r.events, player, waste)
     if (budget) budget.used++
+    if (prof) {
+      if (scope === 'resolver') { prof.resolverScored++; prof.resolverScoringApplies++ }
+      else if (scope === 'tail') { prof.tailScored++; prof.tailScoringApplies++ }
+      else { prof.loopScored++; prof.loopScoringApplies++ }
+    }
     const scored = resolveForcedDecisions(r.state, weights, aggression, player, budget, waste)
     const score = evaluate(scored, player, weights, aggression)
     if (better(score, waste.fizzled, bestScore, bestFizzled)) { best = c; bestScore = score; bestFizzled = waste.fizzled }

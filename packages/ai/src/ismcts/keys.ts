@@ -1,4 +1,5 @@
 import { ELEMENTS, matchesDefFilter, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type TriggerEvent } from '@fftcg/engine'
+import type { RolloutProfile } from '../greedy.js'
 
 /**
  * Canonical, cross-determinisation identity for search (spec D-2). **This is the crux of the rung.**
@@ -597,10 +598,21 @@ export interface SearchInput {
   readonly seed: number
   readonly rolloutCommandCap: number
   readonly explorationC: number
+  /**
+   * D7: collect the rollout apply ATTRIBUTION for this search. Diagnostic only — it changes nothing about
+   * which command comes back, and is off unless a measurement asks for it. A plain boolean because
+   * `SearchInput` crosses the worker boundary by `structuredClone`, which cannot carry a function.
+   */
+  readonly profile?: boolean
 }
 
 /** Counters that make cost measurable rather than guessed (spec D-A4). */
 export interface SearchDiagnostics {
+  /**
+   * D7: where the rollout applies went, present only when `SearchInput.profile` asked for it. The four apply
+   * buckets sum to `rolloutApplies`; see `RolloutProfile`.
+   */
+  readonly rollout?: RolloutProfile
   readonly determinisations: number
   readonly treeApplies: number
   readonly rolloutApplies: number
