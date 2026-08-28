@@ -1,5 +1,10 @@
 # Rung D3 — a time-boxed search budget
 
+> **STATUS: DEFERRED after its plan review, in favour of making the rollout cheaper.** Not implemented.
+> The review found a blocker, and then found that the rung's premise does not hold. Both are recorded
+> below, under *Plan review outcome*, because the reasoning is the useful part — the design here is still
+> the right shape if this is revisited once the per-iteration cost is understood.
+
 ## Why
 
 Two documented numbers rotted silently between rung D1 and now, and both had the same cause.
@@ -95,6 +100,54 @@ floor is the guard, and it is deliberately checked BEFORE the clock.
   box. If it is, the box is too small and the rung reports that rather than shipping it.
 
 Every criterion verified by mutation.
+
+## Plan review outcome — why this is deferred
+
+A Codex plan review returned sixteen findings. Three of them, together, say the rung should not be built yet.
+
+**1. A blocker, and a nasty one.** `SearchInput` crosses the worker boundary by `structuredClone`, and
+functions are not cloneable — so `budget.now` as designed would THROW at `postMessage`. The coordinator
+treats a post failure as worker death and permanently falls back to the heuristic agent. The design as
+written would have silently downgraded the opponent for the whole game. Fixable (send `{ ms, minIterations }`
+as data, let the worker inject its own clock after deserialisation), but it is the kind of thing that only
+a reader who knows the worker boundary catches.
+
+**2. The premise does not hold: the median is ALREADY paced.** `AI_STEP_MS` is 600 ms and the coordinator
+holds an early result until `startedAt + stepMs`, so today's 454 ms median decision is already presented to
+the player at 600 ms. A smaller box therefore buys nothing at the median — it only removes decisions that
+exceed 600 ms. Verified in the code, not taken on trust.
+
+**3. And the tail it would fix is not reliably bounded anyway.** Superseding a request does not cancel its
+search: the worker handles messages serially and stays inside the old synchronous call until it finishes,
+so a replacement waits out the stale budget plus its own. A box makes that better but not bounded, and real
+cancellation means chunking the search — a much bigger change than this rung.
+
+The review also showed the framing overclaimed. It is a SOFT deadline (`minIterations` overrides the clock,
+and the final iteration overruns by its own duration), so "caps the tail" and "responsiveness becomes a
+constant" were both wrong. And the arithmetic only held at the median: at p95 states an iteration costs
+~6.8 ms, not ~2.3 ms, so a 250 ms box buys ~37 iterations there — not 110. Those are exactly the complex
+positions where iterations matter most.
+
+## What to do instead
+
+**Make the rollout cheaper.** Measured over the 120-game tournament, the split of engine work is:
+
+| | applies |
+|---|---|
+| rollout | 770,764,747 |
+| tree | 4,869,498 |
+
+**99.4 % of the engine work in a search is rollout**, at ~124,000 `apply` calls per decision. That is the
+number to attack, and attacking it beats budgeting it on every axis: it improves latency AND strength
+together, needs no worker-protocol change, costs no determinism, and adds no CLI surface. A budget only
+ever trades one against the other.
+
+That makes the next rung a measurement rung, not a feature: profile where rollout time actually goes
+(`settle`, `evaluate`, `candidateCommands`, allocation), and only then decide whether the answer is a
+cheaper rollout, a shallower one, or — still — a budget.
+
+This is the failure mode the section below predicted, arriving from a review rather than from a benchmark:
+shipping a slower AND weaker opponent to satisfy a design preference would be worse than shipping nothing.
 
 ## What would make this rung fail honestly
 
