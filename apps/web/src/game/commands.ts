@@ -26,7 +26,7 @@ function defFor(v: PlayerView, id: CardId): CardDef | undefined {
 }
 
 /** Card names only — the board already shows the art and the id, so the CLI's `Name (CODE)` is noise in a GUI. */
-function bareName(v: PlayerView, id: CardId): string {
+export function bareName(v: PlayerView, id: CardId): string {
   return defFor(v, id)?.name ?? v.cards[id]?.code ?? `#${id}`
 }
 
@@ -60,17 +60,34 @@ function bareName(v: PlayerView, id: CardId): string {
  * controller ON the event, not a lookup here: events are narrated after the fact, and a stolen Forward is
  * already back in its owner's Break Zone by then.
  */
+/**
+ * `p`'s side of the TABLE: their two field rows and their Break Zone.
+ *
+ * Public, game-relevant, and where a card can be confused with another of the same name. Hands and decks are
+ * hidden or irrelevant to a board label; the damage zone and the removed pile are inert and permanent, so
+ * counting them would qualify a card for the rest of the game to no purpose.
+ */
+const tableIds = (v: PlayerView, p: PlayerId): CardId[] =>
+  [...v.fields[p].forwards.map((c) => c.id), ...v.fields[p].backups.map((c) => c.id), ...v.fields[p].breakZone]
+
+const cardIsOnTable = (v: PlayerView, p: PlayerId, id: CardId): boolean => tableIds(v, p).includes(id)
+const namedCardOnTable = (v: PlayerView, p: PlayerId, named: string): boolean =>
+  tableIds(v, p).some((id) => bareName(v, id) === named)
+
 export function name(v: PlayerView, id: CardId): string {
   const bare = bareName(v, id)
   const mine = v.cards[id]?.owner
   if (mine === undefined) return bare
-  const other = (1 - mine) as PlayerId
-  // Only twins ON THE TABLE count — the two fields and the two Break Zones, all four public and all four
-  // rendered. A copy in your HAND is not something you can confuse with a card in play, and counting it
-  // would qualify half the board for no reason.
-  const f = v.fields[other]
-  const inPlay = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.breakZone]
-  return inPlay.some((tid) => bareName(v, tid) === bare) ? `${possessive(v, mine)} ${bare}` : bare
+  // BOTH sides of the confusion have to be on the table. The twin condition came first, and playing showed
+  // the subject needs the same test: during "discard down to 5" every card in the list is in your own hand,
+  // and the AI happening to hold a Prishe in play made the strip read
+  //
+  //   Discard Billy Bob, Cloud / Discard your Prishe, Cloud / Discard Cloud, your Reeve / Discard Cloud, Lightning
+  //
+  // — "your" on some entries and not others, in a prompt where every card is yours and none of the AI's is
+  // selectable. A card in hand cannot be mistaken for one in play, whichever end of the comparison it is.
+  if (!cardIsOnTable(v, mine, id)) return bare
+  return namedCardOnTable(v, (1 - mine) as PlayerId, bare) ? `${possessive(v, mine)} ${bare}` : bare
 }
 
 /** "A", "A and B", "A, B and C" — target sets are read aloud off a button, so a bare comma list reads badly. */
@@ -101,7 +118,7 @@ export type TriggerCause =
   /** A card arrived on a field (spec C8). `controller` is whose field, which is what the wording turns on. */
   | { readonly kind: 'enteredField'; readonly card: CardId; readonly controller: PlayerId }
 
-const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' : "the AI's")
+export const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' : "the AI's")
 
 /**
  * WHY a clause fired, as a phrase (spec C2-5). This is the whole point of C2's narration: an observer trigger

@@ -5,7 +5,7 @@ import {
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { buildChoiceSet, describeChoice, describeTriggerCause, name, preferredChoices, sameCommand, type TriggerCause } from './commands.js'
+import { bareName, buildChoiceSet, describeChoice, describeTriggerCause, name, possessive, preferredChoices, sameCommand, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
@@ -66,7 +66,10 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'unimplementedAbility': return e.clauses === undefined
       ? { kind: 'warning', text: `${name(v, e.card)} (${e.code}) has abilities that are not implemented yet — played as vanilla` }
       : { kind: 'warning', text: `${name(v, e.card)} (${e.code}) has ${e.clauses} more ability clause${e.clauses === 1 ? '' : 's'} that ${e.clauses === 1 ? 'is' : 'are'} not implemented yet` }
-    case 'exBurstSkipped': return { kind: 'warning', text: `EX Burst on ${name(v, e.card)} skipped (not implemented)` }
+    // These three name a subject that has already LEFT the table — the damage zone, the removed pile — so
+    // `name` cannot qualify it and the sentence has to. The event's own `player` is the authority; a lookup
+    // would be guessing about a card that is no longer anywhere to look (Codex MAJOR).
+    case 'exBurstSkipped': return { kind: 'warning', text: `EX Burst on ${possessive(v, e.player)} ${bareName(v, e.card)} skipped (not implemented)` }
     case 'battleDamage': return { kind: 'event', text: `${name(v, e.source)} deals ${e.amount} damage to ${name(v, e.target)}` }
     case 'playerDamaged': return { kind: 'event', text: `${who(v, e.player)} take${e.player === v.me ? '' : 's'} 1 damage` }
     case 'broken': return { kind: 'event', text: `${name(v, e.card)} is broken` }
@@ -87,13 +90,16 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // "triggers" would report a move they deliberately made as something that merely happened to them.
     case 'abilityActivated': {
       const text = abilityText(v, e.card, e.abilityId)
+      // `bareName`, because the sentence already opens with the possessive — `name` would produce
+      // "Your your Billy Bob activates" whenever the AI held a twin in play (Codex MINOR, shipped in the
+      // commit before this one). Same reason `describeTriggerCause` has always used the bare name.
       const whose = e.player === v.me ? 'Your' : "The AI's"
-      return { kind: 'event', text: `${whose} ${name(v, e.card)} activates${text ? `: "${text}"` : ''}` }
+      return { kind: 'event', text: `${whose} ${bareName(v, e.card)} activates${text ? `: "${text}"` : ''}` }
     }
     case 'paidToBreakZone': return { kind: 'event', text: `${name(v, e.card)} is put into the Break Zone to pay for it` }
     // The sibling cost above has said so since C3; without this the card simply vanishes from the Break Zone
     // with nothing in the log, which is the one thing the amber warnings exist to prevent elsewhere.
-    case 'removedFromGame': return { kind: 'event', text: `${name(v, e.card)} is removed from the game to pay for it` }
+    case 'removedFromGame': return { kind: 'event', text: `${e.player === v.me ? 'Your' : "The AI's"} ${bareName(v, e.card)} is removed from the game to pay for it` }
     // C9. A look and a reveal differ only in the verb; WHICH cards get named is decided by the view, not by
     // the audience, so this one line is safe for both. The AI's private look reaches the human as a count.
     case 'deckExposed': {

@@ -1507,6 +1507,8 @@ describe('a mirror match names both sides of a trade (found by playing)', () => 
   // the same four strings (Codex MINOR). The distinction only becomes observable if a card can steal one.
 
   const BILLY = '18-124C'
+  const fieldCardFor = (id: CardId): FieldCard =>
+    ({ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })
   /** A dealt game — hands come from `chooseFirst`, not `createGame`. */
   const dealt = (seed: number): GameState => {
     const g = newGame(seed)
@@ -1539,6 +1541,64 @@ describe('a mirror match names both sides of a trade (found by playing)', () => 
     expect(out[3]).toBe("the AI's Billy Bob is broken")
     // The point, stated as the property rather than the strings: no two of these lines are the same.
     expect(new Set(out).size, 'two lines are identical, so the trade is still unreadable').toBe(4)
+  })
+
+  it('stays quiet when the CARD ITSELF is in hand, however busy the board is', () => {
+    // The other half of the same argument, found by playing "discard down to 5". Every card in that prompt is
+    // in your own hand, and the AI happening to hold a Prishe in play made the strip read
+    //
+    //   Discard Billy Bob, Cloud / Discard your Prishe, Cloud / Discard Cloud, your Reeve
+    //
+    // — qualified on some entries, bare on others, in a list where every card is yours and none of the AI's
+    // is even selectable. A card in hand cannot be mistaken for one in play, whichever end of the comparison
+    // it sits on, so BOTH the card and its twin must be on the table.
+    const v = viewFor(dealt(3), HUMAN)
+    const inHand = 970, theirs = 971
+    v.cards[inHand] = { id: inHand, code: BILLY, owner: HUMAN }
+    v.cards[theirs] = { id: theirs, code: BILLY, owner: AI }
+    v.hand = [...v.hand, inHand]
+    v.fields[AI].forwards = [...v.fields[AI].forwards, fieldCardFor(theirs)]
+    // The twin really is in play — otherwise this passes for the wrong reason.
+    expect(v.fields[AI].forwards.some((c) => c.id === theirs), 'the AI has no twin in play').toBe(true)
+    expect(describeChoice(v, { type: 'discardToHandSize', player: HUMAN, cards: [inHand] }))
+      .toBe('Discard Billy Bob')
+  })
+
+  it('says whose card it was even after it has LEFT the table', () => {
+    // The other side of the subject rule, and the reason it cannot be applied blindly (Codex MAJOR). These
+    // lines name a card that is already in the damage zone or the removed pile, so `name` has nothing on the
+    // table to qualify against — but the sentence still has to say whose, because an opposing twin makes
+    // "EX Burst on Billy Bob skipped" ambiguous. The event carries `player`, which is the authority: a
+    // lookup would be guessing about a card that is no longer anywhere to look.
+    const v = viewFor(dealt(3), HUMAN)
+    const gone = 980, theirs = 981
+    v.cards[gone] = { id: gone, code: BILLY, owner: HUMAN }
+    v.cards[theirs] = { id: theirs, code: BILLY, owner: AI }
+    v.fields[HUMAN].damageZone = [...v.fields[HUMAN].damageZone, gone]
+    v.fields[AI].forwards = [...v.fields[AI].forwards, fieldCardFor(theirs)]
+    expect(v.fields[AI].forwards.some((c) => c.id === theirs), 'no opposing twin, so nothing is ambiguous').toBe(true)
+
+    expect(describeEvent(v, { type: 'exBurstSkipped', player: HUMAN, card: gone })?.text)
+      .toBe('EX Burst on your Billy Bob skipped (not implemented)')
+    expect(describeEvent(v, { type: 'exBurstSkipped', player: AI, card: theirs })?.text)
+      .toBe("EX Burst on the AI's Billy Bob skipped (not implemented)")
+    expect(describeEvent(v, { type: 'removedFromGame', player: HUMAN, card: gone })?.text)
+      .toBe('Your Billy Bob is removed from the game to pay for it')
+  })
+
+  it('does not say whose card TWICE when the line already opens with it', () => {
+    // Shipped in the commit before this one and caught in review: `abilityActivated` prefixes its own
+    // "Your"/"The AI's", so the qualifying `name` produced "Your your Billy Bob activates" the moment the AI
+    // held a twin in play. Same trap `describeTriggerCause` avoids by using the bare name.
+    const v = viewFor(dealt(3), HUMAN)
+    const mine = 982, theirs = 983
+    v.cards[mine] = { id: mine, code: BILLY, owner: HUMAN }
+    v.cards[theirs] = { id: theirs, code: BILLY, owner: AI }
+    v.fields[HUMAN].forwards = [...v.fields[HUMAN].forwards, fieldCardFor(mine)]
+    v.fields[AI].forwards = [...v.fields[AI].forwards, fieldCardFor(theirs)]
+    const line = describeEvent(v, { type: 'abilityActivated', player: HUMAN, card: mine, abilityId: 'x' })?.text ?? ''
+    expect(line).toMatch(/^Your Billy Bob activates/)
+    expect(line, 'the possessive is doubled').not.toContain('Your your')
   })
 
   it('stays quiet when the only twin is in your own HAND', () => {
