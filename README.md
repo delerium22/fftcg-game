@@ -131,9 +131,20 @@ they are; the measurement is the fact.
 
 Full breakdowns: [`docs/superpowers/specs/2026-08-26-heuristic-ai-design.md`](docs/superpowers/specs/2026-08-26-heuristic-ai-design.md)
 (greedy) and [`docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md`](docs/superpowers/specs/2026-08-27-rung-d1-ismcts.md)
-(ISMCTS), whose figures are the ones measured when those rungs landed. One caveat worth stating plainly: the 200-iteration budget was chosen because the browser
-comfortably affords it, **not** because it was calibrated for strength — more iterations have not
-been shown to be worth their latency.
+(ISMCTS), whose figures are the ones measured when those rungs landed. The 200-iteration budget was chosen because the browser comfortably affords it, **not** because it
+was calibrated for strength. That caveat used to end "more iterations have not been shown to be worth
+their latency"; they now have been. Over the same 20 seed pairs, changing only the budget:
+
+| Budget | Result |
+|---|---|
+| `ismcts:200` | 80.0 % (32/40), CI95 [67.5, 92.5] |
+| `ismcts:600` | **90.0 %** (36/40), CI95 [80.0, 97.5] |
+
+At 600 the search lands back on the figure it scored before the card pool widened, which is what makes
+the branching explanation the likely one: the search did not get worse, its budget stopped covering the
+tree. The intervals overlap, so on two independent runs alone this is support rather than proof — but it
+is the same seeds and the same opponent, and the point estimate moves ten points in the predicted
+direction. What it costs in the browser has not been measured, so the shipped default is still 200.
 
 ## Card images
 
