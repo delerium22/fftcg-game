@@ -183,6 +183,7 @@ describe('preferredChoices', () => {
 // ---------------------------------------------------------------------------
 
 const NOEL = '16-092C', CLOUD = '27-124S', SPHENE = '27-126S', BILLY = '18-124C', REEVE = '20-105C'
+const GEOMANCER = '18-064C'   // '[Earth], discard Geomancer: Draw 1 card' — the clause that exposed the label defect
 
 const fieldCard = (id: CardId, over: Partial<FieldCard> = {}): FieldCard =>
   ({ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [], ...over })
@@ -627,6 +628,69 @@ describe('activated abilities on the board (C3-A7)', () => {
     const { v, src, backup } = redMageView()
     const label = describeChoice(v, act(src, '1-121C:haste', { dullBackups: [backup], discards: [] }))
     expect(label).toContain('[Lightning][Dull]')
+  })
+
+  it('says what the ability DOES, on the side of the colon the card prints it', () => {
+    // Found by playing. The button read `[Earth], discard: Geomancer — paying discard Cloud as earth`. In
+    // FFTCG's own notation a colon separates COST from EFFECT — Geomancer prints "[Earth], discard Geomancer:
+    // Draw 1 card" — so the source name sat exactly where the effect belongs, and the effect, which is the
+    // only part a player is actually deciding on, was nowhere: nothing in the UI renders rules text.
+    const v = viewFor(dealtGame(1), HUMAN)
+    // `instance` is all the label needs: it reads the ability off `defs` and the name off `cards`. Geomancer's
+    // clause is usable from HAND (`sourceZone: 'hand'`), and the view carries a hand as a COUNT, so there is no
+    // zone to put it in — which is exactly why the label cannot fall back to reading the board.
+    const geo = instance(v, 920, GEOMANCER)
+    const label = describeChoice(v, act(geo, `${GEOMANCER}:draw`, { dullBackups: [], discards: [{ card: 921, element: 'earth' }] }))
+    expect(label).toBe("Geomancer's [Earth], discard: Draw 1 card — paying discard #921 as earth")
+    expect(label, 'the source is on the effect side of the colon again').not.toMatch(/: Geomancer\b/)
+  })
+
+  it('every activated ability in the POOL gets a label shaped card / cost / effect', () => {
+    // STRUCTURE only. What the effect text should SAY is pinned by a hand-written table in
+    // `packages/cards/test/abilities.test.ts`, checked against the printed cards by eye — because the first
+    // version of this sweep derived its expectation with the same `indexOf(': ')` and sentence split the
+    // production function uses, which is the parser compared with itself. Codex mutated the function to keep
+    // only the first sentence and this sweep stayed green while labels lost "It gains Haste until the end of
+    // the turn" (MAJOR). So the shape is checked here, next to the labelling; the words are checked there,
+    // next to the cards.
+    const v = viewFor(dealtGame(1), HUMAN)
+    let next = 950
+    const activated = CARD_DEFS.flatMap((d) => (d.abilities ?? [])
+      .filter((a) => a.trigger.kind === 'activated')
+      .map((a) => ({ def: d, ability: a })))
+    expect(activated.length, 'the pool has no activated abilities, so this sweeps nothing').toBeGreaterThan(4)
+
+    for (const { def, ability } of activated) {
+      const src = instance(v, next++, def.code)
+      const label = describeChoice(v, act(src, ability.id))
+      expect(label.startsWith(`${def.name}'s `), `${ability.id}: label does not open with the card — ${label}`).toBe(true)
+      const colon = label.indexOf(': ')
+      expect(colon, `${ability.id}: nothing separates cost from effect — ${label}`).toBeGreaterThan(0)
+      expect(label.slice(colon + 2).trim().length, `${ability.id}: the effect side is empty — ${label}`).toBeGreaterThan(0)
+      expect(label, `${ability.id}: it fell back to naming the clause instead of describing it`).not.toContain(' ability')
+    }
+  })
+
+  it('splits on the FIRST colon, so an ability that grants an ability keeps its inner one', () => {
+    // Nothing in the pool prints two colons, so `indexOf` and `lastIndexOf` are the same function here and the
+    // rule is untestable against the shipped cards — a mutation to `lastIndexOf` passed everything. FFTCG does
+    // print this shape though: a clause that grants another clause quotes a whole `cost: effect` inside its own
+    // effect, and splitting on the LAST colon would then present the granted EFFECT as if it were this
+    // ability's, dropping the part that says what is being granted.
+    const GRANTS: Ability = {
+      id: 'X-GRANT:grant',
+      trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true } },
+      text: '[Dull]: Choose 1 Forward you control. It gains "[Dull]: Draw 1 card." until the end of the turn.',
+      effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'dull' }] }],
+    }
+    const v = viewFor(dealtGame(1), HUMAN)
+    const src = instance(v, 930, NOEL)
+    v.defs[NOEL] = { ...(v.defs[NOEL] as CardDef), abilities: [GRANTS] }
+    v.fields[HUMAN].forwards = [fieldCard(src)]
+    const label = describeChoice(v, act(src, GRANTS.id))
+    expect(label).toBe(`${v.defs[NOEL]!.name}'s [Dull]: Choose 1 Forward you control. It gains "[Dull]: Draw 1 card." until the end of the turn`)
+    // The granted clause survives whole — splitting on the last colon would leave only "Draw 1 card."
+    expect(label).toContain('It gains "[Dull]: Draw 1 card."')
   })
 
   it('tells two clauses of the SAME card apart', () => {

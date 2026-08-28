@@ -1,5 +1,5 @@
-import type { CardId, Command, FieldCard, PlayerView } from '@fftcg/engine'
-import { describeAbilityCost, pickedDeckCards } from '@fftcg/engine'
+import type { Ability, CardId, Command, FieldCard, PlayerView } from '@fftcg/engine'
+import { describeAbilityCost, describeAbilityEffect, pickedDeckCards } from '@fftcg/engine'
 
 const PHASE_LABEL: Record<string, string> = { setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase', main1: 'Main Phase 1', attack: 'Attack Phase', main2: 'Main Phase 2', end: 'End Phase' }
 
@@ -61,11 +61,21 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'activateAbility': {
       const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
       const cost = abilityCostOf(v, c.source, c.abilityId)
-      return `Use ${name(v, c.source)}'s ${cost} ability${pay.length ? ` paying: ${pay.join(', ')}` : ''}`
+      // The EFFECT, not just the cost: a hotseat player has no more access to rules text than a browser one.
+      const ability = abilityOf(v, c.source, c.abilityId)
+      const does = ability ? describeAbilityEffect(ability) : null
+      const clause = does === null ? `${cost} ability` : `${cost}: ${does}`
+      return `Use ${name(v, c.source)}'s ${clause}${pay.length ? ` paying: ${pay.join(', ')}` : ''}`
     }
     case 'pass': return 'Pass'
     case 'concede': return 'Concede'
   }
+}
+
+/** One clause off the view's defs, or undefined when the card or the id is unknown. */
+function abilityOf(v: PlayerView, source: number, abilityId: string): Ability | undefined {
+  const def = v.defs[v.cards[source]?.code ?? '']
+  return (def?.abilities ?? []).find((a) => a.id === abilityId)
 }
 
 /** The printed cost of one activated clause, for the command label. */

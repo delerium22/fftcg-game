@@ -1,5 +1,5 @@
 import {
-  HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, effectivePower, pickedDeckCards, seedRng,
+  HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, describeAbilityEffect, effectivePower, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
   type ZoneTransitionReason,
@@ -356,7 +356,9 @@ export function describeChoice(v: PlayerView, c: Command): string {
     case 'activateAbility': {
       const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
       const cost = activatedCostOf(v, c.source, c.abilityId)
-      return `${cost}: ${name(v, c.source)}${pay.length ? ` — paying ${pay.join(', ')}` : ''}`
+      const clause = defFor(v, c.source)?.abilities?.find((a) => a.id === c.abilityId)
+      const does = clause ? describeAbilityEffect(clause) : null
+      return `${name(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${pay.length ? ` — paying ${pay.join(', ')}` : ''}`
     }
     case 'declareAttack': return `Attack with ${c.attackers.map((id) => name(v, id)).join(' + ')}`
     case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${name(v, c.blocker)}`

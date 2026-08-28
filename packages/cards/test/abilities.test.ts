@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { actingPlayer, apply, applyChooseFirst, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
+import { actingPlayer, apply, applyChooseFirst, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -1974,5 +1974,59 @@ describe('22-068R Prishe — "When Prishe is chosen by a Summon or an ability, P
     const snapshot = JSON.stringify(r.state)
     apply(r.state, pick!)
     expect(JSON.stringify(r.state), 'applyChooseTargets mutated its input state').toBe(snapshot)
+  })
+})
+
+describe('the button text for an activated clause (found by playing)', () => {
+  /**
+   * Hand-written from the printed text of every activated clause in the pool, and checked against the cards
+   * by eye — NOT recorded from what `describeAbilityEffect` happens to emit.
+   *
+   * This table is the oracle, and it exists because the first version of these tests derived its expectation
+   * with the same `indexOf(': ')` and sentence split the production function uses, then asserted only the
+   * FIRST sentence. That is the production parser compared with itself: Codex mutated the function to return
+   * `kept[0]` and every sweep stayed green while real labels silently lost "It gains Haste until the end of
+   * the turn" and "Add it to your hand".
+   */
+  const EXPECTED: Record<string, string> = {
+    '1-121C:haste': 'Choose 1 Forward. It gains Haste until the end of the turn',
+    '16-092C:dull-all': 'Dull all the Forwards opponent controls',
+    '18-064C:draw': 'Draw 1 card',
+    '18-069C:draw': 'Draw 1 card',
+    '19-052C:pump': 'Choose 1 Forward. It gains +4000 power until the end of the turn',
+    '19-052C:remove': 'Choose 1 Earth Forward. It gains +2000 power until the end of the turn',
+    '20-074C:draw': 'Draw 1 card',
+    // Sphene keeps its once-per-turn marker: that is not a timing condition the engine gates for you, it is
+    // what pressing the button COSTS you for the rest of the turn (Codex MAJOR).
+    '27-126S:retrieve': 'Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn. Add it to your hand (once per turn)',
+  }
+
+  const activated = loadCards().flatMap((d) => (d.abilities ?? []).filter((a) => a.trigger.kind === 'activated'))
+
+  it('every activated clause in the pool is covered by the table', () => {
+    expect(activated.length, 'the pool has no activated clauses').toBeGreaterThan(0)
+    expect(activated.map((a) => a.id).sort()).toEqual(Object.keys(EXPECTED).sort())
+  })
+
+  it('reads the whole effect, and only the effect', () => {
+    for (const ability of activated) {
+      expect(describeAbilityEffect(ability), ability.id).toBe(EXPECTED[ability.id])
+    }
+  })
+
+  it('drops the timing conditions the engine already enforces, and nothing else', () => {
+    // Stated separately from the table so the intent survives a table edit: a legality condition cannot change
+    // the decision, because the command is not offered when it fails.
+    for (const ability of activated) {
+      const out = describeAbilityEffect(ability) ?? ''
+      expect(out, ability.id).not.toContain('You can only use this ability')
+      expect(out, ability.id).not.toContain('in your hand.')
+      // ...but every OTHER sentence of the printed effect survives whole.
+      const printed = ability.text.slice(ability.text.indexOf(': ') + 2)
+      for (const sentence of printed.split(/(?<=\.)\s+/)) {
+        if (sentence.startsWith('You can only use this ability')) continue
+        expect(out, `${ability.id}: lost "${sentence}"`).toContain(sentence.replace(/\.$/, ''))
+      }
+    }
   })
 })

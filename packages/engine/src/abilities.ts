@@ -400,3 +400,33 @@ export function describeAbilityCost(cost: AbilityCost): string {
   if (cost.selfRemoveFromGame) prose.push('remove from the game')
   return [icons, ...prose].filter(Boolean).join(', ') || '[0]'
 }
+
+/**
+ * The EFFECT half of a printed ability — what the clause DOES, with the cost and the legality boilerplate off.
+ *
+ * A card prints `COST: EFFECT`, so a UI showing only the cost tells the player what a click will SPEND and not
+ * what it buys. Nothing in this app renders rules text, so before this there was no way to find out short of
+ * clicking (found by playing: the button read `[Earth], discard: Geomancer`).
+ *
+ * The FIRST `": "` is the cost separator — the cost always comes first, and an effect may legitimately contain
+ * a later one, since a clause that grants a clause quotes a whole `cost: effect` inside itself.
+ *
+ * "You can only use this ability …" sentences are dropped as TIMING conditions the engine has already enforced:
+ * the button does not exist unless it is your Main Phase, unless the card is in your hand, and so on, so on a
+ * button they are words that cannot change the decision. Once-per-turn is the exception and comes back as a
+ * short marker (Codex MAJOR): it is not about whether you MAY press the button now but about what pressing it
+ * costs you for the rest of the turn, which is a decision the player still has to make. It is read off
+ * `trigger.oncePerTurn` rather than out of the prose, because that is where the engine keeps the fact.
+ *
+ * The trailing full stop goes too, because callers continue the sentence. Returns null when nothing is left to
+ * say, so a caller can fall back to naming the clause.
+ */
+export function describeAbilityEffect(ability: Ability): string | null {
+  const split = ability.text.indexOf(': ')
+  const body = split === -1 ? ability.text : ability.text.slice(split + 2)
+  const kept = body.split(/(?<=\.)\s+/).filter((sentence) => !/^You can only use this ability/.test(sentence))
+  const effect = kept.join(' ').trim().replace(/\.$/, '')
+  if (!effect) return null
+  const once = ability.trigger.kind === 'activated' && ability.trigger.oncePerTurn === true
+  return once ? `${effect} (once per turn)` : effect
+}
