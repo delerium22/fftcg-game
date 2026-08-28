@@ -21,52 +21,88 @@ it is wrong.
 But general preemption — pausing a running frame, resolving another to completion, resuming — is only
 needed when the preempting effect can itself SUSPEND. Prishe's cannot. Its entire effect is
 `+2000 powerBonus until end of turn`: no target, no mode, no deck look, nothing that can raise a prompt.
-A choice-free effect applied at the moment the choice is fixed lands in exactly the position the CR puts
-it — before the choosing ability continues — with no agenda involvement at all.
+A choice-free effect can therefore be applied at the moment the choice is fixed, with no agenda involvement
+at all, and it lands before the choosing ability continues — which is the ordering the card turns on.
 
-So this rung implements the CLAUSE, not the mechanism. That is a real limitation and the spec says so
-below rather than letting a future reader assume preemption exists.
+That is NOT the same as being CR-exact, and an earlier draft of this spec wrongly claimed it was. The plan
+review found a reachable case in this very deck where the order still differs; it is stated precisely under
+*MVP0-SIMPLIFICATION* below, and it is why this rung implements the CLAUSE rather than the mechanism.
 
 ## Design
 
-`AbilityTrigger` gains `observesChosen`, alongside the existing `observesZoneChange` / `observesEnterField`.
-It is declarative like the others — the AST says what the card says, and the per-clause coverage counter
-picks it up — but it is DISPATCHED INLINE rather than through the resolution agenda.
+*Revised after a Codex plan review, which found two blockers. Both are recorded here because they changed
+the design, and one of them falsified a claim this spec originally made.*
 
-There are exactly two places in the engine where a target becomes fixed, and the hook belongs at both:
+`AbilityTrigger` gains `observesChosen`, alongside `observesZoneChange` / `observesEnterField`. It is
+declarative like the others, and the per-clause coverage counter picks it up.
+
+### It runs the AST — it does not hand-write the effect
+
+> **Plan review, blocker 2.** The first draft said "dispatched inline" and left it there. That is not a
+> design: `addPower` acts on `ctx.chosen`, and `enqueueTrigger` builds frames with `chosen: []`, so nothing
+> would have bound Prishe to her own pump. Writing `powerBonus += 2000` by hand instead would duplicate the
+> engine's single power-modification authority and make the AST decorative — the card would say one thing
+> and the code do another, which is the exact failure the AST exists to prevent.
+
+So the helper executes the matching ability through the REAL effect executor with the chosen card bound as
+`chosen`, and **rejects any effect shape that could suspend**. A `chooseTargets`, `chooseModes` or
+`lookAtDeck` under an `observesChosen` trigger is a spec error and fails loudly, because an inline
+application has nowhere to suspend to.
+
+### Both places a target becomes fixed
 
 1. `applyChooseTargets` (`resolve.ts`) — a prompt the player answered.
-2. `applyActivateAbility` (`activate.ts`) — an activated ability whose targets are DECLARED with the
-   command (spec C3-1), which never passes through the prompt path at all.
+2. `applyActivateAbility` (`activate.ts`) — declared targets, which never touch the prompt path.
 
-Missing the second is the obvious bug here, and it is invisible from the card's own tests: Prishe pumped by
-a Summon would work while Prishe pumped by an activated ability silently would not. One shared helper,
-called from both, and a test that drives each route.
+The review confirmed these are the only two: `chooseMode` selects branches whose nested targets still reach
+`applyChooseTargets`; `chooseFromDeck` commits indices, not "choose" targets; a single legal candidate is
+NOT auto-selected; and the search reaches `apply` like everything else.
 
-**Not** hooked: `onSubject`, which binds a trigger event's subject (Luso's "break **it**"). That is not a
-choice — the printed text names it — and treating it as one would fire Prishe on effects that never
-targeted her.
+**Not** hooked: `onSubject` and `forEach`, which bind a card the printed text names rather than one anybody
+chose. The review confirmed that reading.
 
-## What this deliberately does NOT implement
+## MVP0-SIMPLIFICATION: the ordering is not CR-exact, and here is exactly where
 
-General agenda preemption. Any future "when chosen" clause whose effect can raise a prompt — "when chosen,
-choose a Forward and dull it" — still needs the mechanism C2-13 described, because an inline application
-has nowhere to suspend to. The `MVP0-SIMPLIFICATION` marker says exactly that, so the next person meets the
-limit at the point where it binds rather than discovering it from a wrong answer.
+> **Plan review, blocker 1**, which falsified this spec's original claim that inline gives "exactly the CR
+> ordering". It does not, and the counterexample is in this deck.
+
+Ramuh can deal lethal damage in one selected mode and raise another target prompt in the SAME frame, and
+this engine deliberately leaves the lethally damaged Forward on the field until that frame finishes. If the
+second choice takes Prishe, then:
+
+- inline gives **pump → Ramuh continues → §12.4.5 break**
+- a real preempting frame gives **break → then Ramuh continues**
+
+`powerModified` and `broken` come out in the opposite order, and a Lightning watching that break sees a
+different agenda. The outcome can differ, not just the log.
+
+This ships anyway, marked, because **the engine has no stack at all** — every ability already resolves
+immediately, which is a far larger documented deviation than this one, and the same class. What is NOT
+acceptable is an unmarked deviation, so the marker names Ramuh specifically rather than gesturing at
+"ordering may differ".
+
+Also deferred, explicitly, as C8 deferred its equivalent: the AI's target heuristic prices 5000 damage
+against a 5000 Prishe as lethal and does not know about the +2000 that will land first. `apply` simulates
+the chosen candidate correctly, so the search is not wrong — its candidate RANKING is.
 
 ## Acceptance
 
-- **C11-A1** The ordering, which is the card: a 5000 Prishe chosen by a Summon dealing 5000 damage
-  SURVIVES at 7000. The same test with the clause removed kills her — the assertion is the survival, not
-  the power number.
-- **C11-A2** Fires on BOTH routes: an ability answering a `chooseTargets` prompt, and an activated ability
-  with declared targets. The second is the one that would silently not work.
-- **C11-A3** Does NOT fire when Prishe was not chosen: an untargeted `forEach` that hits her, an
-  `onSubject` effect, and an ability that chose a DIFFERENT Forward.
-- **C11-A4** Fires once per choosing, and stacks across separate choosings within a turn (+2000, then
-  +4000), expiring at end of turn with every other until-end-of-turn effect.
-- **C11-A5** The log says why her power changed; a silent +2000 is the thing the amber warnings exist to
-  prevent.
-- **C11-A6** Coverage: `22-068R` reports 2 of 2 implemented clauses and stops warning.
+- **C11-A1** The ordering that is the card: a 5000 Prishe chosen by a Summon dealing 5000 damage SURVIVES
+  at 7000. The assertion is survival, not the power number.
+- **C11-A2** Fires on BOTH routes — an answered `chooseTargets` prompt, and an activated ability's declared
+  targets — and on both **for an OPPONENT's ability too** (plan review 6: several abilities use
+  `controller: 'any'`, and a helper scanning only the acting player's field passes every other criterion).
+- **C11-A3** Does NOT fire without a choice: an untargeted `forEach`, an `onSubject` effect, or a choice
+  that took a different Forward.
+- **C11-A4** Cardinality, both directions (plan review 7): Prishe chosen alongside a bystander in ONE
+  choice pumps once, not once per target; Prishe chosen in TWO distinct modal target nodes of one Ramuh
+  pumps twice. A wrong implementation multiplying by `targets.length` passes A1 alone; one deduplicating
+  per frame fails the second.
+- **C11-A5** The log says WHY: an `abilityTriggered` for the clause precedes the `powerModified`, since the
+  power line alone says what changed and not why (plan review 3).
+- **C11-A6** Immutability (plan review 8): the pump does not mutate its input state. An in-place
+  `powerBonus += 2000` passes every card-level test while corrupting sibling search branches, so this is
+  asserted directly — the pre-command state is unchanged, and a live choice equals the determinised one.
+- **C11-A7** Coverage: `22-068R` reports 2 of 2 clauses and stops warning.
 
 Every criterion verified by mutation.
