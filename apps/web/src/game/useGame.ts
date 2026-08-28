@@ -228,6 +228,9 @@ function causeOf(
  * whose cause happened in an EARLIER batch: a second Lightning occurrence sits in the queue across the prompt
  * the first one raised, and by the time it starts, the break that fired it is long gone from the event stream.
  *
+ * ONE emitter breaks that rule and is guarded below: C11's `observesChosen` clause is applied inline and
+ * never becomes a frame, so its `abilityTriggered` must not consume a slot.
+ *
  * A frame both queued and drained inside THIS batch is in no queue anyone can see, so its cause is
  * reconstructed from the events instead — `causeOf`. That is the common case (Luso's "break it" raises no
  * prompt at all) and it is sound because the engine pushes a damage or break event before the trigger that
@@ -269,7 +272,14 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
     }
     let cause: TriggerCause | null = null
     if (e.type === 'abilityTriggered') {
-      const frame = queued[started++]
+      // C11: an `observesChosen` clause is applied INLINE and never becomes a frame, so it must not consume
+      // a queue slot. The pairing above rests on "starting a frame is what emits `abilityTriggered`", and
+      // that clause is the one emitter for which it is false — left unguarded, its event shifts the cursor
+      // and every later trigger in the batch reads the NEXT frame's cause. Where two queued frames share a
+      // watcher card and clause the identity check passes on the wrong one, so the line does not lose its
+      // cause, it gains someone else's: the exact failure this pairing exists to prevent (spec C2-A3).
+      const framed = triggerOf(v, e.card, e.abilityId)?.kind !== 'observesChosen'
+      const frame = framed ? queued[started++] : undefined
       // The identity check is the guard on the FIFO assumption: mismatch means the queue is not what this
       // trigger came from, so fall through to reconstruction rather than narrate another clause's subject.
       cause = frame && frame.source === e.card && frame.abilityId === e.abilityId

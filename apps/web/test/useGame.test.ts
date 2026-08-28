@@ -840,6 +840,30 @@ describe('the log says WHY an observer trigger fired (spec C2-5)', () => {
     expect(out[0]).toContain("the AI's Sphene was broken")
   })
 
+  it("C11: an inline `observesChosen` trigger does not consume a queue slot", () => {
+    // The pairing rests on "starting a frame is what emits `abilityTriggered`". C11's when-chosen clause is
+    // applied INLINE and never becomes a frame, so its event is the one emitter for which that is false.
+    // Unguarded it shifts the cursor, and where two queued frames share a watcher card AND clause the
+    // identity check passes on the WRONG one — the line does not lose its cause, it gains someone else's.
+    const watching = (subject: CardId): Frame => ({
+      abilityId: LIGHTNING_WATCH, source: ids.lightning, controller: HUMAN, path: [], chosen: [], modes: [],
+      triggerEvent: { kind: 'zoneChange', card: subject, from: 'field', to: 'breakZone', controller: AI, owner: AI, reason: 'ability' },
+    })
+    const out = eventLines(
+      c2View(),
+      [
+        // The inline pump, then the real trigger that starts the FIRST queued frame.
+        triggered(AI, ids.prishe, '22-068R:chosen'),
+        { type: 'powerModified', card: ids.prishe, amount: 2000 },
+        triggered(HUMAN, ids.lightning, LIGHTNING_WATCH),
+      ],
+      [watching(ids.sphene), watching(ids.victim)],
+    ).map((l) => l.text)
+    // The Lightning line must name the FIRST queued frame's subject. Consuming a slot for Prishe would make
+    // it read the second frame's, which passes the identity check because both frames are the same clause.
+    expect(out.at(-1), 'the inline trigger shifted the queue cursor').toContain("the AI's Sphene was broken")
+  })
+
   it('falls back to the events when the queue is not what this trigger came from', () => {
     // A queue head belonging to another clause must never lend its subject: the identity check rejects it and
     // the reconstruction takes over.

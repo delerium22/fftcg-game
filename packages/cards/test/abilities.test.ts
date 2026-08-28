@@ -1821,6 +1821,44 @@ describe('22-068R Prishe — "When Prishe is chosen by a Summon or an ability, P
     expect(powerOfId(done.state, prishe), 'the pump was multiplied by the number of targets').toBe(before + 2000)
   })
 
+  it('C11-A3 (cont.) does NOT fire when a choice took a DIFFERENT Forward', () => {
+    // The review's sharpest test gap: with only the `forEach` negative landed, a helper that ignored its
+    // `chosen` argument entirely — pumping every Prishe on the board whenever ANY choice happened — passed
+    // all 680 tests. This is the case that distinguishes "the card that was chosen" from "a card".
+    let s = makeGame()
+    let prishe: CardId; let other: CardId; let mage: CardId
+    ;[s, prishe] = withField(s, 0, 'forwards', '22-068R')
+    ;[s, other] = withField(s, 0, 'forwards', '27-124S')
+    ;[s, mage] = withField(s, 0, 'backups', '1-121C')
+    ;[s] = withCp(s, 0, [LIGHTNING_BACKUP])
+
+    const use = legalCommands(s, 0).find((c) =>
+      c.type === 'activateAbility' && c.source === mage && c.targets.includes(other) && !c.targets.includes(prishe))
+    expect(use, 'no activation chose the OTHER Forward alone').toBeDefined()
+    const done = apply(s, use!)
+    expect(powerOfId(done.state, prishe), 'Prishe was pumped by a choice that did not take her').toBe(5000)
+    expect(done.events.some((e) => e.type === 'abilityTriggered' && e.abilityId === '22-068R:chosen')).toBe(false)
+  })
+
+  it("C11-A2 (cont.) fires cross-table on the DECLARED-targets route too", () => {
+    // The other half of C11-A2, which the first pass did not land: an activated ability whose declared
+    // targets name a Prishe the ACTIVATING player does not own. Red Mage's Haste is `controller: 'any'`, so
+    // this is reachable. A call-site filter keeping only the actor's own targets survives every other test.
+    let s = makeGame()
+    let prishe: CardId; let mage: CardId
+    ;[s, prishe] = withField(s, 1, 'forwards', '22-068R')   // the OPPONENT's Prishe
+    ;[s, mage] = withField(s, 0, 'backups', '1-121C')
+    ;[s] = withCp(s, 0, [LIGHTNING_BACKUP])
+
+    const use = legalCommands(s, 0).find((c) =>
+      c.type === 'activateAbility' && c.source === mage && c.targets.includes(prishe))
+    expect(use, "the opponent's Prishe was not a legal Haste target").toBeDefined()
+    const done = apply(s, use!)
+    expect(powerOfId(done.state, prishe), 'a declared target the actor does not own was skipped').toBe(7000)
+    // The pump belongs to the CHOSEN card's owner, not the chooser's.
+    expect(done.events).toContainEqual({ type: 'abilityTriggered', player: 1, card: prishe, abilityId: '22-068R:chosen' })
+  })
+
   it('C11-A3 does NOT fire when nobody chose her', () => {
     // Cloud's ETB is an untargeted `forEach` over "all the Forwards you control" — it pumps Prishe, but it
     // never CHOOSES her, so the when-chosen clause must not add its own +2000 on top.
