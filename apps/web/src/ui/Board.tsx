@@ -41,6 +41,7 @@ function FieldCardView({ v, c, choices, selected, onPick, onInspect, size }: {
       selectable={choices.length > 0}
       selected={selected}
       size={size}
+      text={d?.text}
       onClick={choices.length ? () => onPick(c.id) : undefined}
       onInspect={() => onInspect(d?.code)}
     />
@@ -177,6 +178,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
         selectable
         selected={selected === id}
         size="small"
+        text={d?.text}
         onClick={() => pick(id)}
         onInspect={() => inspect(d?.code)}
       />
@@ -219,6 +221,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
                 selectable={forCard.length > 0}
                 selected={selected === id}
                 size="hand"
+                text={d?.text}
                 action={actionFor(id)}
                 onClick={forCard.length ? () => pick(id) : undefined}
                 onInspect={() => inspect(d?.code, actionFor(id) ?? null)}

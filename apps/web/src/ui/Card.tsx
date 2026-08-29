@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type JSX } from 'react'
+import { useId, useState, type CSSProperties, type JSX } from 'react'
 import type { CardType, Element, FieldFlag, Keyword } from '@fftcg/engine'
 import { artUrl, isArtMissing, markArtMissing } from '../game/art.js'
 import './Card.css'
@@ -61,6 +61,19 @@ export interface CardProps {
    * `role="img"` div. That is rung E3a's known gap and rung E3b (roving tabindex) is what closes it —
    * a keyboard-only player currently cannot inspect the mulligan hand, where no card is selectable.
    */
+  /**
+   * The card's printed text, exposed as an accessible DESCRIPTION rather than folded into its name.
+   *
+   * The details panel shows this to a sighted player, but it is not a live region and it is not
+   * programmatically related to the focused card — so a screen reader is never told the text exists. Rung
+   * E3b's plan review found that: a rung making every card focusable would have gone green while the person
+   * it was written for still could not read a single card.
+   *
+   * A description, not a longer `aria-label`, because the name should stay concise enough to be useful when
+   * skimming a row of six cards; WAI's guidance puts verbose information here for exactly this reason. It
+   * lives in the DOM BEFORE focus, so the announcement cannot race React replacing the panel's content.
+   */
+  text?: string | undefined
   onInspect?: (() => void) | undefined
   /**
    * What clicking this card will DO, right now — "Cast Ramuh paying: discard Odin as lightning".
@@ -77,7 +90,7 @@ export interface CardProps {
 
 /** Every card on the board — the opponent's hand, the decks, both fields — renders through here. */
 export function Card(props: CardProps): JSX.Element {
-  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, action } = props
+  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, action, text } = props
 
   // Local state is keyed on `code` rather than reset by an effect, so reusing one component instance
   // for a different card re-attempts that card's art instead of inheriting the previous failure. The
@@ -118,6 +131,11 @@ export function Card(props: CardProps): JSX.Element {
   const label = faceDown
     ? 'Face-down card'
     : [`${name}, cost ${cost}`, elements.join(' and '), type, remaining === null ? '' : `power ${remaining} of ${power}`, dull ? 'dull' : '', ...buffs.map((b) => b.said), action ?? ''].filter(Boolean).join(', ')
+
+  // A stable id per rendered card, so `aria-describedby` points at this card's own text and not another's.
+  const descId = useId()
+  const described = !faceDown && text !== undefined && text !== ''
+  const description = described ? <span id={descId} className="sr-only">{text}</span> : null
 
   const face = faceDown ? (
     <span className="card__back" />
@@ -183,14 +201,24 @@ export function Card(props: CardProps): JSX.Element {
   // all come from the element rather than from hand-rolled key handling.
   if (selectable) {
     return (
-      <button type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label} aria-pressed={selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}>
+      <button
+        type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label}
+        {...(described ? { 'aria-describedby': descId } : {})}
+        aria-pressed={selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}
+      >
         <span className="card__face">{face}</span>
+        {description}
       </button>
     )
   }
   return (
-    <div className={className} style={vars as CSSProperties} title={label} role="img" aria-label={label} onMouseEnter={onInspect}>
+    <div
+      className={className} style={vars as CSSProperties} title={label} role="img" aria-label={label}
+      {...(described ? { 'aria-describedby': descId } : {})}
+      onMouseEnter={onInspect}
+    >
       <span className="card__face">{face}</span>
+      {description}
     </div>
   )
 }

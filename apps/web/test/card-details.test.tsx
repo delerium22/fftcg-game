@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { apply, applyChooseFirst, createGame, legalCommands, viewFor, type CardDef, type CardId, type Command, type GameState, type PlayerView } from '@fftcg/engine'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
+import { Card } from '../src/ui/Card.js'
 import { CardDetails } from '../src/ui/CardDetails.js'
 import { buildChoiceSet, preferredChoices } from '../src/game/commands.js'
 import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
@@ -217,6 +218,83 @@ describe('the details panel, driven by keyboard focus', () => {
     act(() => { (el as HTMLButtonElement).click() })
     expect(chosen.length, 'clicking a castable card no longer plays it').toBe(1)
     expect(chosen[0]).toBe(single![1][0])
+  })
+})
+
+describe('the printed text as an accessible description (rung E3b-1)', () => {
+  /** What a screen reader would announce as the DESCRIPTION of `el`, resolved through aria-describedby. */
+  const describedText = (el: HTMLElement): string => {
+    const id = el.getAttribute('aria-describedby')
+    return id === null ? '' : document.getElementById(id)?.textContent ?? ''
+  }
+
+  it('a hand card carries its printed text as a description, before anything is focused', () => {
+    // The defect the E3b plan review found: the details panel shows this to a SIGHTED player, but it is not
+    // a live region and is not programmatically related to the focused card, so assistive technology is
+    // never told the text exists. A rung that only made cards focusable would have gone green while a
+    // screen-reader user still could not read one.
+    mount(mainPhaseState())
+    expect(describedText(named(RAMUH)), 'the card has no accessible description at all').toContain(RAMUH_TEXT)
+  })
+
+  it('describes rather than renames — the accessible NAME stays concise', () => {
+    // A description, not a longer label. The name is what gets read when skimming a row of six cards.
+    mount(mainPhaseState())
+    const el = named(RAMUH)
+    expect(el.getAttribute('aria-label'), 'the printed text was folded into the name').not.toContain(RAMUH_TEXT)
+    expect(el.getAttribute('aria-label')).toContain('Ramuh, cost 2')
+  })
+
+  it('points each card at its OWN text', () => {
+    // One `useId` per rendered card. A single shared id would describe every card with whichever one
+    // rendered last, which is worse than no description because it is confidently wrong.
+    mount(mainPhaseState())
+    const ids = handCards().map((c) => c.getAttribute('aria-describedby'))
+    expect(new Set(ids).size, 'two cards share one description').toBe(ids.length)
+    const ramuh = describedText(named(RAMUH))
+    const other = handCards().find((c) => !(c.getAttribute('aria-label') ?? '').startsWith(RAMUH))
+    expect(describedText(other!), 'a different card was given Ramuh’s text').not.toBe(ramuh)
+  })
+
+  it('describes a card on the field too, not only one in hand', () => {
+    const s = fieldState()
+    mount(s)
+    const v = viewFor(s, HUMAN)
+    const placed = [...v.fields[HUMAN].forwards, ...v.fields[HUMAN].backups][0]
+    const code = v.cards[placed!.id]?.code
+    const def = code === undefined ? undefined : v.defs[code]
+    const el = [...document.querySelectorAll<HTMLElement>('.zone .card')]
+      .find((c) => (c.getAttribute('aria-label') ?? '').startsWith(def?.name ?? '?'))
+    expect(describedText(el!)).toBe(def?.text)
+  })
+
+  it('gives no description at all to a card with no printed text', () => {
+    // Every card in this pool prints something, so this is a component-level case by necessity. An
+    // `aria-describedby` pointing at an empty node is worse than none: a screen reader announces the name,
+    // then a description, then nothing.
+    host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    act(() => {
+      root!.render(createElement(Card, {
+        code: 'X-001', name: 'Fixture', cost: 1, elements: ['fire'], type: 'forward', power: 1000, text: '',
+      }))
+    })
+    const el = document.querySelector<HTMLElement>('.card')
+    expect(el, 'the fixture card did not render').not.toBe(null)
+    expect(el!.getAttribute('aria-describedby'), 'an empty description was attached').toBe(null)
+  })
+
+  it('describes a face-down card with nothing, whatever text it is handed', () => {
+    // The opponent's hand renders face-down. Attaching the printed text there would leak the card outright.
+    host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    act(() => {
+      root!.render(createElement(Card, {
+        code: 'X-001', name: 'Fixture', cost: 1, elements: ['fire'], type: 'forward', power: 1000,
+        faceDown: true, text: 'SECRET PRINTED TEXT',
+      }))
+    })
+    const el = document.querySelector<HTMLElement>('.card')
+    expect(el!.getAttribute('aria-describedby'), 'a face-down card leaked its text to assistive tech').toBe(null)
+    expect(document.body.textContent, 'a face-down card leaked its text into the DOM').not.toContain('SECRET')
   })
 })
 
