@@ -1072,8 +1072,13 @@ describe('a target the board draws in no named zone is still a real button', () 
         expect(cell!.querySelector('button') ?? (cell!.tagName === 'BUTTON' ? cell : null),
           `card ${id} is rendered but is not pressable`).not.toBe(null)
       }
-      if ([...choices.all].some((c) => c.command.type === 'activateAbility' && c.command.targets.length > 0)) {
-        sawMultiSubject = true
+      // Asserted on the SUBJECT side, not on the command. Checking `command.targets.length > 0` — as this
+      // first did — stays true even if `subjectsOf` regresses to `[source]`, so the guard would keep passing
+      // while the thing it guards was gone. A review caught that. What proves it is a byCard key that is some
+      // activation's TARGET and is not its source.
+      for (const [id, list] of choices.byCard) {
+        if (list.some((c) => c.command.type === 'activateAbility'
+          && c.command.source !== id && c.command.targets.includes(id))) sawMultiSubject = true
       }
       if (orphanTargetIds(view, choices).length > 0) sawOrphan = true
       checked++
@@ -1089,8 +1094,8 @@ describe('a target the board draws in no named zone is still a real button', () 
     }
     expect(checked).toBeGreaterThan(20)
     // Without a multi-subject command in the walk this test cannot tell the new rule from the old one.
-    expect(sawMultiSubject, 'the walk contained no targeted activation, so it re-proves only the old case')
-      .toBe(true)
+    expect(sawMultiSubject,
+      'no activation TARGET was ever filed as a subject, so this re-proves only the old case').toBe(true)
     // And an off-board candidate, or the "renders it nowhere" assertion only ever sees cards the named zones
     // already draw — which is the half that was never in doubt.
     expect(sawOrphan, 'the walk never reached an off-board candidate, so this asserts only the easy half')

@@ -712,7 +712,12 @@ function subjectsOf(c: Command): CardId[] {
     //
     // Payment is still excluded, and the distinction is the same one the line above draws — a payment is
     // chosen FOR the player, a target is chosen BY them, and only the latter is a subject.
-    case 'activateAbility': return [c.source, ...c.targets]
+    // Deduplicated: the command model permits a Forward's activated ability to target ITSELF, which nothing
+    // in this pool does yet. `[source, source]` would file the same choice twice under one card, and `pick`
+    // reads a list of length two as "several ways to use this card" — so a sole action would stop executing
+    // on click and open two identical buttons instead. Found by review, not by play, because no card reaches
+    // it; the model allows it and the next card added could.
+    case 'activateAbility': return [...new Set([c.source, ...c.targets])]
     // `chooseMode` and `chooseFromDeck` have no card subject at all — indices, not board cards — so they
     // are strip buttons.
     case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'pass': case 'concede': return []

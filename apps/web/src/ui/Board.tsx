@@ -213,13 +213,20 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   const togglePile = (p: PlayerId, kind: PileKind): void =>
     setOpenPile((cur) => (cur?.p === p && cur.kind === kind ? null : { p, kind }))
 
-  /** The open pile's cards, as grid items — the same cells every other zone uses, so they read the same. */
+  /**
+   * The open pile's cards, as grid items — the same cells every other zone uses, so they read the same.
+   *
+   * `displayName` here too, and the review that caught this was right that it matters: open a Break Zone
+   * holding two Lusos during a Billy Bob choice and the pile said "Luso" twice while the candidate row beside
+   * it said "Luso (1)" and "Luso (2)". The player is looking at the same two cards in two rows that disagree
+   * about what they are called. Four rows now, one namer.
+   */
   const pileItems = (p: PlayerId, kind: PileKind): GridItem[] =>
     view.fields[p][kind].map((id) => {
       const d = defOf(view, id)
       return gridItem(id, {
         code: d?.code ?? '?',
-        name: d?.name ?? 'Unknown',
+        name: displayName(view, id),
         cost: d?.cost ?? 0,
         elements: d?.elements ?? [],
         type: d?.type ?? 'forward',

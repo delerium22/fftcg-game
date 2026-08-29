@@ -221,18 +221,44 @@ describe("an activation's target that no row draws (E10-A3)", () => {
   it('still treats payment as chosen FOR the player, not as a subject', () => {
     // The distinction the change rests on: a target is chosen BY the player and is a subject; the backups
     // dulled to pay are chosen for them and are not. Losing that would light up the whole board.
-    const s = SPHENE_STATE!
-    const view = viewFor(s, HUMAN)
-    const choices = buildChoiceSet(view, preferredChoices(view, legalCommands(s, HUMAN)))
-    for (const [id, list] of choices.byCard) {
-      for (const c of list) {
-        if (c.command.type !== 'activateAbility') continue
-        const payers = c.command.payment.dullBackups
-        if (!payers.includes(id)) continue
-        const alsoSubject = c.command.source === id || c.command.targets.includes(id)
-        expect(alsoSubject, `card ${id} is filed as a subject only because it pays`).toBe(true)
+    //
+    // Guarded, because the first version of this test never executed its own loop: the Sphene fixture costs
+    // [0] and has no `dullBackups` at all, so "no payer is a subject" was true of an empty set and adding
+    // payment cards to `subjectsOf` would have passed it. Found by review. The search now demands an
+    // activation that actually pays with a backup.
+    const found = (() => {
+      for (let seed = 1; seed <= 30; seed++) {
+        const greedy = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
+        const agent = {
+          decide(v: PlayerView, legal: Command[]): Command { return greedy.decide(v, legal) },
+        }
+        let s: GameState = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
+        for (let i = 0; i < 3000 && !s.result; i++) {
+          if (actingPlayer(s) === HUMAN && legalCommands(s, HUMAN).some((c) =>
+            c.type === 'activateAbility' && c.payment.dullBackups.length > 0)) return s
+          if (actingPlayer(s) === null) break
+          s = stepAi(s, agent).state
+        }
+      }
+      return null
+    })()
+    expect(found, 'never reached an activation paid for by dulling a backup').not.toBe(null)
+
+    const view = viewFor(found!, HUMAN)
+    const choices = buildChoiceSet(view, preferredChoices(view, legalCommands(found!, HUMAN)))
+    let checked = 0
+    for (const c of choices.all) {
+      if (c.command.type !== 'activateAbility') continue
+      for (const payer of c.command.payment.dullBackups) {
+        checked++
+        const isSubject = (choices.byCard.get(payer) ?? []).includes(c)
+        const alsoChosen = c.command.source === payer || c.command.targets.includes(payer)
+        expect(isSubject && !alsoChosen, `backup ${payer} is a subject only because it pays for this`)
+          .toBe(false)
       }
     }
+    expect(checked, 'the fixture contained no payment after all, so this asserted nothing')
+      .toBeGreaterThan(0)
   })
 })
 
@@ -391,11 +417,17 @@ describe('candidates clear once the choice is made (E10-A5)', () => {
     expect(pick, 'the search offers no pick to take').not.toBe(undefined)
     const after = apply(before, pick!).state
 
-    act(() => { root?.unmount() })
-    host?.remove()
-    root = null
-    host = null
-    render(after)
+    // Re-rendered into the SAME root, not remounted. Unmounting and mounting afresh — as this first did —
+    // discards any component state, so a regression that cached the candidate ids and failed to recompute
+    // them on new props would pass while the live app, which never remounts, kept showing stale cards. A
+    // review caught that; this now drives the transition the player actually experiences.
+    const afterView = viewFor(after, HUMAN)
+    const afterApi: GameApi = {
+      view: afterView,
+      choices: buildChoiceSet(afterView, preferredChoices(afterView, legalCommands(after, HUMAN))),
+      log: [], aiThinking: false, choose: () => {}, restart: () => {},
+    }
+    act(() => { root!.render(createElement(Board, { game: afterApi })) })
     const still = [...document.querySelectorAll('[aria-label="Choose a card"] [data-card-id]')]
       .map((el) => Number(el.getAttribute('data-card-id')))
     for (const id of candidates) {

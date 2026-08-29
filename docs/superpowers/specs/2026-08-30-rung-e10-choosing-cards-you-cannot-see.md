@@ -192,3 +192,59 @@ Mutation 17 is why all three deck paths are covered: Hugh Yurg alone cannot dist
 "visible", and Reeve is the case that can.
 
 **22 E10 tests. Gates green:** 938 jsdom, 7 Playwright, typecheck, lint, 200/200 selfplay seed 1.
+
+---
+
+## Codex code review — no CRITICAL, no MAJOR, four MINOR (all fixed)
+
+It independently cleared the three things I most wanted checked, and said why rather than just saying yes:
+
+- **Deck resolution cannot dead-end.** `lookAtDeck` calls `learn` before raising the pending, so `deckSlotsFor`
+  exposes every legal pick to the chooser and a real human-owned legal pick cannot make `pickedDeckCards`
+  return null. And the `?? []` falls back to a loose strip button rather than deleting the command, so even an
+  invariant failure would not reproduce the C1 dead-end.
+- **No leak.** Opponent private searches teach only the opponent, and the human is never handed an opponent
+  `chooseFromDeck`. Public Miner reveals are legitimately visible.
+- **No ambiguity from making targets subjects.** It reproduced a seed-5 position where one Prishe is targeted
+  by two different Undead Princess activations: clicking it offers two distinct labels, numbered by source
+  occurrence, rather than silently picking one.
+
+### MINOR 1 — "all card rows" was three of four
+
+`pileItems` still passed the raw name. Open a Break Zone holding two Lusos during a Billy Bob choice and the
+pile said "Luso" twice while the candidate row beside it said "Luso (1)" and "Luso (2)" — the same two cards,
+in two rows, disagreeing about their names. Four rows now, one namer. The invariant I claimed is now true.
+
+### MINOR 2 — a self-targeting activation would file one choice twice
+
+Nothing in this pool reaches it (Red Mage is a Backup targeting Forwards, Undead Princess leaves the field as
+its cost, Sphene excludes its own name), but the command model permits a Forward's ability to target itself,
+which yields `[source, source]`. `pick` reads a two-entry list as "several ways to use this card", so a sole
+action would stop executing on click and open two identical buttons. Deduplicated.
+
+### MINOR 3 — my guard did not guard what I said it did
+
+The walk's `sawMultiSubject` checked `command.targets.length > 0`, which stays true even if `subjectsOf`
+regresses to `[source]` — so the guard would have kept passing while the thing it guarded was gone. It now
+looks for a `byCard` key that is some activation's TARGET and not its source, and in that form mutation 15
+fails it.
+
+### MINOR 4 — two tests did not exercise what they claimed
+
+- The payment test **never executed its own loop**: the Sphene fixture costs `[0]` and has no `dullBackups`,
+  so "no payer is a subject" was true of an empty set, and adding payment to `subjectsOf` would have passed
+  it. It now searches for an activation that really pays with a backup, asserts it found one, and fails under
+  the new mutation 18.
+- The stale-candidate test unmounted and remounted the board, discarding component state — so a regression
+  caching candidate ids and failing to recompute on new props would pass while the live app, which never
+  remounts, kept showing stale cards. It now re-renders into the same root.
+
+Three of these four are my acceptance criteria failing again rather than my code, which is now the rule and
+not the exception across E9 and E10.
+
+| # | Mutation | Result |
+|---|---|---|
+| 15 (again) | activation targets stop being subjects | now ALSO fails the walk's guard, which it did not before |
+| 18 | payment cards become subjects | fails the payment test, which previously asserted nothing |
+
+**Final: 938 jsdom, 7 Playwright, typecheck, lint, 200/200 selfplay seed 1.**
