@@ -70,3 +70,40 @@ test('the browser computes the event log as a log region with a name', async ({ 
   // because Chromium folds CSS `text-transform` into the computed name and the heading is styled uppercase.
   expect(node!.name?.value, 'the log region is unnamed, or its name is a side effect of styling').toBe('Game log')
 })
+
+test('the live regions fall silent for the dialog and come back for the next game', async ({ page }) => {
+  /*
+   * The whole lifecycle, in one real game. Three live channels would otherwise fire on the result
+   * transition — the status changing to "Game over", the log gaining the result line, and the alertdialog
+   * mounting and taking focus — so the other two stand down while the dialog speaks.
+   *
+   * The half that had no coverage anywhere is the RECOVERY. Switching a live region off mid-life is only
+   * safe if it comes back; a region left silent after "Play again" would mean the next whole game is played
+   * without a single announcement, which is worse than the defect this rung was written to fix and would
+   * look identical to a working build in every unit test.
+   */
+  const live = () => page.evaluate(() => ({
+    prompt: document.querySelector('.prompt__text')?.getAttribute('aria-live') ?? null,
+    log: document.querySelector('.log__lines')?.getAttribute('aria-live') ?? null,
+  }))
+
+  await page.goto('/')
+  expect(await live(), 'the regions are not announcing during play').toEqual({ prompt: 'polite', log: 'polite' })
+
+  const deadline = Date.now() + 120_000
+  while (Date.now() < deadline && await page.locator('dialog.banner').count() === 0) {
+    const action = page.locator('.prompt__actions button').filter({ hasNotText: 'Concede' }).first()
+    const boardCard = page.locator('.zone [role="gridcell"] button').first()
+    const handCard = page.locator('.hand [role="gridcell"] button').first()
+    const next = (await action.count()) ? action : (await boardCard.count()) ? boardCard : (await handCard.count()) ? handCard : null
+    if (next === null) { await page.waitForTimeout(120); continue }
+    await next.click({ timeout: 3000 }).catch(() => {})
+  }
+  await expect(page.locator('dialog.banner')).toBeVisible()
+  expect(await live(), 'the regions talk over the game-over dialog').toEqual({ prompt: 'off', log: 'off' })
+
+  await page.locator('dialog.banner button').click()
+  await expect(page.locator('dialog.banner')).toHaveCount(0)
+  await expect.poll(live, { timeout: 15_000 })
+    .toEqual({ prompt: 'polite', log: 'polite' })
+})
