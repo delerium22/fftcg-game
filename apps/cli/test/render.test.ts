@@ -3,7 +3,7 @@ import { createGame, apply, viewFor, legalCommands, actingPlayer, type PlayerVie
 import { cardDb, loadCards } from '@fftcg/cards'
 import { readFileSync } from 'node:fs'
 import { parseDeckFile } from '../src/deck.js'
-import { askingBecause, describeCommand, renderView } from '../src/render.js'
+import { askingBecause, describeCommand, eventCardName, renderView } from '../src/render.js'
 
 const deck = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 describe('render — a deck look or search (rung C9)', () => {
@@ -184,5 +184,27 @@ describe('render — the terminal says WHY it is asking', () => {
   it('says nothing when the frame names a clause the defs do not have', () => {
     const v = suspended(NOEL, 'no-such-clause')
     expect(askingBecause(v), 'invented a reason for an unknown clause').toBeNull()
+  })
+})
+
+describe('render — an event names the card the way the board does', () => {
+  const defs = loadCards()
+
+  it('uses the board identifier, so a combat line can be looked up', () => {
+    const s = createGame({ seed: 1, decks: [deck, deck], defs })
+    const v = viewFor(s, 0)
+    const id = 900
+    v.cards[id] = { id, code: '27-124S', owner: 0 }
+    // Put it on the board, so the claim "the same shape the board prints" is CHECKED against the board
+    // rather than asserted at it — an empty field renders no identifier at all and would prove nothing.
+    v.fields[0].forwards = [{ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] }]
+    const label = eventCardName(v, id)
+    expect(label).toBe(`[${id}] ${v.defs['27-124S']!.name}`)
+    expect(renderView(v), 'the board does not identify cards this way any more').toContain(label)
+  })
+
+  it('degrades to the bare id for a card this viewer cannot see, rather than leaking a name', () => {
+    const s = createGame({ seed: 1, decks: [deck, deck], defs })
+    expect(eventCardName(viewFor(s, 0), 99_999)).toBe('#99999')
   })
 })

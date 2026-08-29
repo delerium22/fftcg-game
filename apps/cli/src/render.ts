@@ -3,7 +3,26 @@ import { describeAbilityCost, describeAbilityEffect, pickedDeckCards } from '@ff
 
 const PHASE_LABEL: Record<string, string> = { setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase', main1: 'Main Phase 1', attack: 'Attack Phase', main2: 'Main Phase 2', end: 'End Phase' }
 
-function name(v: PlayerView, id: CardId): string {
+/**
+ * `[id] Name` for an event line, or `#id` for a card this viewer cannot see.
+ *
+ * Exported so the hotseat's event lines can name cards: they reported combat as raw ids — "#9 deals 10000 to
+ * #51", "#51 is broken" — which the player had to cross-reference against the board, and could not once the
+ * card was broken and gone from it. The `#id` fallback keeps that safe: a card outside the view degrades to
+ * the number rather than leaking a name. (Defensive only — no event in this pool names a hidden card.)
+ */
+export function eventCardName(v: PlayerView, id: CardId): string {
+  // `[id] Name`, matching how the BOARD identifies a card — `[51] Cloud 7000/7000` — so a combat line can be
+  // cross-referenced against it directly.
+  //
+  // Naming alone is not enough here and I nearly shipped it that way: both seats play the same deck, so
+  // "Cloud is broken" twice in one fight means two DIFFERENT Clouds. The id was the only thing the old
+  // all-numeric lines got right, and it is the board's own identifier, so it stays.
+  const inst = v.cards[id]
+  return inst ? `[${id}] ${v.defs[inst.code]?.name ?? inst.code}` : `#${id}`
+}
+
+export function cardName(v: PlayerView, id: CardId): string {
   const inst = v.cards[id]
   if (!inst) return `#${id}`
   const d = v.defs[inst.code]
@@ -37,7 +56,7 @@ export function askingBecause(v: PlayerView): string | null {
   const ability = code === undefined ? undefined : v.defs[code]?.abilities?.find((a) => a.id === frame.abilityId)
   if (!ability) return null
   const effect = describeAbilityEffect(ability)
-  return effect === null ? null : `  ${name(v, frame.source)} — ${effect}`
+  return effect === null ? null : `  ${cardName(v, frame.source)} — ${effect}`
 }
 
 export function renderView(v: PlayerView): string {
@@ -51,9 +70,9 @@ export function renderView(v: PlayerView): string {
     `You P${v.me}: deck ${v.fields[v.me].deck.length}, damage ${v.fields[v.me].damageZone.length}/7, break ${v.fields[v.me].breakZone.length}`,
     `  Forwards: ${v.fields[v.me].forwards.map((c) => fieldCard(v, c)).join('  ') || '-'}`,
     `  Backups:  ${v.fields[v.me].backups.map((c) => fieldCard(v, c)).join('  ') || '-'}`,
-    `  Hand (${v.hand.length}): ${v.hand.map((id) => `[${id}] ${name(v, id)}`).join('  ')}`,
+    `  Hand (${v.hand.length}): ${v.hand.map((id) => `[${id}] ${cardName(v, id)}`).join('  ')}`,
   ]
-  if (v.attack?.attackers.length) lines.push(`  Attacking: ${v.attack.attackers.map((id) => name(v, id)).join(' + ')}${v.attack.blocker !== null ? ` blocked by ${name(v, v.attack.blocker)}` : ''}`)
+  if (v.attack?.attackers.length) lines.push(`  Attacking: ${v.attack.attackers.map((id) => cardName(v, id)).join(' + ')}${v.attack.blocker !== null ? ` blocked by ${cardName(v, v.attack.blocker)}` : ''}`)
   if (v.result) lines.push(`*** GAME OVER: ${v.result.winner === null ? 'draw' : `P${v.result.winner} wins`} — ${v.result.reason}`)
   return lines.join('\n')
 }
@@ -64,10 +83,10 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'mulligan': return c.redraw ? 'Mulligan (redraw 5)' : 'Keep hand'
     case 'castCharacter':
     case 'castSummon': {
-      const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
-      return `Cast ${name(v, c.card)} paying: ${pay.join(', ') || 'nothing'}`
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${cardName(v, id)}`), ...c.payment.discards.map((d) => `discard ${cardName(v, d.card)} as ${d.element}`)]
+      return `Cast ${cardName(v, c.card)} paying: ${pay.join(', ') || 'nothing'}`
     }
-    case 'chooseTargets': return c.targets.length ? `Target ${c.targets.map((id) => name(v, id)).join(', ')}` : 'Choose no targets'
+    case 'chooseTargets': return c.targets.length ? `Target ${c.targets.map((id) => cardName(v, id)).join(', ')}` : 'Choose no targets'
     // The printed WORDING, not an ordinal. "Choose mode 1" tells a player nothing about what mode 1 does,
     // and the engine already carries the labels on the pending precisely so a renderer need not guess — the
     // browser has read them since rung C1. Found by playing the hotseat: a modal ability offered
@@ -83,21 +102,21 @@ export function describeCommand(v: PlayerView, c: Command): string {
       const field = v.pending?.kind === 'chooseFromDeck' && v.pending.to === 'field'
       if (!c.picks.length) return field ? 'Find nothing' : 'Take nothing'
       const named = pickedDeckCards(v, c.player, c.picks)
-      const what = named ? named.map((id) => name(v, id)).join(', ') : `${c.picks.length} card(s)`
+      const what = named ? named.map((id) => cardName(v, id)).join(', ') : `${c.picks.length} card(s)`
       return field ? `Play ${what} onto the field` : `Take ${what}`
     }
-    case 'declareAttack': return `Attack with ${c.attackers.map((id) => name(v, id)).join(' + ')}`
-    case 'declareBlock': return c.blocker === null ? 'No block' : `Block with ${name(v, c.blocker)}`
-    case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${name(v, a.target)}`).join(', ')}`
-    case 'discardToHandSize': return `Discard ${c.cards.map((id) => name(v, id)).join(', ')}`
+    case 'declareAttack': return `Attack with ${c.attackers.map((id) => cardName(v, id)).join(' + ')}`
+    case 'declareBlock': return c.blocker === null ? 'No block' : `Block with ${cardName(v, c.blocker)}`
+    case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${cardName(v, a.target)}`).join(', ')}`
+    case 'discardToHandSize': return `Discard ${c.cards.map((id) => cardName(v, id)).join(', ')}`
     case 'activateAbility': {
-      const pay = [...c.payment.dullBackups.map((id) => `dull ${name(v, id)}`), ...c.payment.discards.map((d) => `discard ${name(v, d.card)} as ${d.element}`)]
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${cardName(v, id)}`), ...c.payment.discards.map((d) => `discard ${cardName(v, d.card)} as ${d.element}`)]
       const cost = abilityCostOf(v, c.source, c.abilityId)
       // The EFFECT, not just the cost: a hotseat player has no more access to rules text than a browser one.
       const ability = abilityOf(v, c.source, c.abilityId)
       const does = ability ? describeAbilityEffect(ability) : null
       const clause = does === null ? `${cost} ability` : `${cost}: ${does}`
-      return `Use ${name(v, c.source)}'s ${clause}${pay.length ? ` paying: ${pay.join(', ')}` : ''}`
+      return `Use ${cardName(v, c.source)}'s ${clause}${pay.length ? ` paying: ${pay.join(', ')}` : ''}`
     }
     case 'pass': return 'Pass'
     case 'concede': return 'Concede'

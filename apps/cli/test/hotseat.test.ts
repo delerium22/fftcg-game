@@ -222,5 +222,22 @@ describe('the hotseat prints WHY a choice is being asked', () => {
     expect(explained.length, 'no choice in a whole game was explained — the line is never printed').toBeGreaterThan(0)
     // ...and it is a real clause, not an empty dash.
     expect(explained[0]!.split(' — ')[1]!.length).toBeGreaterThan(10)
+
+    // Combat is reported with NAMES, not the raw instance ids it used to print. Both seats play the same
+    // deck, so the id stays alongside the name — "[51] Cloud is broken" and "[3] Cloud is broken" are
+    // different cards, and a name on its own could not say which died.
+    const combat = lines.filter((l) => / deals \d+ to | is broken$/.test(l))
+    expect(combat.length, 'no combat happened, so this proves nothing').toBeGreaterThan(0)
+    const raw = combat.filter((l) => /#\d+/.test(l))
+    expect(raw, 'combat is still being reported as bare instance ids').toEqual([])
+    expect(combat.some((l) => /\[\d+\] \S+ deals \d+ to \[\d+\] \S+/.test(l)), 'no named combat line').toBe(true)
+
+    // The EX Burst line is what actually pins the POST-apply view. A combatant is visible either side of the
+    // command, so combat alone cannot tell the two apart — Codex switched the view to the pre-command one and
+    // every assertion above stayed green. This card was face-down in the deck before the damage and public in
+    // the damage zone after, so it names only if the view is taken afterwards.
+    const bursts = lines.filter((l) => /EX Burst on /.test(l))
+    expect(bursts.length, 'no EX Burst in this game, so the post-apply view is unpinned').toBeGreaterThan(0)
+    expect(bursts.filter((l) => /#\d+/.test(l)), 'the EX Burst card is unnamed — the view is the pre-command one').toEqual([])
   }, 120_000)
 })
