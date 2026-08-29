@@ -611,6 +611,14 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     [...document.querySelectorAll<HTMLButtonElement>('.seat button')]
       .find((b) => name.test(b.getAttribute('aria-label') ?? ''))
 
+  /**
+   * The opener belonging to a SPECIFIC seat. Matching on the pile name alone finds whichever seat renders
+   * first, which is the AI — so a test about the human's damage zone opened the AI's and then looked for a
+   * card that was never rendered.
+   */
+  const ownerOpener = (owner: 0 | 1, pile: string): HTMLButtonElement | undefined =>
+    opener(new RegExp(`^${owner === HUMAN ? 'Your' : "the AI's"} ${pile}, \\d+ cards?$`))
+
   it('shows a non-empty pile as something openable, and says how many are in it', () => {
     const s = withBreakZone()
     const total = s.players[HUMAN].breakZone.length + s.players[AI].breakZone.length
@@ -621,22 +629,114 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     expect(btn!.getAttribute('aria-expanded'), 'the pile claims to be open before it is').toBe('false')
   })
 
-  it('opens the pile and lets its cards be read', () => {
+  /** A position where `kind` holds cards for `owner`, reached by playing. */
+  function withPile(owner: 0 | 1, kind: 'breakZone' | 'damageZone' | 'removedFromGame'): GameState | null {
+    for (const seed of [1, 2, 3, 5, 7, 11]) {
+      let s: GameState = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
+      const agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
+      for (let i = 0; i < 4000 && !s.result; i++) {
+        if (s.players[owner][kind].length > 0) return s
+        if (actingPlayer(s) === null) break
+        s = stepAi(s, agent).state
+      }
+    }
+    return null
+  }
+
+  /** The name of the first card in a pile, from the STATE — never from the DOM the test is checking. */
+  const firstCardName = (s: GameState, owner: 0 | 1, kind: 'breakZone' | 'damageZone' | 'removedFromGame'): string => {
+    const v = viewFor(s, HUMAN)
+    const id = s.players[owner][kind][0]!
+    return v.defs[v.cards[id]?.code ?? '']?.name ?? '?'
+  }
+
+  it('opens the pile and READS it — not merely opens it', () => {
     // The reason this rung exists: Luso asks whether to take its "Character in your Break Zone" mode, and
     // whether Billy Bob is worth casting, BEFORE any target choice is raised. The orphan target row comes
     // too late to answer either. Until now the board showed the pile only as a number.
-    const s = withBreakZone()
-    mount(s)
-    const btn = opener(/Break Zone, \d+ cards?$/)!
+    //
+    // The earlier version ended at `details().length > 0`, which the panel's own "Point at a card to read
+    // it." placeholder already satisfies — so replacing the pile's `onLookAt` with a no-op left all 55 tests
+    // green. This is the THIRD time that assertion shape has been caught; it now has a negative precondition
+    // and an expected name.
+    const s = withPile(HUMAN, 'breakZone') ?? withPile(AI, 'breakZone')
+    expect(s, 'no Break Zone ever filled, so this test asserts nothing').not.toBe(null)
+    const owner = s!.players[HUMAN].breakZone.length > 0 ? HUMAN : AI
+    const name = firstCardName(s!, owner, 'breakZone')
+    mount(s!)
+    const btn = ownerOpener(owner, 'Break Zone')!
     act(() => { btn.click() })
-    expect(btn.getAttribute('aria-expanded')).toBe('true')
-    const cells = [...document.querySelectorAll<HTMLElement>('.zone [role="gridcell"]')]
-      .filter((c) => (c.getAttribute('aria-label') ?? '') !== '')
-    expect(cells.length, 'the pile opened to nothing').toBeGreaterThan(0)
-    const first = cells[0]!
-    act(() => { first.focus() })
-    expect(document.activeElement, 'a card in an opened pile cannot take focus').toBe(first)
-    expect(details().length, 'a card in an opened pile says nothing').toBeGreaterThan(0)
+    expect(details(), 'the panel already showed the card before anything was focused').not.toContain(name)
+
+    const id = s!.players[owner].breakZone[0]!
+    const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${id}"]`)
+    expect(cell, 'the opened pile did not render its first card').not.toBe(null)
+    act(() => { (cell!.querySelector('button') ?? cell!).focus() })
+    expect(details(), 'focusing a card in an opened pile did not read it').toContain(name)
+  })
+
+  it('opens and reads the DAMAGE zone', () => {
+    // Damage-zone identities are public and are how a player tracks what is left in a deck. Returning no
+    // grid items for every Damage Zone survived the whole suite, because nothing opened one.
+    const s = withPile(HUMAN, 'damageZone') ?? withPile(AI, 'damageZone')
+    expect(s, 'nobody ever took damage, so this test asserts nothing').not.toBe(null)
+    const owner = s!.players[HUMAN].damageZone.length > 0 ? HUMAN : AI
+    const name = firstCardName(s!, owner, 'damageZone')
+    mount(s!)
+    const btn = ownerOpener(owner, 'Damage')
+    expect(btn, 'a non-empty damage zone is not openable').toBeDefined()
+    act(() => { btn!.click() })
+    expect(details()).not.toContain(name)
+    const id = s!.players[owner].damageZone[0]!
+    const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${id}"]`)
+    expect(cell, 'the damage zone opened to nothing').not.toBe(null)
+    act(() => { (cell!.querySelector('button') ?? cell!).focus() })
+    expect(details(), 'a damage card cannot be read').toContain(name)
+  })
+
+  it('opens and reads REMOVED FROM GAME, which the board never showed at all', () => {
+    // Suppressing these buttons entirely survived the suite. The zone is public (spec C7-1) and was not
+    // rendered anywhere before this rung — not even as a count.
+    const s = withPile(HUMAN, 'removedFromGame') ?? withPile(AI, 'removedFromGame')
+    expect(s, 'nothing was ever removed from the game, so this test asserts nothing').not.toBe(null)
+    const owner = s!.players[HUMAN].removedFromGame.length > 0 ? HUMAN : AI
+    const name = firstCardName(s!, owner, 'removedFromGame')
+    mount(s!)
+    const btn = ownerOpener(owner, 'Removed from game')
+    expect(btn, 'a non-empty removed-from-game zone is not openable').toBeDefined()
+    act(() => { btn!.click() })
+    expect(details()).not.toContain(name)
+    const id = s!.players[owner].removedFromGame[0]!
+    const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${id}"]`)
+    expect(cell, 'removed-from-game opened to nothing').not.toBe(null)
+    act(() => { (cell!.querySelector('button') ?? cell!).focus() })
+    expect(details(), 'a removed card cannot be read').toContain(name)
+  })
+
+  it('closes an open pile when its last card leaves', () => {
+    // `openPile` remembers a seat and a kind, not a set of cards. A Break Zone whose last card is returned
+    // to hand — Billy Bob does exactly that — left the opener gone and an orphaned labelled empty row behind.
+    const s = withPile(HUMAN, 'breakZone') ?? withPile(AI, 'breakZone')
+    expect(s).not.toBe(null)
+    const owner = s!.players[HUMAN].breakZone.length > 0 ? HUMAN : AI
+    mount(s!)
+    act(() => { ownerOpener(owner, 'Break Zone')!.click() })
+    expect(document.querySelector('[role="grid"][aria-label*="Break Zone"]'), 'the pile did not open').not.toBe(null)
+
+    const emptied: GameState = {
+      ...s!,
+      players: s!.players.map((ps, i) => (i === owner ? { ...ps, breakZone: [] } : ps)) as GameState['players'],
+    }
+    remount(emptied)
+    // NOT `.not.toContain('Break Zone')` on the array of labels: `toContain` tests exact membership, and the
+    // label reads "Your Break Zone", so that assertion passed whether or not the orphan row was there. The
+    // row that survives is an EMPTY zone, which renders a placeholder rather than a grid — so looking for a
+    // missing grid proved nothing either. What identifies it is the label.
+    const labels = [...document.querySelectorAll('.zone__label')].map((l) => l.textContent ?? '')
+    expect(
+      labels.filter((l) => l.includes('Break Zone')),
+      'an emptied pile left an orphaned, labelled, empty row behind',
+    ).toEqual([])
   })
 
   it('closes the pile when the same count is pressed again', () => {

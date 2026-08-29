@@ -207,11 +207,20 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
       })
     })
 
-  /** The opened pile's row, rendered under the seat that owns it. */
+  /**
+   * The opened pile's row, rendered under the seat that owns it.
+   *
+   * Also closes itself when the pile it is showing has emptied. `openPile` remembers a seat and a kind, not
+   * a set of cards, so a Break Zone whose last card is returned to hand — Billy Bob does exactly that — left
+   * the opener gone and an orphaned "The AI's Break Zone" row behind, labelled and empty. It survived a
+   * restart too.
+   */
   const pileRow = (p: PlayerId): JSX.Element | null => {
     if (openPile === null || openPile.p !== p) return null
+    const items = pileItems(p, openPile.kind)
+    if (items.length === 0) return null
     const label = `${p === HUMAN ? 'Your' : "The AI's"} ${PILE_LABEL[openPile.kind]}`
-    return <Zone label={label} compact items={pileItems(p, openPile.kind)} onLookAt={look} />
+    return <Zone label={label} compact items={items} onLookAt={look} />
   }
 
   /**
