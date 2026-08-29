@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { apply, applyChooseFirst, createGame, legalCommands, viewFor, type CardDef, type CardId, type Command, type GameState, type PlayerView } from '@fftcg/engine'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
-import { Card } from '../src/ui/Card.js'
+import { Card, type CardProps } from '../src/ui/Card.js'
 import { CardDetails } from '../src/ui/CardDetails.js'
 import { buildChoiceSet, preferredChoices } from '../src/game/commands.js'
 import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
@@ -256,6 +256,44 @@ describe('the printed text as an accessible description (rung E3b-1)', () => {
     expect(describedText(other!), 'a different card was given Ramuh’s text').not.toBe(ramuh)
   })
 
+  it('keeps a NON-SELECTABLE card’s name concise too', () => {
+    // The "describes rather than renames" test above picks a castable card, so it only ever exercises the
+    // `<button>` branch. The `role="img"` branch is separate code, and a mutant appending the text to its
+    // `aria-label` survived every other assertion — the field lookup still matched, because the value still
+    // starts with the name. Non-selectable cards would then announce the printed text twice.
+    host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    act(() => {
+      root!.render(createElement(Card, {
+        code: 'X-001', name: 'Fixture', cost: 1, elements: ['fire'], type: 'forward', power: 1000,
+        selectable: false, text: 'PRINTED CLAUSE.',
+      }))
+    })
+    const el = document.querySelector<HTMLElement>('.card')
+    expect(el!.tagName, 'this fixture is meant to exercise the non-button branch').toBe('DIV')
+    expect(el!.getAttribute('aria-label'), 'the printed text was folded into a non-selectable card’s name')
+      .toBe('Fixture, cost 1, fire, forward, power 1000 of 1000')
+    const id = el!.getAttribute('aria-describedby')
+    expect(document.getElementById(id!)?.textContent).toBe('PRINTED CLAUSE.')
+  })
+
+  it('gives two copies of the SAME card distinct description ids', () => {
+    // The hand at this seed holds five distinct codes, so asserting "all ids differ" across it survives
+    // replacing `useId()` with the card's code. Two copies of one card is the case that separates them, and
+    // duplicate DOM ids would point both cards at whichever rendered last.
+    host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
+    const one: CardProps = { code: 'X-001', name: 'Fixture', cost: 1, elements: ['fire'], type: 'forward', power: 1000, text: 'PRINTED CLAUSE.' }
+    act(() => {
+      root!.render(createElement('div', null, [
+        createElement(Card, { ...one, key: 'a' }),
+        createElement(Card, { ...one, key: 'b' }),
+      ]))
+    })
+    const ids = [...document.querySelectorAll<HTMLElement>('.card')].map((c) => c.getAttribute('aria-describedby'))
+    expect(ids).toHaveLength(2)
+    expect(ids[0], 'a card has no description id').not.toBe(null)
+    expect(ids[0], 'two copies of one card share a DOM id').not.toBe(ids[1])
+  })
+
   it('keeps the description OUTSIDE the card element', () => {
     // `role="img"` is a leaf role, so its subtree is pruned from the accessibility tree. Whether
     // `aria-describedby` still resolves text out of a pruned subtree is a spec subtlety that varies between
@@ -308,7 +346,12 @@ describe('the printed text as an accessible description (rung E3b-1)', () => {
     })
     const el = document.querySelector<HTMLElement>('.card')
     expect(el!.getAttribute('aria-describedby'), 'a face-down card leaked its text to assistive tech').toBe(null)
-    expect(document.body.textContent, 'a face-down card leaked its text into the DOM').not.toContain('SECRET')
+    // `textContent` excludes ATTRIBUTES, so it cannot see the leak that matters: a secret placed in
+    // `aria-label` or `title` goes straight to assistive technology while a text-only assertion stays green.
+    // `outerHTML` covers both, and the whole document covers the sr-only sibling too.
+    expect(el!.outerHTML, 'a face-down card leaked its text through an attribute').not.toContain('SECRET')
+    expect(document.body.innerHTML, 'a face-down card leaked its text somewhere in the DOM').not.toContain('SECRET')
+    expect(el!.getAttribute('aria-label')).toBe('Face-down card')
   })
 })
 
@@ -354,6 +397,13 @@ describe('the other two Board render paths', () => {
     expect(orphan, 'the orphan target row did not render the Break Zone card').toBeDefined()
     hover(orphan!)
     expect(details(), 'the orphan path does not forward onInspect').toContain(name)
+    // The panel gets its definition through `onInspect`, so hovering proves nothing about the DESCRIPTION.
+    // Deleting `text` from the orphan call site left the whole suite green: an orphan target would have
+    // stayed a button with no printed description, and it is the card a player most needs to read, because
+    // the board draws it nowhere else.
+    const descId = orphan!.getAttribute('aria-describedby')
+    expect(descId, 'the orphan card has no accessible description').not.toBe(null)
+    expect(document.getElementById(descId!)?.textContent).toBe(code === undefined ? undefined : broken.defs[code]?.text)
   })
 })
 
