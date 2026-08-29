@@ -256,6 +256,20 @@ describe('the printed text as an accessible description (rung E3b-1)', () => {
     expect(describedText(other!), 'a different card was given Ramuh’s text').not.toBe(ramuh)
   })
 
+  it('keeps the description OUTSIDE the card element', () => {
+    // `role="img"` is a leaf role, so its subtree is pruned from the accessibility tree. Whether
+    // `aria-describedby` still resolves text out of a pruned subtree is a spec subtlety that varies between
+    // screen readers — and I cannot test a real one here. A sibling does not depend on the answer, so the
+    // structure is pinned rather than left to be re-nested by someone tidying the markup later.
+    mount(mainPhaseState())
+    const el = named(RAMUH)
+    const id = el.getAttribute('aria-describedby')
+    expect(id, 'no description to place').not.toBe(null)
+    const desc = document.getElementById(id!)
+    expect(desc, 'the described-by target does not exist').not.toBe(null)
+    expect(el.contains(desc), 'the description is nested inside the card it describes').toBe(false)
+  })
+
   it('describes a card on the field too, not only one in hand', () => {
     const s = fieldState()
     mount(s)

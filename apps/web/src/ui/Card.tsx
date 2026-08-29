@@ -135,6 +135,10 @@ export function Card(props: CardProps): JSX.Element {
   // A stable id per rendered card, so `aria-describedby` points at this card's own text and not another's.
   const descId = useId()
   const described = !faceDown && text !== undefined && text !== ''
+  // A SIBLING of the card, never a child. `role="img"` is a leaf role, so its subtree is pruned from the
+  // accessibility tree; whether `aria-describedby` still resolves text out of a pruned subtree is a spec
+  // subtlety that varies by screen reader, and this construction does not depend on the answer. `.sr-only`
+  // is absolutely positioned, so a sibling costs no layout.
   const description = described ? <span id={descId} className="sr-only">{text}</span> : null
 
   const face = faceDown ? (
@@ -201,24 +205,28 @@ export function Card(props: CardProps): JSX.Element {
   // all come from the element rather than from hand-rolled key handling.
   if (selectable) {
     return (
-      <button
-        type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label}
-        {...(described ? { 'aria-describedby': descId } : {})}
-        aria-pressed={selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}
-      >
-        <span className="card__face">{face}</span>
+      <>
+        <button
+          type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label}
+          {...(described ? { 'aria-describedby': descId } : {})}
+          aria-pressed={selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}
+        >
+          <span className="card__face">{face}</span>
+        </button>
         {description}
-      </button>
+      </>
     )
   }
   return (
-    <div
-      className={className} style={vars as CSSProperties} title={label} role="img" aria-label={label}
-      {...(described ? { 'aria-describedby': descId } : {})}
-      onMouseEnter={onInspect}
-    >
-      <span className="card__face">{face}</span>
+    <>
+      <div
+        className={className} style={vars as CSSProperties} title={label} role="img" aria-label={label}
+        {...(described ? { 'aria-describedby': descId } : {})}
+        onMouseEnter={onInspect}
+      >
+        <span className="card__face">{face}</span>
+      </div>
       {description}
-    </div>
+    </>
   )
 }
