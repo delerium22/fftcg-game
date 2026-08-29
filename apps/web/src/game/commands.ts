@@ -406,6 +406,57 @@ export function describeChoice(v: PlayerView, c: Command): string {
   }
 }
 
+/**
+ * What is attacking, and how hard — the two facts a block decision turns on.
+ *
+ * The prompt used to read "Choose a blocker", full stop. Blocking WHAT? Found by playing: the AI cast
+ * Lightning, broke my Forward with its ETB, gave itself Haste and swung, and the browser named neither the
+ * attacker nor its power. That is the same complaint the `chooseTargets` case four lines below already
+ * carries a comment about — "choose 2 targets" tells the player nothing they can act on — and this case
+ * kept its hard-coded string.
+ *
+ * The power is the EFFECTIVE power (spec C1-7), through the same `fieldCardDisplay` the board renders from,
+ * and it is NOT reduced by damage already marked on the attacker: marked damage does not lower a Forward's
+ * power or the damage it deals. The card face shows a "remaining" number, which is a different quantity, and
+ * reporting that here would understate what the blocker is about to eat.
+ *
+ * A party is listed member by member rather than summed. The total IS truthful — under CR 3.3 §10.1.4.2 each
+ * attacker deals its own power to the blocker — but one number hides which Forward brings what, and reads
+ * like the single point of damage an unblocked attack deals the PLAYER, which is a different thing entirely.
+ *
+ * Deliberately says nothing about the consequence of not blocking. "Take 1 damage" is a CR default rather
+ * than anything the engine derives, and card text takes precedence over general rules, so printing it would
+ * be a quiet lie the day a card changes it. The "Don't block" button already offers the alternative.
+ */
+function blockPrompt(v: PlayerView): string {
+  const attackers = v.attack?.attackers ?? []
+  const named = attackers.map((id) => {
+    const fc = findFieldCardInView(v, id)
+    const power = fc ? fieldCardDisplay(v, fc).power : null
+    const name = qualifiedName(v, id)
+    return power === null ? name : `${name} (power ${power})`
+  })
+  // No resolvable attacker is not reachable in play: a `declareBlock` pending is raised from attackers the
+  // engine has just validated, and there is no priority window in which one could leave. Defensive only.
+  if (!named.length) return 'Choose a blocker'
+  return `Choose a blocker for ${listPhrase(named)}`
+}
+
+/** The attacking card as it sits on a field, wherever it sits. Attackers are always the turn player's. */
+function findFieldCardInView(v: PlayerView, id: CardId): FieldCard | undefined {
+  for (const p of [0, 1] as const) {
+    const found = [...v.fields[p].forwards, ...v.fields[p].backups].find((c) => c.id === id)
+    if (found) return found
+  }
+  return undefined
+}
+
+/** `a`, `a and b`, `a, b and c` — the party is listed, never summed. */
+function listPhrase(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? ''
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1] as string}`
+}
+
 /** Mirrors `legalCommands`/`actingPlayer` against the view: `pending` outranks `priority` (see engine `legal.ts`). */
 function actingIn(v: PlayerView): PlayerId | null {
   if (v.result) return null
@@ -421,7 +472,7 @@ export function promptFor(v: PlayerView): string {
       case 'chooseFirst': return 'Choose who goes first'
       case 'mulligan': return 'Keep your hand or mulligan'
       case 'discardToHandSize': return `Discard down to ${HAND_SIZE_LIMIT} cards`
-      case 'declareBlock': return 'Choose a blocker'
+      case 'declareBlock': return blockPrompt(v)
       case 'assignPartyDamage': return 'Assign combat damage'
       // Both ability prompts name the card that is asking and what the choice is FOR — "choose 2 targets" tells
       // the player nothing they can act on. The wording is derived from the clause's own AST, never hard-coded.
