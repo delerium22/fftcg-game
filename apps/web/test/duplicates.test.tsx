@@ -8,7 +8,7 @@ import {
 import { GreedyAgent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
-import { buildChoiceSet, occurrenceOf, preferredChoices, qualifiedName } from '../src/game/commands.js'
+import { buildChoiceSet, choiceName, describeChoice, occurrenceOf, preferredChoices, qualifiedName } from '../src/game/commands.js'
 import { stepAi } from '../src/game/useGame.js'
 import { AI, HUMAN, type Choice, type GameApi } from '../src/game/types.js'
 
@@ -88,19 +88,33 @@ function duplicateCodeIn(hand: readonly CardId[], s: GameState): string | undefi
 
 /** A real hand-size discard where the hand holds two of one code. */
 let DUPLICATE_DISCARD: GameState | null = null
-/** A real position where two same-code hand cards differ in what the OPPONENT knows. */
+/** A real position where two same-code hand cards differ in what the OPPONENT knows AND are selectable. */
 let MINER_ASYMMETRY: GameState | null = null
+
+/** Two same-code cards in hand that the opponent knows differently — the pair the collapse would have merged. */
+function asymmetricPair(s: GameState): [CardId, CardId] | null {
+  const hand = s.players[HUMAN].hand
+  for (const a of hand) {
+    for (const b of hand) {
+      if (a === b || s.cards[a]?.code !== s.cards[b]?.code) continue
+      if ((s.knownBy[a] ?? 0) !== (s.knownBy[b] ?? 0)) return [a, b]
+    }
+  }
+  return null
+}
 
 beforeAll(() => {
   DUPLICATE_DISCARD = search('hold', (s) =>
     s.pending?.kind === 'discardToHandSize' && s.pending.player === HUMAN
     && duplicateCodeIn(s.players[HUMAN].hand, s) !== undefined)
 
-  MINER_ASYMMETRY = search('castMiner', (s) => {
-    const hand = s.players[HUMAN].hand
-    return hand.some((id) => hand.some((o) =>
-      o !== id && s.cards[o]?.code === s.cards[id]?.code && (s.knownBy[o] ?? 0) !== (s.knownBy[id] ?? 0)))
-  })
+  // The pair must ALSO be selectable, or the test below asserts nothing about selection. A review caught the
+  // first version of this fixture stopping at the earliest asymmetric pair — turn 3, no pending, the two cards
+  // reachable only as payment, which the UI does not expose as card subjects. So the search now demands a
+  // discard pending too, which is where the player actually picks between them. Reachable on seed 1.
+  MINER_ASYMMETRY = search('castMiner', (s) =>
+    s.pending?.kind === 'discardToHandSize' && s.pending.player === HUMAN
+    && asymmetricPair(s) !== null)
 })
 
 describe('two cards of the same code', () => {
@@ -252,11 +266,8 @@ describe('the Break Zone, which I had left out (E9-A1)', () => {
   // Billy Bob (18-124C, ×2 here) and Prishe (22-068R, ×3) both print "choose 1 Character in your Break Zone",
   // and a Break Zone routinely holds several cards of one name. Excluding the zone left "Target Cloud" offered
   // twice — the exact defect this rung exists to remove.
-  /**
-   * `onOffer` is what a Billy Bob or Prishe trigger produces: a `chooseTargets` pending naming those cards.
-   * A Break Zone card is numbered only then — see `occurrenceOf`. Passing `false` is the narration case.
-   */
-  function breakZoneOf(codes: string[], onOffer = true): PlayerView {
+  /** Cards sitting in the human's Break Zone, which the board renders only as a count. */
+  function breakZoneOf(codes: string[]): PlayerView {
     const s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
     const v = structuredClone(viewFor(s, HUMAN)) as PlayerView
     const ids = codes.map((code, i) => {
@@ -266,7 +277,6 @@ describe('the Break Zone, which I had left out (E9-A1)', () => {
       return id
     })
     v.fields[HUMAN].breakZone = ids
-    v.pending = onOffer ? { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: ids } : null
     return v
   }
 
@@ -291,23 +301,26 @@ describe('the Break Zone, which I had left out (E9-A1)', () => {
     // card that read identically before this.
     const v = breakZoneOf(['1-121C', '18-069C'])
     const name = v.defs['1-121C']!.name
-    expect(qualifiedName(v, 900)).toBe(`${name} (1)`)
-    expect(qualifiedName(v, 901)).toBe(`${name} (2)`)
+    expect(choiceName(v, 900)).toBe(`${name} (1)`)
+    expect(choiceName(v, 901)).toBe(`${name} (2)`)
   })
 
-  it('stays UNnumbered when nobody is being asked to choose — the log case', () => {
-    // Numbering the Break Zone unconditionally put "(1)" into the game log: `the AI's Prishe (1) is broken`.
-    // That is unverifiable noise — the reader cannot see the pile, the position refers to an instant that has
+  it('is numbered on a BUTTON and never in the LOG', () => {
+    // Numbering the Break Zone in narration put "(1)" into the game log: `the AI's Prishe (1) is broken`.
+    // That is unverifiable — the reader cannot see the pile, the position refers to an instant that has
     // passed, and a later line about the same card can carry a different number. An existing test caught it,
-    // and the rule changed rather than the expectation.
-    const v = breakZoneOf(['27-124S', '27-124S'], false)
-    expect(occurrenceOf(v, 900), 'a Break Zone card was numbered with no choice pending').toBe(null)
-    expect(qualifiedName(v, 900)).toBe(v.defs['27-124S']!.name)
+    // and the rule changed rather than the expectation. The two namers are what keep the halves apart.
+    const v = breakZoneOf(['27-124S', '27-124S'])
+    const name = v.defs['27-124S']!.name
+    expect(choiceName(v, 900), 'a Break Zone button does not say which card it means').toBe(`${name} (1)`)
+    expect(qualifiedName(v, 900), 'a Break Zone number leaked into narration').toBe(name)
+    expect(occurrenceOf(v, 900), 'the board-facing number should ignore a zone it does not draw').toBe(null)
   })
 
   it('leaves a lone Break Zone card bare', () => {
     const v = breakZoneOf(['27-124S', '1-121C'])
-    expect(occurrenceOf(v, 900), 'a Break Zone card alone under its name was numbered anyway').toBe(null)
+    expect(choiceName(v, 900), 'a Break Zone card alone under its name was numbered anyway')
+      .toBe(v.defs['27-124S']!.name)
   })
 
   it('does not let a Break Zone card borrow a number from the field', () => {
@@ -319,8 +332,9 @@ describe('the Break Zone, which I had left out (E9-A1)', () => {
       id: 950, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false,
       granted: [], powerBonus: 0, flags: [], usedThisTurn: [],
     }]
-    expect(occurrenceOf(v, 900), 'the Break Zone card was numbered against the field').toBe(null)
-    expect(occurrenceOf(v, 950), 'the field card was numbered against the Break Zone').toBe(null)
+    const name = v.defs['27-124S']!.name
+    expect(choiceName(v, 900), 'the Break Zone card was numbered against the field').toBe(name)
+    expect(choiceName(v, 950), 'the field card was numbered against the Break Zone').toBe(name)
   })
 })
 
@@ -334,12 +348,8 @@ describe('the Miner position that refused the collapse (E9-A2)', () => {
     // `audience: 'all'`, so both players learn them; the Backup added to hand keeps its `knownBy` bit while a
     // second copy drawn normally does not. Discarding the known one is a real information choice.
     const s = MINER_ASYMMETRY!
-    const hand = s.players[HUMAN].hand
-    const pair = hand.flatMap((id) => hand
-      .filter((o) => o !== id && s.cards[o]?.code === s.cards[id]?.code
-        && (s.knownBy[o] ?? 0) !== (s.knownBy[id] ?? 0))
-      .map((o) => [id, o] as const))[0]
-    expect(pair, 'the fixture does not actually contain an asymmetric pair').not.toBe(undefined)
+    const pair = asymmetricPair(s)
+    expect(pair, 'the fixture does not actually contain an asymmetric pair').not.toBe(null)
     const [a, b] = pair!
     expect(s.cards[a]?.code, 'the pair is not even the same card').toBe(s.cards[b]?.code)
     expect(s.knownBy[a] ?? 0).not.toBe(s.knownBy[b] ?? 0)
@@ -348,11 +358,7 @@ describe('the Miner position that refused the collapse (E9-A2)', () => {
   it('numbers those two copies distinctly and maps each label to its own id', () => {
     const s = MINER_ASYMMETRY!
     const v = viewFor(s, HUMAN)
-    const hand = s.players[HUMAN].hand
-    const [a, b] = hand.flatMap((id) => hand
-      .filter((o) => o !== id && s.cards[o]?.code === s.cards[id]?.code
-        && (s.knownBy[o] ?? 0) !== (s.knownBy[id] ?? 0))
-      .map((o) => [id, o] as const))[0]!
+    const [a, b] = asymmetricPair(s)!
     expect(occurrenceOf(v, a), 'a copy in a duplicated pair was not numbered').not.toBe(null)
     expect(occurrenceOf(v, b), 'a copy in a duplicated pair was not numbered').not.toBe(null)
     expect(qualifiedName(v, a), 'the two copies still read alike').not.toBe(qualifiedName(v, b))
@@ -360,6 +366,28 @@ describe('the Miner position that refused the collapse (E9-A2)', () => {
     const order = v.hand.filter((id) => v.cards[id]?.code === v.cards[a]?.code)
     expect(order[occurrenceOf(v, a)! - 1], 'the number does not point at the card it labels').toBe(a)
     expect(order[occurrenceOf(v, b)! - 1], 'the number does not point at the card it labels').toBe(b)
+  })
+
+  it('offers BOTH of them as choices, each carrying its own id (E9-A2, the half I had not tested)', () => {
+    // A review caught this test claiming "both selectable" while asserting nothing about selection — its
+    // fixture stopped at the first asymmetric pair, a position with no pending at all, where those two cards
+    // were reachable only as payment. The fixture now demands a discard pending as well, so the pair really is
+    // on offer, and this checks the mapping that the refused collapse would have broken.
+    const s = MINER_ASYMMETRY!
+    const v = viewFor(s, HUMAN)
+    const [a, b] = asymmetricPair(s)!
+    const set = buildChoiceSet(v, legalCommands(s, HUMAN))
+    for (const id of [a, b]) {
+      const forCard = set.byCard.get(id) ?? []
+      expect(forCard.length, `the ${id === a ? 'known' : 'unknown'} copy is not selectable at all`)
+        .toBeGreaterThan(0)
+      for (const choice of forCard) {
+        const cards = choice.command.type === 'discardToHandSize' ? choice.command.cards : [choice.card]
+        expect(cards, `a choice filed under ${id} does not involve it`).toContain(id)
+      }
+    }
+    // And the two are genuinely distinct choices, not one representative filed twice.
+    expect(set.byCard.get(a), 'both ids point at the same choice list').not.toBe(set.byCard.get(b))
   })
 })
 
@@ -425,5 +453,104 @@ describe('same-code cards that are mechanically different (E9-A3)', () => {
       granted: [], powerBonus: 0, flags: [], usedThisTurn: [],
     }]
     expect(occurrenceOf(v, 901), 'a Forward with no twin was numbered anyway').toBe(null)
+  })
+})
+
+/**
+ * The three places a Codex review found the rung's claim still failing, after playing had already found two.
+ *
+ * All three are commands whose distinguishing part is a card the BOARD DOES NOT DRAW — an activation's target,
+ * a deck card, a Break Zone card. The rung had been treating "which card does this button act on" as a
+ * question about the hand, and it is not.
+ */
+describe('choices whose subject the board does not draw', () => {
+  /** Plays both seats until `stop`, with the human driven by `human`. */
+  function drive(seed: number, human: (v: PlayerView, legal: Command[]) => Command | null,
+    stop: (s: GameState) => boolean): GameState | null {
+    const greedy = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
+    const agent = {
+      decide(v: PlayerView, legal: Command[]): Command {
+        if (v.me !== HUMAN) return greedy.decide(v, legal)
+        return human(v, legal) ?? greedy.decide(v, legal)
+      },
+    }
+    let s: GameState = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
+    for (let i = 0; i < 3000 && !s.result; i++) {
+      if (stop(s)) return s
+      if (actingPlayer(s) === null) return null
+      s = stepAi(s, agent).state
+    }
+    return null
+  }
+
+  function targetGroups(s: GameState): Map<string, Set<string>> {
+    const groups = new Map<string, Set<string>>()
+    for (const c of legalCommands(s, HUMAN)) {
+      if (c.type !== 'activateAbility') continue
+      const k = `${c.source}:${c.abilityId}`
+      groups.set(k, (groups.get(k) ?? new Set<string>()).add(JSON.stringify([...c.targets])))
+    }
+    return groups
+  }
+
+  it('an activation keeps ONE BUTTON PER TARGET — the worst thing this rung turned up', () => {
+    // `payableKey` was `source:ability`, so `legalCommands`'s one-command-per-target collapsed into a single
+    // button and whichever Forward happened to come first was pumped. Silently deciding a live choice for the
+    // player is the exact operation this rung's plan review refused — and it was already shipping.
+    //
+    // Seed 1, ordinary greedy play: Undead Princess's pump has FOUR legal targets.
+    const found = drive(1, () => null, (s) =>
+      actingPlayer(s) === HUMAN && [...targetGroups(s).values()].some((t) => t.size >= 2))
+    expect(found, 'never reached an activation with two legal targets, so this asserts nothing').not.toBe(null)
+
+    const v = viewFor(found!, HUMAN)
+    const kept = preferredChoices(v, legalCommands(found!, HUMAN))
+    let checked = 0
+    for (const [k, targetSets] of targetGroups(found!)) {
+      if (targetSets.size < 2) continue
+      checked++
+      const survivors = kept.filter((c) => c.type === 'activateAbility' && `${c.source}:${c.abilityId}` === k)
+      expect(survivors.length, `${k}: ${targetSets.size} targets collapsed to ${survivors.length} button(s)`)
+        .toBe(targetSets.size)
+      const labels = survivors.map((c) => describeChoice(v, c))
+      expect(labels.filter((l, i) => labels.indexOf(l) !== i), `${k}: two target buttons read alike`).toEqual([])
+    }
+    expect(checked, 'the fixture held no multi-target activation after all').toBeGreaterThan(0)
+  })
+
+  it('a deck search names WHICH copy it found', () => {
+    // Hugh Yurg searches the whole deck; this deck runs three Lusos and two Undead Princesses, so five legal
+    // commands were rendered under two labels. Reported against seed 2, and reached here by playing.
+    const hughYurg = '24-063H'
+    const found = drive(2,
+      (v, legal) => legal.find((c) => c.type === 'castCharacter' && v.cards[c.card]?.code === hughYurg)
+        ?? legal.find((c) => c.type === 'pass') ?? null,
+      (s) => s.pending?.kind === 'chooseFromDeck' && s.pending.player === HUMAN)
+    expect(found, 'never reached a deck search, so this asserts nothing').not.toBe(null)
+
+    const v = viewFor(found!, HUMAN)
+    const labels = buildChoiceSet(v, preferredChoices(v, legalCommands(found!, HUMAN))).all
+      .filter((c) => c.command.type === 'chooseFromDeck').map((c) => c.label)
+    expect(labels.length, 'the search offered nothing to choose between').toBeGreaterThan(2)
+    expect(labels.filter((l, i) => labels.indexOf(l) !== i), 'two search results still read alike').toEqual([])
+    expect(labels, 'the duplicated card is not numbered').toContain('Play Luso (1) onto the field')
+    expect(labels).toContain('Play Luso (2) onto the field')
+  })
+
+  it('two Break Zone copies of one ability SOURCE offer distinct buttons', () => {
+    // Undead Princess's removal ability is usable while IN the Break Zone, so two copies there produced two
+    // activations with identical wording. `occurrenceOf` is blind to the Break Zone by design (it would put
+    // numbers in the log); `choiceName` is not, which is what tells these two apart.
+    const s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+    const v = structuredClone(viewFor(s, HUMAN)) as PlayerView
+    const code = '19-052C'
+    v.defs[code] = CARD_DEFS.find((d) => d.code === code)!
+    v.cards[900] = { id: 900, code, owner: HUMAN }
+    v.cards[901] = { id: 901, code, owner: HUMAN }
+    v.fields[HUMAN].breakZone = [900, 901]
+    const name = v.defs[code]!.name
+    expect(choiceName(v, 900)).toBe(`${name} (1)`)
+    expect(choiceName(v, 901)).toBe(`${name} (2)`)
+    expect(qualifiedName(v, 900), 'the Break Zone number leaked into narration').toBe(name)
   })
 })

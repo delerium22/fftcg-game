@@ -172,10 +172,14 @@ change to any label" exclusion above is withdrawn — it contradicts the ruling.
 
 ## Built
 
+> **This section described the FIRST version and was left stale by two later fixes** — a Codex review caught
+> it saying "same-code" after `fdcf1ee` had changed the key to the printed name. Corrected below, and the
+> final shape is in *Where this ended up*.
+
 `occurrenceOf(view, id)` in `apps/web/src/game/commands.ts` returns the 1-based index of a card among the
-same-code cards in the zone it occupies, or `null` when it is unique there. `qualifiedName` appends ` (n)`,
-and `Board.tsx` appends the same marker to the accessible name of the rendered hand and field cards, so the
-button and the card agree. `legalCommands` is untouched.
+same-**name** cards in the zone it occupies, or `null` when it is unique there. `qualifiedName` appends
+` (n)`, and `Board.tsx` appends the same marker to the accessible name of the rendered hand and field cards,
+so the button and the card agree. `legalCommands` is untouched.
 
 Zone-scoped deliberately: a Cloud in hand and a Cloud on the field are already told apart by everything
 around them, and numbering across zones would put "(2)" on cards nothing else in the interface separates.
@@ -253,3 +257,85 @@ holding BOTH Red Mages did not come up in forty rounds, so that case is pinned b
 than claimed from a screenshot.
 
 **16 tests. Gates green:** 906 jsdom, 6 Playwright, typecheck, lint, 200/200 selfplay seed 1.
+
+---
+
+## Codex code review — three more places the claim failed, and the worst was not this rung's
+
+Reviewed `c6c3889..fdcf1ee` (my Break Zone commit `f05cece` landed mid-review and was excluded). No CRITICAL.
+Four MAJOR, two MINOR. It also independently reproduced all three of my measurements, and cleared numbering
+stability under the cursor — draws append and removals preserve order, so no renumbering race exists.
+
+### MAJOR 3 was the real one, and it is worse than the defect this rung was opened for
+
+`payableKey` was `a:${source}:${abilityId}`. `legalCommands` lists one activation per legal target, so **every
+target of an ability collapsed into a single button** and whichever Forward came first was pumped. On seed 1,
+in ordinary greedy play, Undead Princess's pump offers FOUR targets and the strip showed one.
+
+That is precisely the operation this rung's plan review refused — a UI deciding a live choice on the player's
+behalf and disclosing it afterwards — and it was already shipping while I built an entire rung around the
+principle. I had read the refusal, written it into the spec, and not looked at the one place the codebase
+already did it.
+
+Fixed in three parts, because any one alone is insufficient: targets join `payableKey` (so the choices
+survive), the label names the target (so the four buttons differ), and `sameCommand` compares targets (so the
+legality re-check the browser and the AI both run is exact).
+
+### MAJOR 1 — a deck search read alike
+
+Hugh Yurg searches the whole deck; this deck runs three Lusos and two Undead Princesses, so five legal
+commands rendered under two labels. Deck cards are now numbered among the deck cards this view can SEE, which
+is non-empty only during a search.
+
+### MAJOR 2 — the Break Zone, twice over
+
+Targets I had fixed in `f05cece`. **Activation sources I had not**: Undead Princess's ability is usable while
+in the Break Zone, so two copies there offered two identically-worded activations. My `f05cece` rule numbered
+Break Zone cards only under a pending `chooseTargets`, which an activation is not.
+
+That patch was too narrow because I had the wrong axis. The split is not pending-vs-not, it is **what a button
+says vs what the log says**:
+
+- `qualifiedName` — narration. Numbers only zones the player can SEE, so no number ever appears in the log
+  that the reader cannot check.
+- `choiceName` — buttons. Numbers those, plus the Break Zone and the deck, because a choice may name cards the
+  board does not draw.
+
+Three findings collapse into one cause: labels and narration had been sharing a namer with opposite needs.
+
+### MAJOR 4 — my own test asserted less than it claimed
+
+The Miner test said "both selectable and correctly mapped" and checked neither. Its fixture stopped at the
+first asymmetric pair — turn 3, no pending, the cards reachable only as payment, which the UI does not expose
+as selectable subjects. **It passed in a state where its allegedly selectable pair was not selectable.** The
+fixture now demands a discard pending as well (reachable on seed 1) and the test checks the `byCard` mapping.
+
+That is the fifth time in this rung that my acceptance criteria, not my code, were the defect.
+
+### MINOR — recorded, one fixed
+
+The spec's "Built" section still said "same-code" after the key had changed to the name; corrected in place
+rather than quietly rewritten.
+
+The other is a genuine limit and is now a `KNOWN LIMIT` in `occurrenceOf`: events narrate from the state AFTER
+the command, so a card that has just left the hand or field is already in the Break Zone and has lost its
+number — two discarded Shantottos produce two identical event lines under a move line that named them both.
+Nothing is misstated and the move line says which cards went; what is lost is which instance each event line
+concerned. Fixing it means narrating from the pre-command view, which is a change to event rendering rather
+than to naming, so it is not done here.
+
+## Where this ended up
+
+| Named in | Numbered by | Zones counted |
+|---|---|---|
+| the log (`qualifiedName`) | `occurrenceOf` | hand, both fields |
+| a button (`choiceName`) | `occurrenceForChoice` | those, plus Break Zone and visible deck |
+
+| # | Mutation | Result |
+|---|---|---|
+| 9 | drop targets from `payableKey` | 4 targets collapse to 1 button — fails |
+| 10 | label stops naming the target | 4 buttons read alike — fails |
+| 11 | drop the deck branch | "Play Luso onto the field" ×3 — fails |
+| 12 | `choiceName` falls back to `occurrenceOf` | 5 tests fail across Break Zone and deck |
+
+**26 tests. Gates green:** 915 jsdom, 6 Playwright, typecheck, lint, 200/200 selfplay seed 1.

@@ -136,31 +136,96 @@ export const ownedCard = (v: PlayerView, owner: PlayerId, id: CardId): string =>
  * the rule and not the test. A number earns its place when the player can act on it; a hand or field card is
  * rendered, so it is numbered always, and a Break Zone card only when it is on offer.
  */
-/** Is the game asking the player to pick this exact card right now? Only `chooseTargets` names candidates. */
-const isOnOffer = (v: PlayerView, id: CardId): boolean =>
-  v.pending?.kind === 'chooseTargets' && v.pending.candidates.includes(id)
+/**
+ * The deck cards this view can actually see — non-empty only during a search or a look.
+ *
+ * A search names cards the player is choosing between, and this deck runs three Lusos and two Undead
+ * Princesses, so Hugh Yurg's whole-deck search offered five commands under two labels: "Play Luso onto the
+ * field" three times over. The deck is hidden the rest of the time, so nothing is numbered outside a search.
+ */
+const visibleDeck = (v: PlayerView, p: PlayerId): CardId[] =>
+  v.fields[p].deck.flatMap((slot) => (slot.card === null ? [] : [slot.card]))
 
-export function occurrenceOf(v: PlayerView, id: CardId): number | null {
-  const owner = v.cards[id]?.owner
-  if (v.cards[id]?.code === undefined || owner === undefined) return null
-  const name = bareName(v, id)
+/** The zones the player can point at on the board: their hand, and either field. */
+function shownZoneOf(v: PlayerView, id: CardId, owner: PlayerId): CardId[] | null {
+  if (v.hand.includes(id)) return v.hand
   const field = [...v.fields[owner].forwards, ...v.fields[owner].backups]
-  const zone = v.hand.includes(id)
-    ? v.hand
-    : field.some((c) => c.id === id)
-      ? field.map((c) => c.id)
-      : v.fields[owner].breakZone.includes(id) && isOnOffer(v, id)
-        ? v.fields[owner].breakZone
-        : null
+  return field.some((c) => c.id === id) ? field.map((c) => c.id) : null
+}
+
+/** The zones that are named only INSIDE a choice: the Break Zone (rendered as a count) and the deck. */
+function unshownZoneOf(v: PlayerView, id: CardId, owner: PlayerId): CardId[] | null {
+  if (v.fields[owner].breakZone.includes(id)) return v.fields[owner].breakZone
+  const deck = visibleDeck(v, owner)
+  return deck.includes(id) ? deck : null
+}
+
+function nthIn(v: PlayerView, id: CardId, zone: CardId[] | null): number | null {
   if (zone === null) return null
-  const sameName = zone.filter((other) => bareName(v, other) === name)
+  const sameName = zone.filter((other) => bareName(v, other) === bareName(v, id))
   if (sameName.length < 2) return null
   const i = sameName.indexOf(id)
   return i < 0 ? null : i + 1
 }
 
+/**
+ * Which copy this is among the cards the player can SEE — the number the board renders and the log may use.
+ *
+ * Deliberately blind to the Break Zone and the deck. Numbering those put "(1)" into the game log — `the AI's
+ * Prishe (1) is broken` — where it is unverifiable: the reader cannot see the pile, the position refers to an
+ * instant that has passed, and a later line about the same card can carry a different number. An existing
+ * test caught that, and the rule changed rather than the expectation.
+ *
+ * KNOWN LIMIT: a card is narrated from the state AFTER the command, so a card that just left the hand or the
+ * field is already in the Break Zone and has lost its number. Discarding two Shantottos at the hand limit
+ * therefore reads
+ *
+ *   Discard Shantotto (1), Shantotto (2)          <- the move line, from the view BEFORE
+ *   You discard Shantotto to the hand limit       <- twice, from the view after
+ *
+ * and two same-name Forwards breaking together read alike the same way. Both lines are true and the move line
+ * above them says which cards went, so nothing is misstated; what is lost is which instance each event line
+ * concerned. Fixing it means narrating from the pre-command view, which is a change to how events are
+ * rendered rather than to how cards are named, so it is not done here.
+ */
+export function occurrenceOf(v: PlayerView, id: CardId): number | null {
+  const owner = v.cards[id]?.owner
+  if (v.cards[id]?.code === undefined || owner === undefined) return null
+  return nthIn(v, id, shownZoneOf(v, id, owner))
+}
+
+/**
+ * Which copy this is for the purpose of a BUTTON — the same, plus the Break Zone and the deck.
+ *
+ * A choice may name cards the board does not draw. Billy Bob and Prishe both print "choose 1 Character in
+ * your Break Zone"; Undead Princess's ability is usable while IN the Break Zone, so two copies there offered
+ * two identical activations; and Hugh Yurg searches the whole deck, where three Lusos read alike. In each the
+ * player is picking between them right now, so the number is the only thing telling the options apart.
+ *
+ * KNOWN LIMIT, and it is not small: the Break Zone renders as a COUNT and the deck is not rendered at all, so
+ * here the number distinguishes the buttons but has no card to point AT. The E9 ruling asked for an
+ * identifier corresponding to something visible. This is the floor. Rendering a choice's candidates as cards
+ * is the fix, and it is a UI rung of its own rather than something to smuggle in here.
+ */
+function occurrenceForChoice(v: PlayerView, id: CardId): number | null {
+  const owner = v.cards[id]?.owner
+  if (v.cards[id]?.code === undefined || owner === undefined) return null
+  return nthIn(v, id, shownZoneOf(v, id, owner) ?? unshownZoneOf(v, id, owner))
+}
+
 export function qualifiedName(v: PlayerView, id: CardId): string {
-  const nth = occurrenceOf(v, id)
+  return namedWith(v, id, occurrenceOf(v, id))
+}
+
+/**
+ * The name to put on a BUTTON: the same as `qualifiedName`, but numbering also in the zones the board does
+ * not draw. Every label a player clicks goes through this; narration goes through `qualifiedName`.
+ */
+export function choiceName(v: PlayerView, id: CardId): string {
+  return namedWith(v, id, occurrenceForChoice(v, id))
+}
+
+function namedWith(v: PlayerView, id: CardId, nth: number | null): string {
   const bare = nth === null ? bareName(v, id) : `${bareName(v, id)} (${nth})`
   const mine = v.cards[id]?.owner
   if (mine === undefined) return bare
@@ -180,7 +245,7 @@ export function qualifiedName(v: PlayerView, id: CardId): string {
 
 /** "A", "A and B", "A, B and C" — target sets are read aloud off a button, so a bare comma list reads badly. */
 function listNames(v: PlayerView, ids: readonly CardId[]): string {
-  const names = ids.map((id) => qualifiedName(v, id))
+  const names = ids.map((id) => choiceName(v, id))
   return names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`
 }
 
@@ -427,8 +492,8 @@ export function describeChoice(v: PlayerView, c: Command): string {
     case 'mulligan': return c.redraw ? 'Mulligan (redraw 5)' : 'Keep hand'
     case 'castCharacter':
     case 'castSummon': {
-      const pay = [...c.payment.dullBackups.map((id) => `dull ${qualifiedName(v, id)}`), ...c.payment.discards.map((d) => `discard ${qualifiedName(v, d.card)} as ${d.element}`)]
-      return pay.length ? `Cast ${qualifiedName(v, c.card)} paying: ${pay.join(', ')}` : `Cast ${qualifiedName(v, c.card)} (free)`
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${choiceName(v, id)}`), ...c.payment.discards.map((d) => `discard ${choiceName(v, d.card)} as ${d.element}`)]
+      return pay.length ? `Cast ${choiceName(v, c.card)} paying: ${pay.join(', ')}` : `Cast ${choiceName(v, c.card)} (free)`
     }
     /*
      * `legalCommands` pre-enumerates whole target SETS — one command per legal combination of `min..max`
@@ -460,16 +525,20 @@ export function describeChoice(v: PlayerView, c: Command): string {
     // The printed cost is part of the label: a player choosing to spend a card needs to see what it costs
     // before clicking, not after (spec C3-A7).
     case 'activateAbility': {
-      const pay = [...c.payment.dullBackups.map((id) => `dull ${qualifiedName(v, id)}`), ...c.payment.discards.map((d) => `discard ${qualifiedName(v, d.card)} as ${d.element}`)]
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${choiceName(v, id)}`), ...c.payment.discards.map((d) => `discard ${choiceName(v, d.card)} as ${d.element}`)]
       const cost = activatedCostOf(v, c.source, c.abilityId)
       const clause = defFor(v, c.source)?.abilities?.find((a) => a.id === c.abilityId)
       const does = clause ? describeAbilityEffect(clause) : null
-      return `${qualifiedName(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${pay.length ? ` — paying ${pay.join(', ')}` : ''}`
+      // Naming the targets is not decoration. `legalCommands` lists one activation per legal target, so
+      // without them every target of one ability reads identically — and since `payableKey` now keeps them
+      // apart, the player would face four buttons with the same words on them.
+      const on = c.targets.length ? ` on ${listNames(v, c.targets)}` : ''
+      return `${choiceName(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${on}${pay.length ? ` — paying ${pay.join(', ')}` : ''}`
     }
-    case 'declareAttack': return `Attack with ${c.attackers.map((id) => qualifiedName(v, id)).join(' + ')}`
-    case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${qualifiedName(v, c.blocker)}`
-    case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${qualifiedName(v, a.target)}`).join(', ')}`
-    case 'discardToHandSize': return `Discard ${c.cards.map((id) => qualifiedName(v, id)).join(', ')}`
+    case 'declareAttack': return `Attack with ${c.attackers.map((id) => choiceName(v, id)).join(' + ')}`
+    case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${choiceName(v, c.blocker)}`
+    case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${choiceName(v, a.target)}`).join(', ')}`
+    case 'discardToHandSize': return `Discard ${c.cards.map((id) => choiceName(v, id)).join(', ')}`
     case 'pass': return 'Pass'
     case 'concede': return 'Concede'
   }
@@ -681,7 +750,10 @@ export function sameCommand(a: Command, b: Command): boolean {
     case 'chooseFromDeck': return sameIds([...a.picks], [...(b as typeof a).picks])
     case 'activateAbility': {
       const o = b as typeof a
-      return a.source === o.source && a.abilityId === o.abilityId && samePayment(a.payment, o.payment)
+      // Targets included: this is the legality guard the browser and the AI both re-check a chosen command
+      // against, and an activation aimed at a different Forward is a different command.
+      return a.source === o.source && a.abilityId === o.abilityId
+        && sameIds([...a.targets], [...o.targets]) && samePayment(a.payment, o.payment)
     }
     case 'pass': case 'concede': return true
     default: { const _exhaustive: never = a; return _exhaustive }
@@ -698,9 +770,21 @@ type ActivateCommand = Extract<Command, { type: 'activateAbility' }>
 type PayableCommand = CastCommand | ActivateCommand
 const isCast = (c: Command): c is CastCommand => c.type === 'castCharacter' || c.type === 'castSummon'
 const isPayable = (c: Command): c is PayableCommand => isCast(c) || c.type === 'activateAbility'
-/** What counts as "the same move, paid differently". */
+/**
+ * What counts as "the same move, paid differently".
+ *
+ * The TARGETS are part of the identity of an activation, and leaving them out was the worst defect this rung
+ * turned up — worse than the one it was opened for. `legalCommands` lists one activation per legal target, so
+ * a key of source+ability collapsed all of them into a single button and the player never chose the target at
+ * all. On seed 1, in ordinary play, Undead Princess's pump offered FOUR distinct targets and the strip showed
+ * one button; whichever Forward happened to come first was pumped, silently.
+ *
+ * That is the exact operation this rung's plan review refused — a UI deciding a live choice on the player's
+ * behalf and disclosing it only afterwards — and it was already shipping. Payments really are interchangeable
+ * (that is what `preferredPayment` is for) so they stay out of the key; targets never are.
+ */
 const payableKey = (c: PayableCommand): string =>
-  c.type === 'activateAbility' ? `a:${c.source}:${c.abilityId}` : `c:${c.card}`
+  c.type === 'activateAbility' ? `a:${c.source}:${c.abilityId}:${[...c.targets].join(',')}` : `c:${c.card}`
 
 /**
  * `preferredPayment` reads only the acting player's own backups, hand and the shared card/def tables — all of it
