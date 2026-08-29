@@ -225,3 +225,58 @@ needs the extra click. The route was updated and the reason written into it — 
 not noise.
 
 **Final: 951 jsdom, 8 Playwright, typecheck, lint, 200/200 selfplay seed 1.**
+
+---
+
+## Codex code review — no CRITICAL, four MAJOR, all fixed
+
+It cleared the things I was most worried about, and said why: `paying` cannot go stale through any reachable
+flow (`useGame` makes a new `choices` identity per state, and submitting also clears it); the legality
+re-check works for a non-preferred payment because alternatives keep the raw legal commands and `sameCommand`
+compares the whole payment; the AI path is untouched; a choice indexed under several ids keeps the right
+originating card; and omitting `buildChoiceSet`'s third argument leaves existing callers identical.
+
+### MAJOR 1 — I broke the E4 invariant with the rung that made clicking safer
+
+`actionFor` announces the sole choice as what the click submits. `pick` stopped submitting it when it hides
+payments. So seed 5's Hugh Yurg read **"Cast Hugh Yurg paying: …"** on a button that only selected it — the
+card stating an action pressing it would not perform, which is exactly what E4 exists to forbid.
+
+The E4 tests could not see it: their fixtures build a `ChoiceSet` without payment alternatives, so they still
+exercise the old world. Both now go through ONE predicate, `commitsOnClick`, so they cannot drift again.
+
+Two browser routes broke on the fix, and correctly: they matched cards by `/^Hugh Yurg.*Cast/`, a claim the
+interface deliberately stopped making. Both now match the card, not the claim.
+
+### MAJOR 2 — the instruction went on describing a strip that was gone
+
+Opening payments replaces every ordinary action, but the prompt still read *"Main Phase 1 — cast, attack, or
+pass"* with Pass nowhere on screen. It now reads `Choose how to pay for: <move>`, which also makes the change
+**audible** — the prompt is the live region, so saying what is being asked now IS the announcement.
+
+### MAJOR 3 — two disclosures could be named identically
+
+One per shown move is by design, and Geomancer can be cast AND use its hand ability, both possibly with the
+same number of payments. Two buttons reading `Pay differently (2 other ways)` are told apart only by where
+they sit, which is not part of an accessible name and is lost to a button list, to voice control, and to a
+flex row that wraps. The visible text stays short; the accessible name is now
+`Pay differently for: <move>`.
+
+### MAJOR 4 — my accessibility test read textContent
+
+`payment.spec.ts` claimed to check accessible names and read `textContent`. Adding
+`aria-label="Payment option"` to every button would have left it green while making all three
+indistinguishable to a screen reader — the defect this rung is about, one layer down. It now matches by role
+and accessible name through `getByRole`, against three names written out rather than read off the page.
+
+### MINOR
+
+`Back` rendered after every payment, so cancelling a thirty-payment action meant tabbing past all thirty. It
+is now first. And `deck-search.spec.ts` still claimed a two-click route after E11 made it three.
+
+| # | Mutation | Result |
+|---|---|---|
+| 23 | identical `aria-label` on every payment button | browser check fails — it could not before |
+| 24 | drop the declared element from a payment label | "no payment option is NAMED as discarding Geomancer" |
+
+**Final: 951 jsdom, 8 Playwright, typecheck, lint, 200/200 selfplay seed 1.**

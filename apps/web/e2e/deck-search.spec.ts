@@ -10,7 +10,8 @@ import { expect, test } from '@playwright/test'
  *
  * THE ROUTE IS PINNED, NOT PLAYED. A check that plays randomly until it stumbles into a deck search is
  * vacuous when it misses and flaky when it hits. `?seed=5` reaches Hugh Yurg's whole-deck search in exactly
- * two clicks — "Keep hand", then "Cast Hugh Yurg" — and, because the human takes the first turn, the route
+ * three clicks — "Keep hand", the Hugh Yurg card (which SELECTS since rung E11, because it can be funded more
+ * than one way), then "Cast Hugh Yurg" — and, because the human takes the first turn, the route
  * contains no AI decision at all, so no worker timing can move it. If the route ever stops arriving, this
  * fails loudly rather than passing quietly with nothing checked.
  *
@@ -29,7 +30,10 @@ test('a deck search offers its candidates as cards a person can see and press', 
   // Hugh Yurg is funded more than one way, so since rung E11 the card SELECTS rather than casting on the
   // first click — an action that hides a decision about your own hand should not fire the instant you touch
   // it. The cast is then the strip button. This check caught that change, which is what it is for.
-  await page.getByRole('button', { name: /^Hugh Yurg.*Cast/ }).click()
+  // Named WITHOUT its cast: since E11 a card that hides a payment choice no longer announces an action,
+  // because pressing it no longer performs one. Matching on "…Cast Hugh Yurg paying…" here would be matching
+  // on a claim the interface deliberately stopped making.
+  await page.getByRole('button', { name: /^Hugh Yurg, cost/ }).click()
   await page.getByRole('button', { name: /^Cast Hugh Yurg/ }).click()
 
   // The prompt says what is being asked. If the route drifted, this is where it fails, and it names the

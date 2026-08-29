@@ -20,7 +20,10 @@ test('the other ways to pay are real controls that name the cards they spend', a
   await page.getByRole('button', { name: /Keep hand/ }).click()
 
   // Selecting, not casting: a move that hides a payment choice must not fire on the first touch.
-  await page.getByRole('button', { name: /^Class Tenth Moogle.*Cast/ }).click()
+  // Named WITHOUT its cast: a card hiding a payment choice no longer announces an action, because pressing it
+  // no longer performs one. That is E11's own doing and this route proves it — the name here would still say
+  // "Cast Class Tenth Moogle paying: …" if `actionFor` had been left agreeing with the old click behaviour.
+  await page.getByRole('button', { name: /^Class Tenth Moogle, cost/ }).click()
   const strip = page.locator('.prompt__actions')
   await expect(strip.locator('[data-command="castCharacter"]'),
     'the preferred cast is not offered after selecting').toHaveCount(1)
@@ -35,19 +38,36 @@ test('the other ways to pay are real controls that name the cards they spend', a
   await expect(strip.getByRole('button', { name: /discard Cloud as earth/ }),
     'an alternative payment was in the strip before being asked for').toHaveCount(0)
 
+  // The disclosure names its OWN move. The design allows one per shown move, so two can be on screen at once
+  // — Geomancer can be cast and can use its hand ability, and both may hide the same number of payments. The
+  // visible text stays short; the accessible name carries the move, because adjacency is not part of a name
+  // and is lost entirely to a button list, to voice control, and to a flex row that wraps.
+  await expect(
+    strip.getByRole('button', { name: /^Pay differently for: Cast Class Tenth Moogle paying/ }),
+    'the disclosure does not say which move it belongs to',
+  ).toHaveCount(1)
+
   await disclosure.click()
 
   const options = strip.locator('[data-command="castCharacter"]')
   await expect(options, 'asking to pay differently did not list the payments').toHaveCount(3)
-  const names = await options.evaluateAll((els) => els.map((e) => e.textContent ?? ''))
-  expect(new Set(names).size, `two payment options read alike: ${JSON.stringify(names)}`).toBe(3)
-  for (const n of names) {
-    // Each names the card it spends AND the element it is declared as — both are part of the command's
-    // identity, and a label omitting the element would make two distinct payments read the same.
-    expect(n, `"${n}" does not say what it discards`).toMatch(/discard .+ as (earth|lightning)/)
+
+  // CHROMIUM'S COMPUTED NAMES, via `getByRole`, which matches on the accessible name the browser derives —
+  // not on `textContent`, which is what the first version of this test read while claiming to check
+  // accessibility. Adding `aria-label="Payment option"` to every button would have left that version green
+  // while making all three indistinguishable to a screen reader: the exact defect this rung is about, one
+  // layer down. A review caught it.
+  //
+  // The three names are written out rather than read off the page, because expectations derived from the
+  // rendering validate the rendering against itself. This route is pinned, so they are knowable: seed 11's
+  // Class Tenth Moogle can be funded by discarding Geomancer (cost 1), Prishe (2) or Cloud (3) — and the
+  // whole point of the rung is that the game used to pick Geomancer without mentioning the other two.
+  for (const card of ['Geomancer', 'Prishe', 'Cloud']) {
+    await expect(
+      strip.getByRole('button', { name: `Cast Class Tenth Moogle paying: discard ${card} as earth`, exact: true }),
+      `no payment option is NAMED as discarding ${card}`,
+    ).toHaveCount(1)
   }
-  expect(names.some((n) => /discard Cloud as earth/.test(n)),
-    'the expensive alternative this rung exists to surface is missing').toBe(true)
 
   // And it is a real choice: taking the non-preferred payment casts the card and clears the strip of it.
   await options.filter({ hasText: /discard Cloud as earth/ }).click()

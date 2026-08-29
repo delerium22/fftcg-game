@@ -171,6 +171,21 @@ export function clickableChoices(view: PlayerView, choices: ChoiceSet): Choice[]
   return choices.all.filter((c) => c.card === null || reachable.has(c.card))
 }
 
+/**
+ * Does clicking this card DO something, or merely select it?
+ *
+ * `pick` and `actionFor` must agree, and they stopped agreeing the moment E11 landed: `pick` began refusing
+ * to execute a sole choice that hid several payments, while `actionFor` went on announcing that choice as
+ * what the click submits. Seed 5's Hugh Yurg then read "Cast Hugh Yurg paying: …" on a button that only
+ * selected it — the E4 invariant, that a card's stated action is what pressing it immediately does, broken by
+ * the rung that made the click safer. The E4 tests could not see it: their fixtures build a `ChoiceSet`
+ * without payment alternatives, so they still exercise the old world.
+ *
+ * One predicate, used by both, so they cannot drift apart a second time.
+ */
+const commitsOnClick = (forCard: readonly Choice[]): boolean =>
+  forCard.length === 1 && !forCard[0]?.alternatives?.length
+
 export function Board({ game }: { game: GameApi }): JSX.Element {
   const { view, choices, log, aiThinking, choose, restart } = game
   const [selected, setSelected] = useState<CardId | null>(null)
@@ -270,7 +285,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
    */
   const actionFor = (id: CardId): string | undefined => {
     const forCard = choices.byCard.get(id) ?? []
-    return forCard.length === 1 ? forCard[0]?.label : undefined
+    return commitsOnClick(forCard) ? forCard[0]?.label : undefined
   }
 
   // The choice set is rebuilt on every state change; a card selected under the old one may no longer be
@@ -290,7 +305,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
     // `byCard`. It used to commit on the first click, spending whichever of your cards `preferredPayment`
     // scored cheapest — a decision about your own hand you were never offered. An action that conceals a
     // choice is exactly the one that should not fire the instant you touch it.
-    if (forCard.length === 1 && !forCard[0]?.alternatives?.length) {
+    if (commitsOnClick(forCard)) {
       setSelected(null); setPaying(null); choose(forCard[0] as Choice); return
     }
     setPaying(null)

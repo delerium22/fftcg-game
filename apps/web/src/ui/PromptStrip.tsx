@@ -51,6 +51,10 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
   const text = view.result ? 'Game over'
     : aiThinking ? 'The AI is thinking'
     : !yours ? 'Waiting for the AI'
+    // Choosing a payment REPLACES the strip, so the standing instruction is no longer true of it: it said
+    // "Main Phase 1 — cast, attack, or pass" while Pass was not on screen. This is also what makes the change
+    // audible — the prompt is the live region, so saying what is now being asked is the announcement.
+    : paying ? `Choose how to pay for: ${paying.label}`
     // "·", not the em-dash the rest of the strip uses: rung C2 spends the dash on the trigger's CAUSE ("The
     // AI's Luso was broken — Lightning: choose 1 Forward…"), and a second one would read as a third clause of
     // the same sentence rather than as the standing instruction it is.
@@ -140,6 +144,16 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
         {aiThinking && <span className="thinking" aria-hidden="true"><span /><span /><span /></span>}
       </span>
       <div className="prompt__actions" style={ACTIONS_WRAP} ref={actions}>
+        {/*
+          FIRST, not last. One action in the measured trace had thirty exact payments, and rendering the way
+          out after them meant cancelling required tabbing past every one. The player was never trapped —
+          clicking another card also escapes — but "escape is thirty tabs away" is not keyboard support.
+        */}
+        {yours && paying && (
+          <button data-command="payBack" className="btn btn--ghost" onClick={() => onPay?.(null)}>
+            Back
+          </button>
+        )}
         {yours && shown.map((c, i) => (
           <Fragment key={`${c.command.type}:${c.label}:${i}`}>
           <button
@@ -174,6 +188,12 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
             <button
               data-command="payDifferently"
               className="btn btn--ghost"
+              // The design permits one disclosure per shown move, so two can be on screen at once — Geomancer
+              // can be cast AND use its hand ability, and both may hide the same number of payments. Visible
+              // text stays short; the accessible name says which move it belongs to, because adjacency is not
+              // part of an accessible name and is lost outright to a button list, to voice control, and to a
+              // flex row that wraps.
+              aria-label={`Pay differently for: ${c.label}`}
               onClick={() => onPay?.(c)}
             >
               {`Pay differently (${c.alternatives?.length ?? 0} other ${(c.alternatives?.length ?? 0) === 1 ? 'way' : 'ways'})`}
@@ -181,11 +201,7 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
           )}
           </Fragment>
         ))}
-        {yours && paying && (
-          <button data-command="payBack" className="btn btn--ghost" onClick={() => onPay?.(null)}>
-            Back
-          </button>
-        )}
+
         {yours && armed && (
           <button className="btn btn--ghost" data-command="cancel-concede" onClick={() => { setArmed(false) }}>
             Keep playing
