@@ -17,6 +17,13 @@ export default defineConfig({
   fullyParallel: true,
   // A failure here is a real defect, not a flake to be retried away.
   retries: 0,
+  /*
+   * Generous, because each test plays a REAL game against the AI and its length varies with the AI's
+   * decisions. The default 30s fired before the harness's own deadline could, so the harness could never
+   * report its own clearer error and a slow-but-correct game read as a failure. This must stay comfortably
+   * ABOVE the harness deadline so the binding constraint is the one with the useful message.
+   */
+  timeout: 180_000,
   reporter: [['list']],
   use: { baseURL: 'http://localhost:5199' },
   webServer: {
@@ -24,7 +31,9 @@ export default defineConfig({
     // developer already running the app on 5173 would leave these tests waiting on a URL nothing serves.
     command: 'pnpm --filter @fftcg/web dev --port 5199 --strictPort',
     url: 'http://localhost:5199',
-    reuseExistingServer: true,
+    // Reuse a dev server while iterating locally; never in CI, where an inherited server would mean the
+    // suite silently testing code that is not the code under test.
+    reuseExistingServer: !process.env['CI'],
     timeout: 60_000,
   },
 })

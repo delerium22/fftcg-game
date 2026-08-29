@@ -23,7 +23,7 @@ import { expect, test, type Page } from '@playwright/test'
  */
 async function playToTheEnd(page: Page): Promise<void> {
   await page.goto('/')
-  const deadline = Date.now() + 150_000
+  const deadline = Date.now() + 120_000
   while (Date.now() < deadline) {
     if (await page.locator('dialog.banner').count() > 0) return
     const action = page.locator('.prompt__actions button').filter({ hasNotText: 'Concede' }).first()
