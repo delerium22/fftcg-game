@@ -108,7 +108,23 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
   return (
     <div className="prompt table__prompt">
       <span className={yours ? 'prompt__phase prompt__phase--yours' : 'prompt__phase'}>{phase}</span>
-      <span className="prompt__text">
+      {/*
+        * The one channel that tells a player who cannot see the board what the game now wants.
+        *
+        * Before this it was an ordinary span, and the app had ZERO live regions of any kind — so after the
+        * AI moved, a screen-reader player was told neither what happened nor what was required, which in a
+        * turn-based game is the entire interface. `status` is the semantic for changed application state
+        * that must be presented WITHOUT taking focus; moving focus on a state change is the WCAG 3.2.5
+        * violation the focus restoration below already exists to avoid.
+        *
+        * `aria-live` and `aria-atomic` are explicit rather than left to `status`'s implicit values, which
+        * are not honoured consistently everywhere. Atomic because the instruction is one sentence and half
+        * of it is meaningless — "Choose a blocker for" without the attacker is worse than silence.
+        *
+        * This element must NOT be keyed or conditionally rendered: a live region has to exist before the
+        * content it announces, and one replaced on every change announces nothing at all.
+        */}
+      <span className="prompt__text" role="status" aria-live="polite" aria-atomic="true">
         {text}
         {aiThinking && <span className="thinking" aria-hidden="true"><span /><span /><span /></span>}
       </span>

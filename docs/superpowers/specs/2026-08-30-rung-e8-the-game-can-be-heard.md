@@ -1,6 +1,7 @@
 # Rung E8 — the game can be heard
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built. The defect was NAMED BY THE E7 CLOSURE REVIEW when
+> **STATUS: REFUSED as written; rewritten below and cleared to build.** The defect and the direction are
+> right; the acceptance could certify a broken live-region lifecycle. Read *Plan review outcome* first. The defect was NAMED BY THE E7 CLOSURE REVIEW when
 > asked for the strongest remaining one in `apps/web`, and rated CRITICAL.
 
 ## Why
@@ -95,3 +96,91 @@ promise to assistive technology, and neither jsdom nor Playwright announces anyt
 CONTRACT, and the file must say so. That is the same honest split as E7, where jsdom proved `showModal` was
 called and only a real browser proved the board went inert; here even the browser cannot close the loop.
 Claiming otherwise would be the exact failure this program keeps catching.
+
+---
+
+## Plan review outcome — refused, with the open questions ruled
+
+### The rulings I asked for
+
+- **`role="log"` on the existing event log**, labelled by the "Game log" heading. **Not** a summary region:
+  `log` exists precisely for sequential additions, and a summary would invent selection rules and prose
+  unrelated to an accessibility repair. My lean was right, and for the right reason.
+- **`.prompt__text` becomes a stable `role="status"` with explicit `aria-live="polite"` and
+  `aria-atomic="true"`.** Explicit atomicity because some environments do not honour the implicit value.
+- **Do NOT put the instruction into the restored button's label.** That is the option I floated in the
+  brief, and it is the worst of both: it creates the real duplicate announcement *and* still fails
+  card-only decisions, where there is no suitable button at all.
+- **Keep the existing focus restoration.** The status owns the instruction; restoration owns keyboard
+  position. They coexist.
+
+### CRITICAL 1 — my A3 mutation cannot fail, and A2 proves React works
+
+A3's mutation was "render the region only when there is text". `PromptStrip.text` is **never empty** — game
+over, thinking, waiting, or a prompt, there is always a string. So the mutant and the correct implementation
+have identical lifecycles and the criterion cannot bite.
+
+A2 was worse in a quieter way: "the region's content changes when the instruction changes" is trivially true
+of any element that renders the text at all. It proves the React dataflow, not that an **already-existing
+live container received an update** — which is the entire mechanism a live region depends on.
+
+Corrected: capture the `.prompt__text` **Element object** before a real transition, assert its exact
+hand-written old instruction, drive the transition, and assert the new instruction is inside **that same
+node** — with `key={text}` as the mutation, which replaces the element and must fail on node identity.
+
+Also noted, and worth stating rather than glossing: the span exists before every *subsequent* update but not
+before its own first content on mount, so A3 is explicitly about post-mount changes. First-mount
+announcement is a different implementation and not this rung.
+
+### CRITICAL 2 — my A5 contradicted a behaviour the repo already requires
+
+I wrote "no focus moves as a result of any of this", asserted as `activeElement` unchanged. But
+`PromptStrip` **deliberately** focuses a new action after the player used the strip and control returned —
+and `focus.test.tsx` requires that. So A5 was either red against correct behaviour, or written from an
+unrelated focus position and vacuous.
+
+Replaced with two obligations that can both hold: with focus on an external sentinel, the transition leaves
+that exact node focused; and the existing restoration test passes **unedited**.
+
+### MAJOR — A4 was narrower than the defect it was written for
+
+"Carries a real event from a real game" is satisfied by an opening line or by the player's own action. The
+named defect is that **the AI acts silently**. So: the same pre-existing `role="log"` node must gain an
+exact, hand-written **AI-authored** line after a real AI command, with the prior line still present.
+
+### MAJOR — my role-removal mutation was equivalent, and would have died in the locator
+
+With both `role="status"` and `aria-live="polite"` present, removing only the role leaves a working generic
+polite region. Four separate mutations are needed: the role, both channels together, atomicity, and
+politeness.
+
+And they must be driven through **class** locators, not role locators — otherwise removing the role makes
+the locator fail to match and the test dies before reaching its assertion. That is exactly how my `<div>`
+mutation of the game-over dialog fooled me yesterday: a red run whose redness came from the locator, not the
+claim.
+
+### MAJOR — my honesty caution was too absolute
+
+I wrote that jsdom can prove "none of the behaviour". Too strong. jsdom proves state-to-content flow, node
+identity, containment and focus. Playwright can assert the browser's **computed accessibility tree** via ARIA
+snapshots, and Chromium's accessibility protocol exposes computed `live`, `atomic` and `relevant`.
+
+The honest boundary: **automation proves the DOM and the browser-accessibility contract; only a real
+screen-reader exercise establishes that anything was actually announced** — its timing, ordering,
+interruption and duplication included. Overclaiming a limitation is its own kind of inaccuracy.
+
+## Revised acceptance
+
+- **E8-A1** `.prompt__text` carries `role="status"`, `aria-live="polite"`, `aria-atomic="true"`, pinned by
+  four independent mutations (role; both channels; atomicity; politeness), each driven by a class locator.
+- **E8-A2** Across a real transition, the exact new instruction appears inside the **same Element object**
+  captured beforehand, whose exact old instruction was asserted first.
+- **E8-A3** That node is not replaced across the transition — killed by `key={text}`. Explicitly about
+  post-mount changes.
+- **E8-A4** The event log is `role="log"`, labelled by its heading, and gains an exact hand-written
+  **AI-authored** line after a real AI command, with the previous line still present.
+- **E8-A5** With focus on an external sentinel, a transition leaves that exact node focused; and
+  `focus.test.tsx` passes unedited.
+- **E8-A6** A Playwright assertion on the computed accessibility tree, since that is available and I had
+  wrongly assumed it was not.
+- **E8-A7** Existing tests pass unedited; full gates green including `pnpm test:browser`.
