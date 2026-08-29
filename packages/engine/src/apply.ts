@@ -80,7 +80,7 @@ export function apply(state: GameState, command: Command): ApplyResult {
         [s, events] = applyActivateAbility(state, command.player, command.source, command.abilityId, command.payment, command.targets); break
       case 'pass': [s, events] = applyPass(state, command.player); break
       case 'concede':
-        s = { ...state, pending: null, resolution: EMPTY_RESOLUTION, result: { winner: opponentOf(command.player), reason: `player ${command.player} conceded (§2.1)` } }; events = []; break
+        s = { ...state, pending: null, resolution: EMPTY_RESOLUTION, result: { winner: opponentOf(command.player), cause: 'concede', reason: `player ${command.player} conceded (§2.1)` } }; events = []; break
     }
   } catch (e) {
     if (e instanceof IllegalCommandError) throw new IllegalCommandError(e.message, command)

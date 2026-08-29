@@ -1,7 +1,7 @@
 import {
   HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
-  type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
+  type GameResult, type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
   type ZoneTransitionReason,
 } from '@fftcg/engine'
 import { preferredPayment, preferredPaymentFor } from '@fftcg/ai'
@@ -455,6 +455,33 @@ function findFieldCardInView(v: PlayerView, id: CardId): FieldCard | undefined {
 function listPhrase(parts: readonly string[]): string {
   if (parts.length <= 1) return parts[0] ?? ''
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1] as string}`
+}
+
+/**
+ * How the game ended, said to a person.
+ *
+ * `result.reason` is the engine's own string and reads "player 0 has 7 damage (§12.4.1)". The terminal shows
+ * it and should: its whole vocabulary is P0/P1. This UI says "You" everywhere else, so showing it here puts
+ * a player index and a Comprehensive Rules citation in front of someone at the moment they lose.
+ *
+ * ONE formatter for both places this is shown — the banner and the game-over line in the event log. They
+ * were written separately, and fixing only the banner would have left the identical leak a few pixels lower,
+ * behind the overlay, in a log that is still in the DOM.
+ *
+ * Phrased from `cause` rather than parsed from `reason`, because the ending is not recoverable from the
+ * final position either: a loser on seven damage with an empty deck could have got there four different
+ * ways, and a concede leaves no trace in the state at all.
+ */
+export function describeResult(me: PlayerId, result: GameResult): string {
+  if (result.cause === 'bothReachedSeven') return 'You both reached 7 damage — the game is a draw.'
+  const youLost = result.winner !== me
+  const who = youLost ? 'You' : 'The AI'
+  switch (result.cause) {
+    case 'damage': return `${who} ${youLost ? 'have' : 'has'} taken 7 damage.`
+    case 'concede': return `${who} conceded.`
+    case 'deckOut': return `${who} could not draw from an empty deck.`
+    case 'damageWithEmptyDeck': return `${who} took damage with an empty deck.`
+  }
 }
 
 /** Mirrors `legalCommands`/`actingPlayer` against the view: `pending` outranks `priority` (see engine `legal.ts`). */

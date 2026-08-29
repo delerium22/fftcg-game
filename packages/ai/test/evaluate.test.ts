@@ -29,9 +29,9 @@ describe('evaluate', () => {
   })
   it('terminal states dominate', () => {
     const s = makeGame()
-    expect(evaluate({ ...s, result: { winner: 0, reason: 'x' } }, 0)).toBe(DEFAULT_WEIGHTS.terminal)
-    expect(evaluate({ ...s, result: { winner: 1, reason: 'x' } }, 0)).toBe(-DEFAULT_WEIGHTS.terminal)
-    expect(evaluate({ ...s, result: { winner: null, reason: 'x' } }, 0)).toBe(0)
+    expect(evaluate({ ...s, result: { winner: 0, cause: 'damage', reason: 'x' } }, 0)).toBe(DEFAULT_WEIGHTS.terminal)
+    expect(evaluate({ ...s, result: { winner: 1, cause: 'damage', reason: 'x' } }, 0)).toBe(-DEFAULT_WEIGHTS.terminal)
+    expect(evaluate({ ...s, result: { winner: null, cause: 'bothReachedSeven', reason: 'x' } }, 0)).toBe(0)
   })
   it('aggression 1 ignores my own material, aggression 0 ignores the opponent\'s', () => {
     let s = makeGame(); [s] = withField(s, 0, 'forwards', 'V-F3'); [s] = withField(s, 1, 'forwards', 'V-F3')

@@ -70,7 +70,7 @@ describe('apply', () => {
   })
   it('concede ends the game for either player, at any time', () => {
     const { state, events } = apply(makeGame(), { type: 'concede', player: 1 })
-    expect(state.result).toEqual({ winner: 0, reason: expect.stringMatching(/conced/i) })
+    expect(state.result).toEqual({ winner: 0, cause: 'concede', reason: expect.stringMatching(/conced/i) })
     expect(events.at(-1)?.type).toBe('gameOver')
     expect(legalCommands(state, 0)).toEqual([]); expect(legalCommands(state, 1)).toEqual([])
     expect(() => apply(state, { type: 'pass', player: 0 })).toThrow(/over/)

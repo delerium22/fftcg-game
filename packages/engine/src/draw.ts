@@ -18,7 +18,7 @@ export function drawCards(state: GameState, p: PlayerId, n: number): [GameState,
     // §3.1.2 — attempting to draw from an empty deck loses; the cards that COULD be drawn are still drawn.
     const s = updatePlayer(state, p, (q) => ({ ...q, deck: [], hand: [...q.hand, ...q.deck] }))
     return [
-      { ...s, result: { winner: opponentOf(p), reason: `player ${p} could not draw a card (§3.1.2)` } },
+      { ...s, result: { winner: opponentOf(p), cause: 'deckOut', reason: `player ${p} could not draw a card (§3.1.2)` } },
       [{ type: 'drew', player: p, count: ps.deck.length }],
     ]
   }

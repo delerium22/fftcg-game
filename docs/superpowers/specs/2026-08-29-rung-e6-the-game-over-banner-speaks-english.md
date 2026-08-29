@@ -1,6 +1,9 @@
 # Rung E6 — the game-over banner speaks English
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built.
+> **STATUS: REFUSED as written; rewritten below and cleared to build.** The engine change is *justified* and
+> `cause` is the right concept — the reviewer says so plainly. What it refused is the acceptance, which was
+> self-contradictory in one place and surjective-but-not-correct in three others, plus a reachability claim I
+> had just congratulated myself on getting right. Read *Plan review outcome* first.
 
 ## Why
 
@@ -121,3 +124,105 @@ Is `cause` the right shape, or should the engine expose the **loser** explicitly
 enough for every current sentence, but "you have taken 7 damage" is really a fact about the loser, and
 deriving the loser as `opponentOf(winner)` is only sound while every ending has exactly one. A draw already
 breaks that. I lean to `cause` alone, with the draw handled as its own branch, but I would rather be told.
+
+---
+
+## Plan review outcome — refused, and it caught me repeating the E5 mistake
+
+### CRITICAL 1 — E6-A6 was impossible as written
+
+"Existing tests pass with no expectation edited" **cannot coexist** with adding a required field. `toEqual`
+rejects the extra property, so five exact result assertions fail by construction
+(`legal-apply.test.ts:73`, `cr9-phases.test.ts:41`, `cr12-rules.test.ts:34/40/56`), and synthetic
+`GameResult` fixtures in `evaluate.test.ts` and `useGame.test.ts` stop typechecking.
+
+I wrote that criterion out of habit — it is the right one for a browser-only rung and nonsense for a type
+change. **Corrected:** no existing behavioural assertion may be removed, weakened, or changed, *except* to
+add the expected `cause`. Mechanical strengthening is allowed; loosening is not.
+
+### MAJOR 2 — fixing the banner would have left the identical leak in the log
+
+`describeEvent(gameOver)` renders `result.reason` on its own, and both the human and AI commit paths append
+that line to the production log. `Board` renders `EventLog` behind the banner. So A2 could have gone green —
+against a mounted Board handed `log: []` — while the finished DOM still said `player 0 has 7 damage
+(§12.4.1)` a few pixels lower.
+
+**Corrected:** ONE browser formatter feeding both the banner and `describeEvent`, and the assertion is over
+the whole real finished DOM *and* the production log, with mutations restoring `reason` at either consumer.
+
+### MAJOR 3 — A1 proved the wrong property
+
+Enumerating the union and collecting the causes that appear proves the producers are *surjective* over the
+enum. It says nothing about which producer emits which. **Swapping two construction sites' causes leaves the
+set identical and passes.** Corrected: assert the exact cause at each of the five producers, and add the
+paired-swap mutation.
+
+### MAJOR 4 — A5 guarded one string out of five
+
+The spec promised every `reason` stays exact and then checked a single cause. Stripping a citation or
+reweording any of the other four would survive. Corrected: pin the exact `{winner, cause, reason}` at all
+five producers — the same table that repairs A1.
+
+### MAJOR 5 — A3 could not catch a crossed wire
+
+One loser-side and one winner-side sentence catches "always You". It does not catch `deckOut` being mapped
+to the `damageWithEmptyDeck` sentence, or a missing `concede` branch. Corrected: table-driven over every
+non-draw cause × both outcomes, plus the draw, keeping one real-play mounted-Board test.
+
+### MAJOR 6 — the draw is NOT reachable by play, and I had just claimed the opposite
+
+Two commits ago I recorded, with some satisfaction, that finding the fifth construction site meant A4 was
+"not demanding a fixture that cannot exist". Wrong, in exactly the way E5 was wrong. The engine branch is
+required by CR §3.3 and is genuinely reachable *as a rule-process input* — the existing `cr12-rules.test.ts`
+hand-fills both damage zones to seven and calls `runRuleProcesses`. But **no operation damages both players
+simultaneously**: `dealPlayerDamage` takes one victim and rule processes run after each landed point, so no
+sequence of legal commands produces it.
+
+Corrected: A4 says plainly that its fixture is an engine-produced result from a synthetic rule-process
+input, not reachable through current legal play. The distinction that matters is *engine-produced* versus
+*hand-asserted* — the result object comes from the engine, only its input is synthetic.
+
+### MINOR 7 — a better shape than the one I proposed
+
+Not a `loser` field. Discriminate the union so the invalid combinations cannot be written at all:
+
+```ts
+type GameResult =
+  | { winner: PlayerId; cause: 'damage' | 'concede' | 'deckOut' | 'damageWithEmptyDeck'; reason: string }
+  | { winner: null; cause: 'bothReachedSeven'; reason: string }
+```
+
+`{ winner: null, cause: 'concede' }` becomes unrepresentable. `opponentOf(winner)` is sound for every
+non-draw result in a two-player game, and is simply never called on the draw.
+
+### MINOR 8 — my rationale for keeping `reason` was wrong
+
+`selfplay` does **not** consume it: `playGame` returns `winner` and `turns`, and failure output carries
+thrown errors. The CLI *renderer* consumes it (`render.ts:76`). `reason` stays — the terminal shows it — but
+for that reason, not the one I gave.
+
+### Ruled on, and confirmed
+
+- **Engine change: warranted.** `PlayerView` exposes both damage zones and decks but does not record the
+  terminal transition. Parsing `reason` is wrong. The only alternatives are a generic "You lost" or dropping
+  the line, neither of which preserves a cause-specific explanation.
+- **Exactly five result constructors**, no sixth. Worker timeouts fall back, self-play command caps throw,
+  illegal commands throw — none produces a `GameResult`.
+- **Blast radius is compilation, not runtime.** A new string field is safe for `structuredClone`;
+  `determinise` already copies `view.result`; the worker transports a `PlayerView`; sessions serialise and
+  replay commands rather than persisting a `GameResult`.
+- No rules change, so no `MVP0-SIMPLIFICATION` marker.
+
+## Revised acceptance
+
+- **E6-A1** The exact `{winner, cause, reason}` is asserted at all five producers, from engine-produced
+  results. Killed by the paired-swap mutation, not merely by a missing cause.
+- **E6-A2** A compile-time exhaustive map over `GameEndCause` pins the union, so a sixth cause fails to build
+  rather than silently defaulting.
+- **E6-A3** The finished browser DOM — banner *and* production log together — contains neither `player 0`
+  nor `§`, asserted on a real game reached by playing, alongside a hand-written expected sentence.
+- **E6-A4** Table-driven wording: every non-draw cause × loser-side and winner-side, plus the draw.
+- **E6-A5** The draw's sentence, from an engine-produced result whose rule-process input is synthetic and
+  **not reachable through legal play** — stated, not implied.
+- **E6-A6** No existing behavioural assertion removed, weakened, or changed, except to add the expected
+  `cause`. Full gates green.

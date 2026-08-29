@@ -38,7 +38,7 @@ describe('§9.2 draw phase', () => {
     let s = makeGame()
     s = { ...s, players: [{ ...s.players[0], deck: s.players[0].deck.slice(0, 1) }, s.players[1]] }
     const [t] = drawCards(s, 0, 2)
-    expect(t.result).toEqual({ winner: 1, reason: expect.stringMatching(/draw/i) })
+    expect(t.result).toEqual({ winner: 1, cause: 'deckOut', reason: expect.stringMatching(/draw/i) })
   })
 })
 

@@ -5,7 +5,7 @@ import {
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { buildChoiceSet, capitalise, describeChoice, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
+import { buildChoiceSet, capitalise, describeChoice, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
@@ -132,7 +132,7 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'returnedToHand': return { kind: 'event', text: `${qualifiedName(v, e.card)} returns to ${whoDoes(v, e.player, 'your hand', "the AI's hand")}` }
     case 'brokenByAbility': return { kind: 'event', text: `${qualifiedName(v, e.card)} is broken by ${qualifiedName(v, e.source)}` }
     case 'breakPrevented': return { kind: 'event', text: `${qualifiedName(v, e.card)} survives — it ${FLAG_LABEL[e.flag]}` }
-    case 'gameOver': return { kind: 'result', text: `Game over — ${e.result.winner === null ? 'a draw' : e.result.winner === v.me ? 'you win' : 'the AI wins'} (${e.result.reason})` }
+    case 'gameOver': return { kind: 'result', text: `Game over — ${e.result.winner === null ? 'a draw' : e.result.winner === v.me ? 'you win' : 'the AI wins'}. ${describeResult(v.me, e.result)}` }
     // `cast`/`attackDeclared`/`blockDeclared`/`cpGenerated` restate the move line; `activated` and
     // `summonResolvedNoEffect` are noise (the latter doubles up on `unimplementedAbility` for every summon in the pool).
     default: return null

@@ -1,6 +1,6 @@
 import { useEffect, useState, type JSX } from 'react'
 import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
-import { fieldCardDisplay } from '../game/commands.js'
+import { describeResult, fieldCardDisplay } from '../game/commands.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card } from './Card.js'
@@ -236,7 +236,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
       {view.result && (
         <div className="banner" role="alertdialog" aria-label="Game over">
           <h2 className="banner__title">{view.result.winner === null ? 'Draw' : view.result.winner === HUMAN ? 'You win' : 'The AI wins'}</h2>
-          <p className="banner__reason">{view.result.reason}</p>
+          <p className="banner__reason">{describeResult(view.me, view.result)}</p>
           <button className="btn btn--primary" onClick={restart}>Play again</button>
         </div>
       )}

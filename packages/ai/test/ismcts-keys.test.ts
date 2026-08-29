@@ -613,7 +613,7 @@ describe('observationKey (contract 6)', () => {
     differs({ ...view, resolution: { ...view.resolution, steps: 8 } }, 'agenda budget spent')
     differs({ ...view, resolution: { ...view.resolution, continuation: null } }, 'a queued continuation')
     differs({ ...view, resolution: { ...view.resolution, queue: [] } }, 'a queued frame')
-    differs({ ...view, result: { winner: 0, reason: 'test' } }, 'the game being over')
+    differs({ ...view, result: { winner: 0, cause: 'damage', reason: 'test' } }, 'the game being over')
   })
 
   it('treats the root hand as a multiset of codes, not an ordered list of ids', () => {

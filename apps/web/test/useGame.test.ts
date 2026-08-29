@@ -217,8 +217,8 @@ describe('describeEvent', () => {
     expect(describeEvent(view, { type: 'cpGenerated', player: HUMAN, cp: [['fire']] })).toBeNull()
   })
   it('reports the result from the human seat', () => {
-    expect(describeEvent(view, { type: 'gameOver', result: { winner: HUMAN, reason: 'damage' } })?.text).toContain('you win')
-    expect(describeEvent(view, { type: 'gameOver', result: { winner: AI, reason: 'damage' } })?.text).toContain('the AI wins')
+    expect(describeEvent(view, { type: 'gameOver', result: { winner: HUMAN, cause: 'damage', reason: 'damage' } })?.text).toContain('you win')
+    expect(describeEvent(view, { type: 'gameOver', result: { winner: AI, cause: 'damage', reason: 'damage' } })?.text).toContain('the AI wins')
   })
 })
 
@@ -1287,7 +1287,7 @@ describe('"The AI is thinking" is derived from the state, never stored beside it
     expect(actingPlayer(s), 'the walk never reached an AI decision').toBe(AI)
     expect(aiIsThinking(s)).toBe(true)
     // A finished game is not thinking, whoever happens to hold the turn.
-    expect(aiIsThinking({ ...s, result: { winner: HUMAN, reason: 'test' } })).toBe(false)
+    expect(aiIsThinking({ ...s, result: { winner: HUMAN, cause: 'damage', reason: 'test' } })).toBe(false)
   })
 
   it('the HOOK never publishes "thinking" alongside a live human choice — rendered, across commits', () => {

@@ -18,7 +18,7 @@ export function dealPlayerDamage(state: GameState, victim: PlayerId, sources: re
   const ps = state.players[victim]
   const top = ps.deck[0]
   if (top === undefined) {
-    return [{ ...state, result: { winner: opponentOf(victim), reason: `player ${victim} took damage with an empty deck (§3.1.3)` } }, []]
+    return [{ ...state, result: { winner: opponentOf(victim), cause: 'damageWithEmptyDeck', reason: `player ${victim} took damage with an empty deck (§3.1.3)` } }, []]
   }
   let s = updatePlayer(state, victim, (q) => ({ ...q, deck: q.deck.slice(1), damageZone: [...q.damageZone, top] }))
   const events: Event[] = [{ type: 'playerDamaged', player: victim, card: top }]
@@ -120,7 +120,7 @@ export function runRuleProcesses(state: GameState): [GameState, Event[]] {
   }
   // §12.4.1 seven damage; §3.3 simultaneous → draw
   const dead = ([0, 1] as const).filter((p) => s.players[p].damageZone.length >= DAMAGE_TO_LOSE)
-  if (dead.length === 2) s = { ...s, result: { winner: null, reason: 'both players reached 7 damage (§3.3)' } }
-  else if (dead.length === 1) s = { ...s, result: { winner: opponentOf(dead[0] as PlayerId), reason: `player ${dead[0]} has 7 damage (§12.4.1)` } }
+  if (dead.length === 2) s = { ...s, result: { winner: null, cause: 'bothReachedSeven', reason: 'both players reached 7 damage (§3.3)' } }
+  else if (dead.length === 1) s = { ...s, result: { winner: opponentOf(dead[0] as PlayerId), cause: 'damage', reason: `player ${dead[0]} has 7 damage (§12.4.1)` } }
   return [stopped(s), events]
 }

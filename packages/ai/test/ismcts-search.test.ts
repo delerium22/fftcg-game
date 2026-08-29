@@ -464,9 +464,9 @@ describe('rollouts are hard-bounded by a COMMAND cap (D-6)', () => {
 
   it('bounds every reward to [0,1] with terminals exact', () => {
     const s = makeGame()
-    expect(leafReward({ ...s, result: { winner: 0, reason: 'x' } }, 0)).toBe(1)
-    expect(leafReward({ ...s, result: { winner: 1, reason: 'x' } }, 0)).toBe(0)
-    expect(leafReward({ ...s, result: { winner: null, reason: 'x' } }, 0)).toBe(0.5)
+    expect(leafReward({ ...s, result: { winner: 0, cause: 'damage', reason: 'x' } }, 0)).toBe(1)
+    expect(leafReward({ ...s, result: { winner: 1, cause: 'damage', reason: 'x' } }, 0)).toBe(0)
+    expect(leafReward({ ...s, result: { winner: null, cause: 'bothReachedSeven', reason: 'x' } }, 0)).toBe(0.5)
     const r = leafReward(s, 0)
     expect(r).toBeGreaterThan(0)
     expect(r).toBeLessThan(1)

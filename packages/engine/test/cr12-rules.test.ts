@@ -31,13 +31,13 @@ describe('§12.4 rule processes', () => {
     let s = makeGame()
     s = { ...s, players: [{ ...s.players[0], damageZone: s.players[0].deck.slice(0, 7), deck: s.players[0].deck.slice(7) }, s.players[1]] }
     const [t] = runRuleProcesses(s)
-    expect(t.result).toEqual({ winner: 1, reason: expect.stringMatching(/7/) })
+    expect(t.result).toEqual({ winner: 1, cause: 'damage', reason: expect.stringMatching(/7/) })
   })
   it('§3.3: both at seven is a draw', () => {
     let s = makeGame()
     const hit = (p: typeof s.players[0]) => ({ ...p, damageZone: p.deck.slice(0, 7), deck: p.deck.slice(7) })
     s = { ...s, players: [hit(s.players[0]), hit(s.players[1])] }
-    expect(runRuleProcesses(s)[0].result).toEqual({ winner: null, reason: expect.any(String) })
+    expect(runRuleProcesses(s)[0].result).toEqual({ winner: null, cause: 'bothReachedSeven', reason: expect.any(String) })
   })
 })
 
@@ -53,7 +53,7 @@ describe('dealPlayerDamage', () => {
   it('§3.1.3: damage with an empty deck loses', () => {
     let s = makeGame()
     s = { ...s, players: [s.players[0], { ...s.players[1], deck: [] }] }
-    expect(dealPlayerDamage(s, 1, null)[0].result).toEqual({ winner: 0, reason: expect.stringMatching(/empty/i) })
+    expect(dealPlayerDamage(s, 1, null)[0].result).toEqual({ winner: 0, cause: 'damageWithEmptyDeck', reason: expect.stringMatching(/empty/i) })
   })
   it('logs a skipped EX Burst', () => {
     let s = makeGame({ defs: [...VANILLA_POOL, makeDef({ code: 'V-EX', exBurst: true, hasAbilities: true })] })

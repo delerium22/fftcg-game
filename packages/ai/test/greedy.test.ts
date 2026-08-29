@@ -159,7 +159,7 @@ describe('GreedyAgent', () => {
     expect(() => agent(s).decide(viewFor(s, 0), legalCommands(s, 0))).toThrow(/no candidate/)
   })
   it('C6: throws only when legal is genuinely empty (no fallback pool at all)', () => {
-    const s = { ...makeGame(), result: { winner: 0 as const, reason: 'test' } }   // a finished game: legalCommands returns []
+    const s = { ...makeGame(), result: { winner: 0 as const, cause: 'concede' as const, reason: 'test' } }   // a finished game: legalCommands returns []
     const a = agent(s)
     expect(() => a.decide(viewFor(s, 1), [])).toThrow()
   })

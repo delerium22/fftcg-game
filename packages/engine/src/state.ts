@@ -95,7 +95,24 @@ export type Pending =
   // is equally true of a top-3 peek at a 3-card deck, so a peek was described as a search on exactly the turns
   // a deck is running out (Codex MAJOR). Mirrors `deckExposed.scope`, and comes from the same `eff.count`.
   | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; scope: 'deck' | 'top'; filter?: TargetFilter; to: 'hand' | 'field' }
-export interface GameResult { winner: PlayerId | null; reason: string }   // winner null = draw
+/**
+ * How a game ended, as a fact rather than as prose.
+ *
+ * `reason` is the precise internal string, citation and all — the terminal prints it, and its whole
+ * vocabulary is `P0`/`P1`, so "player 0 has 7 damage (§12.4.1)" reads correctly there. A browser that says
+ * "You" everywhere else must not show it to the person who just lost, and it cannot rewrite it either:
+ * `cause` exists because the ending is NOT recoverable from the final position. A loser sitting on seven
+ * damage with an empty deck could have arrived by §12.4.1, §3.1.3 or §3.1.2, and a concede leaves no trace
+ * in the state at all.
+ *
+ * Discriminated so the impossible combinations cannot be written. A draw is exactly `bothReachedSeven`
+ * (§3.3, simultaneous defeat), and every other ending has exactly one winner — which is what makes
+ * `opponentOf(winner)` sound for naming the loser, and why it is never called on the draw.
+ */
+export type GameEndCause = 'damage' | 'concede' | 'deckOut' | 'damageWithEmptyDeck' | 'bothReachedSeven'
+export type GameResult =
+  | { winner: PlayerId; cause: Exclude<GameEndCause, 'bothReachedSeven'>; reason: string }
+  | { winner: null; cause: 'bothReachedSeven'; reason: string }
 export interface GameState {
   rng: Rng
   turn: number                 // 1-based; 0 during setup
