@@ -32,21 +32,66 @@ import { expect, test } from '@playwright/test'
  * defect this rung was written to close.
  */
 
+/**
+ * The AX node for a selector, or null. `ignored` is the field that matters: `aria-hidden="true"` leaves an
+ * element rendered and visible while removing it from the accessibility API entirely, so a live region can
+ * be perfectly configured and still have nothing announceable inside it.
+ */
+type AxNode = {
+  role?: { value?: string }
+  name?: { value?: string }
+  ignored?: boolean
+  properties?: { name: string; value: { value?: unknown } }[]
+}
+
+async function axTree(page: import('@playwright/test').Page, selector: string): Promise<AxNode[]> {
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Accessibility.enable')
+  const { root } = await cdp.send('DOM.getDocument') as { root: { nodeId: number } }
+  const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector }) as { nodeId: number }
+  if (!nodeId) return []
+  const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false }) as { nodes: AxNode[] }
+  return nodes
+}
+
+
+test('the prompt and the log EXPOSE their content, not merely their containers', async ({ page }) => {
+  /*
+   * The survivor every other test in both suites misses. `aria-hidden="true"` on the log's paragraphs — or
+   * around the prompt's text — leaves everything visible and leaves the regions perfectly configured: role,
+   * name, politeness, atomicity and relevance all still correct. But the content is gone from the
+   * accessibility API, so there is nothing for the region to announce, and the original defect is back.
+   *
+   * Every prior assertion inspected the CONTAINER. A live region with nothing announceable inside it passes
+   * all of them.
+   */
+  await page.goto('/')
+  await expect(page.locator('.prompt__text')).toBeVisible()
+  // Playwright's ARIA snapshot renders the ACCESSIBILITY TREE, so anything `aria-hidden` simply is not in
+  // it. That is the property under test: the text has to be reachable by assistive technology, not merely
+  // present in the DOM. A CDP node query is the wrong instrument here — `fetchRelatives` returns ancestors,
+  // not the descendant text a region actually announces.
+  const promptText = (await page.locator('.prompt__text').textContent())?.trim() ?? ''
+  expect(promptText, 'the prompt is empty, so this test asserts nothing').not.toBe('')
+  const promptTree = await page.locator('.prompt').ariaSnapshot()
+  expect(promptTree, 'the prompt’s text is hidden from assistive technology, so nothing can be announced')
+    .toContain(promptText)
+
+  await expect(page.locator('.log__line').first()).toBeVisible()
+  const lineText = (await page.locator('.log__line').first().textContent())?.trim() ?? ''
+  expect(lineText, 'the log is empty, so this test asserts nothing').not.toBe('')
+  const logTree = await page.locator('.log__lines').ariaSnapshot()
+  expect(logTree, 'the log’s lines are hidden from assistive technology, so nothing is announced')
+    .toContain(lineText)
+})
+
 test('the browser computes the prompt as a polite, atomic status region', async ({ page }) => {
   await page.goto('/')
   const prompt = page.locator('.prompt__text')
   await expect(prompt).toBeVisible()
 
-  // Chromium's own computed accessibility node, via CDP — not the attributes we wrote.
-  const cdp = await page.context().newCDPSession(page)
-  await cdp.send('Accessibility.enable')
-  const { root } = await cdp.send('DOM.getDocument') as { root: { nodeId: number } }
-  const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.prompt__text' }) as { nodeId: number }
-  expect(nodeId, 'the prompt text is not in the document').toBeGreaterThan(0)
-  const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false }) as {
-    nodes: { role?: { value?: string }; properties?: { name: string; value: { value?: unknown } }[] }[]
-  }
-  const node = nodes[0]
+  // Chromium's own computed accessibility node — not the attributes we wrote.
+  const node = (await axTree(page, '.prompt__text'))[0]
   expect(node, 'the prompt has no accessibility node at all').toBeDefined()
   expect(node!.role?.value, 'the browser does not compute the prompt as a status region').toBe('status')
 
@@ -63,15 +108,7 @@ test('the browser computes the prompt as a polite, atomic status region', async 
 
 test('the browser computes the event log as a log region with a name', async ({ page }) => {
   await page.goto('/')
-  const cdp = await page.context().newCDPSession(page)
-  await cdp.send('Accessibility.enable')
-  const { root } = await cdp.send('DOM.getDocument') as { root: { nodeId: number } }
-  const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.log__lines' }) as { nodeId: number }
-  expect(nodeId, 'the event log is not in the document').toBeGreaterThan(0)
-  const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false }) as {
-    nodes: { role?: { value?: string }; name?: { value?: string }; properties?: { name: string; value: { value?: unknown } }[] }[]
-  }
-  const node = nodes[0]
+  const node = (await axTree(page, '.log__lines'))[0]
   // Guarded before dereferencing, like the prompt test: an absent AX node would otherwise throw a raw
   // TypeError before any matcher ran, and a crash is not a diagnosis.
   expect(node, 'the event log has no accessibility node at all').toBeDefined()
