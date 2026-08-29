@@ -193,10 +193,15 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
         <Zone label="AI Forwards" empty={!view.fields[AI].forwards.length}>{field(AI, 'forwards')}</Zone>
       </section>
 
-      <PromptStrip view={view} choices={choices} shown={shown} aiThinking={aiThinking} onChoose={(c) => { setSelected(null); choose(c) }} />
 
       {/* `.table__seat--player` is column-reverse, so this list reads bottom-up on screen: the status bar sits
           at the outer edge and forwards end up nearest the prompt strip, meeting the AI's across it. */}
+      {/* DOM ORDER IS THE READING AND TAB ORDER, and it deliberately differs from the visual layout: the
+          grid places every section by explicit `grid-area`, so moving these in the markup moves nothing on
+          screen. The prompt used to come FIRST, which meant a keyboard player at the mulligan reached
+          "Keep hand", "Mulligan" and "Concede" — the irreversible controls — before reaching any of the
+          five cards they were being asked about. Evidence before commitment: the opponent's board, then
+          your own, then your hand, then the buttons. */}
       <section className="table__seat table__seat--player">
         <Seat v={view} p={HUMAN} active={view.priority === HUMAN || view.pending?.player === HUMAN} />
         <Zone label="Your Backups" compact empty={!view.fields[HUMAN].backups.length}>{field(HUMAN, 'backups')}</Zone>
@@ -230,6 +235,9 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
           })}
         </div>
       </section>
+
+      <PromptStrip view={view} choices={choices} shown={shown} aiThinking={aiThinking} onChoose={(c) => { setSelected(null); choose(c) }} />
+
 
       <aside className="table__rail">
         <CardDetails def={inspected === null ? undefined : view.defs[inspected.code]} action={inspected === null ? null : inspected.action} />

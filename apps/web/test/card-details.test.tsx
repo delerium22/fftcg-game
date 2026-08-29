@@ -221,6 +221,28 @@ describe('the details panel, driven by keyboard focus', () => {
   })
 })
 
+describe('the route a keyboard takes through the board', () => {
+  it('reaches the cards BEFORE the buttons that commit to them', () => {
+    // At the mulligan the prompt offers "Keep hand", "Mulligan" and "Concede" — irreversible, all three —
+    // and the DOM used to render it before the hand, so a keyboard player met the controls before the five
+    // cards they were being asked about. The grid places every section by explicit `grid-area`, so fixing
+    // the order moves nothing on screen and NOTHING VISUAL WOULD REVEAL A REGRESSION. Hence this test.
+    mount(mulliganState())
+    const order = [...document.querySelectorAll<HTMLElement>('.table__hand, .table__prompt, .table__seat--player')]
+      .map((el) => el.className.split(' ').find((c) => c.startsWith('table__')) ?? '')
+    expect(order.indexOf('table__hand'), 'the hand is not rendered').toBeGreaterThanOrEqual(0)
+    expect(order.indexOf('table__prompt'), 'the prompt is not rendered').toBeGreaterThanOrEqual(0)
+    expect(
+      order.indexOf('table__hand') < order.indexOf('table__prompt'),
+      'the commitment controls come before the cards again',
+    ).toBe(true)
+    expect(
+      order.indexOf('table__seat--player') < order.indexOf('table__hand'),
+      'your own board should be read before your hand',
+    ).toBe(true)
+  })
+})
+
 describe('the printed text as an accessible description (rung E3b-1)', () => {
   /** What a screen reader would announce as the DESCRIPTION of `el`, resolved through aria-describedby. */
   const describedText = (el: HTMLElement): string => {
