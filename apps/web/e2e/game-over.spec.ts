@@ -65,7 +65,18 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
     expect(onBoard, `Tab ${i + 2} escaped the dialog onto the board`).toBe(false)
   }
 
-  // 5. THE decisive step. Ask a board control to take focus directly; a modal dialog must refuse it. A Tab
+  // 5. The REVERSE boundary. Shift+Tab from the first stop must not walk backwards onto the board either —
+  //    a containment that only holds in one direction is not containment, and forward Tabs alone cannot see
+  //    it. Return to "Play again" first, so the traversal starts from a known place.
+  await page.locator('dialog.banner button').focus()
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press('Shift+Tab')
+    const onBoard = await page.evaluate(() =>
+      !!document.activeElement?.closest('.table__seat, .table__hand, .table__prompt, .table__rail'))
+    expect(onBoard, `Shift+Tab ${i + 1} escaped the dialog backwards onto the board`).toBe(false)
+  }
+
+  // 6. THE decisive step. Ask a board control to take focus directly; a modal dialog must refuse it. A Tab
   //    count alone cannot distinguish a real modal from a `<div>` that happens to be last in the DOM.
   const refused = await page.evaluate(() => {
     const outside = document.querySelector<HTMLElement>('.seat button, .hand [role="gridcell"], .prompt__actions button')
@@ -75,7 +86,7 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
   })
   expect(refused, 'a board control behind the modal dialog could still be focused').toBe('refused')
 
-  // 6. Escape leaves it open — the game is over and there is nothing to dismiss to.
+  // 7. Escape leaves it open — the game is over and there is nothing to dismiss to.
   await page.keyboard.press('Escape')
   expect(await dialog.evaluate((d: HTMLDialogElement) => d.open), 'Escape closed the dialog onto a dead board').toBe(true)
 })

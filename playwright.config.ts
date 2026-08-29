@@ -31,9 +31,19 @@ export default defineConfig({
     // developer already running the app on 5173 would leave these tests waiting on a URL nothing serves.
     command: 'pnpm --filter @fftcg/web dev --port 5199 --strictPort',
     url: 'http://localhost:5199',
-    // Reuse a dev server while iterating locally; never in CI, where an inherited server would mean the
-    // suite silently testing code that is not the code under test.
-    reuseExistingServer: !process.env['CI'],
+    /*
+     * NEVER reuse. Not even locally, which is where it matters most.
+     *
+     * A responsive server on this port is accepted on trust, so a stale one serving an OLDER build makes a
+     * mutation in the checkout irrelevant: Playwright never starts the current code, and both tests pass
+     * against a modal that is no longer there. That is not a hypothetical — it is exactly how I verified
+     * this suite could fail, and the verification was only sound because the running server happened to be
+     * serving HEAD. A proof whose validity depends on a coincidence is not a proof.
+     *
+     * Guarding on `CI` protects the machine that needs it least. Starting our own server costs a few
+     * seconds; a false green costs the whole point of having a browser suite.
+     */
+    reuseExistingServer: false,
     timeout: 60_000,
   },
 })
