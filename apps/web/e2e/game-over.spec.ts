@@ -4,32 +4,34 @@ import { expect, test, type Page } from '@playwright/test'
  * WHICH STEPS ACTUALLY EARN THEIR PLACE, measured rather than assumed.
  *
  *   step 2 (focus starts on the heading)  — fails on its own when focus is sent to the button instead.
- *   step 3 (first Tab reaches the action) — no mutation constructed; it is the precondition for step 4.
+ *   step 3 (first Tab reaches the action) — give "Play again" `tabIndex={-1}`: heading focus, modality,
+ *                                           direct-focus refusal and Escape all still pass, and only this
+ *                                           step notices that the sole action is sequentially unreachable.
  *   step 4 (forward Tabs stay inside)     — catches `show()` in place of `showModal()`, at the third Tab.
  *                                           This is the step that detects a genuinely non-modal dialog.
  *   step 5 (Shift+Tab stays inside)       — containment in one direction is not containment; no forward
  *                                           Tab can see a backwards escape.
- *   step 6 (direct focus is refused)      — I could NOT construct a mutation this catches alone: any
- *                                           implementation that loses inertness also loses tab containment,
- *                                           so step 4 fires first. Kept because it tests a different
- *                                           mechanism (inertness, not tab order) and costs nothing.
+ *   step 6 (direct focus is refused)      — I claimed I could not construct a mutation this catches alone.
+ *                                           I was wrong, and the review built one: `show()` plus a
+ *                                           hand-written bidirectional Tab trap. Steps 2–5 all pass — the
+ *                                           trap really does contain Tab — while `outside.focus()` succeeds,
+ *                                           because a scripted trap moves focus back but never makes the
+ *                                           board inert. Only this step sees the difference.
  *   step 7 (Escape refused)               — fails on its own when `onCancel` stops preventing default.
  *
  * Saying "step 6 is unproven on its own" is better than implying every step is load-bearing.
  */
 
 /**
- * The game-over dialog's modality, proved in a real browser — the six-step boundary rung E7's plan review
- * required, and which nothing in jsdom can supply.
+ * The game-over dialog's modality, proved in a real browser — the boundary rung E7's plan review required,
+ * and which nothing in jsdom can supply.
  *
  * This jsdom implements neither `showModal` nor `inert`, so the unit tests can only prove the lifecycle
  * CALLS `showModal` and that the accessible relationships are wired. Whether the board actually leaves the
  * tab order, whether Tab is contained, and whether Escape is refused are claims about the platform, and the
  * platform is the only thing that can answer them.
  *
- * The step that matters most is the fifth. With focus starting on the title, the FIRST Tab lands on
- * "Play again" even when the board is entirely non-modal — so a one-Tab check would pass against a plain
- * `<div>`. Only asking a board control to take focus, and being refused, distinguishes the two.
+ * Which step catches what is recorded above, from mutations rather than from reasoning about them.
  */
 
 /**
