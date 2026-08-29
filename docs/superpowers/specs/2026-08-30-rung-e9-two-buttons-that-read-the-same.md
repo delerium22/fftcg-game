@@ -223,3 +223,33 @@ a passing test, it is an absent one.
 
 **11 tests. Full gates green:** 901 jsdom, 6 Playwright, typecheck, lint, and 200/200 selfplay at seed 1 with
 zero failures and zero unimplemented abilities.
+
+---
+
+## Second half, found by playing the fix
+
+Playing the finished rung in the browser confirmed the case it was built for — two hand cards reading
+`Lightning (1)` and `Lightning (2)`, each card's accessible name matching its button. The same list also held
+**two buttons reading "Discard Red Mage"**, cost 2 and cost 1.
+
+They are different cards. This deck runs `1-121C` (2 CP) and `18-069C` (1 CP), three of each, both printed
+"Red Mage". `occurrenceOf` keyed on the CODE, so it called each of them unique and numbered neither.
+
+**E9-A1 passed the whole time.** Its fixture happened not to hold both. A criterion that only checks the hand
+it was handed is not a criterion — that is the same failure as the four refusals before this rung, and it
+survived my own mutation table because every mutation I chose attacked the code I had written rather than the
+case I had not thought of.
+
+The key is now the printed NAME. The number does not claim two cards are the same card; it says which
+rendered card a button acts on, and the card shows its own cost. That is the entire guarantee this rung owes.
+
+| # | Mutation | Result |
+|---|---|---|
+| 6 | key `occurrenceOf` on the code again | **2 fail**: both Red Mage naming tests |
+| 4' | `Board.tsx` drops the marker | **2 fail**: both rendered tests, same-code and same-name |
+
+Browser: the same-code case and the lone-Red-Mage-stays-bare case were both confirmed by playing. A hand
+holding BOTH Red Mages did not come up in forty rounds, so that case is pinned by a deterministic test rather
+than claimed from a screenshot.
+
+**16 tests. Gates green:** 906 jsdom, 6 Playwright, typecheck, lint, 200/200 selfplay seed 1.

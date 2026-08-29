@@ -173,6 +173,80 @@ describe('two cards of the same code', () => {
   })
 })
 
+describe('two DIFFERENT cards that print the same name', () => {
+  // The second half of this rung, found the same way as the first — by playing. This deck runs both Red Mages:
+  // `1-121C` at two CP and `18-069C` at one, three of each. They are different cards printing one name, so
+  // keying the disambiguator on the CODE called each unique and numbered neither, and the strip went on
+  // offering two buttons reading "Discard Red Mage" for cards that cost different amounts.
+  //
+  // The E9-A1 test above passed throughout, because its fixture happened not to hold both. An acceptance
+  // criterion that only checks the hand it was handed is not a criterion.
+  const RED_MAGE = ['1-121C', '18-069C'] as const
+
+  function handOf(...codes: string[]): PlayerView {
+    const s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+    const v = structuredClone(viewFor(s, HUMAN)) as PlayerView
+    v.hand = codes.map((code, i) => {
+      const id = 900 + i
+      v.cards[id] = { id, code, owner: HUMAN }
+      v.defs[code] = CARD_DEFS.find((d) => d.code === code)!
+      return id
+    })
+    return v
+  }
+
+  it('are the same printed name on two different cards — the premise, checked', () => {
+    const [a, b] = RED_MAGE.map((code) => CARD_DEFS.find((d) => d.code === code))
+    expect(a, `${RED_MAGE[0]} is not in the pool`).not.toBe(undefined)
+    expect(b, `${RED_MAGE[1]} is not in the pool`).not.toBe(undefined)
+    expect(a!.name).toBe(b!.name)
+    expect(a!.cost, 'the two Red Mages no longer differ, so this case is not what it says').not.toBe(b!.cost)
+  })
+
+  it('are numbered apart even though their codes differ', () => {
+    const v = handOf(...RED_MAGE)
+    const name = v.defs[RED_MAGE[0]]!.name
+    expect(qualifiedName(v, 900)).toBe(`${name} (1)`)
+    expect(qualifiedName(v, 901)).toBe(`${name} (2)`)
+  })
+
+  it('number a mixed hand across BOTH cards, in hand order', () => {
+    // Two of one Red Mage and one of the other: three cards, one name, numbers 1..3 in the order they sit.
+    const v = handOf(RED_MAGE[0], RED_MAGE[1], RED_MAGE[0])
+    const name = v.defs[RED_MAGE[0]]!.name
+    expect([900, 901, 902].map((id) => qualifiedName(v, id)))
+      .toEqual([`${name} (1)`, `${name} (2)`, `${name} (3)`])
+  })
+
+  it('number the RENDERED Red Mages too, so the buttons point at findable cards', () => {
+    // The browser confirmed the same-code half of this rung directly (two hand cards reading "Lightning (1)"
+    // and "Lightning (2)"), and confirmed a lone Red Mage stays bare. A hand holding BOTH Red Mages did not
+    // come up in forty rounds of play, so it is pinned here instead of claimed from a screenshot.
+    const v = handOf(...RED_MAGE)
+    const api: GameApi = {
+      view: v, choices: buildChoiceSet(v, []), log: [], aiThinking: false,
+      choose: (_c: Choice) => {}, restart: () => {},
+    }
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+    act(() => { root!.render(createElement(Board, { game: api })) })
+
+    const name = v.defs[RED_MAGE[0]]!.name
+    for (const [i, id] of [900, 901].entries()) {
+      const cell = document.querySelector<HTMLElement>(`.hand [data-card-id="${id}"]`)
+      expect(cell, `Red Mage ${i + 1} is not rendered`).not.toBe(null)
+      const said = cell!.querySelector('button')?.getAttribute('aria-label') ?? cell!.textContent ?? ''
+      expect(said, 'the rendered Red Mage does not say which one it is').toContain(`${name} (${i + 1})`)
+    }
+  })
+
+  it('leave a lone Red Mage bare, even with the other one absent', () => {
+    const v = handOf(RED_MAGE[0], '27-124S')
+    expect(occurrenceOf(v, 900), 'a card alone under its name was numbered anyway').toBe(null)
+  })
+})
+
 describe('the Miner position that refused the collapse (E9-A2)', () => {
   it('is reachable by playing, not hypothetical', () => {
     expect(MINER_ASYMMETRY, 'never reached the Miner asymmetry, so this rung rests on nothing').not.toBe(null)

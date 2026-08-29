@@ -94,8 +94,8 @@ export const ownedCard = (v: PlayerView, owner: PlayerId, id: CardId): string =>
   `${possessive(v, owner)} ${bareName(v, id)}`
 
 /**
- * Which copy this is, when a zone holds more than one card of the same code — 1-based, or `null` when the
- * card is unique where it sits.
+ * Which copy this is, when a zone holds more than one card reading the same NAME — 1-based, or `null` when
+ * the card is alone under its name where it sits.
  *
  * Two identical cards in hand produced two buttons reading "Discard Luso, Shantotto", and a player could not
  * tell which copy either one acted on. The first plan for this rung was to COLLAPSE them as equivalent. They
@@ -106,22 +106,31 @@ export const ownedCard = (v: PlayerView, owner: PlayerId, id: CardId): string =>
  *
  * So the player is told which is which, rather than having the choice made for them.
  *
+ * Keyed on the printed NAME and not on the code, which is the second half of this rung and was found the same
+ * way as the first — by playing. This deck runs BOTH Red Mages, `1-121C` at two CP and `18-069C` at one, three
+ * of each; they are different cards that print the same name. Keying on the code called each of them unique
+ * and numbered neither, so the strip still offered two buttons reading "Discard Red Mage" for cards that cost
+ * different amounts. The label a player reads is the name, so the name is what has to be made unambiguous.
+ *
+ * The number does not claim the two are the same card — it says which rendered card the button acts on, and
+ * the card itself shows the cost. That is the whole guarantee this rung owes.
+ *
  * Zone-scoped: a Cloud in hand and a Cloud on the field are already distinguished by everything around them,
  * and numbering across zones would attach "(2)" to cards nothing else in the interface separates.
  */
 export function occurrenceOf(v: PlayerView, id: CardId): number | null {
-  const code = v.cards[id]?.code
   const owner = v.cards[id]?.owner
-  if (code === undefined || owner === undefined) return null
+  if (v.cards[id]?.code === undefined || owner === undefined) return null
+  const name = bareName(v, id)
   const zone = v.hand.includes(id)
     ? v.hand
     : [...v.fields[owner].forwards, ...v.fields[owner].backups].some((c) => c.id === id)
       ? [...v.fields[owner].forwards, ...v.fields[owner].backups].map((c) => c.id)
       : null
   if (zone === null) return null
-  const sameCode = zone.filter((other) => v.cards[other]?.code === code)
-  if (sameCode.length < 2) return null
-  const i = sameCode.indexOf(id)
+  const sameName = zone.filter((other) => bareName(v, other) === name)
+  if (sameName.length < 2) return null
+  const i = sameName.indexOf(id)
   return i < 0 ? null : i + 1
 }
 
