@@ -11,6 +11,7 @@ import { hotseat } from './hotseat.js'
 import { mirrorTournament } from './mirror.js'
 import { selfPlay } from './selfplay.js'
 import { deckOrder } from './deckorder.js'
+import { unknownFlagError } from './flags.js'
 
 // repo root, not process.cwd() — `pnpm --filter @fftcg/cli <script>` runs with cwd set to apps/cli,
 // so the default deck path must be anchored to this file's location rather than the invocation cwd.
@@ -68,6 +69,11 @@ const usage = [
 function parsed<T>(f: () => T): T {
   try { return f() } catch (e) { console.error(`${e instanceof Error ? e.message : String(e)}\n\n${usage}`); process.exit(2) }
 }
+
+// A flag this command does not read is an ERROR, not something to ignore — see `flags.ts` for the forty
+// minutes that bought this.
+const flagError = cmd === undefined ? null : unknownFlagError(cmd, rest)
+if (flagError !== null) { console.error(`${flagError}\n\n${usage}`); process.exit(2) }
 
 if (cmd === 'hotseat') {
   await hotseat({ seed, decks: [deck, deck], defs })

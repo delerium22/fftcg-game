@@ -54,9 +54,19 @@ shared helper is what lets the helper be pure and total.
   function. Verified by mutation, per copy, because "calls the same function" is not "covers that call
   site" — a lesson from an earlier review this session. ✅
 - **E2-A4** No behaviour change anywhere: full gates green and `selfplay --games 200 --seed 1` 200/200. ✅
-  The 120-game mirror benchmark was still running when this landed; the number it must reproduce is 75.0 %,
-  and a different one would mean the walk is NOT equivalent after all. Recorded here rather than asserted,
-  because writing ✅ beside an unfinished measurement is how a spec starts lying.
+  The mirror benchmark **corroborates but does not strictly reproduce** the recorded figure, and the reason
+  is worth writing down. I ran `mirror --games 120 --seed 1 --iterations 200` expecting the README's
+  120-game measurement. `mirror` has no `--games` flag — it counts in `--pairs`, each pair being one seed
+  played twice with the seats swapped — so the flag was silently ignored and the default 200 pairs ran
+  instead: **400 games, `pointScore` 0.7475, CI95 [70.25, 79.25]**. The README's 75.0 % sits comfortably
+  inside that interval, and 400 games is the tighter measurement, but it is a different sample from a
+  different configuration and calling it a reproduction would be false precision.
+
+  What actually carries E2 is the code and the mutations: three implementations that were identical by
+  inspection, 44 tests across five packages that fail if the walk breaks, and a deterministic
+  `selfplay --seed 1` that is unchanged. The tournament is corroboration, not the proof.
+
+  The silently-ignored flag was itself a defect and is now fixed — see `apps/cli/src/flags.ts`.
 
 ## Mutations run
 
