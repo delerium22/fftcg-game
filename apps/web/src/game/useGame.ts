@@ -5,7 +5,7 @@ import {
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { buildChoiceSet, capitalise, describeChoice, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
+import { buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
@@ -469,7 +469,12 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
   const handlers = useMemo(() => aiHandlers({ commit, log: appendLog }), [commit, appendLog])
 
   const view = useMemo(() => viewFor(state, HUMAN), [state])
-  const choices = useMemo(() => buildChoiceSet(view, preferredChoices(view, legalCommands(state, HUMAN))), [state, view])
+  // The RAW legal commands go to `paymentAlternatives` and the COLLAPSED ones to `buildChoiceSet`: the strip
+  // shows one action per move, and the other ways to fund that move ride along on it (rung E11).
+  const choices = useMemo(() => {
+    const legal = legalCommands(state, HUMAN)
+    return buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
+  }, [state, view])
 
   const choose = useCallback((choice: Choice): void => {
     const current = stateRef.current

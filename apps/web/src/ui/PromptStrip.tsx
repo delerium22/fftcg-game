@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, JSX } from 'react'
 import type { PlayerView } from '@fftcg/engine'
 import type { Choice, ChoiceSet } from '../game/types.js'
@@ -27,12 +27,16 @@ const isAbility = (c: Choice): boolean => c.command.type === 'chooseMode' || c.c
  * it is and what the game is waiting for. Every command with no card subject (pass, mulligan, concede, the
  * no-block option) is a button here, plus whatever the currently selected card can do.
  */
-export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
+export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying, onPay }: {
   view: PlayerView
   choices: ChoiceSet
   shown: Choice[]
   aiThinking: boolean
   onChoose: (c: Choice) => void
+  /** The move whose other payments are on show, or `null` for the ordinary strip (rung E11). */
+  paying?: Choice | null
+  /** Open that move's payments, or close them with `null`. */
+  onPay?: (c: Choice | null) => void
 }): JSX.Element {
   const yours = !view.result && (view.pending?.player ?? view.priority) === HUMAN
   const phase = `Turn ${view.turn} · ${PHASE_LABEL[view.phase] ?? view.phase}`
@@ -137,8 +141,8 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
       </span>
       <div className="prompt__actions" style={ACTIONS_WRAP} ref={actions}>
         {yours && shown.map((c, i) => (
+          <Fragment key={`${c.command.type}:${c.label}:${i}`}>
           <button
-            key={`${c.command.type}:${c.label}:${i}`}
             data-command={c.command.type}
             className={c.command.type === 'concede' ? 'btn btn--danger' : c.command.type === 'pass' ? 'btn btn--ghost' : 'btn btn--primary'}
             style={isAbility(c) ? ABILITY_BTN : undefined}
@@ -158,7 +162,30 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
           >
             {c.command.type === 'concede' && armed ? 'Concede game' : c.label}
           </button>
+          {/*
+            Rung E11: the way to spend different cards. It sits immediately after the move it belongs to —
+            put at the end of the strip it lands behind Pass and Concede, reading as a fourth unrelated
+            action rather than as something about the cast above it. It names how many other ways there are,
+            so pressing it is not a guess, and it REPLACES the strip rather than lengthening it: one action
+            reached thirty exact payments in a twelve-seed trace, and listing those beside everything else
+            would rebuild the interface spec B6 collapsed them to avoid.
+          */}
+          {!paying && (c.alternatives?.length ?? 0) > 0 && (
+            <button
+              data-command="payDifferently"
+              className="btn btn--ghost"
+              onClick={() => onPay?.(c)}
+            >
+              {`Pay differently (${c.alternatives?.length ?? 0} other ${(c.alternatives?.length ?? 0) === 1 ? 'way' : 'ways'})`}
+            </button>
+          )}
+          </Fragment>
         ))}
+        {yours && paying && (
+          <button data-command="payBack" className="btn btn--ghost" onClick={() => onPay?.(null)}>
+            Back
+          </button>
+        )}
         {yours && armed && (
           <button className="btn btn--ghost" data-command="cancel-concede" onClick={() => { setArmed(false) }}>
             Keep playing

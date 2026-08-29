@@ -732,13 +732,46 @@ function subjectsOf(c: Command): CardId[] {
  * them — clicking any member of a party has to offer that party — while `Choice.card`, which is singular, keeps
  * the first as the label's anchor.
  */
-export function buildChoiceSet(v: PlayerView, legal: Command[]): ChoiceSet {
+/**
+ * Every way to pay for each move, keyed the same way `preferredChoices` collapses them.
+ *
+ * Rung E11. `preferredChoices` picks one payment per move and discards the rest, so by the time the board
+ * sees a cast, the four other ways to fund it no longer exist anywhere — the player could not choose which of
+ * their own cards to spend, and 170 casts and 41 activations in a twelve-seed trace had at least two ways.
+ *
+ * Pass the RAW `legalCommands` here, and the collapsed list to `buildChoiceSet`. Splitting it this way is
+ * what lets the alternatives ride along without the strip growing a button per payment — which is what spec
+ * B6 collapsed them to avoid, and is not an interface worth trading for.
+ */
+export function paymentAlternatives(legal: Command[]): Map<string, Command[]> {
+  const out = new Map<string, Command[]>()
+  for (const c of legal) {
+    if (!isPayable(c)) continue
+    const key = payableKey(c)
+    out.set(key, [...(out.get(key) ?? []), c])
+  }
+  return out
+}
+
+/**
+ * `alternatives` is the map from `paymentAlternatives`, built from the RAW legal commands; omit it and every
+ * choice comes back exactly as it did before rung E11.
+ */
+export function buildChoiceSet(v: PlayerView, legal: Command[], alternatives?: Map<string, Command[]>): ChoiceSet {
   const all: Choice[] = []
   const byCard = new Map<CardId, Choice[]>()
   const loose: Choice[] = []
   for (const command of legal) {
     const subjects = subjectsIn(v, command)
     const choice: Choice = { command, label: describeChoice(v, command), card: subjects[0] ?? null }
+    // The other payments for this same move, preferred one excluded — it is already `choice` itself.
+    const others = isPayable(command) ? (alternatives?.get(payableKey(command)) ?? [])
+      .filter((o) => !sameCommand(o, command)) : []
+    if (others.length) {
+      choice.alternatives = others.map((o) => ({
+        command: o, label: describeChoice(v, o), card: subjectsIn(v, o)[0] ?? null,
+      }))
+    }
     all.push(choice)
     if (!subjects.length) { loose.push(choice); continue }
     for (const id of subjects) byCard.set(id, [...(byCard.get(id) ?? []), choice])

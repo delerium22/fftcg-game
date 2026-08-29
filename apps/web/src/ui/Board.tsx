@@ -179,6 +179,8 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   // `action` rides along because it belongs to the INSTANCE, not the definition — two copies of one card
   // could in principle be paid for differently — so it is captured when the player looks, not looked up later.
   const [inspected, setInspected] = useState<{ code: string; action: string | null } | null>(null)
+  /** The move whose other payments are being shown, or `null` for the ordinary strip (rung E11). */
+  const [paying, setPaying] = useState<Choice | null>(null)
   const inspect = (code: string | undefined, action: string | null = null): void => {
     if (code !== undefined) setInspected({ code, action })
   }
@@ -274,20 +276,37 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   // The choice set is rebuilt on every state change; a card selected under the old one may no longer be
   // clickable (or may not exist), so drop the selection rather than leave a highlight pointing at nothing.
   useEffect(() => { setSelected((id) => (id !== null && choices.byCard.has(id) ? id : null)) }, [choices])
+  // And the payment view is dropped outright on any change of position (rung E11). Keeping it would leave the
+  // strip offering payments for a move that may no longer be legal, which is the shape of the stale-selection
+  // bug the line above exists to prevent — except that these buttons spend cards.
+  useEffect(() => { setPaying(null) }, [choices])
 
   const pick = (id: CardId): void => {
     const forCard = choices.byCard.get(id) ?? []
     // One way to use a card: just do it. Several (a cast with options, a party to attack with): select it and
     // let the prompt strip show what they are, so a click is never a guess about which variant you got.
-    if (forCard.length === 1) { setSelected(null); choose(forCard[0] as Choice); return }
+    //
+    // A move with several PAYMENTS counts as several options (rung E11), even though it is one entry in
+    // `byCard`. It used to commit on the first click, spending whichever of your cards `preferredPayment`
+    // scored cheapest — a decision about your own hand you were never offered. An action that conceals a
+    // choice is exactly the one that should not fire the instant you touch it.
+    if (forCard.length === 1 && !forCard[0]?.alternatives?.length) {
+      setSelected(null); setPaying(null); choose(forCard[0] as Choice); return
+    }
+    setPaying(null)
     setSelected((cur) => (cur === id ? null : id))
   }
 
   // Concede is legal in every state (§2.1), so `legalCommands` puts it first — which would make it the leftmost,
   // most-reachable button on the strip all game. Sort it to the end; nothing else changes order.
   const order = (c: Choice) => (c.command.type === 'concede' ? 1 : 0)
-  const shown = (selected === null ? choices.loose : [...(choices.byCard.get(selected) ?? []), ...choices.loose])
+  const base = (selected === null ? choices.loose : [...(choices.byCard.get(selected) ?? []), ...choices.loose])
     .slice().sort((a, b) => order(a) - order(b))
+  // Asking to pay differently REPLACES the strip with that move's payments, rather than adding them to it.
+  // Spec B6 collapsed payments because `legalCommands` explodes — one action reached thirty exact payments in
+  // a twelve-seed trace — and listing them alongside everything else would rebuild the interface B6 removed.
+  // So the alternatives are a place you go, with a way back, not a longer list of buttons.
+  const shown = paying ? [paying, ...paying.alternatives ?? []] : base
   // Backups render small: they are CP sources rather than combat units, and with auto-pay (spec B6) they are
   // rarely a click target — which also buys the vertical room two full-size field rows per side would not fit in.
   /**
@@ -424,7 +443,11 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
         />
       </section>
 
-      <PromptStrip view={view} choices={choices} shown={shown} aiThinking={aiThinking} onChoose={(c) => { setSelected(null); choose(c) }} />
+      <PromptStrip
+        view={view} choices={choices} shown={shown} aiThinking={aiThinking}
+        paying={paying} onPay={setPaying}
+        onChoose={(c) => { setSelected(null); setPaying(null); choose(c) }}
+      />
 
 
       <aside className="table__rail">

@@ -165,3 +165,61 @@ an AI rung with an exhaustive oracle to check against.
 - Two payments spending the same cards but declaring different elements ARE distinct to `samePayment`
   (`commands.ts:777`), even where the resulting board is identical. E11 treats them as distinct, because the
   command model does, and a mutation checks that they are not silently merged.
+
+---
+
+## Built
+
+`paymentAlternatives(legal)` groups the RAW legal commands by the same key `preferredChoices` collapses on;
+`buildChoiceSet` takes that map as an OPTIONAL third argument and hangs the other payments off the surviving
+`Choice` as `alternatives`. Optional deliberately: every existing call site keeps exactly the behaviour it had,
+which is why 938 tests passed unedited through the change.
+
+`Board.pick` then treats hidden payments as what they are — several options — so such a move selects instead of
+committing. The strip shows the preferred action, and beside it "Pay differently (N other ways)". Pressing that
+REPLACES the strip with that move's payments plus "Back", rather than lengthening it: one action reached thirty
+exact payments in the trace, and listing those beside everything else would rebuild the interface B6 collapsed
+them to avoid.
+
+The disclosure sits immediately after the move it belongs to. Rendered at the end of the strip — which is where
+I first put it — it lands behind Pass and Concede and reads as a fourth unrelated action rather than as
+something about the cast above it.
+
+### What playing it looks like
+
+`?seed=11`, one click to keep the hand, then Class Tenth Moogle. Before this rung, clicking it cast it
+immediately, discarding Geomancer. Now it selects, and offers:
+
+```
+Cast Class Tenth Moogle paying: discard Geomancer as earth   Pay differently (2 other ways)   Pass   Concede
+```
+
+and pressing the disclosure gives the actual decision — discard **Geomancer** (cost 1), **Prishe** (2) or
+**Cloud** (3) — which the game used to make for you without mentioning that the other two existed.
+
+## Mutations
+
+| # | Mutation | Result |
+|---|---|---|
+| 19 | offer only the preferred payment | 4 fail, incl. "the payments offered are not the payments the engine lists" |
+| 20 | dump every payment into the main strip | fails E11-A6, the prohibition nothing previously enforced |
+| 21 | map every alternative to the preferred command | 3 fail, incl. "the preferred payment was applied instead" |
+| 22 | a card commits on click regardless of hidden payments | **SURVIVED at first.** See below |
+
+### Mutation 22 survived, and it was the whole contract
+
+Every test above happened to click cards with several choices in `byCard` — a cast and an activation — which
+select for the OLD reason. None exercised the case the rung is about: a card whose only choice is a cast
+hiding several ways to pay, which used to spend your cards the instant you touched it.
+
+That is the eighth time across E9–E11 that a criterion of mine passed while the thing it claimed was false,
+and the second time a mutation rather than a review caught it. `a card whose ONE choice hides a payment
+choice` now reaches such a position by playing and fails under mutation 22.
+
+## The browser check caught its own route changing
+
+`deck-search.spec.ts` failed the moment this landed: Hugh Yurg is funded more than one way, so its cast now
+needs the extra click. The route was updated and the reason written into it — that is the check doing its job,
+not noise.
+
+**Final: 951 jsdom, 8 Playwright, typecheck, lint, 200/200 selfplay seed 1.**

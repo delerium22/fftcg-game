@@ -13,6 +13,18 @@ export interface Choice {
   command: Command
   label: string
   card: CardId | null
+  /**
+   * The OTHER ways to pay for this same move — same card, same ability, same targets, different CP.
+   *
+   * `legalCommands` lists one command per minimal payment, and spec B6 collapses them to the one
+   * `preferredPayment` scores cheapest, which meant the player never chose which of their own cards were
+   * spent (rung E11). They are carried here rather than in `all` so the strip still shows ONE action per
+   * move: a move is not several moves because it can be funded several ways.
+   *
+   * Absent (rather than empty) when a caller does not supply them, so every existing call site keeps exactly
+   * the behaviour it had.
+   */
+  alternatives?: Choice[]
 }
 
 /**

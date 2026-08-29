@@ -26,7 +26,11 @@ test('a deck search offers its candidates as cards a person can see and press', 
   await page.goto(`/?seed=${SEED_WITH_A_SEARCH}`)
 
   await page.getByRole('button', { name: /Keep hand/ }).click()
+  // Hugh Yurg is funded more than one way, so since rung E11 the card SELECTS rather than casting on the
+  // first click — an action that hides a decision about your own hand should not fire the instant you touch
+  // it. The cast is then the strip button. This check caught that change, which is what it is for.
   await page.getByRole('button', { name: /^Hugh Yurg.*Cast/ }).click()
+  await page.getByRole('button', { name: /^Cast Hugh Yurg/ }).click()
 
   // The prompt says what is being asked. If the route drifted, this is where it fails, and it names the
   // reason rather than timing out on a selector.
