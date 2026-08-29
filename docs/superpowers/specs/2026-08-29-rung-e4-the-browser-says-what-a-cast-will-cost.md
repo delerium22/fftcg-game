@@ -1,6 +1,8 @@
 # Rung E4 — the browser says what a cast will cost
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built. Sibling of [E3](2026-08-29-rung-e3-the-browser-shows-what-a-card-does.md);
+> **STATUS: REFUSED as written; rewritten below and cleared to build.** The defect is real and the reviewer
+> says so. What it refused is the acceptance — which could pass with the disclosure wired to nothing — and
+> one factual claim of mine that was simply wrong. Read *Plan review outcome* first. Sibling of [E3](2026-08-29-rung-e3-the-browser-shows-what-a-card-does.md);
 > both are "the terminal shows something the browser hides", found in the same ten minutes of play.
 
 ## Why
@@ -87,3 +89,87 @@ Both fields were empty when I cast Ramuh, and every one of its three modes begin
 seven mode buttons were offered anyway; each would fizzle. That is legal — the player can pick "None of
 these" — but the UI said nothing about it. Whether a choice that cannot do anything should be marked is a
 separate question, and a smaller one than this.
+
+---
+
+## Plan review outcome — refused, and it made the rung SMALLER
+
+### MAJOR 1 — the seam I documented does not exist, and the real one is better
+
+I wrote that the terminal and the browser share `describeCommand`, so "the string already exists". Half
+right, in the wrong place. **The browser does not import `describeCommand` at all** — verified, there is no
+such import in `apps/web/src`. It builds the identical string itself, in `describeChoice`:
+
+```ts
+case 'castCharacter':
+case 'castSummon':
+  return pay.length ? `Cast ${qualifiedName(v, c.card)} paying: ${pay.join(', ')}` : `Cast ${qualifiedName(v, c.card)} (free)`
+```
+
+and `buildChoiceSet` hangs it on **every** `Choice` as `label`. So the string is not merely available — it is
+already computed, already attached to the exact cast the click will submit, and then never shown. The log
+recomputes it afterwards.
+
+This makes the rung much smaller than I specified: **disclose the surviving cast choice's existing
+`Choice.label`.** No CLI refactor, no new payment formatter, no cross-package move.
+
+### CRITICAL 1 — the acceptance was E3a's refused mutant again
+
+A1–A3 never required a mounted `Board`, so all three could pass against a new `Card` prop while Board's hand
+path never supplied it. That is precisely the shape E3a was refused for, and precisely the mutant that
+survived E3a's *first* round of tests. Now mandatory: a mounted real-Main-Phase Board test that reaches the
+named-discard payment through `legalCommands → preferredChoices → buildChoiceSet`, hovers and separately
+focuses the real castable card, sees the exact hand-written string before clicking, proves neither hover nor
+focus submits, and dies when the payment is disconnected at `Board`.
+
+### CRITICAL 2 — "discloses" let one surface stand in for the other
+
+I recommended the accessible name *and* the panel, but wrote A1 so either alone would satisfy it. Panel-only
+leaves screen-reader users worse off than sighted ones — they cannot see the log update either. Label-only
+leaves sighted users depending on a slow native tooltip. **Both are mandatory, with separate criteria and
+separate removal mutations.**
+
+Ruled out: the prompt strip. Main-phase casting can expose several cards at once and a single-choice card
+commits immediately, so a card-specific payment there would need selection/confirmation behaviour this rung
+does not own.
+
+### MAJOR 2 — my "built from a second call site" mutation cannot fail
+
+An exact duplicate formatter produces identical output, so no behavioural test can distinguish it. Replaced
+with **semantic divergence** mutations: disclose the cast card instead of the discarded one; omit the discard
+Element; reorder the payment sources for one consumer. Behavioural tests cannot prove source sharing — that
+has to come structurally, from passing the existing `Choice.label` rather than recomputing.
+
+### MAJOR 3 — I left activated abilities undecided, which is not a plan
+
+The spec said both "not this problem" and "do it here if it is one line". **Decided: E4 is cast-only.**
+Activated abilities have the same defect but live on field cards and need their own current-action treatment.
+
+### MINOR — the selfplay gate goes
+
+200 games cannot observe a UI disclosure. E5 omitted it correctly; E4 should not have asked for it.
+
+## Revised acceptance
+
+- **E4-A1** In a mounted Board at a real Main Phase, the castable card's ACCESSIBLE NAME carries the cast
+  action, asserted against a hand-written string naming the discarded card, without losing the name, cost,
+  element, type or power already in the label.
+- **E4-A2** The same action line is VISIBLE in the `CardDetails` panel, asserted separately.
+- **E4-A3** Hover discloses and does not submit; focus discloses and does not submit; one click still plays.
+- **E4-A4** A hand card that is not castable discloses nothing — no dangling "paying:" fragment.
+- **E4-A5** The disclosed string is the `Choice.label` the click submits, established by passing it rather
+  than rebuilding it, and pinned by the divergence mutations below.
+- **E4-A6** Existing web tests pass with no expectation edited. Full gates green. No selfplay gate.
+
+## Revised mutation plan
+
+| mutation | must fail |
+|---|---|
+| Board stops supplying the payment | A1 and A2 |
+| disclosure removed from the accessible name only | A1 |
+| disclosure removed from the panel only | A2 |
+| the accessible name is REPLACED by the action, losing cost/element/power | A1 |
+| disclose the cast card instead of the discarded card | A5 |
+| omit the discard Element ("discard Odin" not "discard Odin as lightning") | A5 |
+| hover or focus submits the command | A3 |
+| a non-castable card discloses an empty payment | A4 |
