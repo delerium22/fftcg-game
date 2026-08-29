@@ -253,7 +253,15 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
    * supplied and `CardGrid` decides whether to use them, so the "cell announces only when it is the focus
    * target" rule lives in exactly one file.
    */
-  const gridItem = (id: CardId, props: CardProps, extra: Partial<CardProps> = {}): GridItem => {
+  const gridItem = (
+    id: CardId,
+    props: CardProps,
+    // Narrowed to what callers actually vary. As `Partial<CardProps>` it advertised more than it delivers:
+    // `selectable`, `text` and `presentational` are derived from `props` alone, so an override of those in
+    // `extra` would name the card one way and focus, describe and hide it another. Latent rather than live —
+    // no caller passed them — but a contract that is broader than its implementation is an invitation.
+    extra: { selected?: boolean; onClick?: (() => void) | undefined } = {},
+  ): GridItem => {
     const descriptionId = `card-desc-${id}`
     return {
       id,

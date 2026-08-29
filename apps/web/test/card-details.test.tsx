@@ -91,6 +91,21 @@ function fieldState(): GameState {
   return s
 }
 
+/** A position with a FORWARD on the human's field — not merely the first castable character, which is a
+ *  Backup at this seed and has no power for a power assertion to bite on. */
+function forwardOnFieldState(): GameState {
+  let s = mainPhaseState()
+  for (let i = 0; i < 40 && s.players[HUMAN].forwards.length === 0; i++) {
+    const v = viewFor(s, HUMAN)
+    const cast = legalCommands(s, HUMAN).find((c) =>
+      c.type === 'castCharacter' && v.defs[v.cards[c.card]?.code ?? '']?.type === 'forward')
+    const next = cast ?? legalCommands(s, HUMAN).find((c) => c.type === 'pass')
+    if (!next) break
+    s = apply(s, next).state
+  }
+  return s
+}
+
 function mount(s: GameState): void {
   mountView(viewFor(s, HUMAN), legalCommands(s, HUMAN), s)
 }
@@ -497,26 +512,82 @@ describe('the field zones as keyboard grids (rung E3b-2)', () => {
     expect(details(), 'focusing a field card does not read it').toContain(def?.text)
   })
 
+  it('announces a field card’s pumps, damage and dullness, not just its printed numbers', () => {
+    // The refactor routes every field card through `fieldCardProps`. Deleting `powerBonus`, `granted`,
+    // `flags`, `damage` or `dull` from it left the whole suite green, because the props and the component
+    // were only ever tested apart. This mounts a real Board on a field card carrying all of them and pins
+    // the exact string its focused cell announces.
+    // A FORWARD specifically. `fieldState()` casts the first castable character, which at this seed is a
+    // Backup with `power === null` — so the power assertions below sat behind an `if` that never ran, and
+    // dropping `powerBonus` or `damage` from the props survived. A conditional that silently skips is the
+    // same defect as a test that cannot fail.
+    const base = forwardOnFieldState()
+    const v = structuredClone(viewFor(base, HUMAN))
+    const mine = v.fields[HUMAN].forwards[0]
+    expect(mine, 'no Forward reached the field, so the power assertions cannot run').toBeDefined()
+    expect(v.defs[v.cards[mine!.id]?.code ?? '']?.power, 'the field card has no printed power').not.toBe(null)
+    const pumped = { ...mine!, powerBonus: 3000, damage: 1000, status: 'dull' as const, granted: ['haste' as const] }
+    v.fields[HUMAN] = { ...v.fields[HUMAN], forwards: [pumped] }
+    mountView(v, [])
+
+    const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${mine!.id}"]`)
+    expect(cell, 'the modified field card did not render').not.toBe(null)
+    const said = (cell!.querySelector('button') ?? cell!).getAttribute('aria-label') ?? ''
+    const printed = v.defs[v.cards[mine!.id]?.code ?? '']?.power
+    expect(printed, 'the fixture Forward has no printed power').not.toBe(null)
+    // Effective power is printed + pump, and the REMAINING number subtracts marked damage — the card face
+    // shows what is left, which is a different quantity from the power it DEALS (see the block prompt).
+    expect(said, 'the pump is missing from what the card announces').toContain(`power ${printed! + 3000 - 1000} of ${printed! + 3000}`)
+    expect(said, 'the expiring pump is not explained').toContain('including 3000 that expires at the end of the turn')
+    expect(said, 'a dull card does not say so').toContain('dull')
+    expect(said, 'a granted keyword is not announced').toContain('Haste granted')
+  })
+
   it('lets a blocker be chosen with the ATTACKER readable — the case E3a could not serve', () => {
     // Deciding a block means reading a Forward on the opponent's side of the board. Reached by playing, not
     // hand-built: the fixture-that-cannot-occur mistake has been made twice in this program already.
-    const agent = new GreedyAgent({ seed: 7, decks: DECKS, depth: 1 })
-    let s: GameState = createGame({ seed: 7, decks: DECKS, defs: CARD_DEFS })
-    for (let i = 0; i < 4000 && !s.result; i++) {
-      if (s.pending?.kind === 'declareBlock' && s.pending.player === HUMAN) break
+    //
+    // The first version stopped at the first `declareBlock` it saw. At that position both of the human's
+    // Forwards were DULL, so the only legal answer was "don't block" — no blocker button existed at all, and
+    // `selectable = false` would have removed every one of them with this test still green. It now requires
+    // a position where a blocker can actually be declared.
+    // Seed 1, not 7. Seed 7 does reach a `declareBlock`, but with both of the human's Forwards dull — so it
+    // offers no legal blocker at all, which is exactly why the first version of this test proved nothing.
+    // Seeds 1 through 5 all reach a position where a blocker can really be declared.
+    let s: GameState = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+    const agent = new GreedyAgent({ seed: 1, decks: DECKS, depth: 1 })
+    const canBlock = (g: GameState): boolean =>
+      g.pending?.kind === 'declareBlock' && g.pending.player === HUMAN
+      && legalCommands(g, HUMAN).some((c) => c.type === 'declareBlock' && c.blocker !== null)
+    for (let i = 0; i < 8000 && !s.result && !canBlock(s); i++) {
       if (actingPlayer(s) === null) break
       s = stepAi(s, agent).state
     }
-    expect(s.pending?.kind, 'never reached a block decision, so this test asserts nothing').toBe('declareBlock')
+    expect(canBlock(s), 'never reached a block decision with a legal blocker, so this asserts nothing').toBe(true)
+    expect(s.pending?.player, 'stopped at the AI decision, not the human one').toBe(HUMAN)
     mount(s)
-    const attackers = s.attack?.attackers ?? []
-    expect(attackers.length).toBeGreaterThan(0)
-    const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${attackers[0]}"]`)
-    expect(cell, 'the attacker is not reachable in any grid').not.toBe(null)
-    const focusTarget = cell!.querySelector('button') ?? cell!
-    act(() => { focusTarget.focus() })
-    expect(document.activeElement).toBe(focusTarget)
-    expect(details().length, 'the attacker could be focused but said nothing').toBeGreaterThan(0)
+
+    // The attacker must be readable — with a NEGATIVE precondition, because the panel already says
+    // "Point at a card to read it." before anything is inspected, so a length check alone is permanently
+    // true and a no-op `onLookAt` survives it.
+    const attackerId = (s.attack?.attackers ?? [])[0]!
+    const v = viewFor(s, HUMAN)
+    const attackerName = (v.defs[v.cards[attackerId]?.code ?? '']?.name) ?? '?'
+    expect(details(), 'the panel showed the attacker before anything was focused').not.toContain(attackerName)
+    const attacker = document.querySelector<HTMLElement>(`.zone [data-card-id="${attackerId}"]`)
+    expect(attacker, 'the attacker is not reachable in any grid').not.toBe(null)
+    act(() => { (attacker!.querySelector('button') ?? attacker!).focus() })
+    expect(details(), 'focusing the attacker did not read it').toContain(attackerName)
+
+    // And a blocker must actually be a button, or the decision cannot be taken by keyboard at all.
+    const blockerId = legalCommands(s, HUMAN)
+      .flatMap((c) => (c.type === 'declareBlock' && c.blocker !== null ? [c.blocker] : []))[0]!
+    const blockerCell = document.querySelector<HTMLElement>(`.zone [data-card-id="${blockerId}"]`)
+    expect(blockerCell, 'the legal blocker is not rendered in a grid').not.toBe(null)
+    const btn = blockerCell!.querySelector('button')
+    expect(btn, 'a legal blocker is not a button, so it cannot be chosen').not.toBe(null)
+    act(() => { btn!.click() })
+    expect(chosen.map((c) => c.command.type), 'clicking the blocker did not declare a block').toContain('declareBlock')
   })
 })
 
