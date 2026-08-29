@@ -1,7 +1,10 @@
 # Rung E10 — choosing between cards you cannot see
 
-> **STATUS: REVISED after plan review. The first draft's premise was factually wrong** and is preserved below
-> the rule, because the mistake is the useful part. Nothing built.
+> **STATUS: BUILT** — all four cases, commits `930fcea` and `b9d5970`. See *Built* at the end.
+>
+> The first draft's premise was factually wrong and is preserved below the rule, because the mistake is the
+> useful part. The plan review that caught it also caught this spec's predecessor claiming "same-code" after
+> the code had changed; a status line left saying "nothing built" is the same defect, so it is updated here.
 
 ## What I wrote first, and why it was wrong
 
