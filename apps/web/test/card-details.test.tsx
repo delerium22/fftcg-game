@@ -690,6 +690,25 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     return v.defs[v.cards[id]?.code ?? '']?.name ?? '?'
   }
 
+  it('renders pile cards as inert cells, not as buttons that do nothing', () => {
+    // `cell.querySelector('button') ?? cell` is how the other pile tests find a focus target, and it accepts
+    // EITHER structure — so flipping pile cards to `selectable: true` passed all 878 tests while turning
+    // every inert card into an actionless `<button aria-pressed="false">`. A test that accepts two shapes
+    // certifies neither. Nothing in a pile can be played, so nothing in a pile is a button.
+    const s = withPile(HUMAN, 'breakZone') ?? withPile(AI, 'breakZone')
+    expect(s).not.toBe(null)
+    const owner = s!.players[HUMAN].breakZone.length > 0 ? HUMAN : AI
+    mount(s!)
+    act(() => { ownerOpener(owner, 'Break Zone')!.click() })
+    const grid = document.querySelector<HTMLElement>('[role="grid"][aria-label*="Break Zone"]')
+    expect(grid, 'the pile did not open').not.toBe(null)
+    expect(grid!.querySelectorAll('button').length, 'a pile card is a button, but there is nothing to press').toBe(0)
+    const cell = grid!.querySelector<HTMLElement>('[role="gridcell"]')!
+    expect(cell.getAttribute('tabindex'), 'the cell is not the focus target for an inert card').toBe('0')
+    act(() => { cell.focus() })
+    expect(document.activeElement, 'the pile cell cannot take focus').toBe(cell)
+  })
+
   it('opens the pile and READS it — not merely opens it', () => {
     // The reason this rung exists: Luso asks whether to take its "Character in your Break Zone" mode, and
     // whether Billy Bob is worth casting, BEFORE any target choice is raised. The orphan target row comes
