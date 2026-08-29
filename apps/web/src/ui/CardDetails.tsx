@@ -15,7 +15,7 @@ import { unimplementedClauseCount, type CardDef } from '@fftcg/engine'
  * inspection is enough even for blocking, where two cards are compared, because the card faces already show
  * effective power, damage, grants and flags side by side.
  */
-export function CardDetails({ def }: { def: CardDef | undefined }): JSX.Element {
+export function CardDetails({ def, action }: { def: CardDef | undefined; action?: string | null }): JSX.Element {
   if (!def) {
     return (
       <section className="details details--empty" aria-label="Card details">
@@ -45,6 +45,10 @@ export function CardDetails({ def }: { def: CardDef | undefined }): JSX.Element 
           those happen to reconstruct the printed text exactly, so joining them looks right and silently
           drops whatever this build has not implemented, which is the one thing this panel exists to show. */}
       {def.text !== '' && <p className="details__text">{def.text}</p>}
+      {/* What clicking this card will spend, BEFORE the click. One click used to cast a 2-cost Summon by
+          discarding a 5-cost bomb, and said so only afterwards, in the past tense, in the log. This is the
+          same `Choice.label` string the click submits — passed in, never rebuilt, so the two cannot drift. */}
+      {action != null && action !== '' && <p className="details__action">{action}</p>}
       {missing > 0 && (
         <p className="details__caveat">
           {missing === 1

@@ -62,11 +62,22 @@ export interface CardProps {
    * a keyboard-only player currently cannot inspect the mulligan hand, where no card is selectable.
    */
   onInspect?: (() => void) | undefined
+  /**
+   * What clicking this card will DO, right now — "Cast Ramuh paying: discard Odin as lightning".
+   *
+   * Appended to the accessible name rather than replacing it, so a screen-reader user still hears the card's
+   * name, cost, element, type and power first. They were the ones worst served before: a sighted player at
+   * least saw the log update afterwards.
+   *
+   * Only ever set when the card offers exactly ONE thing, because that is the click that commits
+   * immediately. A card with several options opens the prompt strip instead, which lists all of them.
+   */
+  action?: string | undefined
 }
 
 /** Every card on the board — the opponent's hand, the decks, both fields — renders through here. */
 export function Card(props: CardProps): JSX.Element {
-  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect } = props
+  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, action } = props
 
   // Local state is keyed on `code` rather than reset by an effect, so reusing one component instance
   // for a different card re-attempts that card's art instead of inheriting the previous failure. The
@@ -106,7 +117,7 @@ export function Card(props: CardProps): JSX.Element {
   const className = ['card', `card--${size}`, dull ? 'is-dull' : '', selectable ? 'is-selectable' : '', selected ? 'is-selected' : ''].filter(Boolean).join(' ')
   const label = faceDown
     ? 'Face-down card'
-    : [`${name}, cost ${cost}`, elements.join(' and '), type, remaining === null ? '' : `power ${remaining} of ${power}`, dull ? 'dull' : '', ...buffs.map((b) => b.said)].filter(Boolean).join(', ')
+    : [`${name}, cost ${cost}`, elements.join(' and '), type, remaining === null ? '' : `power ${remaining} of ${power}`, dull ? 'dull' : '', ...buffs.map((b) => b.said), action ?? ''].filter(Boolean).join(', ')
 
   const face = faceDown ? (
     <span className="card__back" />

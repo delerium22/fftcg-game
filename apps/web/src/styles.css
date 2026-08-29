@@ -484,6 +484,16 @@ body {
   white-space: pre-line;
 }
 
+/* What the click will spend, before the click. Set apart from the printed text because it is a fact about
+   THIS card RIGHT NOW, not about the card in general. */
+.details__action {
+  margin: 6px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .details__caveat {
   margin: 6px 0 0;
   color: var(--gold);

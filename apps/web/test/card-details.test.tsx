@@ -265,6 +265,72 @@ describe('the other two Board render paths', () => {
   })
 })
 
+describe('what a cast will cost, before the click (rung E4)', () => {
+  it('names the DISCARD in the card’s accessible name, not just the card', () => {
+    // The defect: one click cast a 2-cost Ramuh by discarding a 5-cost Odin, and said so only afterwards in
+    // the log. The button said "Ramuh, cost 2, lightning, summon" and nothing more.
+    //
+    // The expectation is written out BY HAND, not read from the choice set — an assertion built by the code
+    // under test agrees with that code however wrong it is. At this seed casting Ramuh spends Sphene, and
+    // that is the fact a player is entitled to know before clicking.
+    mount(mainPhaseState())
+    const el = named(RAMUH)
+    expect(el.getAttribute('aria-label'), 'the accessible name does not say what the click will spend')
+      .toContain('Cast Ramuh paying: discard Sphene as lightning')
+  })
+
+  it('keeps the card’s own description in the accessible name', () => {
+    // Appended, not substituted. A screen-reader user must still hear name, cost, element and type — they
+    // were already the worst served here, since they cannot see the log update either.
+    mount(mainPhaseState())
+    const said = named(RAMUH).getAttribute('aria-label') ?? ''
+    expect(said, 'the card is no longer described at all').toContain('Ramuh, cost 2')
+    expect(said).toContain('lightning')
+    expect(said).toContain('summon')
+    expect(said).toContain('paying:')
+  })
+
+  it('shows the same line VISIBLY in the details panel', () => {
+    // A separate surface with its own criterion, because either one alone leaves someone worse off: panel
+    // only abandons screen-reader users, label only leaves sighted users on a slow native tooltip.
+    mount(mainPhaseState())
+    hover(named(RAMUH))
+    expect(document.querySelector('.details__action')?.textContent, 'the panel does not disclose the payment')
+      .toBe('Cast Ramuh paying: discard Sphene as lightning')
+  })
+
+  it('discloses nothing for a card that cannot be cast', () => {
+    // At the mulligan no hand card is playable at all, so no card may carry a dangling "paying:" fragment.
+    mount(mulliganState())
+    for (const c of handCards()) expect(c.getAttribute('aria-label') ?? '').not.toContain('paying')
+    hover(named(RAMUH))
+    expect(document.querySelector('.details__action')).toBe(null)
+  })
+
+  it('discloses nothing for a card that offers SEVERAL things', () => {
+    // Geomancer can be cast or used for its CP ability, so clicking it does not commit — it opens the prompt
+    // strip, which lists both. Naming one payment here would tell the player the click is about to spend
+    // something it is not. Found by mutation: disclosing `forCard[0]` unconditionally passed every other test.
+    mount(mainPhaseState())
+    const geo = named('Geomancer')
+    expect(mounted?.byCard.get([...(mounted?.byCard ?? new Map())].find(([, cs]) => cs.length > 1)?.[0] ?? -1)?.length ?? 0,
+      'no multi-choice hand card in this position, so this cannot test anything').toBeGreaterThan(1)
+    expect(geo.getAttribute('aria-label') ?? '', 'a card that does not commit on click named a payment anyway').not.toContain('paying')
+    hover(geo)
+    expect(document.querySelector('.details__action')).toBe(null)
+  })
+
+  it('discloses the string the click actually submits', () => {
+    // Not a second formatter that happens to agree: the disclosed text and the submitted choice's own label
+    // are compared against each other, and A1 above supplies the independent hand-written oracle.
+    mount(mainPhaseState())
+    const disclosed = named(RAMUH).getAttribute('aria-label') ?? ''
+    act(() => { (named(RAMUH) as HTMLButtonElement).click() })
+    expect(chosen.length).toBe(1)
+    expect(disclosed, 'the card disclosed a different action from the one it submitted').toContain(chosen[0]!.label)
+  })
+})
+
 // ── Component-level cases, for defs the pool cannot produce ────────────────────────────────────────────
 
 const def = (over: Partial<CardDef>): CardDef => ({

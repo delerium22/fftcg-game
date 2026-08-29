@@ -113,8 +113,25 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   const [selected, setSelected] = useState<CardId | null>(null)
   // The card the player last pointed at, by CODE rather than by instance id: the panel shows what the CARD
   // does, which is a property of the definition, and a code survives the instance leaving play mid-look.
-  const [inspected, setInspected] = useState<string | null>(null)
-  const inspect = (code: string | undefined): void => { if (code !== undefined) setInspected(code) }
+  // `action` rides along because it belongs to the INSTANCE, not the definition — two copies of one card
+  // could in principle be paid for differently — so it is captured when the player looks, not looked up later.
+  const [inspected, setInspected] = useState<{ code: string; action: string | null } | null>(null)
+  const inspect = (code: string | undefined, action: string | null = null): void => {
+    if (code !== undefined) setInspected({ code, action })
+  }
+
+  /**
+   * What clicking this card will do, but ONLY when it does exactly one thing.
+   *
+   * That is the click which commits immediately, and the one that silently spent a 5-cost Odin on a 2-cost
+   * Ramuh. A card offering several options does not commit on click — it opens the prompt strip, which lists
+   * every option with this same label — so disclosing one of them here would name a payment the click is not
+   * about to make.
+   */
+  const actionFor = (id: CardId): string | undefined => {
+    const forCard = choices.byCard.get(id) ?? []
+    return forCard.length === 1 ? forCard[0]?.label : undefined
+  }
 
   // The choice set is rebuilt on every state change; a card selected under the old one may no longer be
   // clickable (or may not exist), so drop the selection rather than leave a highlight pointing at nothing.
@@ -202,8 +219,9 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
                 selectable={forCard.length > 0}
                 selected={selected === id}
                 size="hand"
+                action={actionFor(id)}
                 onClick={forCard.length ? () => pick(id) : undefined}
-                onInspect={() => inspect(d?.code)}
+                onInspect={() => inspect(d?.code, actionFor(id) ?? null)}
               />
             )
           })}
@@ -211,7 +229,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
       </section>
 
       <aside className="table__rail">
-        <CardDetails def={inspected === null ? undefined : view.defs[inspected]} />
+        <CardDetails def={inspected === null ? undefined : view.defs[inspected.code]} action={inspected === null ? null : inspected.action} />
         <EventLog log={log} />
       </aside>
 
