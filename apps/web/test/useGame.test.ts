@@ -1034,24 +1034,67 @@ describe('a target the board draws in no named zone is still a real button', () 
     expect(html).toMatch(new RegExp(`<div[^>]*aria-label="${v.defs[PRISHE]!.name}[^"]*"`))
   })
 
+  // Billy Bob, Prishe and Sphene all choose a card in your Break Zone, and all three are in this deck.
+  const RETRIEVERS = ['18-124C', '22-068R', '27-126S']
+
   it('leaves no clickable choice off the board across a real game', () => {
     // The sweep's guard asserted DIRECTLY, rather than inferred from the driver not getting stuck.
-    let state = newGame(3)
-    const agent = new GreedyAgent({ seed: 3, decks: DECKS, depth: 1 })
+    //
+    // Asserted against the RENDERED board, not against `usable.map(c => c.card)` as it was first written.
+    // That proxy read `Choice.card`, which is only the FIRST subject, and it held only while every subject
+    // led some command — true of discard combinations and attack sets, false of an activation, whose source
+    // leads all of them and whose targets lead none. E10 made an activation's targets subjects (Sphene picks
+    // a Forward in your Break Zone that no row drew), and the proxy reported those targets unreachable while
+    // the board rendered and clicked them correctly.
+    //
+    // Set algebra cannot replace it either: `orphanTargetIds` is DEFINED as the byCard keys the named zones
+    // do not draw, so "every key is drawn or an orphan" is true by construction and would assert nothing.
+    // What is worth asserting is that each one really reaches the DOM as something a player can press.
     let checked = 0
+    let sawMultiSubject = false
+    let sawOrphan = false
+    // Seed 3 alone never fills a Break Zone with anything eligible before the game ends, so the walk covers
+    // seeds until it has actually seen an off-board candidate. The invariant is asserted at every step of
+    // every seed regardless; the loop is about making sure the interesting half is among them.
+    for (let seed = 3; seed <= 14 && !(sawOrphan && sawMultiSubject); seed++) {
+    let state = newGame(seed)
+    const agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
     for (let step = 0; step < 2000 && !state.result; step++) {
       if (actingPlayer(state) === AI) { state = stepAi(state, agent).state; continue }
       const view = viewFor(state, HUMAN)
       const choices = buildChoiceSet(view, preferredChoices(view, legalCommands(state, HUMAN)))
       const usable = clickableChoices(view, choices)
-      const clickable = new Set(usable.map((c) => c.card))
-      for (const id of choices.byCard.keys()) expect(clickable.has(id), `card ${id} is targetable but unreachable`).toBe(true)
+      const host = document.createElement('div')
+      host.innerHTML = renderBoard(view, choices)
+      for (const id of choices.byCard.keys()) {
+        const cell = host.querySelector(`[data-card-id="${id}"]`)
+        expect(cell, `card ${id} is targetable but the board renders it nowhere`).not.toBe(null)
+        expect(cell!.querySelector('button') ?? (cell!.tagName === 'BUTTON' ? cell : null),
+          `card ${id} is rendered but is not pressable`).not.toBe(null)
+      }
+      if ([...choices.all].some((c) => c.command.type === 'activateAbility' && c.command.targets.length > 0)) {
+        sawMultiSubject = true
+      }
+      if (orphanTargetIds(view, choices).length > 0) sawOrphan = true
       checked++
-      const next = usable.find((c) => c.command.type !== 'concede')
+      // Prefer casting a retriever. Taking simply the first non-concede choice, as this did, never once
+      // reached an off-board candidate in 2000 steps — so the assertion above only ever saw cards the hand
+      // and field rows already draw, which is the half that was never in doubt. `sawOrphan` now says so.
+      const next = usable.find((c) => (c.command.type === 'castCharacter' || c.command.type === 'castSummon')
+        && RETRIEVERS.includes(view.cards[c.command.card]?.code ?? ''))
+        ?? usable.find((c) => c.command.type !== 'concede')
       if (!next) break
       state = apply(state, next.command).state
     }
+    }
     expect(checked).toBeGreaterThan(20)
+    // Without a multi-subject command in the walk this test cannot tell the new rule from the old one.
+    expect(sawMultiSubject, 'the walk contained no targeted activation, so it re-proves only the old case')
+      .toBe(true)
+    // And an off-board candidate, or the "renders it nowhere" assertion only ever sees cards the named zones
+    // already draw — which is the half that was never in doubt.
+    expect(sawOrphan, 'the walk never reached an off-board candidate, so this asserts only the easy half')
+      .toBe(true)
   })
 })
 

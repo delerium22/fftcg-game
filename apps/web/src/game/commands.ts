@@ -225,6 +225,24 @@ export function choiceName(v: PlayerView, id: CardId): string {
   return namedWith(v, id, occurrenceForChoice(v, id))
 }
 
+/**
+ * The name a rendered CARD shows: the printed name plus E9's occurrence marker, and never the possessive.
+ *
+ * Three namers now, and the third exists because the first two are both wrong here. A card sitting on the
+ * board is not a sentence: "your Hugh Yurg (1)" reads as a label for a card the player is looking at, next to
+ * their own Break Zone, where "your" is the one thing never in doubt. The hand and field rows already omitted
+ * it — by writing the marker out by hand, in two places, which is how the orphan row came to lack it. One
+ * function so a fourth row cannot land without one.
+ *
+ * The occurrence is the CHOICE-level one, which agrees with `occurrenceOf` for anything in the hand or on a
+ * field and additionally numbers a card the row drew from the Break Zone or the deck.
+ */
+export function displayName(v: PlayerView, id: CardId): string {
+  const nth = occurrenceForChoice(v, id)
+  const bare = bareName(v, id)
+  return nth === null ? bare : `${bare} (${nth})`
+}
+
 function namedWith(v: PlayerView, id: CardId, nth: number | null): string {
   const bare = nth === null ? bareName(v, id) : `${bareName(v, id)} (${nth})`
   const mine = v.cards[id]?.owner
@@ -685,7 +703,16 @@ function subjectsOf(c: Command): CardId[] {
     case 'chooseTargets': return [...c.targets]
     // An activation is an action taken BY a card, so its subject is the source — clicking the card is how you
     // use it. The CP sources are deliberately not subjects: they are payment, chosen for you.
-    case 'activateAbility': return [c.source]
+    //
+    // Its TARGETS are subjects too, and leaving them out hid a card the player was being asked to pick.
+    // `legalCommands` pre-enumerates an activation's targets INTO the command (`activationTargetSets`), so
+    // unlike a `chooseTargets` pending there is no later step at which those cards become subjects. Sphene
+    // chooses a Forward in your Break Zone, which no row draws: the button named it and nothing on screen
+    // did. Reachable on seed 6.
+    //
+    // Payment is still excluded, and the distinction is the same one the line above draws — a payment is
+    // chosen FOR the player, a target is chosen BY them, and only the latter is a subject.
+    case 'activateAbility': return [c.source, ...c.targets]
     // `chooseMode` and `chooseFromDeck` have no card subject at all — indices, not board cards — so they
     // are strip buttons.
     case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'pass': case 'concede': return []
