@@ -3,9 +3,9 @@ import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
 import { describeResult, fieldCardDisplay } from '../game/commands.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
-import { Card, cardAccessibleName } from './Card.js'
+import { Card, cardAccessibleName, type CardProps } from './Card.js'
 import { CardDetails } from './CardDetails.js'
-import { CardGrid } from './CardGrid.js'
+import { CardGrid, type GridItem } from './CardGrid.js'
 import { EventLog } from './EventLog.js'
 import { PromptStrip } from './PromptStrip.js'
 
@@ -16,45 +16,59 @@ function defOf(v: PlayerView, id: CardId) {
   return inst ? v.defs[inst.code] : undefined
 }
 
-/** One card on a field, wired to whatever choices target it. */
-function FieldCardView({ v, c, choices, selected, onPick, onInspect, size }: {
-  v: PlayerView; c: FieldCard; choices: Choice[]; selected: boolean; onPick: (id: CardId) => void
-  onInspect: (code: string | undefined) => void; size: 'field' | 'small'
-}): JSX.Element {
+/**
+ * Everything a field card renders and announces, built ONCE.
+ *
+ * The card element and its grid cell both need this: inside a `CardGrid`, a card with no button of its own
+ * is focused through the cell, so the cell carries the accessible name — and it must be the same name, from
+ * the same numbers. Two spellings would drift somewhere only a screen-reader user ever goes.
+ */
+function fieldCardProps(v: PlayerView, c: FieldCard, selectable: boolean, size: 'field' | 'small'): CardProps {
   const d = defOf(v, c.id)
   // Spec C1-7: `effectivePower` (via `fieldCardDisplay`) is the ONE power authority, and the board is a
   // consumer of it. Passing printed `def.power` here would show a pumped Forward the wrong power AND the wrong
   // damage ratio, because `Card` derives remaining power and the damage bar from whatever number it is given.
   const shown = fieldCardDisplay(v, c)
-  return (
-    <Card
-      code={d?.code ?? '?'}
-      name={d?.name ?? 'Unknown'}
-      cost={d?.cost ?? 0}
-      elements={d?.elements ?? []}
-      type={d?.type ?? 'forward'}
-      power={shown.power}
-      powerBonus={shown.powerBonus}
-      granted={shown.granted}
-      flags={shown.flags}
-      damage={c.damage}
-      dull={c.status === 'dull'}
-      selectable={choices.length > 0}
-      selected={selected}
-      size={size}
-      text={d?.text}
-      onClick={choices.length ? () => onPick(c.id) : undefined}
-      onInspect={() => onInspect(d?.code)}
-    />
-  )
+  return {
+    code: d?.code ?? '?',
+    name: d?.name ?? 'Unknown',
+    cost: d?.cost ?? 0,
+    elements: d?.elements ?? [],
+    type: d?.type ?? 'forward',
+    power: shown.power,
+    powerBonus: shown.powerBonus,
+    granted: shown.granted,
+    flags: shown.flags,
+    damage: c.damage,
+    dull: c.status === 'dull',
+    selectable,
+    size,
+    ...(d?.text === undefined ? {} : { text: d.text }),
+  }
 }
 
-function Zone({ label, children, empty, compact }: { label: string; children: JSX.Element[]; empty: boolean; compact?: boolean }): JSX.Element {
+/**
+ * One labelled row of the board, navigable by keyboard.
+ *
+ * Every zone is a `CardGrid` for the same reason the hand is: a card nobody can click is a `role="img"` div
+ * outside the tab order, and choosing a blocker means reading the attacker sitting on the opponent's side.
+ * An EMPTY zone renders no grid at all — a grid with no cells has no tab stop to give and nothing to say,
+ * and the four always-rendered field rows are empty for most of a game.
+ */
+function Zone({ label, items, compact, onLookAt }: {
+  label: string
+  items: readonly GridItem[]
+  compact?: boolean
+  onLookAt: (id: CardId) => void
+}): JSX.Element {
+  const empty = items.length === 0
   const cls = ['zone__cards', empty ? 'zone__cards--empty' : '', compact ? 'zone__cards--compact' : ''].filter(Boolean).join(' ')
   return (
     <div className="zone">
       <div className="zone__label">{label}</div>
-      <div className={cls}>{children}</div>
+      {empty
+        ? <div className={cls} />
+        : <CardGrid label={label} items={items} className={cls} onLookAt={onLookAt} />}
     </div>
   )
 }
@@ -121,6 +135,8 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   const inspect = (code: string | undefined, action: string | null = null): void => {
     if (code !== undefined) setInspected({ code, action })
   }
+  /** "The player is looking at this card", for every zone. Pointer and keyboard alike — see `CardGrid`. */
+  const look = (id: CardId): void => { inspect(defOf(view, id)?.code, actionFor(id) ?? null) }
 
   /**
    * What clicking this card will do, but ONLY when it does exactly one thing.
@@ -154,10 +170,41 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
     .slice().sort((a, b) => order(a) - order(b))
   // Backups render small: they are CP sources rather than combat units, and with auto-pay (spec B6) they are
   // rarely a click target — which also buys the vertical room two full-size field rows per side would not fit in.
-  const field = (p: PlayerId, kind: 'forwards' | 'backups'): JSX.Element[] =>
-    view.fields[p][kind].map((c) => (
-      <FieldCardView key={c.id} v={view} c={c} choices={choices.byCard.get(c.id) ?? []} selected={selected === c.id} onPick={pick} onInspect={inspect} size={kind === 'backups' ? 'small' : 'field'} />
-    ))
+  /**
+   * One `GridItem` from a set of card props.
+   *
+   * The single place a card's cell learns what to announce. `cellName` and `cellDescribedBy` are always
+   * supplied and `CardGrid` decides whether to use them, so the "cell announces only when it is the focus
+   * target" rule lives in exactly one file.
+   */
+  const gridItem = (id: CardId, props: CardProps, extra: Partial<CardProps> = {}): GridItem => {
+    const descriptionId = `card-desc-${id}`
+    return {
+      id,
+      selectable: props.selectable === true,
+      cellName: cardAccessibleName({ ...props, ...extra }),
+      ...(props.text ? { cellDescribedBy: descriptionId } : {}),
+      render: (tabIndex) => (
+        <Card
+          {...props}
+          {...extra}
+          tabIndex={tabIndex}
+          descriptionId={descriptionId}
+          presentational={props.selectable !== true}
+        />
+      ),
+    }
+  }
+
+  const field = (p: PlayerId, kind: 'forwards' | 'backups'): GridItem[] =>
+    view.fields[p][kind].map((c) => {
+      const selectable = (choices.byCard.get(c.id) ?? []).length > 0
+      const props = fieldCardProps(view, c, selectable, kind === 'backups' ? 'small' : 'field')
+      return gridItem(c.id, props, {
+        selected: selected === c.id,
+        ...(selectable ? { onClick: () => pick(c.id) } : {}),
+      })
+    })
 
   // Every clickable choice must be reachable, or the game dead-ends: Billy Bob's ETB targets your BREAK ZONE,
   // which the board otherwise shows only as a count, so its answer lived entirely in `byCard` under an id no
@@ -165,33 +212,27 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   // Rather than special-case the Break Zone, gather ANY targetable card the board does not already draw and
   // give it a row. That closes the class (C2/C3 target more hidden zones) instead of this one instance.
   const orphanTargets = orphanTargetIds(view, choices)
-  const orphanCards = orphanTargets.map((id) => {
+  const orphanCards: GridItem[] = orphanTargets.map((id) => {
     const d = defOf(view, id)
-    return (
-      <Card
-        key={id}
-        code={d?.code ?? '?'}
-        name={d?.name ?? 'Unknown'}
-        cost={d?.cost ?? 0}
-        elements={d?.elements ?? []}
-        type={d?.type ?? 'forward'}
-        power={d?.power ?? null}
-        selectable
-        selected={selected === id}
-        size="small"
-        text={d?.text}
-        onClick={() => pick(id)}
-        onInspect={() => inspect(d?.code)}
-      />
-    )
+    return gridItem(id, {
+      code: d?.code ?? '?',
+      name: d?.name ?? 'Unknown',
+      cost: d?.cost ?? 0,
+      elements: d?.elements ?? [],
+      type: d?.type ?? 'forward',
+      power: d?.power ?? null,
+      selectable: true,
+      size: 'small',
+      ...(d?.text === undefined ? {} : { text: d.text }),
+    }, { selected: selected === id, onClick: () => pick(id) })
   })
 
   return (
     <div className="table">
       <section className="table__seat table__seat--opponent">
         <Seat v={view} p={AI} active={view.priority === AI || view.pending?.player === AI} />
-        <Zone label="AI Backups" compact empty={!view.fields[AI].backups.length}>{field(AI, 'backups')}</Zone>
-        <Zone label="AI Forwards" empty={!view.fields[AI].forwards.length}>{field(AI, 'forwards')}</Zone>
+        <Zone label="AI Backups" compact items={field(AI, 'backups')} onLookAt={look} />
+        <Zone label="AI Forwards" items={field(AI, 'forwards')} onLookAt={look} />
       </section>
 
 
@@ -205,58 +246,38 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
           your own, then your hand, then the buttons. */}
       <section className="table__seat table__seat--player">
         <Seat v={view} p={HUMAN} active={view.priority === HUMAN || view.pending?.player === HUMAN} />
-        <Zone label="Your Backups" compact empty={!view.fields[HUMAN].backups.length}>{field(HUMAN, 'backups')}</Zone>
-        <Zone label="Your Forwards" empty={!view.fields[HUMAN].forwards.length}>{field(HUMAN, 'forwards')}</Zone>
+        <Zone label="Your Backups" compact items={field(HUMAN, 'backups')} onLookAt={look} />
+        <Zone label="Your Forwards" items={field(HUMAN, 'forwards')} onLookAt={look} />
       </section>
 
       <section className="table__hand">
-        {orphanCards.length > 0 && <Zone label="Choose a card" compact empty={false}>{orphanCards}</Zone>}
+        {orphanCards.length > 0 && <Zone label="Choose a card" compact items={orphanCards} onLookAt={look} />}
         {/* The hand is a keyboard GRID: one tab stop, arrow keys within. Without it the mulligan cannot be
             reached by keyboard at all — no hand card is selectable there, so every one is a `role="img"`
             div outside the tab order, and the opening decision of the game is made blind. */}
         <CardGrid
           label="Your hand"
           className="hand"
-          onLookAt={(id) => inspect(defOf(view, id)?.code, actionFor(id) ?? null)}
+          onLookAt={look}
           items={view.hand.map((id) => {
             const d = defOf(view, id)
             const forCard = choices.byCard.get(id) ?? []
             const selectable = forCard.length > 0
-            // The cell is the focus target for a card with no button, so it must carry the name and the
-            // description — and they have to be the SAME strings the card would have used. The id is per
-            // INSTANCE, not per code: two copies of one card in hand would otherwise share a DOM id.
-            const descriptionId = `card-desc-${id}`
-            const cellProps = {
-              code: d?.code ?? '?', name: d?.name ?? 'Unknown', cost: d?.cost ?? 0,
-              elements: d?.elements ?? [], type: d?.type ?? 'forward', power: d?.power ?? null,
-              action: actionFor(id),
-            }
-            return {
-              id,
+            return gridItem(id, {
+              code: d?.code ?? '?',
+              name: d?.name ?? 'Unknown',
+              cost: d?.cost ?? 0,
+              elements: d?.elements ?? [],
+              type: d?.type ?? 'forward',
+              power: d?.power ?? null,
               selectable,
-              cellName: cardAccessibleName(cellProps),
-              ...(d?.text ? { cellDescribedBy: descriptionId } : {}),
-              render: (tabIndex) => (
-                <Card
-                  code={d?.code ?? '?'}
-                  name={d?.name ?? 'Unknown'}
-                  cost={d?.cost ?? 0}
-                  elements={d?.elements ?? []}
-                  type={d?.type ?? 'forward'}
-                  power={d?.power ?? null}
-                  selectable={forCard.length > 0}
-                  selected={selected === id}
-                  size="hand"
-                  text={d?.text}
-                  action={actionFor(id)}
-                  tabIndex={tabIndex}
-                  descriptionId={descriptionId}
-                  presentational={!selectable}
-                  onClick={forCard.length ? () => pick(id) : undefined}
-                  onInspect={() => inspect(d?.code, actionFor(id) ?? null)}
-                />
-              ),
-            }
+              size: 'hand',
+              ...(d?.text === undefined ? {} : { text: d.text }),
+              ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
+            }, {
+              selected: selected === id,
+              ...(selectable ? { onClick: () => pick(id) } : {}),
+            })
           })}
         />
       </section>

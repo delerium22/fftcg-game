@@ -1,9 +1,11 @@
 import { act, createElement, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { apply, applyChooseFirst, createGame, legalCommands, viewFor, type CardDef, type CardId, type Command, type GameState, type PlayerView } from '@fftcg/engine'
+import { actingPlayer, apply, applyChooseFirst, createGame, legalCommands, viewFor, type CardDef, type CardId, type Command, type GameState, type PlayerView } from '@fftcg/engine'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
+import { GreedyAgent } from '@fftcg/ai'
+import { stepAi } from '../src/game/useGame.js'
 import { Card, type CardProps } from '../src/ui/Card.js'
 import { CardDetails } from '../src/ui/CardDetails.js'
 import { buildChoiceSet, preferredChoices } from '../src/game/commands.js'
@@ -465,6 +467,59 @@ describe('the hand as a keyboard grid (rung E3b-1)', () => {
   })
 })
 
+describe('the field zones as keyboard grids (rung E3b-2)', () => {
+  const zoneGrid = (label: string): HTMLElement | null =>
+    document.querySelector<HTMLElement>(`[role="grid"][aria-label="${label}"]`)
+
+  it('gives a non-empty field zone a labelled grid, and an empty one none', () => {
+    // An empty grid has no tab stop to give and nothing to say, and four field rows are empty for most of a
+    // game — a keyboard player should not be tabbing through announcements of nothing.
+    const s = fieldState()
+    mount(s)
+    const v = viewFor(s, HUMAN)
+    const mine = v.fields[HUMAN].forwards.length > 0 ? 'Your Forwards' : 'Your Backups'
+    expect(zoneGrid(mine), `${mine} holds a card but is not a grid`).not.toBe(null)
+    expect(zoneGrid('AI Forwards'), 'an empty zone rendered a grid with no cells').toBe(null)
+  })
+
+  it('makes a card on the field focusable and readable', () => {
+    const s = fieldState()
+    mount(s)
+    const v = viewFor(s, HUMAN)
+    const placed = [...v.fields[HUMAN].forwards, ...v.fields[HUMAN].backups][0]!
+    const code = v.cards[placed.id]?.code
+    const def = code === undefined ? undefined : v.defs[code]
+    const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${placed.id}"]`)
+    expect(cell, 'the field card is not in a grid cell').not.toBe(null)
+    const focusTarget = cell!.querySelector('button') ?? cell!
+    act(() => { focusTarget.focus() })
+    expect(document.activeElement, 'the field card cannot take focus').toBe(focusTarget)
+    expect(details(), 'focusing a field card does not read it').toContain(def?.text)
+  })
+
+  it('lets a blocker be chosen with the ATTACKER readable — the case E3a could not serve', () => {
+    // Deciding a block means reading a Forward on the opponent's side of the board. Reached by playing, not
+    // hand-built: the fixture-that-cannot-occur mistake has been made twice in this program already.
+    const agent = new GreedyAgent({ seed: 7, decks: DECKS, depth: 1 })
+    let s: GameState = createGame({ seed: 7, decks: DECKS, defs: CARD_DEFS })
+    for (let i = 0; i < 4000 && !s.result; i++) {
+      if (s.pending?.kind === 'declareBlock' && s.pending.player === HUMAN) break
+      if (actingPlayer(s) === null) break
+      s = stepAi(s, agent).state
+    }
+    expect(s.pending?.kind, 'never reached a block decision, so this test asserts nothing').toBe('declareBlock')
+    mount(s)
+    const attackers = s.attack?.attackers ?? []
+    expect(attackers.length).toBeGreaterThan(0)
+    const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${attackers[0]}"]`)
+    expect(cell, 'the attacker is not reachable in any grid').not.toBe(null)
+    const focusTarget = cell!.querySelector('button') ?? cell!
+    act(() => { focusTarget.focus() })
+    expect(document.activeElement).toBe(focusTarget)
+    expect(details().length, 'the attacker could be focused but said nothing').toBeGreaterThan(0)
+  })
+})
+
 describe('the printed text as an accessible description (rung E3b-1)', () => {
   /** What a screen reader would announce as the DESCRIPTION of `el`, resolved through aria-describedby. */
   const describedText = (el: HTMLElement): string => {
@@ -559,8 +614,9 @@ describe('the printed text as an accessible description (rung E3b-1)', () => {
     const placed = [...v.fields[HUMAN].forwards, ...v.fields[HUMAN].backups][0]
     const code = v.cards[placed!.id]?.code
     const def = code === undefined ? undefined : v.defs[code]
-    const el = [...document.querySelectorAll<HTMLElement>('.zone .card')]
+    const el = [...document.querySelectorAll<HTMLElement>('.zone [role="gridcell"], .zone .card')]
       .find((c) => (c.getAttribute('aria-label') ?? '').startsWith(def?.name ?? '?'))
+    expect(el, `nothing on the field announces "${def?.name}"`).toBeDefined()
     expect(describedText(el!)).toBe(def?.text)
   })
 
@@ -600,7 +656,10 @@ describe('the printed text as an accessible description (rung E3b-1)', () => {
 })
 
 describe('the other two Board render paths', () => {
-  const fieldCards = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.zone .card')]
+  // The announcing element, which is the cell for a card with no button of its own — same rule as the hand.
+  const fieldCards = (): HTMLElement[] =>
+    [...document.querySelectorAll<HTMLElement>('.zone [role="gridcell"], .zone .card')]
+      .filter((el) => el.getAttribute('aria-label') !== null)
 
   it('inspects a card on the FIELD, not only one in hand', () => {
     const s = fieldState()
