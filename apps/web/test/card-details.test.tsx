@@ -93,6 +93,18 @@ function mount(s: GameState): void {
   mountView(viewFor(s, HUMAN), legalCommands(s, HUMAN), s)
 }
 
+/** Renders a NEW state into the SAME root, the way a real command updates the board — focus is not reset. */
+function remount(s: GameState): void {
+  const v = viewFor(s, HUMAN)
+  mountedState = s
+  mounted = buildChoiceSet(v, preferredChoices(v, legalCommands(s, HUMAN)))
+  const api: GameApi = {
+    view: v, choices: mounted, log: [], aiThinking: false,
+    choose: (c: Choice) => { chosen.push(c) }, restart: () => {},
+  }
+  act(() => { root!.render(createElement(Board, { game: api })) })
+}
+
 /** Mounts from an explicit view and command list, for a position real play cannot cheaply reach. */
 function mountView(v: PlayerView, legal: Command[], s?: GameState): void {
   chosen = []
@@ -317,6 +329,59 @@ describe('the hand as a keyboard grid (rung E3b-1)', () => {
     expect(chosen, 'an arrow key played a card').toEqual([])
     // The card is still a real button, so activation is the platform's, not ours.
     expect(target(cells()[0]!).tagName).toBe('BUTTON')
+  })
+
+  it('recovers focus when the focused card leaves the hand', () => {
+    // Casting the card you are standing on unmounts it, and the browser drops focus to `document.body` —
+    // from which a keyboard player is tabbing in from the top of the document again, past everything. This
+    // is the least-tested code in the rung and the case a real player hits on their first turn.
+    const before = mainPhaseState()
+    mount(before)
+    const cast = legalCommands(before, HUMAN).find((c) => c.type === 'castCharacter' || c.type === 'castSummon')
+    expect(cast, 'nothing castable, so nothing can leave the hand').toBeDefined()
+    const goneId = (cast as { card: CardId }).card
+    const cell = document.querySelector<HTMLElement>(`.hand [data-card-id="${goneId}"]`)
+    expect(cell, 'the card about to be cast is not in the rendered hand').not.toBe(null)
+    act(() => { (cell!.querySelector('button') ?? cell!).focus() })
+    expect(document.activeElement === document.body).toBe(false)
+
+    // The same Board, one command later — the focused card is gone from the hand.
+    const after = apply(before, cast!).state
+    remount(after)
+    expect(document.activeElement, 'focus fell to the document body when a card was played').not.toBe(document.body)
+    expect(document.querySelector('.hand')?.contains(document.activeElement), 'focus left the hand entirely').toBe(true)
+  })
+
+  it('does not steal focus when a hand it does not own changes', () => {
+    // The mirror of the case above, and the reason the repair is guarded: a zone that was not being used
+    // must never yank focus away. Here the player is on a prompt button when the hand changes underneath.
+    const before = mainPhaseState()
+    mount(before)
+    const pass = document.querySelector<HTMLButtonElement>('.prompt__actions button')
+    expect(pass, 'no prompt action to hold focus').not.toBe(null)
+    act(() => { pass!.focus() })
+    const cast = legalCommands(before, HUMAN).find((c) => c.type === 'castCharacter' || c.type === 'castSummon')
+    remount(apply(before, cast!).state)
+    expect(document.querySelector('.hand')?.contains(document.activeElement), 'the hand stole focus off the prompt').toBe(false)
+  })
+
+  it('forgets it owned focus once focus has LEFT it', () => {
+    // "Owned focus" must mean "owns it now", not "owned it once". Codex found exactly that bug in
+    // PromptStrip — a provenance ref set on focusin and never cleared — and a grid with the same flaw pulls
+    // the player back off the button they had deliberately tabbed to. Found by mutation: deleting the blur
+    // handler passed every other test here, because none of them ever left the hand after entering it.
+    const before = mainPhaseState()
+    mount(before)
+    const cell = document.querySelector<HTMLElement>('.hand [data-card-id]')
+    act(() => { (cell!.querySelector('button') ?? cell!).focus() })          // the hand owns focus
+    const pass = document.querySelector<HTMLButtonElement>('.prompt__actions button')
+    act(() => { pass!.focus() })                                             // and now it does not
+    const cast = legalCommands(before, HUMAN).find((c) => c.type === 'castCharacter' || c.type === 'castSummon')
+    remount(apply(before, cast!).state)
+    expect(
+      document.querySelector('.hand')?.contains(document.activeElement),
+      'the hand pulled focus back after the player had deliberately left it',
+    ).toBe(false)
   })
 
   it('is a labelled grid, not a listbox', () => {
