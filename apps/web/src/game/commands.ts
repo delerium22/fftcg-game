@@ -93,8 +93,41 @@ const namedCardOnTable = (v: PlayerView, p: PlayerId, named: string): boolean =>
 export const ownedCard = (v: PlayerView, owner: PlayerId, id: CardId): string =>
   `${possessive(v, owner)} ${bareName(v, id)}`
 
+/**
+ * Which copy this is, when a zone holds more than one card of the same code — 1-based, or `null` when the
+ * card is unique where it sits.
+ *
+ * Two identical cards in hand produced two buttons reading "Discard Luso, Shantotto", and a player could not
+ * tell which copy either one acted on. The first plan for this rung was to COLLAPSE them as equivalent. They
+ * are not: `knownBy` is per instance and survives movement, so after Miner reveals five cards one copy can be
+ * known to the opponent and the other not — discarding the known one is a real decision about what the
+ * opponent still knows you hold. Two same-code Forwards likewise differ in damage, status and flags, and two
+ * Break Zone copies differ by Sphene's per-instance eligibility.
+ *
+ * So the player is told which is which, rather than having the choice made for them.
+ *
+ * Zone-scoped: a Cloud in hand and a Cloud on the field are already distinguished by everything around them,
+ * and numbering across zones would attach "(2)" to cards nothing else in the interface separates.
+ */
+export function occurrenceOf(v: PlayerView, id: CardId): number | null {
+  const code = v.cards[id]?.code
+  const owner = v.cards[id]?.owner
+  if (code === undefined || owner === undefined) return null
+  const zone = v.hand.includes(id)
+    ? v.hand
+    : [...v.fields[owner].forwards, ...v.fields[owner].backups].some((c) => c.id === id)
+      ? [...v.fields[owner].forwards, ...v.fields[owner].backups].map((c) => c.id)
+      : null
+  if (zone === null) return null
+  const sameCode = zone.filter((other) => v.cards[other]?.code === code)
+  if (sameCode.length < 2) return null
+  const i = sameCode.indexOf(id)
+  return i < 0 ? null : i + 1
+}
+
 export function qualifiedName(v: PlayerView, id: CardId): string {
-  const bare = bareName(v, id)
+  const nth = occurrenceOf(v, id)
+  const bare = nth === null ? bareName(v, id) : `${bareName(v, id)} (${nth})`
   const mine = v.cards[id]?.owner
   if (mine === undefined) return bare
   // BOTH sides of the confusion have to be on the table. The twin condition came first, and playing showed
@@ -106,7 +139,9 @@ export function qualifiedName(v: PlayerView, id: CardId): string {
   // — "your" on some entries and not others, in a prompt where every card is yours and none of the AI's is
   // selectable. A card in hand cannot be mistaken for one in play, whichever end of the comparison it is.
   if (!cardIsOnTable(v, mine, id)) return bare
-  return namedCardOnTable(v, (1 - mine) as PlayerId, bare) ? `${possessive(v, mine)} ${bare}` : bare
+  // The twin test compares against the OPPONENT's board by printed name, so it must use the bare name — a
+  // numbered one would never match and the "your"/"the AI's" qualifier would silently stop appearing.
+  return namedCardOnTable(v, (1 - mine) as PlayerId, bareName(v, id)) ? `${possessive(v, mine)} ${bare}` : bare
 }
 
 /** "A", "A and B", "A, B and C" — target sets are read aloud off a button, so a bare comma list reads badly. */

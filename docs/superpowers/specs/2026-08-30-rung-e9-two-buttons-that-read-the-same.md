@@ -167,3 +167,59 @@ change to any label" exclusion above is withdrawn — it contradicts the ruling.
 - **E9-A5** Mutations: remove the disambiguator; swap its id mapping; map both labels to one id. Each must
   fail.
 - **E9-A6** Existing tests pass unedited; full gates green including `pnpm test:browser`.
+
+---
+
+## Built
+
+`occurrenceOf(view, id)` in `apps/web/src/game/commands.ts` returns the 1-based index of a card among the
+same-code cards in the zone it occupies, or `null` when it is unique there. `qualifiedName` appends ` (n)`,
+and `Board.tsx` appends the same marker to the accessible name of the rendered hand and field cards, so the
+button and the card agree. `legalCommands` is untouched.
+
+Zone-scoped deliberately: a Cloud in hand and a Cloud on the field are already told apart by everything
+around them, and numbering across zones would put "(2)" on cards nothing else in the interface separates.
+
+### The Miner case is reachable, and I nearly missed that it was
+
+I first searched the deck list for "Miner" and found nothing, because deck lists carry codes and not names.
+Miner is `20-074C` and this deck runs three. Driving the human seat to cast Miner on sight reaches **116
+positions across 40 seeds** where two same-code hand cards differ in `state.knownBy`, the first on seed 1.
+So the review's counterexample is not hypothetical in this pool: collapsing would have deleted a live choice
+in a position reachable on the first seed anyone tries.
+
+### The fixture had to hoard, because greedy self-play never discards
+
+Over thirty seeds of greedy self-play the human seat reached `discardToHandSize` **zero** times — a greedy
+agent empties its hand every turn. The defect was found by playing, where a human holds cards while deciding.
+The fixture drives the human seat to pass rather than cast, which is what a deciding player does, and then
+reaches 66 discard positions over 20 seeds, 32 of them holding a duplicate.
+
+Also worth writing down: `legalCommands` returns `concede` **first**, always (§2.1). A driver that fell back
+to `legal[0]` conceded on move one and reported a clean game.
+
+## Mutation table (E9-A5)
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | `occurrenceOf` returns `null` always | **5 tests fail**, each at its own assertion |
+| 2 | `occurrenceOf` returns the reversed index | **4 fail**, incl. "the number does not point at the card it labels" (28 vs 29) |
+| 3 | `byCard` files one representative under every same-code id | **1 fails**: "a choice filed under 28 does not actually involve it" |
+| 4 | `Board.tsx` drops the marker, `commands.ts` intact | **1 fails**: the rendered-card test, proving it is independent |
+| 5 | twin comparison uses the numbered name instead of the bare one | **SURVIVED — 322 tests passed.** See below |
+
+Every failure above is at the assertion under test, not at a locator.
+
+### Mutation 5 survived, and that was a real defect of mine
+
+`qualifiedName` decides "your Cloud" vs "Cloud" by looking for that printed name on the opponent's table.
+Numbering made the name it looked up `"Cloud (1)"`, which matches nothing over there — so the possessive
+**silently disappears at exactly the moment it matters most**: two of your Clouds facing one of theirs. I had
+fixed this while writing the code, but nothing in the suite could tell whether the fix was there. That is not
+a passing test, it is an absent one.
+
+`still say WHOSE they are when the opponent has one of the same name` now pins both directions
+(`your Cloud (1)`, `your Cloud (2)`, `the AI's Cloud`) and fails on the mutation.
+
+**11 tests. Full gates green:** 901 jsdom, 6 Playwright, typecheck, lint, and 200/200 selfplay at seed 1 with
+zero failures and zero unimplemented abilities.

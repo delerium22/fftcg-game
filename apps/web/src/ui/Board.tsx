@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
-import { fieldCardDisplay } from '../game/commands.js'
+import { fieldCardDisplay, occurrenceOf } from '../game/commands.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card, cardAccessibleName, type CardProps } from './Card.js'
@@ -30,9 +30,10 @@ function fieldCardProps(v: PlayerView, c: FieldCard, selectable: boolean, size: 
   // consumer of it. Passing printed `def.power` here would show a pumped Forward the wrong power AND the wrong
   // damage ratio, because `Card` derives remaining power and the damage bar from whatever number it is given.
   const shown = fieldCardDisplay(v, c)
+  const nth = occurrenceOf(v, c.id)
   return {
     code: d?.code ?? '?',
-    name: d?.name ?? 'Unknown',
+    name: nth === null ? (d?.name ?? 'Unknown') : `${d?.name ?? 'Unknown'} (${nth})`,
     cost: d?.cost ?? 0,
     elements: d?.elements ?? [],
     type: d?.type ?? 'forward',
@@ -394,9 +395,14 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
             const d = defOf(view, id)
             const forCard = choices.byCard.get(id) ?? []
             const selectable = forCard.length > 0
+            // The SAME occurrence marker the buttons use. A button saying "Discard Shantotto (2)" is only
+            // useful if the player can see which rendered card is Shantotto (2) — a disambiguator that
+            // appears on one side of the interface and not the other is worse than none, because it looks
+            // like an answer.
+            const nth = occurrenceOf(view, id)
             return gridItem(id, {
               code: d?.code ?? '?',
-              name: d?.name ?? 'Unknown',
+              name: nth === null ? (d?.name ?? 'Unknown') : `${d?.name ?? 'Unknown'} (${nth})`,
               cost: d?.cost ?? 0,
               elements: d?.elements ?? [],
               type: d?.type ?? 'forward',
