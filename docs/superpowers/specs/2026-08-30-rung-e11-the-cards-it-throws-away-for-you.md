@@ -1,7 +1,9 @@
 # Rung E11 — you don't get to choose what you pay with
 
-> **STATUS: REVISED after plan review. My headline claim was wrong** and the original is preserved below,
-> because the correction is the useful part. Nothing built.
+> **STATUS: BUILT** — commit `ffeaa57`. See *Built* at the end.
+>
+> **My headline claim was wrong** and the original is preserved below, because the correction is the useful
+> part.
 >
 > The file was called "the cards it throws away for you". That title asserted the app chooses *badly*. It does
 > not; it chooses by a value function, and my measurement disagreed with that function rather than exposing a
