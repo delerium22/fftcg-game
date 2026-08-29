@@ -1,6 +1,7 @@
 # Rung F2 — what the rollout actually spends
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built.
+> **STATUS: REJECTED by plan review — not built.** It cannot answer its own question, for a reason already
+> recorded in D8, which I had not read. See the ruling at the end.
 >
 > Chosen by the F1 plan review, which deferred F1 (0.7% opportunity, no demonstrated win-rate effect) and
 > pointed here instead: search depth improves every decision, a payment fix improves one in a hundred.
@@ -90,3 +91,85 @@ Each names the guard that stops it passing vacuously.
 - Changing candidate generation, rollout policy, or the command cap.
 - Browser p95. It is the right eventual gate, but a browser measurement on top of an unvalidated instrument
   measures two unknowns at once.
+
+---
+
+## Plan review: DO NOT BUILD. I re-proposed a rung that was already rejected.
+
+> **STATUS: REJECTED, not built.** Measurement-first was the right instinct; this design cannot answer its own
+> question, for a reason already written down in a spec I did not read.
+
+### CRITICAL — the two "hypotheses" are not separable, and D8 says so
+
+Settlement calls `greedyStep` (`greedy.ts:168`), which generates and scores more candidates. Removing one
+outer candidate removes its whole descendant settlement tree; making settlement cheaper means scoring fewer
+resolver candidates. **Both interventions reduce the same nested work**, so a resolver-heavy timing result
+does not select "cheaper settling" — that resolver work may be *caused* by the outer candidates.
+
+`docs/superpowers/specs/2026-08-29-rung-d8-rollout-timing.md` was rejected for this exact reason, and its
+closing section made the same mistake mine did: falling back on D7's apply ratios to break the tie, which
+reinstates the caveat the rung existed to remove.
+
+**D8's deeper objection is the one that matters, and it kills F2 outright:**
+
+> "Cheaper settlement" is not yet a concrete lever — it is a hope that one exists. No timing table can rank an
+> unspecified optimisation against a specified one.
+
+That is exactly true of F2. I wrote a measurement to choose between a named intervention and a wish.
+
+**This is the third spec I have written against a baseline I had not read** — E10 claimed the board rendered
+nothing when an orphan row already existed; F1 called a mechanism settled when it had two subtypes; and this
+one re-proposed a rejected rung. The E10 review already told me to read before specifying. Reading D7 was not
+enough: the rejection lived in D8.
+
+### CRITICAL — per-candidate timing cannot do what I asked of it
+
+A timer around one candidate contains `resolveForcedDecisions`, nested `greedyStep` calls, resolver advances
+and nested candidate timers. Charge it to the outer scope and settlement vanishes into "loop"; charge the
+nested ones too and they double-count; subtract them and you need an explicit hierarchical exclusive-timing
+design F2 never specifies. It is a valid *inclusive causal latency* metric — which is a different thing from
+the reconciled six-bucket attribution F2-A1 promised.
+
+### MAJOR — and my one argument for it was arithmetically wrong
+
+I chose per-candidate over per-apply to cut timer calls. But every scored candidate performs exactly one
+scoring apply, and scoring applies are 78.8% of all applies — so seed 11 is ~20.8M scored candidates, i.e.
+**41.5M clock calls against 52.7M**. Not the reduction I claimed.
+
+### MAJOR — the six buckets do not cover rollout wall time
+
+They time `apply` classes only, omitting `candidateCommands`, `evaluate`, loop control, budget checks and
+`leafReward`. So F2-A1's "the six times sum to the measured total" is **circular** — it passes by defining the
+total as the sum of the six accumulators.
+
+### MAJOR — not a fixed corpus, and OFF/ON does not bound what I claimed
+
+D7 says of itself that it is not fixed-corpus replay. Pooling whole seeded games hides the wide/pending states
+that drive p95; the corpus should be actual rollout-frontier states captured at `search.ts:464`, digested,
+stratified by width and pending kind, and reported individually.
+
+And OFF-versus-ON bounds total slowdown, not attribution BIAS: timer calls change inlining, GC placement and
+nested measurements differently. Wants interleaved repeats, identical trace assertions, confidence intervals —
+and a CPU sampling profile is the stronger instrument, because call stacks separate candidate apply, resolver
+apply, rollout advance, `evaluate` and generation without tens of millions of clocks.
+
+### The acceptance audit was worse than the design
+
+A1 circular. A2 vacuous — "the difference between the hypotheses" has no defined scalar because neither
+intervention is measured. A3 vacuous, with "material" undefined. **A4 an escape hatch** — I suspected this when
+writing it and asked the reviewer directly; it is not acceptance for a rung whose deliverable is a decision.
+A5 underspecified. A6 a regression guard, not evidence: counts stay green while every duration is wrong.
+
+### Ruling, and the shape of the real rung
+
+1. **Define concrete competing interventions.** "Cheaper settling" is too vague to measure.
+2. Replay a **fixed corpus of actual rollout-frontier states**, stratified, reported per state.
+3. Mutually exclusive timing via CPU profiling or hierarchical exclusive timers.
+4. Record inclusive per-outer-candidate descendant cost SEPARATELY — it is the causal view and must not enter
+   the exclusive sum.
+5. **If the observational profile cannot rank the interventions, run both as experiment arms against the same
+   states.** That is the causal measurement, and neither arm needs to ship.
+
+Named as the better intervention to prototype: **a bounded or specialised forced-decision policy** — resolver
+scoring plus advance owns ~91% of D7's applies while leaving breadth among the rollout's substantive outer
+moves intact. To be run as an experiment, not authorised as the winner.
