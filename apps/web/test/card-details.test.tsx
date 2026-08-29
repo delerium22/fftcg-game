@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { act, createElement, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -643,6 +646,30 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     act(() => { btn.click() })
     act(() => { btn.click() })
     expect(btn.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('lets a long pile be scrolled rather than clipping it', () => {
+    // A Break Zone grows all game. Measured in a real browser, an opened pile of 24 cards laid out 1215px
+    // wide inside a 912px container and the surplus was simply CLIPPED — unreachable by pointer, and by
+    // keyboard too, because a non-scrollable container cannot scroll a focused card into view. jsdom has no
+    // layout, so this pins the CSS contract that makes it reachable rather than the measurement.
+    const s = withBreakZone()
+    mount(s)
+    const btn = opener(/Break Zone, \d+ cards?$/)!
+    act(() => { btn.click() })
+    const grid = document.querySelector<HTMLElement>('[role="grid"][aria-label*="Break Zone"]')
+    expect(grid, 'the pile did not open').not.toBe(null)
+    expect(grid!.className, 'the pile is not styled as a card row').toContain('zone__cards')
+
+    // Asserted against the STYLESHEET, not `getComputedStyle`: jsdom has no layout and does not load the
+    // CSS, so a computed style here reads its defaults and would fail against correct code. This cannot
+    // verify the measurement — that was done in a real browser — but it does stop the rule being deleted.
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../src/styles.css'), 'utf8')
+    const rule = css.slice(css.indexOf('.zone__cards {'), css.indexOf('}', css.indexOf('.zone__cards {')))
+    expect(rule, 'a long pile would be clipped instead of scrolled').toContain('overflow-x: auto')
+    // `safe center`, not plain `center`: a centred flex row overflows in BOTH directions, and the cards at
+    // the start can then never be scrolled back to.
+    expect(rule, 'a centred row cannot be scrolled back to its start').toContain('justify-content: safe center')
   })
 
   it('leaves an EMPTY pile as a plain number, not a control', () => {

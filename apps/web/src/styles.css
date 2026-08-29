@@ -299,6 +299,13 @@ body {
   gap: var(--s3);
   min-height: calc(clamp(84px, 11.5vh, 134px) + 4px);
   padding-bottom: var(--s1);
+  /* A Break Zone grows all game. Opened at 24 cards its row measured 1215px inside a 912px container and the
+     surplus was simply CLIPPED — unreachable by pointer, and by keyboard too, since a non-scrollable
+     container cannot scroll a focused card into view. `safe center` keeps a short row centred while letting
+     a long one start at the left edge, which is the classic centred-flex bug: plain `center` overflows in
+     both directions and the first cards can never be scrolled back to. */
+  overflow-x: auto;
+  justify-content: safe center;
 }
 
 /* Backup rows hold `small` cards, so they do not need the forward row's reserved height. */
@@ -317,7 +324,8 @@ body {
 
 .hand {
   display: flex;
-  justify-content: center;
+  overflow-x: auto;
+  justify-content: safe center;
   align-items: flex-end;
   min-height: calc(clamp(112px, 16vh, 179px) + 11px);
   padding: var(--s2) 0;
@@ -328,9 +336,11 @@ body {
    with no row (an empty hand) still reserves its space and the board does not jump. */
 .grid__row {
   display: flex;
-  justify-content: center;
+  justify-content: safe center;
   align-items: flex-end;
   gap: var(--s2);
+  /* Room for a focused cell's outline, which an `overflow` ancestor would otherwise crop. */
+  padding: 3px;
 }
 
 /* A gridcell wraps one card. NOT `display: contents`, tempting as that is for leaving the flex layout
