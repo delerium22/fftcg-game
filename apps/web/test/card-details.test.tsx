@@ -290,6 +290,20 @@ describe('what a cast will cost, before the click (rung E4)', () => {
     expect(said).toContain('paying:')
   })
 
+  it('keeps a FORWARD’s power in the accessible name', () => {
+    // Ramuh is a Summon, so its `power` is null and the test above never exercises the power phrase at all.
+    // A mutant dropping power whenever an action is present passed all twenty tests — an actionable Forward
+    // would have lost the number a player compares before casting it. Found by mutation.
+    mount(mainPhaseState())
+    const forward = handCards().find((c) => {
+      const l = c.getAttribute('aria-label') ?? ''
+      return l.includes('forward') && l.includes('paying:')
+    })
+    expect(forward, 'no castable Forward in the opening Main Phase — this cannot check power').toBeDefined()
+    expect(forward!.getAttribute('aria-label'), 'a castable Forward lost its power from its accessible name')
+      .toMatch(/power \d+ of \d+/)
+  })
+
   it('shows the same line VISIBLY in the details panel', () => {
     // A separate surface with its own criterion, because either one alone leaves someone worse off: panel
     // only abandons screen-reader users, label only leaves sighted users on a slow native tooltip.
@@ -312,9 +326,13 @@ describe('what a cast will cost, before the click (rung E4)', () => {
     // strip, which lists both. Naming one payment here would tell the player the click is about to spend
     // something it is not. Found by mutation: disclosing `forCard[0]` unconditionally passed every other test.
     mount(mainPhaseState())
+    // The guard must be about the card actually asserted on. Checking that SOME card has several choices
+    // would keep passing on the day Geomancer stops having them, leaving the assertion below vacuous.
+    const geoId = viewFor(mainPhaseState(), HUMAN).hand.find((id) => nameOf(id) === 'Geomancer')
+    expect(geoId, 'Geomancer is not in the opening hand — the fixture deck or seed changed').toBeDefined()
+    expect(mounted?.byCard.get(geoId!)?.length ?? 0,
+      'Geomancer no longer offers several choices, so this test proves nothing').toBeGreaterThan(1)
     const geo = named('Geomancer')
-    expect(mounted?.byCard.get([...(mounted?.byCard ?? new Map())].find(([, cs]) => cs.length > 1)?.[0] ?? -1)?.length ?? 0,
-      'no multi-choice hand card in this position, so this cannot test anything').toBeGreaterThan(1)
     expect(geo.getAttribute('aria-label') ?? '', 'a card that does not commit on click named a payment anyway').not.toContain('paying')
     hover(geo)
     expect(document.querySelector('.details__action')).toBe(null)

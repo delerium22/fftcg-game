@@ -23,28 +23,49 @@ function dealtGame(seed: number): GameState {
 
 const CLOUD = '27-124S'      // 7000 Forward
 const LUSO = '27-125S'       // 3000 Forward
+const LIGHTNING = '27-127S'  // 9000 Forward
 
-/** Puts `code` on the AI's field as an attacker, and returns its instance id. */
+/**
+ * Puts `code` on the AI's field as a declared attacker, and returns its instance id.
+ *
+ * NO `as never`. The first version of this helper used casts, and they hid a fixture describing a state the
+ * engine cannot produce: attackers left `active` though `applyDeclareAttack` dulls them, a `zone` field
+ * `CardInstance` does not have, a missing required `usedThisTurn`, and invented `pending.candidates`. A
+ * fixture that cannot occur proves nothing, and a cast is what let it look fine. Typed exactly, it cannot.
+ */
 function attacker(v: PlayerView, id: CardId, code: string, over: Partial<FieldCard> = {}): CardId {
-  v.cards[id] = { id, code, owner: AI, zone: 'field' } as never
-  ;(v.defs as Record<string, unknown>)[code] ??= CARD_DEFS.find((d) => d.code === code)
+  const def = CARD_DEFS.find((d) => d.code === code)
+  expect(def, `no card ${code} in the pool`).toBeDefined()
+  v.cards[id] = { id, code, owner: AI }
+  v.defs[code] = def!
   const fc: FieldCard = {
-    id, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: true,
-    powerBonus: 0, granted: [], flags: [], ...over,
-  } as never
+    id,
+    // §10.1.2.2 / §15.2.1: declaring an attack dulls the attacker unless it has Brave. None of these do.
+    status: 'dull',
+    damage: 0, enteredTurn: 0, attackedThisTurn: true,
+    granted: [], powerBonus: 0, flags: [], usedThisTurn: [],
+    ...over,
+  }
   v.fields[AI].forwards = [...v.fields[AI].forwards, fc]
   return id
 }
 
-/** A view sitting on a real `declareBlock` question, with `attackers` as the engine would have set them. */
+/**
+ * A view sitting on a real `declareBlock` question, built to match what the engine would actually hold:
+ * the AI is the turn player, its attackers are dulled and flagged, and priority stays with the TURN player
+ * behind the pending decision rather than moving to the defender.
+ */
 function blocking(build: (v: PlayerView) => CardId[]): PlayerView {
-  const v = structuredClone(viewFor(dealtGame(1), HUMAN)) as PlayerView
+  const v = structuredClone(viewFor(dealtGame(1), HUMAN))
   v.fields[AI].forwards = []
   const ids = build(v)
+  v.turn = 2
+  v.turnPlayer = AI
   v.phase = 'attack'
   v.attack = { step: 'block', attackers: ids, blocker: null }
-  v.pending = { kind: 'declareBlock', player: HUMAN, candidates: [] } as never
-  v.priority = HUMAN
+  // `declareBlock` carries only the player who owes the answer — no candidate list.
+  v.pending = { kind: 'declareBlock', player: HUMAN }
+  v.priority = AI
   return v
 }
 
@@ -77,9 +98,21 @@ describe('the block prompt', () => {
       attacker(view, 901, LUSO, { powerBonus: 4000 }),
       attacker(view, 902, CLOUD),
     ])
-    const out = promptFor(v)
-    expect(out).toBe('Choose a blocker for Luso (power 7000) and Cloud (power 7000)')
-    expect(out, 'the party was summed into one number, hiding which Forward brings what').not.toContain('14000')
+    expect(promptFor(v)).toBe('Choose a blocker for Luso (power 7000) and Cloud (power 7000)')
+    // No `not.toContain('14000')` here: the exact equality above already implies it, so it could never fail
+    // and killed no mutant. A dead assertion is worse than none — it reads like coverage.
+  })
+
+  it('lists a THREE-member party without dropping one', () => {
+    // Parties are not limited to two: `legalAttackSets` enumerates every legal subset. A `slice(0, 2)` mutant
+    // passed all seven earlier tests, including the reached-by-play one, silently omitting an attacker and
+    // its power from a decision that turns on exactly those numbers.
+    const v = blocking((view) => [
+      attacker(view, 901, LUSO),
+      attacker(view, 902, CLOUD),
+      attacker(view, 903, LIGHTNING),
+    ])
+    expect(promptFor(v)).toBe('Choose a blocker for Luso (power 3000), Cloud (power 7000) and Lightning (power 9000)')
   })
 
   it('says nothing about taking damage', () => {
