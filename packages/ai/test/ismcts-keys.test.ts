@@ -614,6 +614,12 @@ describe('observationKey (contract 6)', () => {
     differs({ ...view, resolution: { ...view.resolution, continuation: null } }, 'a queued continuation')
     differs({ ...view, resolution: { ...view.resolution, queue: [] } }, 'a queued frame')
     differs({ ...view, result: { winner: 0, cause: 'damage', reason: 'test' } }, 'the game being over')
+    // Two endings with the SAME winner, differing only in how the game ended. "Over" is not enough: a
+    // searcher backing up terminal values must not merge information sets that arrived by different routes.
+    expect(
+      observationKey({ ...view, result: { winner: 0, cause: 'damage', reason: 'player 1 has 7 damage (§12.4.1)' } }),
+      'two different endings with the same winner share one key',
+    ).not.toBe(observationKey({ ...view, result: { winner: 0, cause: 'deckOut', reason: 'player 1 could not draw a card (§3.1.2)' } }))
   })
 
   it('treats the root hand as a multiset of codes, not an ordered list of ids', () => {

@@ -565,6 +565,11 @@ export function observationKey(view: PlayerView): ObservationKey {
   return [
     `me${view.me}`, `t${view.turn}`, `tp${view.turnPlayer}`, view.phase, `pr${view.priority}`,
     `fp${view.firstPlayer}`, `mu${view.mulliganDecided.map((b) => (b ? 1 : 0)).join('')}`,
+    // Rung E6 added a structured `cause` beside `reason`. Either would serve here — `winner` is already in
+    // this key, so the two are equivalent discriminators — and `reason` is kept only because changing a key
+    // STRING changes information-set identity, and with it the search tree and every measured win rate, for
+    // no gain. What matters is that the terminal state carries more than "over": two endings that differ
+    // only in how they ended are different information sets.
     `end:${view.result === null ? '-' : `${view.result.winner ?? 'draw'}/${view.result.reason}`}`,
     `hand[${hand}]`,
     `F0:${fieldDigest(view, 0)}`,

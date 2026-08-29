@@ -98,6 +98,16 @@ describe('describeResult', () => {
     })
   }
 
+  it('reads correctly for a viewer sitting at seat 1', () => {
+    // The browser pins the human to seat 0 (`HUMAN` is a module constant), so this configuration does not
+    // occur in the app today. It is still worth asserting, and it is NOT the "fixture that cannot exist"
+    // mistake: `describeResult` is a pure function whose contract is defined for any seat, so this tests the
+    // contract rather than manufacturing an unreachable game position. The mirror tournament already swaps
+    // seats for the AI benchmark, and `winner === me` is the kind of comparison that silently assumes 0.
+    expect(describeResult(AI, { winner: HUMAN, cause: 'damage', reason: 'x' })).toBe('You have taken 7 damage.')
+    expect(describeResult(AI, { winner: AI, cause: 'damage', reason: 'x' })).toBe('The AI has taken 7 damage.')
+  })
+
   it('a draw is phrased as a draw, not as somebody losing', () => {
     expect(describeResult(HUMAN, { winner: null, cause: 'bothReachedSeven', reason: 'x' }))
       .toBe('You both reached 7 damage — the game is a draw.')
