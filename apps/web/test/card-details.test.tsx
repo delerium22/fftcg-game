@@ -352,6 +352,20 @@ describe('the hand as a keyboard grid (rung E3b-1)', () => {
     expect(details()).toContain(RAMUH_TEXT)
   })
 
+  it('claims the arrow keys it handles, so they do not also scroll', () => {
+    // The mirror of the Enter/Space test below. A navigation key that is handled AND left to the browser
+    // does two things at once: focus moves and the page scrolls — and since the card rows became
+    // horizontally scrollable, the row itself scrolls out from under the card being focused. Found by my own
+    // mutation sweep: deleting `preventDefault()` passed all 58 tests.
+    mount(mulliganState())
+    for (const key of ['ArrowRight', 'ArrowLeft', 'Home', 'End']) {
+      act(() => { target(cells()[1]!).focus() })
+      const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      act(() => { document.activeElement!.dispatchEvent(ev) })
+      expect(ev.defaultPrevented, `${key} was handled but left to the browser as well`).toBe(true)
+    }
+  })
+
   it('leaves Enter and Space to the card, and arrows do not play it', () => {
     mount(mainPhaseState())
     act(() => { target(cells()[0]!).focus() })
@@ -362,16 +376,20 @@ describe('the hand as a keyboard grid (rung E3b-1)', () => {
     // asserted the element was a button — which a mutant calling `preventDefault()` on Enter survives
     // happily, while real keyboard activation is broken. jsdom does not synthesise a click from Enter, so
     // what is checked is that the grid does not swallow the event: it must reach the button undefended.
-    for (const key of ['Enter', ' ']) {
-      let reached = false
-      let defended = false
+    // `defaultPrevented` is read AFTER dispatch, not inside a listener on the button. Events bubble target
+    // first, so a listener there runs BEFORE the grid's handler and always sees `false` — the original
+    // version of this test could not detect the grid preventing anything. Found by mutation: hoisting
+    // `preventDefault()` above the key check, which would swallow Tab and Enter alike, passed it.
+    for (const key of ['Enter', ' ', 'Tab']) {
       const btn = target(cells()[1]!)
-      const spy = (e: Event): void => { reached = true; defended = e.defaultPrevented }
+      let reached = false
+      const spy = (): void => { reached = true }
       btn.addEventListener('keydown', spy)
-      act(() => { btn.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })) })
+      const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      act(() => { btn.dispatchEvent(ev) })
       btn.removeEventListener('keydown', spy)
       expect(reached, `${key} never reached the card`).toBe(true)
-      expect(defended, `the grid called preventDefault on ${key}, so the button can never be activated`).toBe(false)
+      expect(ev.defaultPrevented, `the grid swallowed ${key}, so the card can never be activated or left`).toBe(false)
     }
   })
 
