@@ -7,7 +7,7 @@ import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
 import { buildChoiceSet, describeResult } from '../src/game/commands.js'
 import { describeEvent, stepAi } from '../src/game/useGame.js'
-import { AI, HUMAN, type Choice, type GameApi, type LogLine } from '../src/game/types.js'
+import { AI, HUMAN, type Choice, type ChoiceSet, type GameApi, type LogLine } from '../src/game/types.js'
 
 /**
  * What the browser says when the game ends.
@@ -38,10 +38,10 @@ function playToTheEnd(seed: number): { state: GameState; log: LogLine[] } {
   return { state: s, log }
 }
 
-function mountFinished(s: GameState, log: LogLine[]): void {
+function mountFinished(s: GameState, log: LogLine[], choices?: ChoiceSet): void {
   const v = viewFor(s, HUMAN)
   const api: GameApi = {
-    view: v, choices: buildChoiceSet(v, []), log, aiThinking: false,
+    view: v, choices: choices ?? buildChoiceSet(v, []), log, aiThinking: false,
     choose: (_c: Choice) => {}, restart: () => {},
   }
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
@@ -69,7 +69,21 @@ describe('a finished game in a real Board', () => {
     const { state, log } = playToTheEnd(3)
     mountFinished(state, log)
     expect(document.querySelector('.banner button')?.textContent).toBe('Play again')
-    expect([...document.querySelectorAll('.prompt__actions button')], 'stale choices survived the end of the game').toEqual([])
+  })
+
+  it('offers no stale choice once the game is over, even if handed one', () => {
+    // The first version of this asserted "no choice buttons" against a fixture built with `buildChoiceSet(v,
+    // [])` — an empty choice set asserting it was empty. It could not fail. Hand the finished board a
+    // DELIBERATELY non-empty set, so the assertion is about the board's behaviour rather than the fixture's.
+    const { state, log } = playToTheEnd(3)
+    const v = viewFor(state, HUMAN)
+    const stale = buildChoiceSet(v, [{ type: 'concede', player: HUMAN }])
+    expect(stale.all.length, 'the stale set is empty, so this proves nothing again').toBeGreaterThan(0)
+    mountFinished(state, log, stale)
+    expect(
+      [...document.querySelectorAll('.prompt__actions button')].map((b) => b.textContent),
+      'a finished game still offered a move',
+    ).toEqual([])
   })
 })
 
@@ -98,7 +112,7 @@ describe('describeResult', () => {
     })
   }
 
-  it('reads correctly for a viewer sitting at seat 1', () => {
+  it('reads correctly for a viewer sitting at seat 1 (the same sentences, other seat)', () => {
     // The browser pins the human to seat 0 (`HUMAN` is a module constant), so this configuration does not
     // occur in the app today. It is still worth asserting, and it is NOT the "fixture that cannot exist"
     // mistake: `describeResult` is a pure function whose contract is defined for any seat, so this tests the
@@ -113,11 +127,30 @@ describe('describeResult', () => {
       .toBe('You both reached 7 damage — the game is a draw.')
   })
 
-  it('the event log line uses the same sentence as the banner', () => {
-    // Two consumers, one formatter. Written separately once, and that is exactly how the log kept the leak.
-    const result: GameResult = { winner: AI, cause: 'damage', reason: 'player 0 has 7 damage (§12.4.1)' }
-    const line = describeEvent(viewFor(createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS }), HUMAN), { type: 'gameOver', result })?.text ?? ''
-    expect(line).toContain(describeResult(HUMAN, result))
-    expect(line, 'the log still prints the engine reason').not.toContain('§')
+  describe('the event log line uses the same sentence as the banner', () => {
+    // Two consumers, one formatter — and the whole union, both sides. Checking only a damage loss let a
+    // mutant through where ONLY `damage` called `describeResult` and every other cause logged "You have
+    // taken 7 damage.": all 253 web tests passed and it linted cleanly. A shared formatter is not shown to
+    // be shared by exercising one of its five branches.
+    const view = viewFor(createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS }), HUMAN)
+    const logLine = (result: GameResult): string =>
+      describeEvent(view, { type: 'gameOver', result })?.text ?? ''
+
+    for (const [cause] of TABLE) {
+      if (cause === 'bothReachedSeven') continue
+      for (const winner of [HUMAN, AI] as const) {
+        it(`${cause}, won by ${winner === HUMAN ? 'you' : 'the AI'}`, () => {
+          const result = { winner, cause, reason: 'player 0 lost somehow (§0)' } as GameResult
+          expect(logLine(result)).toContain(describeResult(HUMAN, result))
+          expect(logLine(result), 'the log still prints the engine reason').not.toContain('§')
+        })
+      }
+    }
+
+    it('the draw', () => {
+      const result: GameResult = { winner: null, cause: 'bothReachedSeven', reason: 'both players reached 7 damage (§3.3)' }
+      expect(logLine(result)).toContain(describeResult(HUMAN, result))
+      expect(logLine(result)).not.toContain('§')
+    })
   })
 })

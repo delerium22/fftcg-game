@@ -25,35 +25,47 @@ const atSeven = (s: ReturnType<typeof makeGame>, p: 0 | 1) => ({
     i === p ? { ...ps, damageZone: ps.deck.slice(0, 7), deck: ps.deck.slice(7) } : ps) as typeof s.players,
 })
 
+/** The seats, so every player-dependent producer is checked from both. */
+const SEATS = [0, 1] as const
+
+/** With `p`'s deck emptied. */
+const noDeck = (s: ReturnType<typeof makeGame>, p: 0 | 1) => ({
+  ...s,
+  players: s.players.map((ps, i) => (i === p ? { ...ps, deck: [] } : ps)) as typeof s.players,
+})
+
 describe('every game-ending producer sets its own cause', () => {
-  it('concede — §2.1', () => {
-    const s = apply(makeGame(), { type: 'concede', player: 0 }).state
-    expect(s.result).toEqual<GameResult>({
-      winner: 1, cause: 'concede', reason: 'player 0 conceded (§2.1)',
-    })
-  })
+  // Both seats at every player-dependent producer. Checking only player 0 leaves the WINNER unpinned: a
+  // mutant replacing `opponentOf(p)` with a literal `1` makes player 1 win when player 1 decks out — a
+  // semantically wrong result that still typechecks, and which passed all 827 tests. The loser is the
+  // interesting half of these results and it only shows up under symmetry.
+  for (const p of SEATS) {
+    const other = (1 - p) as 0 | 1
 
-  it('deck-out — §3.1.2', () => {
-    const g = makeGame()
-    const empty = { ...g, players: [{ ...g.players[0], deck: [] }, g.players[1]] as typeof g.players }
-    expect(drawCards(empty, 0, 1)[0].result).toEqual<GameResult>({
-      winner: 1, cause: 'deckOut', reason: 'player 0 could not draw a card (§3.1.2)',
+    it(`concede — §2.1, player ${p}`, () => {
+      expect(apply(makeGame(), { type: 'concede', player: p }).state.result).toEqual<GameResult>({
+        winner: other, cause: 'concede', reason: `player ${p} conceded (§2.1)`,
+      })
     })
-  })
 
-  it('seven damage — §12.4.1', () => {
-    expect(runRuleProcesses(atSeven(makeGame(), 0))[0].result).toEqual<GameResult>({
-      winner: 1, cause: 'damage', reason: 'player 0 has 7 damage (§12.4.1)',
+    it(`deck-out — §3.1.2, player ${p}`, () => {
+      expect(drawCards(noDeck(makeGame(), p), p, 1)[0].result).toEqual<GameResult>({
+        winner: other, cause: 'deckOut', reason: `player ${p} could not draw a card (§3.1.2)`,
+      })
     })
-  })
 
-  it('damage with an empty deck — §3.1.3', () => {
-    const g = makeGame()
-    const empty = { ...g, players: [g.players[0], { ...g.players[1], deck: [] }] as typeof g.players }
-    expect(dealPlayerDamage(empty, 1, null)[0].result).toEqual<GameResult>({
-      winner: 0, cause: 'damageWithEmptyDeck', reason: 'player 1 took damage with an empty deck (§3.1.3)',
+    it(`seven damage — §12.4.1, player ${p}`, () => {
+      expect(runRuleProcesses(atSeven(makeGame(), p))[0].result).toEqual<GameResult>({
+        winner: other, cause: 'damage', reason: `player ${p} has 7 damage (§12.4.1)`,
+      })
     })
-  })
+
+    it(`damage with an empty deck — §3.1.3, player ${p}`, () => {
+      expect(dealPlayerDamage(noDeck(makeGame(), p), p, null)[0].result).toEqual<GameResult>({
+        winner: other, cause: 'damageWithEmptyDeck', reason: `player ${p} took damage with an empty deck (§3.1.3)`,
+      })
+    })
+  }
 
   it('both at seven is a draw — §3.3', () => {
     // NOT reachable through legal play, and that is worth stating rather than implying. The engine branch is
