@@ -1,7 +1,7 @@
 # Rung F1 — a Backup dulled for nothing
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built. The first AI rung in a while; found by the E11 plan
-> review, then characterised and measured here.
+> **STATUS: DEFERRED by plan review — not built.** The defect is real and reproduces; it is not worth doing
+> now, and both options I proposed were wrong as described. See the ruling at the end.
 
 ## The defect, and its exact mechanism
 
@@ -106,3 +106,76 @@ Each names its anti-vacuity guard.
 `cardValue` itself. It scores a Forward by power and a Backup by cost, values no abilities, and is the reason
 "discard Lightning + Miner" scored cheaper than "discard Noel + Undead Princess" in E11. Improving it is a
 different rung with a much harder measurement problem, and conflating the two would make both unfalsifiable.
+
+---
+
+## Plan review: DEFERRED, and two of my claims were wrong
+
+> **STATUS: DEFERRED, not built.** The defect is real and the measurement reproduces. The ruling is that it is
+> not worth building now, and that BOTH options I proposed are wrong as described.
+
+### CRITICAL 1 — "the declaration, not the source set, is wrong" is only half true
+
+The four misses are **two different failure modes**, and I generalised from the one I looked at:
+
+- **Re-declaration** — a chosen dual-element discard could have been declared as the required element.
+  Billy Bob, the case I characterised.
+- **Substitution** — the chosen top-up source *cannot* supply the element at all, and an **unchosen** discard
+  has to replace it. Seed 6: chosen Reeve + Geomancer-as-earth, optimum Red Mage-as-lightning. **The
+  seed-3 position from E11's review — the one that started this rung — is also this subtype.**
+
+So my option (A), which only re-declares an already-chosen source, would fix the case I wrote about and leave
+the case that prompted the rung standing. It would then have passed my own F1-A2, because I pinned only the
+subtype I understood.
+
+### CRITICAL 2 — option (B) is unsafe, and my performance argument was measuring the wrong thing
+
+`enumeratePaymentsFor` visits `2^B × ∏(1 + kᵢ)` leaves — B active Backups, kᵢ discardable elements per hand
+card. **"Mean 5.1, max 40" counts payments RETURNED, not work done**; the enumerator still traverses every
+invalid and non-minimal combination. My headline number could not support the conclusion I drew from it.
+
+A reachable shape in this pool — five active Backups (the cap) and seven cards in hand (the hand limit is
+enforced only at end phase), four of them dual-element — gives 10,368 leaves per card. Measured on a
+rule-legal instance of exactly that:
+
+| | |
+|---|---|
+| `candidateCommands` today | **0.070 ms** |
+| enumerating the seven casts | **48.3 ms** |
+| | **~692×** |
+
+per rollout step, before activations. A 200-game average gate would not have caught it, which also means
+**F1-A4 as I wrote it was insufficient** — a mean under 2× can hide a reachable state that is hundreds of
+times slower.
+
+### MAJOR — my numbers depend on a driver detail I left out
+
+574 / 4 / 0.697% reproduces exactly, but only with **one `GreedyAgent` instance reused for both seats**. With
+two separately constructed same-seed agents it is **582 / 1 / 0.17%**. Same lesson as E11: a measurement
+without its exact driver is an anecdote with digits.
+
+### MAJOR — one of my mutations would not have failed
+
+F1-A5's "score a dulled Backup as 0" kills nothing on the 574-position trace: zero positions change. (The
+other two are fine — "first enumerated" is worse in 369/574, ignoring required elements returns an illegal
+payment in 164/574.) It needs the seed-3 substitution fixture, **and the oracle's scorer must be owned by the
+test**: sharing the production one lets a mutation change the implementation and the oracle together.
+
+### Ruling
+
+Do not build (B). Do not build (A) as described. (C) is unjustified maintenance, and a source-count cap is the
+wrong safety metric anyway — equal source counts differ wildly once cards are multi-element.
+
+**Defer F1.** At a 0.7% opportunity rate with no demonstrated win-rate effect, the more valuable AI work is the
+next ISMCTS performance step, which D7 already set up: rollout candidate scoring and settlement account for
+~97% of rollout applies, and buying search depth improves every decision rather than one payment in a hundred.
+
+If F1 is ever revisited, the shapes worth building are an expanded local repair that can re-declare **or
+substitute** one top-up source with both subtypes pinned, or a bounded minimum-cost dynamic program over CP
+amount × required-element coverage — a global optimum without enumerating source subsets.
+
+### Also worth keeping
+
+E11 is not weakened by any of this: changing which payment is preferred only changes the default, the previous
+one stays under "Pay differently", and E11's tests derive the preferred command dynamically rather than pinning
+it. And none of `packages/ai/test/payment.test.ts`'s pinned expectations would have needed editing.
