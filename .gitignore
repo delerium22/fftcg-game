@@ -9,3 +9,7 @@ images/
 .playwright-mcp/
 .claude/*.lock
 .tsbuild/
+
+# Playwright run artefacts — reports and traces, regenerated on every run.
+test-results/
+playwright-report/

@@ -129,14 +129,20 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     // nowhere else. What can honestly be checked here is that the lifecycle asks for it.
     const calls: string[] = []
     const proto = window.HTMLDialogElement?.prototype as { showModal?: () => void } | undefined
-    const had = proto !== undefined && typeof proto.showModal === 'function'
+    // Save and restore UNCONDITIONALLY. Restoring only when the method was absent happens to be harmless
+    // against this pinned jsdom, which has none — and would permanently replace the real one the day jsdom
+    // grows it, leaving every later test running against a spy.
+    const original = proto === undefined ? undefined : Object.getOwnPropertyDescriptor(proto, 'showModal')
     if (proto) proto.showModal = function spy() { calls.push('showModal') }
     try {
       const { state, log } = playToTheEnd(3)
       mountFinished(state, log)
       expect(calls, 'the dialog was rendered but never opened modally').toEqual(['showModal'])
     } finally {
-      if (proto && !had) delete proto.showModal
+      if (proto) {
+        if (original) Object.defineProperty(proto, 'showModal', original)
+        else delete proto.showModal
+      }
     }
   })
 
@@ -158,11 +164,20 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     remountPending()
     expect(document.querySelectorAll('.prompt__actions button'), 'this step is meant to have no actions').toHaveLength(0)
     remountLive()
-    expect(document.activeElement, 'focus fell to the document body after restarting').not.toBe(document.body)
-    expect(
-      document.activeElement?.closest('.prompt__actions'),
-      'focus did not land on an action of the new game',
-    ).not.toBe(null)
+
+    // The EXACT control, not "something inside .prompt__actions". Accepting any descendant let a mutant
+    // focus the LAST button — Concede — which is the worst possible landing place at the start of a game.
+    expect(document.activeElement?.textContent, 'focus did not land on the first action of the new game').toBe('Keep hand')
+
+    // And the flag must be SPENT. Deleting `restarting.current = false` left it true, so every later view
+    // update yanked focus back to the first prompt action — mid-game, without the player asking, which is
+    // the WCAG 3.2.5 violation the PromptStrip work exists to avoid. Move focus deliberately, then let the
+    // board re-render, and it must stay where the player put it.
+    const elsewhere = document.querySelector<HTMLElement>('.hand [role="gridcell"], .seat button')
+    expect(elsewhere, 'nothing else to focus, so this cannot detect focus being stolen').not.toBe(null)
+    act(() => { elsewhere!.focus() })
+    remountLive()
+    expect(document.activeElement, 'the board stole focus back after the player moved it').toBe(elsewhere)
   })
 
   it('refuses to be dismissed — there is nothing to dismiss to', () => {

@@ -3,14 +3,18 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.20.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b packages/engine packages/cards packages/ai apps/cli apps/web",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:browser": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0",
     "eslint": "^9.0.0",
     "tsx": "^4.19.0",
