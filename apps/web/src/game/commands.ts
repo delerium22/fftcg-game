@@ -1,5 +1,5 @@
 import {
-  HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, describeAbilityEffect, effectivePower, pickedDeckCards, seedRng,
+  HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
   type ZoneTransitionReason,
@@ -197,28 +197,6 @@ function caused(v: PlayerView, text: string): string {
 }
 
 /**
- * The effect node `path` points at, mirroring `effectAt` in the engine's resolve.ts. Duplicated rather than
- * imported because the engine keeps it private, and the cost of drift is bounded: this drives WORDING only,
- * and every caller falls back to neutral phrasing when it returns null.
- */
-function nodeAt(effects: readonly Effect[], path: readonly number[], modes: readonly number[], depth: number): Effect | null {
-  const i = path[depth]
-  if (i === undefined) return null
-  const eff = effects[i]
-  if (!eff) return null
-  if (depth === path.length - 1) return eff
-  if (eff.kind === 'chooseTargets') return nodeAt(eff.then, path, modes, depth + 1)
-  if (eff.kind === 'chooseModes') {
-    // `chooseModes` owns two levels: the ordinal of the chosen mode, then the effect index inside it.
-    const k = path[depth + 1]
-    if (k === undefined) return null
-    const mode = eff.modes[modes[k] ?? -1]
-    return mode ? nodeAt(mode.effects, path, modes, depth + 2) : null
-  }
-  return null
-}
-
-/**
  * What a clause does to the cards it picks, as an imperative for the button ("Dull") and a purpose clause for
  * the prompt ("to dull"). Read off the AST rather than hard-coded per card, so a clause the cards lane adds
  * tomorrow gets a real label with no change here.
@@ -257,7 +235,7 @@ function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTarg
       else if (e.kind === 'forEach') walk(e.do)
     }
   }
-  const exact = nodeAt(active.ability.effects, active.frame.path, active.frame.modes, 0)
+  const exact = effectAtPath(active.ability.effects, active.frame.path, active.frame.modes)
   let node: Extract<Effect, { kind: 'chooseTargets' }> | null = exact?.kind === 'chooseTargets' ? exact : null
   if (!node) { walk(active.ability.effects); node = found.length === 1 ? found[0] ?? null : null }
   if (!node) return null

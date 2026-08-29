@@ -3,7 +3,7 @@ import type { Ability, AbilityTrigger, Effect, Frame, TargetFilter, TargetSpec, 
 import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
 import { shuffle } from './rng.js'
-import { MAX_RESOLUTION_STEPS } from './abilities.js'
+import { MAX_RESOLUTION_STEPS, effectAtPath } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending } from './state.js'
 import { defOf, findFieldCard, forget, learn, updatePlayer } from './state.js'
 import type { CardDef, PlayerId } from './types.js'
@@ -584,32 +584,14 @@ export function drainResolution(state: GameState): [GameState, Event[]] {
 // Answering a suspended choice
 // ---------------------------------------------------------------------------
 
-/**
- * The effect node a frame is suspended at, found by walking `path` through the AST. `apply` re-derives its
- * candidates from HERE rather than trusting `state.pending`, which is only a projection of it (spec C1-6).
- */
-function effectAt(effects: readonly Effect[], path: readonly number[], modes: readonly number[], depth: number): Effect | null {
-  const i = path[depth]
-  if (i === undefined) return null
-  const eff = effects[i]
-  if (!eff) return null
-  if (depth === path.length - 1) return eff
-  if (eff.kind === 'chooseTargets') return effectAt(eff.then, path, modes, depth + 1)
-  if (eff.kind === 'chooseModes') {
-    const k = path[depth + 1]
-    if (k === undefined) return null
-    const mode = eff.modes[modes[k] ?? -1]
-    return mode ? effectAt(mode.effects, path, modes, depth + 2) : null
-  }
-  return null
-}
-
 function suspendedNode(state: GameState): { frame: Frame; node: Effect } {
   const frame = state.resolution.active
   if (!frame) throw new IllegalCommandError('no ability is waiting for an answer')
   const ability = abilityOf(state, frame)
   if (!ability) throw new IllegalCommandError('the waiting ability no longer exists')
-  const node = effectAt(ability.effects, frame.path, frame.modes, 0)
+  // `apply` re-derives its candidates from the node HERE rather than trusting `state.pending`, which is only
+  // a projection of it (spec C1-6). Shared with the AI and the browser; see `effectAtPath`.
+  const node = effectAtPath(ability.effects, frame.path, frame.modes)
   if (!node) throw new IllegalCommandError('the waiting ability has no effect at its program counter')
   return { frame, node }
 }

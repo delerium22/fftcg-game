@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, activationCheck, activationTargetSets, attackCheck, castCheck, defOf, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, activationCheck, activationTargetSets, attackCheck, castCheck, defOf, effectAtPath, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -54,29 +54,15 @@ function boundedAttackSets(state: GameState, player: PlayerId): CardId[][] {
 const CHOICE_CANDIDATE_CAP = 6
 
 /**
- * The `Effect` the active frame is suspended at. `resolve.ts` keeps its own `effectAt` private — it is the
- * authority `apply` re-validates against — so this is the AI's read-only copy of the same walk. Every caller
- * falls back to `legalCommands` when it returns null: being wrong here can only cost play strength, never
- * legality, because the engine re-derives the candidates itself.
+ * The `Effect` the active frame is suspended at, read through the engine's own walk. Every caller falls back
+ * to `legalCommands` when it returns null: being wrong here can only cost play strength, never legality,
+ * because `apply` re-derives the candidates itself.
  */
-function effectAt(effects: readonly Effect[], path: readonly number[], modes: readonly number[], depth: number): Effect | null {
-  const eff = effects[path[depth] ?? -1]
-  if (!eff) return null
-  if (depth === path.length - 1) return eff
-  if (eff.kind === 'chooseTargets') return effectAt(eff.then, path, modes, depth + 1)
-  if (eff.kind === 'chooseModes') {
-    const k = path[depth + 1]
-    const mode = k === undefined ? undefined : eff.modes[modes[k] ?? -1]
-    return mode ? effectAt(mode.effects, path, modes, depth + 2) : null
-  }
-  return null
-}
-
 function suspendedEffect(state: GameState): Effect | null {
   const frame = state.resolution.active
   if (!frame) return null
   const ability = abilityOf(state, frame)
-  return ability ? effectAt(ability.effects, frame.path, frame.modes, 0) : null
+  return ability ? effectAtPath(ability.effects, frame.path, frame.modes) : null
 }
 
 /** The side a target belongs to: its controller on the field, its owner in a Break Zone (§7.10). */

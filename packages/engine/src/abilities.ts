@@ -430,3 +430,42 @@ export function describeAbilityEffect(ability: Ability): string | null {
   const once = ability.trigger.kind === 'activated' && ability.trigger.oncePerTurn === true
   return once ? `${effect} (once per turn)` : effect
 }
+
+/**
+ * The effect node a suspended frame is sitting on, found by walking its program counter (`path`, with
+ * `modes` recording which branch each `chooseModes` took). `null` if the counter does not address a node.
+ *
+ * ONE implementation, deliberately. There were three — the engine's private `effectAt`, the browser's
+ * `nodeAt` and the AI's own copy in `candidates.ts` — each with a comment explaining why it was duplicating
+ * the others. They were identical, so nothing was broken; the risk was drift, and it was not symmetric.
+ * The browser's copy drives WORDING and the AI's drives MOVE QUALITY, so a divergence there would show up
+ * as the AI quietly playing worse, with no test failing, and `apply` re-deriving candidates from the engine
+ * copy would keep the game legal the whole time — the failure mode with no alarm on it.
+ *
+ * Pure and total: no state, no throwing, no fallback guessing. A caller that wants to guess at a path it
+ * cannot follow does that itself (the browser's `targetVerb` has such a fallback); engine validation must
+ * REJECT an invalid program counter rather than guess at one, so the guess cannot live in here.
+ */
+export function effectAtPath(
+  effects: readonly Effect[],
+  path: readonly number[],
+  modes: readonly number[],
+): Effect | null {
+  const walk = (level: readonly Effect[], depth: number): Effect | null => {
+    const i = path[depth]
+    if (i === undefined) return null
+    const eff = level[i]
+    if (!eff) return null
+    if (depth === path.length - 1) return eff
+    if (eff.kind === 'chooseTargets') return walk(eff.then, depth + 1)
+    if (eff.kind === 'chooseModes') {
+      // `chooseModes` owns TWO levels of the counter: which of the chosen modes, then the index within it.
+      const k = path[depth + 1]
+      if (k === undefined) return null
+      const mode = eff.modes[modes[k] ?? -1]
+      return mode ? walk(mode.effects, depth + 2) : null
+    }
+    return null
+  }
+  return walk(effects, 0)
+}
