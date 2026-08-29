@@ -732,13 +732,35 @@ export function buildChoiceSet(v: PlayerView, legal: Command[]): ChoiceSet {
   const byCard = new Map<CardId, Choice[]>()
   const loose: Choice[] = []
   for (const command of legal) {
-    const subjects = subjectsOf(command)
+    const subjects = subjectsIn(v, command)
     const choice: Choice = { command, label: describeChoice(v, command), card: subjects[0] ?? null }
     all.push(choice)
     if (!subjects.length) { loose.push(choice); continue }
     for (const id of subjects) byCard.set(id, [...(byCard.get(id) ?? []), choice])
   }
   return { all, byCard, loose, prompt: promptFor(v) }
+}
+
+/**
+ * `subjectsOf`, plus the one command whose subjects only a VIEW can resolve.
+ *
+ * A `chooseFromDeck` names deck INDICES, not card ids (`resolve.ts` reads the deck positionally, so the
+ * command has to survive a card moving). `subjectsOf` is pure on the command and cannot turn an index into a
+ * card, so a search had no card subject at all — it fell into `loose`, and the strongest effect in this pool
+ * presented as a list of bare names for cards the player has never seen. Hugh Yurg puts ANY card in your deck
+ * onto the field; picking one by name alone is not a decision a player can make.
+ *
+ * Resolving them here rather than in the board is what makes the rest free: they become ordinary `byCard`
+ * keys, so the existing orphan row draws them, `pick` clicks them, and `displayName` numbers them — none of
+ * which needed a line of new UI.
+ *
+ * `pickedDeckCards` returns null if any picked slot is hidden from this viewer, which is the guarantee that
+ * this cannot show a card the player is not entitled to see. The eligible SET is the engine's rule and stays
+ * there: only the picks `legalCommands` already computed are resolved, never a filter re-derived here.
+ */
+function subjectsIn(v: PlayerView, c: Command): CardId[] {
+  if (c.type !== 'chooseFromDeck') return subjectsOf(c)
+  return pickedDeckCards(v, c.player, c.picks) ?? []
 }
 
 function sameIds(a: readonly CardId[], b: readonly CardId[]): boolean {

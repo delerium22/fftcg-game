@@ -111,3 +111,81 @@ this work five times.
   mode is exactly why the pile browser was built.
 - An opened pile and the candidate row can render the same card twice. Not a bug; the plan should decide
   whether to leave it, and tests must scope their queries to the candidate grid.
+
+---
+
+## Built
+
+All four cases, in the order the revised spec set.
+
+**1 — the orphan row lost E9's marker.** It passed the raw definition name, so a Break Zone choice rendered
+three cards all reading "Luso" while their buttons read "Luso (1)".."Luso (3)". The fix is a THIRD namer,
+because both existing ones are wrong for a card: `qualifiedName` omits the off-board zones, and `choiceName`
+carries the possessive — "your Hugh Yurg (1)" on a card the player is looking at, beside their own Break Zone,
+states the one thing never in doubt. `displayName` is name-plus-marker, and all three card rows now go through
+it. The hand and field rows had been right only by writing the marker out longhand in two places, which is
+precisely how the orphan row came to lack it.
+
+**3 — Sphene.** `legalCommands` pre-enumerates an activation's targets INTO the command, so unlike a
+`chooseTargets` pending there is no later step at which those cards become subjects. `subjectsOf` returned
+only the source, so Sphene's Break Zone candidates attached to no card, appeared in no row, and could not be
+clicked: E9 named them on a button while nothing on screen was them. Targets are subjects now; payment is
+still excluded, on the distinction the file already drew — a target is chosen BY the player, a payment FOR
+them.
+
+**2 — the deck search, where nothing was rendered at all.** A `chooseFromDeck` names deck INDICES, so
+`subjectsOf` — pure on the command — could not turn one into a card and every search fell into `loose`. One
+function, `subjectsIn`, resolves the picks through the view, and the rest is free: they become ordinary
+`byCard` keys, so the existing orphan row draws them, `pick` clicks them and `displayName` numbers them. No
+new UI. `pickedDeckCards` returns null for any slot hidden from the viewer, which is what makes it impossible
+to show a card the player is not entitled to see, and only the picks `legalCommands` already computed are
+resolved — the eligible SET stays the engine's rule.
+
+### What playing it looks like now
+
+`?seed=5`, two clicks — "Keep hand", "Cast Hugh Yurg" — and the whole-deck search offers **Luso (1)**,
+**Luso (2)**, **Luso (3)** as pressable cards, each announcing "cost 1, earth, forward, power 3000 of 3000".
+Before this rung it was three prompt-strip buttons all reading "Play Luso onto the field", for cards the
+player had never seen.
+
+## An existing test was asserting the wrong thing, and half of it was vacuous
+
+Making targets subjects broke `leaves no clickable choice off the board across a real game`. The test read
+`usable.map(c => c.card)` — only the FIRST subject — which held while every subject led some command (true of
+discard combinations and attack sets, false of an activation, whose source leads all and whose targets lead
+none). Rewritten to assert what it names: every targetable card reaches the DOM as something pressable.
+
+Set algebra could not replace it — `orphanTargetIds` is DEFINED as the byCard keys the named zones do not
+draw, so "every key is drawn or an orphan" is true by construction and asserts nothing.
+
+Then its new guard found something worse: **over 2000 steps of seed 3 the walk had never once reached an
+off-board candidate**, so in its original form it only ever asserted the easy half. It now walks seeds until
+it has seen both an off-board candidate and a targeted activation, and fails loudly if it has not. In that
+form it catches the orphan row being deleted; before, it did not.
+
+## `?seed=` — a production surface added for a test, said plainly
+
+E10-A6 needs a REPRODUCIBLE browser route: a check that plays randomly until it stumbles into a search is
+vacuous when it misses and flaky when it hits. `?seed=5` reaches Hugh Yurg's search in two clicks, and because
+the human takes the first turn that route contains no AI decision, so no worker timing can move it.
+
+It earns its place independently — a player who hits a bug can now say which game it was. Parsing is
+digits-only, because `Number` reads `""` as 0, `"0x10"` as 16, `" 5"` as 5 and `"1e3"` as 1000: four ways to
+hand back a different game from the one asked for, which defeats the point of asking by seed. A bad seed
+still starts a game and says so, though — the CLI's lesson was about unknown FLAGS, and a typo in an address
+bar is not that.
+
+## Mutation table
+
+| # | Mutation | Result |
+|---|---|---|
+| 13 | orphan row passes the raw name again | 2 fail — the marker and the no-two-alike checks |
+| 14 | `orphanTargetIds` returns `[]` | the rewritten walk test fails ("card 18 … rendered nowhere"), plus 4 others |
+| 15 | activation targets stop being subjects | 2 fail — Sphene's targets rendered nowhere, and no choice filed under them |
+| 16 | deck picks lose their card subjects | 5 jsdom fail, AND the browser check fails at 0 candidates |
+| 17 | render every VISIBLE deck card, not the eligible ones | 4 fail — Reeve shows 7 for a top-3 look |
+
+Mutation 17 is why all three deck paths are covered: Hugh Yurg alone cannot distinguish "eligible" from
+"visible", and Reeve is the case that can.
+
+**22 E10 tests. Gates green:** 938 jsdom, 7 Playwright, typecheck, lint, 200/200 selfplay seed 1.
