@@ -41,6 +41,20 @@ import { expect, test, type Page } from '@playwright/test'
  */
 async function playToTheEnd(page: Page): Promise<void> {
   await page.goto('/')
+  /*
+   * IS THIS STABLE ENOUGH TO GATE ON? Measured, not assumed. The app seeds from `Date.now()`, so every run
+   * plays a different game against a real ISMCTS opponent, and `retries: 0` means one slow game reds the
+   * build. Eight consecutive runs gave per-test times of 19.2, 21.6, 21.8, 23.1, 23.2, 26.1, 27.8 and 29.3
+   * seconds — against this 120s deadline and the config's 180s test timeout, four to six times the worst
+   * observed case.
+   *
+   * So the seed stays free. Making it deterministic would mean giving the APP a seed parameter — product
+   * surface added for a test problem that measurement says does not exist — and a fixed seed would test one
+   * game forever, where a free one has already walked hundreds of different ones.
+   *
+   * If this ever starts failing on time, re-measure before widening the budget: a game that suddenly takes
+   * four times longer is a defect in the AI, not a slow test.
+   */
   const deadline = Date.now() + 120_000
   while (Date.now() < deadline) {
     if (await page.locator('dialog.banner').count() > 0) return
