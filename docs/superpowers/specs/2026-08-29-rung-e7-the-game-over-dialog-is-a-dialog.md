@@ -1,0 +1,100 @@
+# Rung E7 — the game-over dialog is actually a dialog
+
+> **STATUS: SPEC, awaiting plan review.** Nothing built. The next rung was NAMED BY THE E3 CLOSURE REVIEW,
+> not chosen by me: it was asked for the strongest remaining defect in `apps/web` and gave this one.
+
+## Why
+
+The game ends. A curtain drops over the board and says who won. It is `role="alertdialog"` and it is,
+in every other respect, a `<div>`.
+
+Measured in a real browser at the moment the banner appears:
+
+| | |
+|---|---|
+| where focus is | `document.body` |
+| focus inside the dialog | **no** |
+| `aria-modal` | **absent** |
+| tab stops on the page | **7** |
+| tab stops inside the dialog | **1** |
+| position of "Play again" in the tab order | **7th — last** |
+
+So a player who has just lost, using a keyboard, must tab past **six board controls** — the AI's Break Zone
+opener, two cards, their own Break Zone, their own Damage Zone, another card — to reach the only action the
+game still offers. A screen-reader user is told nothing has happened at all: focus never moved, and without
+`aria-modal` the board behind is still theirs to explore as though the game were live.
+
+This is the mirror of the defect rung E3b-1 fixed at the other end of the game. There, the *prompt* came
+before the *evidence* and a player met the commit controls before the cards. Here the only remaining control
+comes after everything, including the six openers E3b-3 just added — **this rung's defect is partly the last
+rung's doing**, which is worth saying plainly.
+
+## What this rung is
+
+Make the dialog behave as one:
+
+1. **Move focus into it** when it appears — to the dialog itself, not to "Play again", so the winner and the
+   reason are announced before the only button.
+2. **`aria-modal="true"`**, so assistive technology stops exposing the board behind it.
+3. **Make the background inert**, so the six board controls leave the tab order entirely rather than merely
+   being announced as unavailable.
+4. **Escape does nothing.** There is nothing to dismiss to — the game is over, and the only way on is
+   "Play again". A dialog that closes to a dead board is worse than one that will not close.
+
+## The environment constraint, measured rather than assumed
+
+I probed this jsdom before designing, the way the E3b Tab-traversal finding taught me to:
+
+```
+showModal is a function:            false
+inert in HTMLElement.prototype:     false
+inert blocks focus in jsdom:        false
+```
+
+So **`<dialog showModal>` cannot be tested here at all** — the dialog would simply never open in a test — and
+`inert`'s actual focus-blocking cannot be observed either. That rules out the platform-native answer for the
+tested path, however much I would prefer it.
+
+The design that follows: set `inert` on the board content as an ATTRIBUTE (React 19 supports it as a prop),
+and move focus explicitly. Then behaviour is asserted where jsdom can see it (focus moved, focus restored,
+the attribute present and removed), the attribute is a contract where jsdom cannot (real inerting), and the
+end-to-end truth is checked once in a real browser via Playwright. Saying which is which is the point;
+pretending an attribute assertion is a behavioural one is the failure this program keeps making.
+
+## What this rung is NOT
+
+- **Not a change to what the banner says.** E6 settled that wording and a test watches it.
+- **Not a focus-trap implementation.** `inert` on the background is the whole trap: with nothing else
+  focusable, Tab cycles within the dialog by construction. Hand-rolling a key-handling trap would be more
+  code and more ways to be wrong.
+- Not the `restart` flow itself, which works.
+
+## Acceptance
+
+- **E7-A1** When the game ends in a mounted `Board`, focus moves into the dialog, and lands on the DIALOG
+  rather than on "Play again" — asserted by identity, not by "focus is not body".
+- **E7-A2** The dialog carries `aria-modal="true"` and keeps `role="alertdialog"`.
+- **E7-A3** Every board control outside the dialog is removed from the tab order. Asserted as a COUNT of
+  focusable elements outside the dialog being zero, from a real finished game reached by playing — a game
+  with an open pile and cards on both fields, so the count is not trivially zero for want of controls.
+- **E7-A4** The `inert` attribute is present on the board content while the dialog is up and absent when it
+  is not, stated in the test as a CONTRACT assertion because this jsdom cannot enforce inerting.
+- **E7-A5** Escape does not dismiss the dialog.
+- **E7-A6** After "Play again", focus is somewhere sensible in the new game rather than on `document.body`,
+  and the board is interactive again.
+- **E7-A7** A real-browser Playwright check that Tab from the dialog cannot reach a board control. This
+  belongs to THIS rung and not to a later one: A3 and A4 together are the whole claim, and neither can be
+  verified in jsdom.
+- **E7-A8** Existing tests pass with no expectation edited; full gates green. No selfplay gate.
+
+## Mutation plan
+
+| mutation | must fail |
+|---|---|
+| focus is never moved into the dialog | A1 |
+| focus moves to "Play again" instead of the dialog | A1 |
+| `aria-modal` removed | A2 |
+| `inert` never applied | A3 and A4 |
+| `inert` applied but never removed on restart | A6 |
+| Escape closes the dialog | A5 |
+| the dialog is rendered but the board is left focusable | A3 |
