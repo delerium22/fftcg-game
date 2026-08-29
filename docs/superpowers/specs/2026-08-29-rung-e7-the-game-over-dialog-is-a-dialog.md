@@ -173,5 +173,17 @@ dialog appears. (A non-empty Break Zone is also not guaranteed by the rules, onl
 - **E7-A5** A `cancel` event is prevented — `defaultPrevented` read after dispatch, never in a listener on
   the target.
 - **E7-A6** Restart closes the dialog and puts focus on one exact named control of the new game.
-- **E7-A7** A real-browser Playwright proof of the boundary, all six steps above. This rung owns it.
+- **E7-A7** A real-browser proof of the boundary, all six steps above. This rung owns it.
+
+  **Done, but MANUALLY, and that is a gap worth naming.** The repo has no browser-test infrastructure at
+  all — no `playwright.config`, no vitest browser provider, nothing beyond jsdom. So the six steps were
+  driven by hand through the browser and their results recorded: the dialog opens with `open=true`; focus
+  lands on the `<h2>` "The AI wins"; `aria-labelledby` resolves to "The AI wins" and `aria-describedby` to
+  "You have taken 7 damage."; Tab reaches "Play again", a further Tab does not reach the board, and a third
+  returns to "Play again"; calling `.focus()` directly on a board control is REFUSED; Escape leaves the
+  dialog open; and after "Play again" focus lands on "Take the first turn".
+
+  That is genuine verification and it caught a real defect the green jsdom suite concealed — but it does not
+  re-run, so nothing stops a regression. Standing up a browser runner is a dependency and CI decision rather
+  than a wording fix, so it is flagged as its own rung rather than smuggled into this one.
 - **E7-A8** Existing tests pass unedited; full gates green. No selfplay gate.
