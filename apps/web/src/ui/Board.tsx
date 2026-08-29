@@ -3,7 +3,7 @@ import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
 import { describeResult, fieldCardDisplay } from '../game/commands.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
-import { Card } from './Card.js'
+import { Card, cardAccessibleName } from './Card.js'
 import { CardDetails } from './CardDetails.js'
 import { CardGrid } from './CardGrid.js'
 import { EventLog } from './EventLog.js'
@@ -217,13 +217,25 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
         <CardGrid
           label="Your hand"
           className="hand"
-          onFocusItem={(id) => inspect(defOf(view, id)?.code, actionFor(id) ?? null)}
+          onLookAt={(id) => inspect(defOf(view, id)?.code, actionFor(id) ?? null)}
           items={view.hand.map((id) => {
             const d = defOf(view, id)
             const forCard = choices.byCard.get(id) ?? []
+            const selectable = forCard.length > 0
+            // The cell is the focus target for a card with no button, so it must carry the name and the
+            // description — and they have to be the SAME strings the card would have used. The id is per
+            // INSTANCE, not per code: two copies of one card in hand would otherwise share a DOM id.
+            const descriptionId = `card-desc-${id}`
+            const cellProps = {
+              code: d?.code ?? '?', name: d?.name ?? 'Unknown', cost: d?.cost ?? 0,
+              elements: d?.elements ?? [], type: d?.type ?? 'forward', power: d?.power ?? null,
+              action: actionFor(id),
+            }
             return {
               id,
-              selectable: forCard.length > 0,
+              selectable,
+              cellName: cardAccessibleName(cellProps),
+              ...(d?.text ? { cellDescribedBy: descriptionId } : {}),
               render: (tabIndex) => (
                 <Card
                   code={d?.code ?? '?'}
@@ -238,6 +250,8 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
                   text={d?.text}
                   action={actionFor(id)}
                   tabIndex={tabIndex}
+                  descriptionId={descriptionId}
+                  presentational={!selectable}
                   onClick={forCard.length ? () => pick(id) : undefined}
                   onInspect={() => inspect(d?.code, actionFor(id) ?? null)}
                 />

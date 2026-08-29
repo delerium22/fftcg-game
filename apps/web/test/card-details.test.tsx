@@ -125,8 +125,14 @@ function mountView(v: PlayerView, legal: Command[], s?: GameState): void {
 
 const details = (): string => document.querySelector('.details')?.textContent ?? ''
 const handCards = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.hand .card')]
+/**
+ * The element that ANNOUNCES a named hand card — which is not always the card itself. A card with no button
+ * of its own is focused through its grid cell, so the cell carries the name and the card stands down; a
+ * castable card keeps both on its own button.
+ */
 const named = (name: string): HTMLElement => {
-  const el = handCards().find((c) => (c.getAttribute('aria-label') ?? '').startsWith(name))
+  const el = [...document.querySelectorAll<HTMLElement>('.hand [role="gridcell"], .hand .card')]
+    .find((c) => (c.getAttribute('aria-label') ?? '').startsWith(name))
   expect(el, `no card labelled "${name}" in hand — the fixture deck or seed changed`).toBeDefined()
   return el!
 }
@@ -240,8 +246,12 @@ describe('the route a keyboard takes through the board', () => {
     // cards they were being asked about. The grid places every section by explicit `grid-area`, so fixing
     // the order moves nothing on screen and NOTHING VISUAL WOULD REVEAL A REGRESSION. Hence this test.
     mount(mulliganState())
+    // Take the MOST specific class, not the first: `table__seat table__seat--player` starts with
+    // `table__seat`, so mapping to the first match recorded that instead and `indexOf('table__seat--player')`
+    // was permanently -1 — which is less than every real index, so the ordering assertion below could not
+    // fail however the sections were arranged.
     const order = [...document.querySelectorAll<HTMLElement>('.table__hand, .table__prompt, .table__seat--player')]
-      .map((el) => el.className.split(' ').find((c) => c.startsWith('table__')) ?? '')
+      .map((el) => el.className.split(' ').filter((c) => c.startsWith('table__')).sort((a, b) => b.length - a.length)[0] ?? '')
     expect(order.indexOf('table__hand'), 'the hand is not rendered').toBeGreaterThanOrEqual(0)
     expect(order.indexOf('table__prompt'), 'the prompt is not rendered').toBeGreaterThanOrEqual(0)
     expect(
@@ -327,8 +337,68 @@ describe('the hand as a keyboard grid (rung E3b-1)', () => {
     act(() => { target(cells()[0]!).focus() })
     press('ArrowRight')
     expect(chosen, 'an arrow key played a card').toEqual([])
-    // The card is still a real button, so activation is the platform's, not ours.
-    expect(target(cells()[0]!).tagName).toBe('BUTTON')
+
+    // Actually SEND Enter and Space. The previous version of this test sent only ArrowRight and then
+    // asserted the element was a button — which a mutant calling `preventDefault()` on Enter survives
+    // happily, while real keyboard activation is broken. jsdom does not synthesise a click from Enter, so
+    // what is checked is that the grid does not swallow the event: it must reach the button undefended.
+    for (const key of ['Enter', ' ']) {
+      let reached = false
+      let defended = false
+      const btn = target(cells()[1]!)
+      const spy = (e: Event): void => { reached = true; defended = e.defaultPrevented }
+      btn.addEventListener('keydown', spy)
+      act(() => { btn.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })) })
+      btn.removeEventListener('keydown', spy)
+      expect(reached, `${key} never reached the card`).toBe(true)
+      expect(defended, `the grid called preventDefault on ${key}, so the button can never be activated`).toBe(false)
+    }
+  })
+
+  it('announces name and printed text on the element that ACTUALLY takes focus', () => {
+    // The MAJOR from review 25. At the mulligan focus lands on the gridcell, but the name and
+    // `aria-describedby` sat on its unfocused `role="img"` child — so the focused element announced nothing,
+    // and the card's `.sr-only` text risked being folded into the cell's name instead, defeating the whole
+    // concise-name / verbose-description split. The earlier tests inspected `.card` and so enforced the
+    // child's relation while proving nothing about what a screen reader lands on.
+    mount(mulliganState())
+    const cell = cells()[0]!
+    act(() => { target(cell).focus() })
+    expect(document.activeElement, 'the cell is not the focus target at the mulligan').toBe(cell)
+
+    const name = cell.getAttribute('aria-label')
+    expect(name, 'the focused element has no accessible name').not.toBe(null)
+    expect(name).toMatch(/^\w[^,]*, cost \d/)
+    const descId = cell.getAttribute('aria-describedby')
+    expect(descId, 'the focused element has no accessible description').not.toBe(null)
+    expect(document.getElementById(descId!)?.textContent ?? '', 'the description is empty').not.toBe('')
+
+    // And the card inside must have stood down, or everything is announced twice.
+    const inner = cell.querySelector('.card')!
+    expect(inner.getAttribute('aria-hidden'), 'the card still announces itself under the cell').toBe('true')
+    expect(inner.getAttribute('aria-label'), 'the card kept a competing name').toBe(null)
+  })
+
+  it('leaves a SELECTABLE card announcing itself, since its button is the focus target', () => {
+    // The other branch: a castable card keeps name and description on its own button, and the cell must not
+    // duplicate them — two names for one thing is as bad as none.
+    mount(mainPhaseState())
+    const cell = cells()[0]!
+    expect(cell.getAttribute('aria-label'), 'the cell competed with the button it contains').toBe(null)
+    const btn = cell.querySelector('button')!
+    expect(btn.getAttribute('aria-label')).toMatch(/, cost \d/)
+    expect(btn.getAttribute('aria-describedby'), 'a castable card lost its description').not.toBe(null)
+  })
+
+  it('arrows move from wherever focus actually IS, not from where the grid last put it', () => {
+    // A player can arrive at a card without arrow keys — by clicking it, or by Shift+Tabbing back into the
+    // row. If the roving position does not follow, the next arrow press moves relative to a stale card and
+    // jumps somewhere unrelated.
+    mount(mulliganState())
+    act(() => { target(cells()[3]!).focus() })      // straight to the fourth card, no arrows used
+    press('ArrowRight')
+    expect(document.activeElement, 'the arrow moved from the grid’s remembered card, not the focused one')
+      .toBe(target(cells()[4]!))
   })
 
   it('recovers focus when the focused card leaves the hand', () => {

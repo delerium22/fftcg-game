@@ -12,6 +12,20 @@ export interface GridItem {
    * roving invariant in a different file from the rest.
    */
   readonly render: (tabIndex: number | undefined) => JSX.Element
+  /**
+   * What the CELL would announce. Always supplied; applied only when the card has no button of its own —
+   * ONE place decides, here, so the rule cannot be half-enforced by a caller that forgets it.
+   *
+   * A card is described and named on its own element, but a non-actionable card is focused through the cell
+   * — so those relations sit on something nobody ever lands on, and the focused element announces nothing.
+   * That is the mulligan, which is the whole reason this grid exists. The cell borrows them, and the card
+   * inside stands down (`aria-hidden`) so nothing is said twice.
+   *
+   * Both come from the card's own single implementations: `cardAccessibleName` for the name, and the
+   * description id the card already minted for its printed text.
+   */
+  readonly cellName?: string | undefined
+  readonly cellDescribedBy?: string | undefined
 }
 
 /**
@@ -30,19 +44,20 @@ export interface GridItem {
  * The roving position is tracked by `CardId`, never by index: a hand renumbers itself the moment a card is
  * cast, and an index would silently follow whatever card slid into that slot.
  */
-export function CardGrid({ label, items, className, onFocusItem }: {
+export function CardGrid({ label, items, className, onLookAt }: {
   label: string
   items: readonly GridItem[]
   className?: string
   /**
-   * The player is looking at this card, by keyboard.
+   * The player is looking at this card — by keyboard OR by pointer.
    *
-   * Wired at the CELL rather than inside `Card`, because the focus target differs by card: a selectable one
-   * is focused on its own `<button>`, a non-selectable one on the cell itself. React's `onFocus` bubbles, so
-   * the cell sees both. Without this the grid made the mulligan hand reachable but not readable — every card
-   * could be moved to and none of them said anything, which is most of the original defect still standing.
+   * Wired at the CELL rather than inside `Card`, because the cell is the interactive unit: it is the focus
+   * target for a card with no button of its own, and it is the region the pointer is over. React's `onFocus`
+   * and `onMouseEnter` both see the whole cell, so one handler covers both branches. Without this the grid
+   * made the mulligan hand reachable but not readable — every card could be moved to and none of them said
+   * anything, which is most of the original defect still standing.
    */
-  onFocusItem?: ((id: CardId) => void) | undefined
+  onLookAt?: ((id: CardId) => void) | undefined
 }): JSX.Element {
   const ref = useRef<HTMLDivElement | null>(null)
   const [rovingId, setRovingId] = useState<CardId | null>(null)
@@ -109,10 +124,22 @@ export function CardGrid({ label, items, className, onFocusItem }: {
             key={item.id}
             role="gridcell"
             data-card-id={item.id}
+            {...(item.selectable ? {} : {
+              ...(item.cellName === undefined ? {} : { 'aria-label': item.cellName }),
+              ...(item.cellDescribedBy === undefined ? {} : { 'aria-describedby': item.cellDescribedBy }),
+            })}
             // The cell takes the tab stop only when the card has no button of its own to take it. A
             // selectable card keeps its button as the focus target so Enter and Space still play it.
             tabIndex={item.selectable ? undefined : item.id === activeId ? 0 : -1}
-            onFocus={() => onFocusItem?.(item.id)}
+            onFocus={() => {
+              // The roving position follows FOCUS, not only arrow keys. A player who clicks a card, or
+              // Shift+Tabs back into the row, lands somewhere the grid did not choose — and without this the
+              // next arrow press moves relative to the card it still thinks is current, jumping somewhere
+              // unrelated, and tabbing away and back returns to the old card rather than the one just left.
+              setRovingId(item.id)
+              onLookAt?.(item.id)
+            }}
+            onMouseEnter={() => onLookAt?.(item.id)}
           >
             {item.render(item.selectable ? (item.id === activeId ? 0 : -1) : undefined)}
           </div>

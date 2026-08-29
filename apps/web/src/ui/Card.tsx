@@ -80,6 +80,17 @@ export interface CardProps {
    * because a focusable `role="img"` is a leaf and announces poorly.
    */
   tabIndex?: number | undefined
+  /**
+   * The id to mint the printed-text description under, when something OUTSIDE this card needs to point at
+   * it — a `CardGrid` cell that is the real focus target for a non-actionable card. Defaults to a local
+   * `useId`, which is right whenever the card describes itself.
+   */
+  descriptionId?: string | undefined
+  /**
+   * True when an ancestor has taken over announcing this card, so the visual stays and the semantics stand
+   * down. Without it the cell's name and the card's name are both announced, one after the other.
+   */
+  presentational?: boolean | undefined
   onInspect?: (() => void) | undefined
   /**
    * What clicking this card will DO, right now — "Cast Ramuh paying: discard Odin as lightning".
@@ -94,9 +105,53 @@ export interface CardProps {
   action?: string | undefined
 }
 
+/**
+ * Why this Forward survived, or hit harder than its printed power. Badges, not prose: the whole card is 96px.
+ *
+ * A power modifier is spoken as part of the power phrase ("power 9000 of 11000, including 3000 that
+ * expires…"), so on a card with no power there is nothing for it to be "included" in — the sentence would
+ * read "backup, including 3000 that expires at the end of the turn" (Codex MINOR). Nothing in the pool pumps
+ * a Backup, but the component's contract allows it — and a +3000 badge on a card with no power is no more
+ * meaningful than the sentence, so both stand down together.
+ */
+function cardBuffs({ power, powerBonus = 0, granted = [], flags = [] }: CardProps): { badge: string; said: string }[] {
+  const modifier = powerBonus === 0 || power === null ? []
+    : [{
+        badge: powerBonus > 0 ? `+${powerBonus}` : `${powerBonus}`,
+        said: powerBonus > 0
+          ? `including ${powerBonus} that expires at the end of the turn`
+          : `reduced by ${Math.abs(powerBonus)} until the end of the turn`,
+      }]
+  return [
+    ...modifier,
+    ...granted.map((k) => ({ badge: KEYWORD_LABEL[k], said: `${KEYWORD_LABEL[k]} granted` })),
+    ...flags.map((f) => ({ badge: FLAG_LABEL[f], said: FLAG_LABEL[f].toLowerCase() })),
+  ]
+}
+
+/**
+ * What a screen reader announces as this card's NAME.
+ *
+ * Exported because the card is not always the element that takes focus. Inside a `CardGrid`, a card with no
+ * button of its own is focused through its grid CELL — and a name on an unfocused child is a name nobody
+ * hears, which is how the mulligan ended up with a described card and an undescribed focus target. The cell
+ * therefore needs this string too, and it must be the SAME string: two spellings of one card's name is the
+ * duplication rung E2 was about, with the drift landing somewhere only a screen-reader user would find it.
+ */
+export function cardAccessibleName(props: CardProps): string {
+  const { name, cost, elements, type, power, damage = 0, dull = false, faceDown = false, action } = props
+  if (faceDown) return 'Face-down card'
+  const remaining = power === null ? null : power - damage
+  return [
+    `${name}, cost ${cost}`, elements.join(' and '), type,
+    remaining === null ? '' : `power ${remaining} of ${power}`,
+    dull ? 'dull' : '', ...cardBuffs(props).map((b) => b.said), action ?? '',
+  ].filter(Boolean).join(', ')
+}
+
 /** Every card on the board — the opponent's hand, the decks, both fields — renders through here. */
 export function Card(props: CardProps): JSX.Element {
-  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, action, text, tabIndex } = props
+  const { code, name, cost, elements, type, power, damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, text, tabIndex, descriptionId, presentational = false } = props
 
   // Local state is keyed on `code` rather than reset by an effect, so reusing one component instance
   // for a different card re-attempts that card's art instead of inheriting the previous failure. The
@@ -114,32 +169,13 @@ export function Card(props: CardProps): JSX.Element {
   }
   if (power !== null && damage > 0) vars['--dmg'] = `${Math.min(100, (damage / power) * 100)}%`
 
-  // Why this Forward survived, or hit harder than its printed power. Badges, not prose: the whole card is 96px.
-  // A power modifier is spoken as part of the power phrase ("power 9000 of 11000, including 3000 that
-  // expires…"), so on a card with no power there is nothing for it to be "included" in — the sentence would
-  // read "backup, including 3000 that expires at the end of the turn" (Codex MINOR). Nothing in the pool pumps
-  // a Backup, but the component's contract allows it — and a +3000 badge on a card with no power is no more
-  // meaningful than the sentence, so both stand down together.
-  const modifier = powerBonus === 0 || power === null ? []
-    : [{
-        badge: powerBonus > 0 ? `+${powerBonus}` : `${powerBonus}`,
-        said: powerBonus > 0
-          ? `including ${powerBonus} that expires at the end of the turn`
-          : `reduced by ${Math.abs(powerBonus)} until the end of the turn`,
-      }]
-  const buffs = [
-    ...modifier,
-    ...granted.map((k) => ({ badge: KEYWORD_LABEL[k], said: `${KEYWORD_LABEL[k]} granted` })),
-    ...flags.map((f) => ({ badge: FLAG_LABEL[f], said: FLAG_LABEL[f].toLowerCase() })),
-  ]
-
+  const buffs = cardBuffs(props)
   const className = ['card', `card--${size}`, dull ? 'is-dull' : '', selectable ? 'is-selectable' : '', selected ? 'is-selected' : ''].filter(Boolean).join(' ')
-  const label = faceDown
-    ? 'Face-down card'
-    : [`${name}, cost ${cost}`, elements.join(' and '), type, remaining === null ? '' : `power ${remaining} of ${power}`, dull ? 'dull' : '', ...buffs.map((b) => b.said), action ?? ''].filter(Boolean).join(', ')
+  const label = cardAccessibleName(props)
 
   // A stable id per rendered card, so `aria-describedby` points at this card's own text and not another's.
-  const descId = useId()
+  const localId = useId()
+  const descId = descriptionId ?? localId
   const described = !faceDown && text !== undefined && text !== ''
   // A SIBLING of the card, never a child. `role="img"` is a leaf role, so its subtree is pruned from the
   // accessibility tree; whether `aria-describedby` still resolves text out of a pruned subtree is a spec
@@ -227,8 +263,10 @@ export function Card(props: CardProps): JSX.Element {
   return (
     <>
       <div
-        className={className} style={vars as CSSProperties} title={label} role="img" aria-label={label}
-        {...(described ? { 'aria-describedby': descId } : {})}
+        className={className} style={vars as CSSProperties} title={label}
+        {...(presentational
+          ? { 'aria-hidden': true }
+          : { role: 'img', 'aria-label': label, ...(described ? { 'aria-describedby': descId } : {}) })}
         onMouseEnter={onInspect}
       >
         <span className="card__face">{face}</span>
