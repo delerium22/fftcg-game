@@ -3,6 +3,8 @@ import { viewFor, type CardId, type FieldCard, type PlayerView } from '@fftcg/en
 import { apply, actingPlayer, createGame, type GameState } from '@fftcg/engine'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { promptFor } from '../src/game/commands.js'
+import { GreedyAgent } from '@fftcg/ai'
+import { stepAi } from '../src/game/useGame.js'
 import { AI, HUMAN } from '../src/game/types.js'
 
 /** `createGame` deals nothing — hands only exist once the first-player choice is answered (§8.2.1.3). */
@@ -95,5 +97,35 @@ describe('the block prompt', () => {
     // not exist.
     const v = blocking(() => [])
     expect(promptFor(v)).toBe('Choose a blocker')
+  })
+})
+
+/**
+ * The hand-built fixtures above are only worth anything if the state they describe is one the engine really
+ * produces. This reaches a `declareBlock` by PLAYING — greedy against greedy until someone declares an
+ * attack — and checks the prompt the browser would show from that genuine position.
+ *
+ * It also guards the fixture itself: if the engine ever stops putting attacker ids in `attack.attackers`, or
+ * stops raising `declareBlock` with the defender on the clock, this fails while the unit cases above would
+ * happily keep passing against a state that can no longer occur.
+ */
+describe('a declareBlock position reached by playing', () => {
+  it('names an attacker and a power', () => {
+    const agent = new GreedyAgent({ seed: 7, decks: DECKS, depth: 1 })
+    let state = createGame({ seed: 7, decks: DECKS, defs: CARD_DEFS })
+    let seen: string | null = null
+    for (let i = 0; i < 4000 && !state.result && seen === null; i++) {
+      const actor = actingPlayer(state)
+      if (actor === null) break
+      if (state.pending?.kind === 'declareBlock') {
+        const v = viewFor(state, state.pending.player)
+        seen = promptFor(v)
+        break
+      }
+      state = stepAi(state, agent).state
+    }
+    expect(seen, 'no block was ever offered in 4000 steps — this test stopped proving anything').not.toBe(null)
+    expect(seen, 'the prompt does not name what is attacking').not.toBe('Choose a blocker')
+    expect(seen).toMatch(/^Choose a blocker for .+ \(power \d+\)/)
   })
 })
