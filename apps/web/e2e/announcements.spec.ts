@@ -12,6 +12,16 @@ import { expect, test } from '@playwright/test'
  * The honest boundary is still real, and narrower than I said: automation proves the DOM and the
  * browser-accessibility contract. Whether a screen reader SPOKE — its timing, ordering, interruption and
  * duplication — needs a screen reader, and nothing here claims it.
+ *
+ * AND THERE IS A SECOND BOUNDARY, measured rather than assumed. These tests CANNOT tell an explicit
+ * `aria-live="polite"` / `aria-atomic="true"` from the implicit values `role="status"` already carries:
+ * Chromium computes the same tree either way, so deleting both attributes leaves this suite green. The
+ * jsdom tests in `test/announcements.test.tsx` are what pin the explicit declarations, and the explicit
+ * declarations exist because not every environment honours the implicit ones.
+ *
+ * So the two suites are complementary rather than redundant: jsdom pins the DOM contract we wrote, the
+ * browser pins the accessibility contract Chromium derives. Either alone leaves a real mutant alive, which
+ * is why both are here.
  */
 
 test('the browser computes the prompt as a polite, atomic status region', async ({ page }) => {
