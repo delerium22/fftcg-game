@@ -208,13 +208,18 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
     })
 
   /**
-   * The opened pile's row, rendered under the seat that owns it.
+   * Forget an open pile once it has emptied.
    *
-   * Also closes itself when the pile it is showing has emptied. `openPile` remembers a seat and a kind, not
-   * a set of cards, so a Break Zone whose last card is returned to hand — Billy Bob does exactly that — left
-   * the opener gone and an orphaned "The AI's Break Zone" row behind, labelled and empty. It survived a
-   * restart too.
+   * `openPile` remembers a seat and a kind, not a set of cards, so a Break Zone whose last card is returned
+   * to hand — Billy Bob does exactly that — left an orphaned labelled empty row behind. Merely declining to
+   * RENDER that row is not enough: the state stayed set, so when the pile filled again it sprang open by
+   * itself, `aria-expanded="true"`, with the player never having asked. Clearing it is the actual fix.
    */
+  useEffect(() => {
+    if (openPile !== null && view.fields[openPile.p][openPile.kind].length === 0) setOpenPile(null)
+  }, [view, openPile])
+
+  /** The opened pile's row, rendered under the seat that owns it. */
   const pileRow = (p: PlayerId): JSX.Element | null => {
     if (openPile === null || openPile.p !== p) return null
     const items = pileItems(p, openPile.kind)

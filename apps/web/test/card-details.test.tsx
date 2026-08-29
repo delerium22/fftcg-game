@@ -643,6 +643,28 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     return null
   }
 
+  /**
+   * The focused element must announce the card's printed text, not merely put it on screen.
+   *
+   * Removing `text` from `pileItems` passed all 299 web tests: the cell still announced its name, cost, type
+   * and power, and the visible panel still worked, while a screen reader could not read the card's abilities
+   * at all. The pile tests were checking the PANEL — and this same suite already contains a test asserting
+   * the panel is not an accessible substitute. Testing the visible surface instead of the accessible
+   * relation is the exact mistake the E3b-1 review caught, made again one rung later.
+   */
+  const expectDescribedBy = (el: HTMLElement, text: string): void => {
+    const id = el.getAttribute('aria-describedby')
+    expect(id, 'the focused card in a pile has no accessible description').not.toBe(null)
+    expect(document.getElementById(id!)?.textContent, 'the description does not carry the printed text').toBe(text)
+  }
+
+  /** The printed text of the first card in a pile, from the STATE — never from the DOM under test. */
+  const firstCardText = (s: GameState, owner: 0 | 1, kind: 'breakZone' | 'damageZone' | 'removedFromGame'): string => {
+    const v = viewFor(s, HUMAN)
+    const id = s.players[owner][kind][0]!
+    return v.defs[v.cards[id]?.code ?? '']?.text ?? ''
+  }
+
   /** The name of the first card in a pile, from the STATE — never from the DOM the test is checking. */
   const firstCardName = (s: GameState, owner: 0 | 1, kind: 'breakZone' | 'damageZone' | 'removedFromGame'): string => {
     const v = viewFor(s, HUMAN)
@@ -671,8 +693,10 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     const id = s!.players[owner].breakZone[0]!
     const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${id}"]`)
     expect(cell, 'the opened pile did not render its first card').not.toBe(null)
-    act(() => { (cell!.querySelector('button') ?? cell!).focus() })
+    const target = (cell!.querySelector('button') ?? cell!) as HTMLElement
+    act(() => { target.focus() })
     expect(details(), 'focusing a card in an opened pile did not read it').toContain(name)
+    expectDescribedBy(target, firstCardText(s!, owner, 'breakZone'))
   })
 
   it('opens and reads the DAMAGE zone', () => {
@@ -690,8 +714,10 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     const id = s!.players[owner].damageZone[0]!
     const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${id}"]`)
     expect(cell, 'the damage zone opened to nothing').not.toBe(null)
-    act(() => { (cell!.querySelector('button') ?? cell!).focus() })
+    const target = (cell!.querySelector('button') ?? cell!) as HTMLElement
+    act(() => { target.focus() })
     expect(details(), 'a damage card cannot be read').toContain(name)
+    expectDescribedBy(target, firstCardText(s!, owner, 'damageZone'))
   })
 
   it('opens and reads REMOVED FROM GAME, which the board never showed at all', () => {
@@ -709,8 +735,10 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     const id = s!.players[owner].removedFromGame[0]!
     const cell = document.querySelector<HTMLElement>(`.zone [data-card-id="${id}"]`)
     expect(cell, 'removed-from-game opened to nothing').not.toBe(null)
-    act(() => { (cell!.querySelector('button') ?? cell!).focus() })
+    const target = (cell!.querySelector('button') ?? cell!) as HTMLElement
+    act(() => { target.focus() })
     expect(details(), 'a removed card cannot be read').toContain(name)
+    expectDescribedBy(target, firstCardText(s!, owner, 'removedFromGame'))
   })
 
   it('closes an open pile when its last card leaves', () => {
@@ -737,6 +765,15 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
       labels.filter((l) => l.includes('Break Zone')),
       'an emptied pile left an orphaned, labelled, empty row behind',
     ).toEqual([])
+
+    // And it must stay closed when the pile FILLS AGAIN. Declining to render an empty row is not the same as
+    // forgetting it was open: with the state still set, the pile sprang back open by itself the moment a card
+    // returned to it, `aria-expanded="true"`, with the player never having asked for it.
+    remount(s!)
+    expect(
+      ownerOpener(owner, 'Break Zone')?.getAttribute('aria-expanded'),
+      'an emptied pile reopened itself when it filled again',
+    ).toBe('false')
   })
 
   it('closes the pile when the same count is pressed again', () => {
