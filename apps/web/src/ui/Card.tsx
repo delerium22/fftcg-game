@@ -49,11 +49,24 @@ export interface CardProps {
   faceDown?: boolean | undefined
   size?: 'hand' | 'field' | 'small' | undefined
   onClick?: (() => void) | undefined
+  /**
+   * "The player is looking at this card" — hover, or keyboard focus. Drives the details panel.
+   *
+   * Deliberately NOT the click. A hand card during a cast choice is already a button whose click plays it,
+   * and overloading that is how a player casts a card they meant to read. There is no matching "stopped
+   * looking" signal on purpose: the panel keeps the last card, so reading one and then moving to the button
+   * that acts on it does not blank what you just read.
+   *
+   * Only fires on FOCUS for a selectable card, since a non-selectable one renders as an unfocusable
+   * `role="img"` div. That is rung E3a's known gap and rung E3b (roving tabindex) is what closes it —
+   * a keyboard-only player currently cannot inspect the mulligan hand, where no card is selectable.
+   */
+  onInspect?: (() => void) | undefined
 }
 
 /** Every card on the board — the opponent's hand, the decks, both fields — renders through here. */
 export function Card(props: CardProps): JSX.Element {
-  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick } = props
+  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect } = props
 
   // Local state is keyed on `code` rather than reset by an effect, so reusing one component instance
   // for a different card re-attempts that card's art instead of inheriting the previous failure. The
@@ -159,13 +172,13 @@ export function Card(props: CardProps): JSX.Element {
   // all come from the element rather than from hand-rolled key handling.
   if (selectable) {
     return (
-      <button type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label} aria-pressed={selected} onClick={onClick}>
+      <button type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label} aria-pressed={selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}>
         <span className="card__face">{face}</span>
       </button>
     )
   }
   return (
-    <div className={className} style={vars as CSSProperties} title={label} role="img" aria-label={label}>
+    <div className={className} style={vars as CSSProperties} title={label} role="img" aria-label={label} onMouseEnter={onInspect}>
       <span className="card__face">{face}</span>
     </div>
   )

@@ -3,7 +3,7 @@ import type { Ability, AbilityTrigger, Effect, Frame, TargetFilter, TargetSpec, 
 import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
 import { shuffle } from './rng.js'
-import { MAX_RESOLUTION_STEPS, effectAtPath } from './abilities.js'
+import { MAX_RESOLUTION_STEPS, effectAtPath, unimplementedClauseCount } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending } from './state.js'
 import { defOf, findFieldCard, forget, learn, updatePlayer } from './state.js'
 import type { CardDef, PlayerId } from './types.js'
@@ -839,12 +839,9 @@ export function dispatchTrigger(state: GameState, def: CardDef, card: CardId, co
  * nothing at all is implemented — the vanilla-pool log line keeps the shape it has had since rung A.
  */
 export function warnUnimplemented(def: CardDef, card: CardId, events: Event[]): void {
-  const printed = def.abilityClauses ?? (def.hasAbilities ? 1 : 0)
-  const implemented = def.abilities?.length ?? 0
-  // `inertClauses` are unimplemented AND unreachable, so they are not missing in any sense the player can
-  // observe — see `CardDef.inertClauses`, and the proof obligation the cards package carries for each one.
-  const missing = Math.max(0, printed - implemented - (def.inertClauses ?? 0))
+  const missing = unimplementedClauseCount(def)
   if (missing === 0) return
+  const implemented = def.abilities?.length ?? 0
   if (implemented === 0) events.push({ type: 'unimplementedAbility', card, code: def.code })
   else events.push({ type: 'unimplementedAbility', card, code: def.code, clauses: missing })
 }

@@ -441,13 +441,64 @@ body {
   50% { opacity: 1; }
 }
 
+/* ============================ card details ============================ */
+
+.details {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  /* The longest text in the pool is Ramuh's four lines. Cap the panel and scroll rather than let it push
+     the log out of the rail, which is a flex column sharing a fixed height with it. */
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.details--empty { color: var(--dim); }
+.details__hint { margin: 0; font-size: 12px; font-style: italic; }
+
+.details__name {
+  margin: 0 0 2px;
+  font-family: var(--font-condensed);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.details__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The card prints each clause on its own line and `cards.json` keeps the newlines, so honour them —
+   collapsed, Ramuh's three selectable actions run together into one unreadable paragraph. */
+.details__text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.details__caveat {
+  margin: 6px 0 0;
+  color: var(--gold);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 /* ============================ log rail ============================ */
 
 .log {
   display: flex;
   flex-direction: column;
+  /* `flex: 1` rather than `height: 100%`: the rail is a flex column and the log now shares it with the
+     details panel, so claiming the full height would push the log's own scroll area out of the rail. */
+  flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
 }
 
 .log__head {

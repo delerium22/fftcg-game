@@ -1,4 +1,4 @@
-import type { CardType, Element, Keyword, PlayerId } from './types.js'
+import type { CardDef, CardType, Element, Keyword, PlayerId } from './types.js'
 import type { CardId } from './state.js'
 
 /**
@@ -468,4 +468,26 @@ export function effectAtPath(
     return null
   }
   return walk(effects, 0)
+}
+
+/**
+ * How many of a card's PRINTED clauses this build does not implement — the number the game log's
+ * "played as vanilla" warning is derived from (spec C1-9).
+ *
+ * One implementation, consumed by `warnUnimplemented` and by the browser's card details panel. They must
+ * agree: the panel exists to tell the player which printed text the engine will not honour, and the log
+ * tells them the same thing at cast time. Two copies of this arithmetic would be two stories about one
+ * card, which is a worse drift than the one rung E2 removed.
+ *
+ * The clamp is load-bearing, not defensive tidiness. `abilityClauses` is a hand-maintained count of what
+ * the card PRINTS and `abilities` is the hand-written AST; a card whose AST splits one printed clause into
+ * two would otherwise report a negative number of missing clauses, and every caller here treats "> 0" as
+ * "warn the player".
+ */
+export function unimplementedClauseCount(def: CardDef): number {
+  const printed = def.abilityClauses ?? (def.hasAbilities ? 1 : 0)
+  const implemented = def.abilities?.length ?? 0
+  // `inertClauses` are unimplemented AND unreachable in this pool, so they are not missing in any sense the
+  // player can observe — see `CardDef.inertClauses` and the proof obligation the cards package carries.
+  return Math.max(0, printed - implemented - (def.inertClauses ?? 0))
 }

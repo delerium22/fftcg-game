@@ -4,6 +4,7 @@ import { fieldCardDisplay } from '../game/commands.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card } from './Card.js'
+import { CardDetails } from './CardDetails.js'
 import { EventLog } from './EventLog.js'
 import { PromptStrip } from './PromptStrip.js'
 
@@ -15,8 +16,9 @@ function defOf(v: PlayerView, id: CardId) {
 }
 
 /** One card on a field, wired to whatever choices target it. */
-function FieldCardView({ v, c, choices, selected, onPick, size }: {
-  v: PlayerView; c: FieldCard; choices: Choice[]; selected: boolean; onPick: (id: CardId) => void; size: 'field' | 'small'
+function FieldCardView({ v, c, choices, selected, onPick, onInspect, size }: {
+  v: PlayerView; c: FieldCard; choices: Choice[]; selected: boolean; onPick: (id: CardId) => void
+  onInspect: (code: string | undefined) => void; size: 'field' | 'small'
 }): JSX.Element {
   const d = defOf(v, c.id)
   // Spec C1-7: `effectivePower` (via `fieldCardDisplay`) is the ONE power authority, and the board is a
@@ -40,6 +42,7 @@ function FieldCardView({ v, c, choices, selected, onPick, size }: {
       selected={selected}
       size={size}
       onClick={choices.length ? () => onPick(c.id) : undefined}
+      onInspect={() => onInspect(d?.code)}
     />
   )
 }
@@ -108,6 +111,10 @@ export function clickableChoices(view: PlayerView, choices: ChoiceSet): Choice[]
 export function Board({ game }: { game: GameApi }): JSX.Element {
   const { view, choices, log, aiThinking, choose, restart } = game
   const [selected, setSelected] = useState<CardId | null>(null)
+  // The card the player last pointed at, by CODE rather than by instance id: the panel shows what the CARD
+  // does, which is a property of the definition, and a code survives the instance leaving play mid-look.
+  const [inspected, setInspected] = useState<string | null>(null)
+  const inspect = (code: string | undefined): void => { if (code !== undefined) setInspected(code) }
 
   // The choice set is rebuilt on every state change; a card selected under the old one may no longer be
   // clickable (or may not exist), so drop the selection rather than leave a highlight pointing at nothing.
@@ -130,7 +137,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   // rarely a click target — which also buys the vertical room two full-size field rows per side would not fit in.
   const field = (p: PlayerId, kind: 'forwards' | 'backups'): JSX.Element[] =>
     view.fields[p][kind].map((c) => (
-      <FieldCardView key={c.id} v={view} c={c} choices={choices.byCard.get(c.id) ?? []} selected={selected === c.id} onPick={pick} size={kind === 'backups' ? 'small' : 'field'} />
+      <FieldCardView key={c.id} v={view} c={c} choices={choices.byCard.get(c.id) ?? []} selected={selected === c.id} onPick={pick} onInspect={inspect} size={kind === 'backups' ? 'small' : 'field'} />
     ))
 
   // Every clickable choice must be reachable, or the game dead-ends: Billy Bob's ETB targets your BREAK ZONE,
@@ -154,6 +161,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
         selected={selected === id}
         size="small"
         onClick={() => pick(id)}
+        onInspect={() => inspect(d?.code)}
       />
     )
   })
@@ -195,13 +203,17 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
                 selected={selected === id}
                 size="hand"
                 onClick={forCard.length ? () => pick(id) : undefined}
+                onInspect={() => inspect(d?.code)}
               />
             )
           })}
         </div>
       </section>
 
-      <aside className="table__rail"><EventLog log={log} /></aside>
+      <aside className="table__rail">
+        <CardDetails def={inspected === null ? undefined : view.defs[inspected]} />
+        <EventLog log={log} />
+      </aside>
 
       {view.result && (
         <div className="banner" role="alertdialog" aria-label="Game over">
