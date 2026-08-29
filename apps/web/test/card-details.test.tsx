@@ -9,7 +9,7 @@ import { stepAi } from '../src/game/useGame.js'
 import { Card, type CardProps } from '../src/ui/Card.js'
 import { CardDetails } from '../src/ui/CardDetails.js'
 import { buildChoiceSet, preferredChoices } from '../src/game/commands.js'
-import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
+import { AI, HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
 
 /**
  * The card details panel, driven through the REAL `Board` from a REAL mulligan view.
@@ -517,6 +517,102 @@ describe('the field zones as keyboard grids (rung E3b-2)', () => {
     act(() => { focusTarget.focus() })
     expect(document.activeElement).toBe(focusTarget)
     expect(details().length, 'the attacker could be focused but said nothing').toBeGreaterThan(0)
+  })
+})
+
+describe('the public piles, opened and read (rung E3b-3)', () => {
+  /** A position where somebody's Break Zone actually holds cards, reached by playing. */
+  function withBreakZone(): GameState {
+    const agent = new GreedyAgent({ seed: 7, decks: DECKS, depth: 1 })
+    let s: GameState = createGame({ seed: 7, decks: DECKS, defs: CARD_DEFS })
+    for (let i = 0; i < 4000 && !s.result; i++) {
+      if (s.players[HUMAN].breakZone.length > 0 || s.players[AI].breakZone.length > 0) break
+      if (actingPlayer(s) === null) break
+      s = stepAi(s, agent).state
+    }
+    return s
+  }
+
+  const opener = (name: RegExp): HTMLButtonElement | undefined =>
+    [...document.querySelectorAll<HTMLButtonElement>('.seat button')]
+      .find((b) => name.test(b.getAttribute('aria-label') ?? ''))
+
+  it('shows a non-empty pile as something openable, and says how many are in it', () => {
+    const s = withBreakZone()
+    const total = s.players[HUMAN].breakZone.length + s.players[AI].breakZone.length
+    expect(total, 'no Break Zone ever filled, so this test asserts nothing').toBeGreaterThan(0)
+    mount(s)
+    const btn = opener(/Break Zone, \d+ cards?$/)
+    expect(btn, 'a non-empty Break Zone is not openable').toBeDefined()
+    expect(btn!.getAttribute('aria-expanded'), 'the pile claims to be open before it is').toBe('false')
+  })
+
+  it('opens the pile and lets its cards be read', () => {
+    // The reason this rung exists: Luso asks whether to take its "Character in your Break Zone" mode, and
+    // whether Billy Bob is worth casting, BEFORE any target choice is raised. The orphan target row comes
+    // too late to answer either. Until now the board showed the pile only as a number.
+    const s = withBreakZone()
+    mount(s)
+    const btn = opener(/Break Zone, \d+ cards?$/)!
+    act(() => { btn.click() })
+    expect(btn.getAttribute('aria-expanded')).toBe('true')
+    const cells = [...document.querySelectorAll<HTMLElement>('.zone [role="gridcell"]')]
+      .filter((c) => (c.getAttribute('aria-label') ?? '') !== '')
+    expect(cells.length, 'the pile opened to nothing').toBeGreaterThan(0)
+    const first = cells[0]!
+    act(() => { first.focus() })
+    expect(document.activeElement, 'a card in an opened pile cannot take focus').toBe(first)
+    expect(details().length, 'a card in an opened pile says nothing').toBeGreaterThan(0)
+  })
+
+  it('closes the pile when the same count is pressed again', () => {
+    const s = withBreakZone()
+    mount(s)
+    const btn = opener(/Break Zone, \d+ cards?$/)!
+    act(() => { btn.click() })
+    act(() => { btn.click() })
+    expect(btn.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('leaves an EMPTY pile as a plain number, not a control', () => {
+    // Nothing to read, so nothing to open — and a button that opens an empty row is a tab stop that wastes
+    // a keyboard player's time and announces nothing.
+    mount(mulliganState())
+    expect(opener(/Break Zone/), 'an empty Break Zone offered itself as openable').toBeUndefined()
+  })
+
+  it('does not announce the damage total twice when it is openable', () => {
+    // The pip track carries `aria-label="N of 7 damage"`. Inside a disclosure button whose own name already
+    // says the count, that is the same fact twice in a row.
+    //
+    // The first version of this bailed out with a bare `return` when nobody had taken damage — a test that
+    // silently skips is a test that cannot fail, and the mutation proved it: announcing the track inside the
+    // button survived. It now seeks a damaged position and FAILS if it cannot find one.
+    const agent = new GreedyAgent({ seed: 7, decks: DECKS, depth: 1 })
+    let s: GameState = createGame({ seed: 7, decks: DECKS, defs: CARD_DEFS })
+    for (let i = 0; i < 4000 && !s.result; i++) {
+      if (s.players[HUMAN].damageZone.length > 0 || s.players[AI].damageZone.length > 0) break
+      if (actingPlayer(s) === null) break
+      s = stepAi(s, agent).state
+    }
+    expect(
+      s.players[HUMAN].damageZone.length + s.players[AI].damageZone.length,
+      'nobody ever took damage, so this test asserts nothing',
+    ).toBeGreaterThan(0)
+    mount(s)
+    const dmg = opener(/Damage, \d+ cards?$/)
+    expect(dmg, 'a non-empty damage zone is not openable').toBeDefined()
+    expect(dmg!.querySelector('.damage-track')?.getAttribute('aria-hidden'), 'the pip track is announced inside the button that already states the count').toBe('true')
+    expect(dmg!.querySelector('.damage-track')?.getAttribute('aria-label')).toBe(null)
+  })
+
+  it('still announces the damage total when there is nothing to open', () => {
+    // The other side of it: with no damage there is no button, so the pip track is the only thing that can
+    // say the total, and it must keep its label.
+    mount(mulliganState())
+    const track = document.querySelector('.damage-track')
+    expect(track?.getAttribute('aria-label'), 'an unopenable damage track lost its label').toMatch(/of \d+ damage/)
+    expect(track?.getAttribute('aria-hidden')).toBe(null)
   })
 })
 

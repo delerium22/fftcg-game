@@ -464,6 +464,27 @@ body {
   50% { opacity: 1; }
 }
 
+/* A public pile's count, opened to read the cards in it. Styled as the count it replaces, not as a control:
+   it sits in a row of plain statistics and a button chrome there would read as the primary action. */
+.stat__open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.stat__open:hover { color: var(--gold); }
+
+.stat__open:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.stat__open[aria-expanded='true'] { color: var(--gold); }
+
 /* ============================ card details ============================ */
 
 .details {

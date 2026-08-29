@@ -73,25 +73,71 @@ function Zone({ label, items, compact, onLookAt }: {
   )
 }
 
-function Seat({ v, p, active }: { v: PlayerView; p: PlayerId; active: boolean }): JSX.Element {
+/** The public piles a player can open and read. Face-down zones (deck, the opponent's hand) are not here. */
+export type PileKind = 'breakZone' | 'damageZone' | 'removedFromGame'
+const PILE_LABEL: Record<PileKind, string> = {
+  breakZone: 'Break Zone', damageZone: 'Damage', removedFromGame: 'Removed from game',
+}
+
+function Seat({ v, p, active, open, onToggle }: {
+  v: PlayerView; p: PlayerId; active: boolean
+  open: PileKind | null
+  onToggle: (kind: PileKind) => void
+}): JSX.Element {
   const f = v.fields[p]
   const you = p === HUMAN
   const damage = f.damageZone.length
+
+  /**
+   * A count that can be opened and read.
+   *
+   * These zones are PUBLIC information the board was showing only as a number — and the number is the part a
+   * player can already see. Which cards are in a Break Zone decides whether Luso's Break-Zone mode is worth
+   * choosing and whether Billy Bob is worth casting, both of which are answered BEFORE any target choice is
+   * raised, so the orphan target row comes too late to help. Damage-zone identities are public too and are
+   * how a player tracks what is left in a deck.
+   *
+   * A disclosure rather than a permanently visible row: the board's rows are fixed height, and a Break Zone
+   * fills up over a game.
+   */
+  const pile = (kind: PileKind, count: number, inner: JSX.Element): JSX.Element => (
+    <span className="stat">
+      <span className="stat__label">{kind === 'damageZone' ? 'Damage' : kind === 'breakZone' ? 'Break' : 'Removed'}</span>
+      {count === 0
+        ? inner
+        : (
+          <button
+            type="button"
+            className="stat__open"
+            aria-expanded={open === kind}
+            aria-label={`${you ? 'Your' : "the AI's"} ${PILE_LABEL[kind]}, ${count} ${count === 1 ? 'card' : 'cards'}`}
+            onClick={() => onToggle(kind)}
+          >
+            {inner}
+          </button>
+        )}
+    </span>
+  )
+
   return (
     <div className={active ? 'seat seat--active' : 'seat'}>
       <span className={you ? 'seat__name seat__name--you' : 'seat__name'}>{you ? 'You' : 'AI'}</span>
       <div className="seat__stats">
         <span className="stat"><span className="stat__label">Deck</span><span className="stat__value">{f.deck.length}</span></span>
         <span className="stat"><span className="stat__label">Hand</span><span className="stat__value">{you ? v.hand.length : f.handCount}</span></span>
-        <span className="stat"><span className="stat__label">Break</span><span className="stat__value">{f.breakZone.length}</span></span>
-        <span className="stat">
-          <span className="stat__label">Damage</span>
-          <span className="damage-track" role="img" aria-label={`${damage} of ${MAX_DAMAGE} damage`}>
+        {pile('breakZone', f.breakZone.length, <span className="stat__value">{f.breakZone.length}</span>)}
+        {pile('damageZone', damage, (
+          // `aria-hidden`: inside a disclosure button the pip track would be announced twice, once as the
+          // button's own name and once as this image. Outside one it is still the only thing that says
+          // the damage total, so it keeps its label.
+          <span className="damage-track" {...(damage === 0 ? { role: 'img', 'aria-label': `${damage} of ${MAX_DAMAGE} damage` } : { 'aria-hidden': true })}>
             {Array.from({ length: MAX_DAMAGE }, (_, i) => (
               <span key={i} className={i < damage ? 'damage-pip is-filled' : 'damage-pip'} />
             ))}
           </span>
-        </span>
+        ))}
+        {f.removedFromGame.length > 0
+          && pile('removedFromGame', f.removedFromGame.length, <span className="stat__value">{f.removedFromGame.length}</span>)}
       </div>
     </div>
   )
@@ -137,6 +183,36 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   }
   /** "The player is looking at this card", for every zone. Pointer and keyboard alike — see `CardGrid`. */
   const look = (id: CardId): void => { inspect(defOf(view, id)?.code, actionFor(id) ?? null) }
+
+  // Which public pile is open, if any. One at a time: two open rows do not fit the board's fixed grid rows,
+  // and a player is comparing against one pile at a time anyway.
+  const [openPile, setOpenPile] = useState<{ p: PlayerId; kind: PileKind } | null>(null)
+  const togglePile = (p: PlayerId, kind: PileKind): void =>
+    setOpenPile((cur) => (cur?.p === p && cur.kind === kind ? null : { p, kind }))
+
+  /** The open pile's cards, as grid items — the same cells every other zone uses, so they read the same. */
+  const pileItems = (p: PlayerId, kind: PileKind): GridItem[] =>
+    view.fields[p][kind].map((id) => {
+      const d = defOf(view, id)
+      return gridItem(id, {
+        code: d?.code ?? '?',
+        name: d?.name ?? 'Unknown',
+        cost: d?.cost ?? 0,
+        elements: d?.elements ?? [],
+        type: d?.type ?? 'forward',
+        power: d?.power ?? null,
+        selectable: false,
+        size: 'small',
+        ...(d?.text === undefined ? {} : { text: d.text }),
+      })
+    })
+
+  /** The opened pile's row, rendered under the seat that owns it. */
+  const pileRow = (p: PlayerId): JSX.Element | null => {
+    if (openPile === null || openPile.p !== p) return null
+    const label = `${p === HUMAN ? 'Your' : "The AI's"} ${PILE_LABEL[openPile.kind]}`
+    return <Zone label={label} compact items={pileItems(p, openPile.kind)} onLookAt={look} />
+  }
 
   /**
    * What clicking this card will do, but ONLY when it does exactly one thing.
@@ -230,7 +306,12 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   return (
     <div className="table">
       <section className="table__seat table__seat--opponent">
-        <Seat v={view} p={AI} active={view.priority === AI || view.pending?.player === AI} />
+        <Seat
+          v={view} p={AI} active={view.priority === AI || view.pending?.player === AI}
+          open={openPile?.p === AI ? openPile.kind : null}
+          onToggle={(kind) => togglePile(AI, kind)}
+        />
+        {pileRow(AI)}
         <Zone label="AI Backups" compact items={field(AI, 'backups')} onLookAt={look} />
         <Zone label="AI Forwards" items={field(AI, 'forwards')} onLookAt={look} />
       </section>
@@ -245,7 +326,12 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
           five cards they were being asked about. Evidence before commitment: the opponent's board, then
           your own, then your hand, then the buttons. */}
       <section className="table__seat table__seat--player">
-        <Seat v={view} p={HUMAN} active={view.priority === HUMAN || view.pending?.player === HUMAN} />
+        <Seat
+          v={view} p={HUMAN} active={view.priority === HUMAN || view.pending?.player === HUMAN}
+          open={openPile?.p === HUMAN ? openPile.kind : null}
+          onToggle={(kind) => togglePile(HUMAN, kind)}
+        />
+        {pileRow(HUMAN)}
         <Zone label="Your Backups" compact items={field(HUMAN, 'backups')} onLookAt={look} />
         <Zone label="Your Forwards" items={field(HUMAN, 'forwards')} onLookAt={look} />
       </section>
