@@ -149,11 +149,17 @@ describe('what the AI did is announced', () => {
     // "GAME LOG", because it applies the heading's CSS `text-transform` to the accessible name.
     expect(region!.getAttribute('aria-label'), 'the log region has no accessible name').toBe('Game log')
 
-    // ONE real AI command, and the line it narrates.
+    // ONE real AI command, and the line it narrates — pinned to a HAND-WRITTEN literal.
+    //
+    // The previous version selected any line beginning "The AI:", fed that same string into `render`, and
+    // asserted the DOM contained it. Circular: a placeholder narration of `The AI: acted` would have passed,
+    // because the expectation was derived from the output under test. `narrateApply` hard-codes that prefix,
+    // so matching on it proves nothing about the content.
     const step = stepAi(s, agent)
-    const aiLines = step.lines.filter((l) => l.text.startsWith('The AI:'))
-    expect(aiLines.length, 'the AI acted without narrating anything').toBeGreaterThan(0)
-    const aiLine = aiLines[0]!.text
+    expect(step.state, 'the AI did not actually move').not.toBe(s)
+    const aiLine = "The AI: Geomancer's [Earth], discard: Draw 1 card — paying discard Luso as earth"
+    expect(step.lines.map((l) => l.text), 'the AI narrated something other than the expected move').toContain(aiLine)
+    expect(step.lines.find((l) => l.text === aiLine)?.kind, 'the AI move is not tagged as one').toBe('ai')
 
     render(step.state, [...opening, ...step.lines])
 
@@ -163,21 +169,42 @@ describe('what the AI did is announced', () => {
     expect(texts, 'the earlier narration was dropped').toContain('New game — you are P0, the AI is P1')
   })
 
-  it('falls silent once the game-over dialog owns the announcement', () => {
-    // Three live channels fire on the result transition: the status changes to "Game over", the log gains
-    // the result line, and the alertdialog mounts and takes focus. An `alertdialog` is the right owner of a
-    // terminal announcement, so the other two stand down rather than saying the same thing three ways.
+  it('goes polite → off → polite across one mounted board', () => {
+    // Mounting a finished game and finding `off` proves nothing about the TRANSITION. This survives it:
+    //
+    //     const initialSilenced = useRef(silenced).current
+    //     aria-live={initialSilenced ? 'off' : 'polite'}
+    //
+    // A latched value makes the ordinary test mount `polite` and the terminal test mount `off`, both green,
+    // while in a real game the regions stay `polite` as the dialog appears — the duplicate terminal
+    // announcement restored — and stay `off` for the whole game after a restart. Only passing THROUGH the
+    // states in one mounted Board can see either.
+    const live = () => ({
+      prompt: document.querySelector('.prompt__text')?.getAttribute('aria-live'),
+      log: document.querySelector('.log__lines')?.getAttribute('aria-live'),
+    })
+
     const agent = new GreedyAgent({ seed: 3, decks: DECKS, depth: 1 })
     let s: GameState = createGame({ seed: 3, decks: DECKS, defs: CARD_DEFS })
+    render(s)
+    const promptNode = document.querySelector('.prompt__text')
+    const logNode = document.querySelector('.log__lines')
+    expect(live(), 'the regions are not announcing during play').toEqual({ prompt: 'polite', log: 'polite' })
+
     for (let i = 0; i < 6000 && !s.result; i++) {
       if (actingPlayer(s) === null) break
       s = stepAi(s, agent).state
     }
     expect(s.result, 'no game finished, so this asserts nothing').not.toBe(null)
     render(s, [{ kind: 'result', text: 'Game over — the AI wins. You have taken 7 damage.' }])
-    expect(document.querySelector('.prompt__text')?.getAttribute('aria-live'),
-      'the prompt still announces over the dialog').toBe('off')
-    expect(document.querySelector('.log__lines')?.getAttribute('aria-live'),
-      'the log still announces over the dialog').toBe('off')
+
+    // The SAME nodes, now silent: a replaced region would announce nothing regardless of its attributes.
+    expect(document.querySelector('.prompt__text'), 'the status region was replaced').toBe(promptNode)
+    expect(document.querySelector('.log__lines'), 'the log region was replaced').toBe(logNode)
+    expect(live(), 'the regions talk over the game-over dialog').toEqual({ prompt: 'off', log: 'off' })
+
+    // And back, for the next game. A latched silence leaves an entire game with no announcements at all.
+    render(createGame({ seed: 5, decks: DECKS, defs: CARD_DEFS }))
+    expect(live(), 'the regions never came back after a restart').toEqual({ prompt: 'polite', log: 'polite' })
   })
 })

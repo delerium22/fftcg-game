@@ -10,6 +10,7 @@ export default defineConfig({
   // the hook publishes across a commit — the AI-thinking flag was exactly that — is invisible without one.
   test: {
     environment: 'jsdom',
+    setupFiles: ['./test/setup.ts'],
     // `e2e/` belongs to Playwright, which vitest would otherwise collect and choke on. The two runners
     // answer different questions: jsdom for everything it can honestly see, a real browser for the claims
     // it cannot — modality, inertness, tab traversal, layout overflow.
