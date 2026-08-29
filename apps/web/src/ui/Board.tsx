@@ -5,6 +5,7 @@ import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card } from './Card.js'
 import { CardDetails } from './CardDetails.js'
+import { CardGrid } from './CardGrid.js'
 import { EventLog } from './EventLog.js'
 import { PromptStrip } from './PromptStrip.js'
 
@@ -210,30 +211,40 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
 
       <section className="table__hand">
         {orphanCards.length > 0 && <Zone label="Choose a card" compact empty={false}>{orphanCards}</Zone>}
-        <div className="hand">
-          {view.hand.map((id) => {
+        {/* The hand is a keyboard GRID: one tab stop, arrow keys within. Without it the mulligan cannot be
+            reached by keyboard at all — no hand card is selectable there, so every one is a `role="img"`
+            div outside the tab order, and the opening decision of the game is made blind. */}
+        <CardGrid
+          label="Your hand"
+          className="hand"
+          onFocusItem={(id) => inspect(defOf(view, id)?.code, actionFor(id) ?? null)}
+          items={view.hand.map((id) => {
             const d = defOf(view, id)
             const forCard = choices.byCard.get(id) ?? []
-            return (
-              <Card
-                key={id}
-                code={d?.code ?? '?'}
-                name={d?.name ?? 'Unknown'}
-                cost={d?.cost ?? 0}
-                elements={d?.elements ?? []}
-                type={d?.type ?? 'forward'}
-                power={d?.power ?? null}
-                selectable={forCard.length > 0}
-                selected={selected === id}
-                size="hand"
-                text={d?.text}
-                action={actionFor(id)}
-                onClick={forCard.length ? () => pick(id) : undefined}
-                onInspect={() => inspect(d?.code, actionFor(id) ?? null)}
-              />
-            )
+            return {
+              id,
+              selectable: forCard.length > 0,
+              render: (tabIndex) => (
+                <Card
+                  code={d?.code ?? '?'}
+                  name={d?.name ?? 'Unknown'}
+                  cost={d?.cost ?? 0}
+                  elements={d?.elements ?? []}
+                  type={d?.type ?? 'forward'}
+                  power={d?.power ?? null}
+                  selectable={forCard.length > 0}
+                  selected={selected === id}
+                  size="hand"
+                  text={d?.text}
+                  action={actionFor(id)}
+                  tabIndex={tabIndex}
+                  onClick={forCard.length ? () => pick(id) : undefined}
+                  onInspect={() => inspect(d?.code, actionFor(id) ?? null)}
+                />
+              ),
+            }
           })}
-        </div>
+        />
       </section>
 
       <PromptStrip view={view} choices={choices} shown={shown} aiThinking={aiThinking} onChoose={(c) => { setSelected(null); choose(c) }} />

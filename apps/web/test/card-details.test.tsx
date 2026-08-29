@@ -243,6 +243,93 @@ describe('the route a keyboard takes through the board', () => {
   })
 })
 
+describe('the hand as a keyboard grid (rung E3b-1)', () => {
+  const cells = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.hand [role="gridcell"]')]
+  /** What actually takes focus for a card: its button when it has one, else the cell. */
+  const target = (cell: HTMLElement): HTMLElement => cell.querySelector('button') ?? cell
+  const press = (key: string): void => {
+    act(() => { document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })) })
+  }
+
+  it('makes the MULLIGAN hand reachable at all — the defect E3 was written about', () => {
+    // At the mulligan no hand card is selectable, so before this every card was a `role="img"` div outside
+    // the tab order and there was no key that reached one. The opening decision of every game, made blind.
+    mount(mulliganState())
+    expect(cells()).toHaveLength(5)
+    const first = target(cells()[0]!)
+    act(() => { first.focus() })
+    expect(document.activeElement, 'the first card cannot take focus').toBe(first)
+  })
+
+  it('moves across the hand with arrow keys, and to the ends with Home/End', () => {
+    mount(mulliganState())
+    act(() => { target(cells()[0]!).focus() })
+    press('ArrowRight')
+    expect(document.activeElement).toBe(target(cells()[1]!))
+    press('ArrowRight')
+    expect(document.activeElement).toBe(target(cells()[2]!))
+    press('ArrowLeft')
+    expect(document.activeElement).toBe(target(cells()[1]!))
+    press('End')
+    expect(document.activeElement).toBe(target(cells()[4]!))
+    press('Home')
+    expect(document.activeElement).toBe(target(cells()[0]!))
+  })
+
+  it('stops at the ends rather than wrapping', () => {
+    // Wrapping is a choice, not a default; a row that silently teleports from the last card to the first is
+    // disorienting without a visible cursor. Pinned so it is a decision rather than an accident.
+    mount(mulliganState())
+    act(() => { target(cells()[0]!).focus() })
+    press('ArrowLeft')
+    expect(document.activeElement, 'moving left off the first card wrapped to the last').toBe(target(cells()[0]!))
+    press('End')
+    press('ArrowRight')
+    expect(document.activeElement, 'moving right off the last card wrapped to the first').toBe(target(cells()[4]!))
+  })
+
+  it('keeps exactly one tab stop in the hand, wherever the cursor is', () => {
+    // The whole point of a roving tabindex. Two stops and Tab lands inside the row; none and the row is
+    // unreachable. No behavioural observable exists for this under jsdom — it has no Tab traversal — so the
+    // attribute is the only available evidence, and saying so is better than dressing it up.
+    mount(mulliganState())
+    const stops = () => [...document.querySelectorAll('.hand [tabindex="0"], .hand button:not([tabindex="-1"])')]
+    expect(stops()).toHaveLength(1)
+    act(() => { target(cells()[0]!).focus() })
+    press('ArrowRight')
+    expect(stops(), 'moving the cursor left more than one tab stop behind').toHaveLength(1)
+  })
+
+  it('reads the focused card into the details panel', () => {
+    // E3a wired inspection to focus; this rung only had to make focus reachable. If that seam broke, the
+    // keyboard player can move but still cannot read.
+    mount(mulliganState())
+    const ramuh = cells().find((c) => (c.textContent ?? '').includes('Ramuh'))
+    expect(ramuh, 'Ramuh is not in the opening hand — the fixture deck or seed changed').toBeDefined()
+    act(() => { target(ramuh!).focus() })
+    expect(details()).toContain(RAMUH_TEXT)
+  })
+
+  it('leaves Enter and Space to the card, and arrows do not play it', () => {
+    mount(mainPhaseState())
+    act(() => { target(cells()[0]!).focus() })
+    press('ArrowRight')
+    expect(chosen, 'an arrow key played a card').toEqual([])
+    // The card is still a real button, so activation is the platform's, not ours.
+    expect(target(cells()[0]!).tagName).toBe('BUTTON')
+  })
+
+  it('is a labelled grid, not a listbox', () => {
+    // A listbox means SELECTING an option, which is false for a hand at the mulligan where nothing is
+    // playable. A layout grid means "these widgets share one tab stop", which is what is true.
+    mount(mulliganState())
+    const grid = document.querySelector('.hand')
+    expect(grid?.getAttribute('role')).toBe('grid')
+    expect(grid?.getAttribute('aria-label'), 'the hand had no accessible name at all before this').toBe('Your hand')
+    expect(document.querySelector('.hand [role="row"]')).not.toBe(null)
+  })
+})
+
 describe('the printed text as an accessible description (rung E3b-1)', () => {
   /** What a screen reader would announce as the DESCRIPTION of `el`, resolved through aria-describedby. */
   const describedText = (el: HTMLElement): string => {

@@ -319,9 +319,32 @@ body {
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  gap: var(--s2);
   min-height: calc(clamp(112px, 16vh, 179px) + 11px);
   padding: var(--s2) 0;
+}
+
+/* The hand is a `role="grid"` with one `role="row"`, so the cards sit a level deeper than they used to.
+   The row carries the layout that `.hand` used to; `.hand` keeps only the sizing and centring, so a grid
+   with no row (an empty hand) still reserves its space and the board does not jump. */
+.grid__row {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: var(--s2);
+}
+
+/* A gridcell wraps one card. NOT `display: contents`, tempting as that is for leaving the flex layout
+   untouched: for a card with no button of its own the CELL is the focus target, and an element with no box
+   cannot show a focus ring — a keyboard player would be moving an invisible cursor. The description sibling
+   inside is `.sr-only` and absolutely positioned, so the cell still sizes to the card alone. */
+.grid__row > [role='gridcell'] {
+  display: flex;
+  border-radius: 8px;
+}
+
+.grid__row > [role='gridcell']:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
 .deck-stack {

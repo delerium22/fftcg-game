@@ -74,6 +74,12 @@ export interface CardProps {
    * lives in the DOM BEFORE focus, so the announcement cannot race React replacing the panel's content.
    */
   text?: string | undefined
+  /**
+   * The card's place in its zone's roving tab order (`CardGrid`). Only meaningful for a SELECTABLE card,
+   * whose `<button>` is the focus target; a non-selectable card is focused through its grid cell instead,
+   * because a focusable `role="img"` is a leaf and announces poorly.
+   */
+  tabIndex?: number | undefined
   onInspect?: (() => void) | undefined
   /**
    * What clicking this card will DO, right now — "Cast Ramuh paying: discard Odin as lightning".
@@ -90,7 +96,7 @@ export interface CardProps {
 
 /** Every card on the board — the opponent's hand, the decks, both fields — renders through here. */
 export function Card(props: CardProps): JSX.Element {
-  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, action, text } = props
+  const { code, name, cost, elements, type, power, powerBonus = 0, granted = [], flags = [], damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, action, text, tabIndex } = props
 
   // Local state is keyed on `code` rather than reset by an effect, so reusing one component instance
   // for a different card re-attempts that card's art instead of inheriting the previous failure. The
@@ -209,6 +215,7 @@ export function Card(props: CardProps): JSX.Element {
         <button
           type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label}
           {...(described ? { 'aria-describedby': descId } : {})}
+          {...(tabIndex === undefined ? {} : { tabIndex })}
           aria-pressed={selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}
         >
           <span className="card__face">{face}</span>
