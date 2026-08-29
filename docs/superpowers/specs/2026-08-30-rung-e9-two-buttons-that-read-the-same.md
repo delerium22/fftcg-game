@@ -34,8 +34,20 @@ Two copies of one card in hand are interchangeable: the resulting states differ 
 in the Break Zone, and nothing in the rules or the pool distinguishes them — every effect that reads the
 Break Zone reads `code`, not identity.
 
-That argument is load-bearing and must be checked rather than assumed, because it is exactly the sort of
-"obviously equivalent" claim that stops being true when a card gains a per-instance ability. The safe form of
+That argument is load-bearing, so I checked it at three layers rather than asserting it:
+
+- **The rules.** The only per-instance Break Zone state is `putIntoBreakZoneFromFieldThisTurn`, which Sphene
+  reads. It is appended only by `recordBreakZoneArrivals`, on FIELD → Break Zone transitions. The hand-size
+  discard in `phases.ts` moves cards straight from `hand` to `breakZone` and never calls it, so neither copy
+  is marked and Sphene cannot tell them apart.
+- **The search.** `bzEntry` in the ISMCTS observation key digests a Break Zone card as its `code` plus a `!`
+  when that flag is set — identity is not in the key at all. Discarding either copy yields the same entry,
+  so the two commands lead to the same information set.
+- **Determinisation.** `determinise` rebuilds from the view's Break Zone, which lists codes; two states
+  differing only in which of two same-code ids was discarded reconstruct identically.
+
+It remains the sort of "obviously equivalent" claim that stops being true when a card gains a per-instance
+ability. The safe form of
 the rule is: collapse only when the labels are identical AND the commands differ solely in the identity of
 cards with the same `code` in the same zone. If a future card can distinguish two same-code instances, the
 collapse must stop — so this needs a test that would notice.
