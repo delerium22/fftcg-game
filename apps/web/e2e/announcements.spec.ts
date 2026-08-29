@@ -19,9 +19,17 @@ import { expect, test } from '@playwright/test'
  * jsdom tests in `test/announcements.test.tsx` are what pin the explicit declarations, and the explicit
  * declarations exist because not every environment honours the implicit ones.
  *
- * So the two suites are complementary rather than redundant: jsdom pins the DOM contract we wrote, the
- * browser pins the accessibility contract Chromium derives. Either alone leaves a real mutant alive, which
- * is why both are here.
+ * So the two suites are complementary rather than redundant, and the split is now evidenced in BOTH
+ * directions:
+ *
+ *   - jsdom catches what the browser cannot — deleting the explicit `aria-live`/`aria-atomic`, which
+ *     Chromium normalises away because `role="status"` implies them. Browser suite stays green.
+ *   - the browser catches what jsdom cannot — `aria-relevant="removals"`, which leaves the role, the
+ *     politeness and the atomicity all correct while making an ordinary change irrelevant to the region.
+ *     The original defect, restored, with all 312 jsdom tests green.
+ *
+ * Measured, both ways. Neither suite alone is sufficient, and deleting either as duplication would reopen a
+ * defect this rung was written to close.
  */
 
 test('the browser computes the prompt as a polite, atomic status region', async ({ page }) => {
@@ -45,6 +53,12 @@ test('the browser computes the prompt as a polite, atomic status region', async 
   const prop = (name: string): unknown => node!.properties?.find((p) => p.name === name)?.value?.value
   expect(prop('live'), 'the browser computes no live politeness for the prompt').toBe('polite')
   expect(prop('atomic'), 'the browser would announce only the changed fragment of an instruction').toBe(true)
+  // `relevant` too, and it is the one that was missing. The ARIA default is `additions text`; overriding it
+  // with `removals` leaves the role, the politeness and the atomicity all intact and correct, while making
+  // an ordinary text change IRRELEVANT to the region — the original "changes arrive silently" defect,
+  // restored, with every other assertion in both suites still green.
+  expect(prop('relevant'), 'a changed instruction is not relevant to this region, so it is never announced')
+    .toBe('additions text')
 })
 
 test('the browser computes the event log as a log region with a name', async ({ page }) => {
@@ -66,6 +80,10 @@ test('the browser computes the event log as a log region with a name', async ({ 
   // silence the channel while leaving the role in place, restoring the exact defect this rung fixed.
   const prop = (name: string): unknown => node!.properties?.find((p) => p.name === name)?.value?.value
   expect(prop('live'), 'the log has a role but announces nothing').toBe('polite')
+  // Same trap on the log: with `relevant="removals"` an APPENDED line is not a relevant change, so the AI's
+  // moves go silent again while the region still looks perfectly configured.
+  expect(prop('relevant'), 'an appended line is not relevant to this region, so it is never announced')
+    .toBe('additions text')
   // Exactly "Game log", not "GAME LOG". Labelling the region by its visible heading produced the latter,
   // because Chromium folds CSS `text-transform` into the computed name and the heading is styled uppercase.
   expect(node!.name?.value, 'the log region is unnamed, or its name is a side effect of styling').toBe('Game log')
