@@ -418,7 +418,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
 
       <aside className="table__rail">
         <CardDetails def={inspected === null ? undefined : view.defs[inspected.code]} action={inspected === null ? null : inspected.action} />
-        <EventLog log={log} />
+        <EventLog log={log} silenced={view.result !== null} />
       </aside>
 
       {view.result && <GameOverDialog result={view.result} me={view.me} onRestart={() => { restarting.current = true; restart() }} />}

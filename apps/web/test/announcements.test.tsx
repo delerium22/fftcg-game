@@ -7,7 +7,7 @@ import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
 import { buildChoiceSet, preferredChoices } from '../src/game/commands.js'
 import { stepAi } from '../src/game/useGame.js'
-import { HUMAN, type Choice, type GameApi, type LogLine } from '../src/game/types.js'
+import { AI, HUMAN, type Choice, type GameApi, type LogLine } from '../src/game/types.js'
 
 /**
  * The two channels a player who cannot see the board depends on: what is required, and what happened.
@@ -85,8 +85,15 @@ describe('what the game requires is announced', () => {
     render(after)
 
     expect(document.querySelector('.prompt__text'), 'the live region was replaced, so it announces nothing').toBe(node)
-    expect(node.textContent, 'the instruction did not change').not.toBe('Keep your hand or mulligan')
-    expect(node.textContent!.length, 'the region emptied instead of updating').toBeGreaterThan(0)
+    // The EXACT new instruction. "different and non-empty" is satisfied by any placeholder — mutating the
+    // waiting branch to "Please wait" passed it — which proves the text changed, not that the right thing
+    // is being announced.
+    expect(node.textContent, 'the region does not carry the new instruction').toBe('Waiting for the AI')
+    // And the contract must still hold AFTER the update: semantics removed on a later render would leave a
+    // region that announced once and then went quiet.
+    expect(node.getAttribute('role')).toBe('status')
+    expect(node.getAttribute('aria-live')).toBe('polite')
+    expect(node.getAttribute('aria-atomic')).toBe('true')
   })
 
   it('leaves focus where the player put it', () => {
@@ -108,39 +115,69 @@ describe('what the game requires is announced', () => {
 })
 
 describe('what the AI did is announced', () => {
-  it('is a labelled log that gains the AI’s own line', () => {
-    // The named defect is specifically that the AI acts SILENTLY — so an opening line or the player's own
-    // action would not do. This drives a real AI command and requires its line to appear in the pre-existing
-    // log node, with the earlier line still there.
+  it('gains the AI’s own line inside the SAME pre-existing log region', () => {
+    // Two things this has to prove, and my first version proved neither.
+    //
+    // It gathered every line first and mounted once, so it never exercised an UPDATE — `key={log.length}`
+    // on the region, which replaces the live node on every append and therefore announces nothing at all,
+    // passed the whole suite. That is the original defect restored, hiding behind a green test.
+    //
+    // And its "AI line" was not the AI's. `mulliganState()` puts the human first, so the first step applied
+    // a HUMAN command — and `narrateApply` hard-codes the "The AI:" prefix, so a `startsWith('The AI:')`
+    // check matched the prefix rather than an AI action. It now requires `actingPlayer === AI` before the
+    // step that produces the line.
     const agent = new GreedyAgent({ seed: 1, decks: DECKS, depth: 1 })
     let s = mulliganState()
     for (let i = 0; i < 6 && s.pending?.kind === 'mulligan'; i++) {
       s = apply(s, { type: 'mulligan', player: s.pending.player, redraw: false }).state
     }
-    // Run the AI until it produces narration of its own.
-    let lines: LogLine[] = [{ kind: 'event', text: 'New game — you are P0, the AI is P1' }]
-    let aiLine: string | null = null
-    for (let i = 0; i < 400 && aiLine === null && !s.result; i++) {
-      if (actingPlayer(s) === null) break
-      const step = stepAi(s, agent)
-      s = step.state
-      for (const l of step.lines) {
-        lines = [...lines, l]
-        if (aiLine === null && l.text.startsWith('The AI:')) aiLine = l.text
-      }
+    // Advance to a point where the AI genuinely owes the next command.
+    for (let i = 0; i < 400 && actingPlayer(s) !== AI && !s.result; i++) {
+      const acting = actingPlayer(s)
+      if (acting === null) break
+      s = stepAi(s, agent).state
     }
-    expect(aiLine, 'the AI never narrated anything, so this test asserts nothing').not.toBe(null)
+    expect(actingPlayer(s), 'never reached a position where the AI acts, so this asserts nothing').toBe(AI)
 
-    render(s, lines)
-    const log = document.querySelector<HTMLElement>('.log__lines')
-    expect(log, 'the log is not rendered').not.toBe(null)
-    expect(log!.getAttribute('role'), 'the AI’s moves arrive silently').toBe('log')
+    const opening: LogLine[] = [{ kind: 'event', text: 'New game — you are P0, the AI is P1' }]
+    render(s, opening)
+    const region = document.querySelector<HTMLElement>('.log__lines')
+    expect(region, 'the log is not rendered').not.toBe(null)
+    expect(region!.getAttribute('role'), 'the AI’s moves arrive silently').toBe('log')
+    expect(region!.getAttribute('aria-live'), 'the log carries no politeness of its own').toBe('polite')
     // `aria-label`, not `aria-labelledby`: naming the region by its visible heading made Chromium compute
     // "GAME LOG", because it applies the heading's CSS `text-transform` to the accessible name.
-    expect(log!.getAttribute('aria-label'), 'the log region has no accessible name').toBe('Game log')
+    expect(region!.getAttribute('aria-label'), 'the log region has no accessible name').toBe('Game log')
 
-    const texts = [...log!.querySelectorAll('p')].map((p) => p.textContent)
+    // ONE real AI command, and the line it narrates.
+    const step = stepAi(s, agent)
+    const aiLines = step.lines.filter((l) => l.text.startsWith('The AI:'))
+    expect(aiLines.length, 'the AI acted without narrating anything').toBeGreaterThan(0)
+    const aiLine = aiLines[0]!.text
+
+    render(step.state, [...opening, ...step.lines])
+
+    expect(document.querySelector('.log__lines'), 'the log region was replaced, so an append announces nothing').toBe(region)
+    const texts = [...region!.querySelectorAll('p')].map((p) => p.textContent)
     expect(texts, 'the AI’s line is not inside the log region').toContain(aiLine)
     expect(texts, 'the earlier narration was dropped').toContain('New game — you are P0, the AI is P1')
+  })
+
+  it('falls silent once the game-over dialog owns the announcement', () => {
+    // Three live channels fire on the result transition: the status changes to "Game over", the log gains
+    // the result line, and the alertdialog mounts and takes focus. An `alertdialog` is the right owner of a
+    // terminal announcement, so the other two stand down rather than saying the same thing three ways.
+    const agent = new GreedyAgent({ seed: 3, decks: DECKS, depth: 1 })
+    let s: GameState = createGame({ seed: 3, decks: DECKS, defs: CARD_DEFS })
+    for (let i = 0; i < 6000 && !s.result; i++) {
+      if (actingPlayer(s) === null) break
+      s = stepAi(s, agent).state
+    }
+    expect(s.result, 'no game finished, so this asserts nothing').not.toBe(null)
+    render(s, [{ kind: 'result', text: 'Game over — the AI wins. You have taken 7 damage.' }])
+    expect(document.querySelector('.prompt__text')?.getAttribute('aria-live'),
+      'the prompt still announces over the dialog').toBe('off')
+    expect(document.querySelector('.log__lines')?.getAttribute('aria-live'),
+      'the log still announces over the dialog').toBe('off')
   })
 })

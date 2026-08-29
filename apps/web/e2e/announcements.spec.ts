@@ -55,10 +55,17 @@ test('the browser computes the event log as a log region with a name', async ({ 
   const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.log__lines' }) as { nodeId: number }
   expect(nodeId, 'the event log is not in the document').toBeGreaterThan(0)
   const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false }) as {
-    nodes: { role?: { value?: string }; name?: { value?: string } }[]
+    nodes: { role?: { value?: string }; name?: { value?: string }; properties?: { name: string; value: { value?: unknown } }[] }[]
   }
   const node = nodes[0]
+  // Guarded before dereferencing, like the prompt test: an absent AX node would otherwise throw a raw
+  // TypeError before any matcher ran, and a crash is not a diagnosis.
+  expect(node, 'the event log has no accessibility node at all').toBeDefined()
   expect(node!.role?.value, 'the AI’s moves arrive with no announcement channel').toBe('log')
+  // `log` is implicitly polite, so a computed-role check alone cannot see `aria-live="off"` — which would
+  // silence the channel while leaving the role in place, restoring the exact defect this rung fixed.
+  const prop = (name: string): unknown => node!.properties?.find((p) => p.name === name)?.value?.value
+  expect(prop('live'), 'the log has a role but announces nothing').toBe('polite')
   // Exactly "Game log", not "GAME LOG". Labelling the region by its visible heading produced the latter,
   // because Chromium folds CSS `text-transform` into the computed name and the heading is styled uppercase.
   expect(node!.name?.value, 'the log region is unnamed, or its name is a side effect of styling').toBe('Game log')

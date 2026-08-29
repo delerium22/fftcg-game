@@ -6,7 +6,7 @@ import type { LogLine } from '../game/types.js'
  * `unimplementedAbility` warnings, so the "pool plays as vanilla until rung C" caveat is visible during play
  * rather than a silent surprise.
  */
-export function EventLog({ log }: { log: LogLine[] }): JSX.Element {
+export function EventLog({ log, silenced = false }: { log: LogLine[]; silenced?: boolean }): JSX.Element {
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [log])
   return (
@@ -28,7 +28,14 @@ export function EventLog({ log }: { log: LogLine[] }): JSX.Element {
         * all-caps text letter by letter, so a purely visual style would have decided how the region is
         * spoken. Found by asserting the browser's computed accessibility tree, not the DOM attributes.
         */}
-      <div className="log__lines" role="log" aria-label="Game log">
+      {/*
+        * `aria-live` is explicit, and switched OFF once the game-over dialog is up. `log` is implicitly
+        * polite, so without this the end of a game announces three times over: the status region changes to
+        * "Game over", this log gains the detailed result line, and the alertdialog mounts and takes focus.
+        * An `alertdialog` is the right owner of a terminal announcement; a `status` is for advisory
+        * information not important enough to be one. So the dialog speaks and these two fall silent.
+        */}
+      <div className="log__lines" role="log" aria-label="Game log" aria-live={silenced ? 'off' : 'polite'}>
         {log.map((l, i) => <p key={i} className={`log__line log__line--${l.kind}`}>{l.text}</p>)}
         <div ref={end} />
       </div>

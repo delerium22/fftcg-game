@@ -124,7 +124,14 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose }: {
         * This element must NOT be keyed or conditionally rendered: a live region has to exist before the
         * content it announces, and one replaced on every change announces nothing at all.
         */}
-      <span className="prompt__text" role="status" aria-live="polite" aria-atomic="true">
+      <span
+        className="prompt__text"
+        role="status"
+        // Silent once the game is over: the alertdialog owns that announcement, and three live channels
+        // firing on one transition is how a screen reader ends up saying the same thing three ways.
+        aria-live={view.result ? 'off' : 'polite'}
+        aria-atomic="true"
+      >
         {text}
         {aiThinking && <span className="thinking" aria-hidden="true"><span /><span /><span /></span>}
       </span>
