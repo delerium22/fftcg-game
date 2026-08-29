@@ -1,7 +1,7 @@
 import { act, createElement, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { apply, applyChooseFirst, createGame, legalCommands, viewFor, type CardDef, type GameState } from '@fftcg/engine'
+import { apply, applyChooseFirst, createGame, legalCommands, viewFor, type CardDef, type Command, type GameState, type PlayerView } from '@fftcg/engine'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
 import { CardDetails } from '../src/ui/CardDetails.js'
@@ -72,11 +72,30 @@ function mainPhaseState(): GameState {
  * `state.players`, and blew up the moment a Main Phase position asked what was castable. A cast that silences
  * the type checker silences it about real mistakes too.
  */
+/**
+ * A position with a Forward on the player's own field, reached by actually casting one.
+ *
+ * The field is a THIRD Board render path (`FieldCardView`), separate from the hand and from orphan targets,
+ * and it had no behavioural coverage at all: every helper in this file selects `.hand .card`, so deleting the
+ * field's `onInspect` forwarding left all eleven tests green. Reading a Forward's text is not a marginal
+ * case — it is what a player does before deciding an attack or a block.
+ */
+function fieldState(): GameState {
+  let s = mainPhaseState()
+  const cast = legalCommands(s, HUMAN).find((c) => c.type === 'castCharacter')
+  if (!cast) throw new Error('no castable character in the opening Main Phase — the fixture deck or seed changed')
+  s = apply(s, cast).state
+  return s
+}
+
 function mount(s: GameState): void {
+  mountView(viewFor(s, HUMAN), legalCommands(s, HUMAN), s)
+}
+
+/** Mounts from an explicit view and command list, for a position real play cannot cheaply reach. */
+function mountView(v: PlayerView, legal: Command[], s?: GameState): void {
   chosen = []
-  const v = viewFor(s, HUMAN)
-  const legal = legalCommands(s, HUMAN)
-  mountedState = s
+  mountedState = s ?? null
   mounted = buildChoiceSet(v, preferredChoices(v, legal))
   const api: GameApi = {
     view: v,
@@ -156,6 +175,16 @@ describe('the details panel, in a real Board at the mulligan', () => {
     hover(named(RAMUH))
     expect(chosen, 'hovering a card played it').toEqual([])
   })
+
+  it('does not PLAY a card merely hovered, when hovering it could', () => {
+    // The mulligan case above cannot catch this. A non-selectable card has no `onClick` at all, so wiring
+    // hover to the click there is a no-op — the mutant `onMouseEnter={() => { onInspect?.(); onClick?.() }}`
+    // survived every one of the eleven tests, while hovering a castable card played it. The dangerous branch
+    // is the SELECTABLE one, so the assertion has to be made where the card actually has something to do.
+    mount(mainPhaseState())
+    hover(named(RAMUH))
+    expect(chosen, 'hovering a castable card played it').toEqual([])
+  })
 })
 
 describe('the details panel, driven by keyboard focus', () => {
@@ -188,6 +217,51 @@ describe('the details panel, driven by keyboard focus', () => {
     act(() => { (el as HTMLButtonElement).click() })
     expect(chosen.length, 'clicking a castable card no longer plays it').toBe(1)
     expect(chosen[0]).toBe(single![1][0])
+  })
+})
+
+describe('the other two Board render paths', () => {
+  const fieldCards = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('.zone .card')]
+
+  it('inspects a card on the FIELD, not only one in hand', () => {
+    const s = fieldState()
+    mount(s)
+    // Which card is on my field comes from the STATE, not from guessing at a rendered label — the first
+    // castable character in this position is a Backup, not a Forward, so matching on "power" found nothing.
+    const v = viewFor(s, HUMAN)
+    const placed = [...v.fields[HUMAN].forwards, ...v.fields[HUMAN].backups][0]
+    expect(placed, 'nothing reached the field after casting a character').toBeDefined()
+    const code = v.cards[placed!.id]?.code
+    const name = (code === undefined ? undefined : v.defs[code]?.name) ?? '?'
+    const el = fieldCards().find((c) => (c.getAttribute('aria-label') ?? '').startsWith(name))
+    expect(el, `no card labelled "${name}" on the field`).toBeDefined()
+    expect(details()).not.toContain(name)
+    hover(el!)
+    expect(details(), 'the field path does not forward onInspect').toContain(name)
+  })
+
+  it('inspects an ORPHAN target — a card the board would not otherwise draw', () => {
+    // Billy Bob's ETB targets your Break Zone, which the board shows only as a count, so `Board` gives any
+    // targetable card it does not already draw a row of its own. That row is the third render path, and it
+    // is the one a player is MOST likely to need the text of: the card is not on screen anywhere else.
+    const s = mainPhaseState()
+    const v = viewFor(s, HUMAN)
+    const id = v.hand[0]
+    expect(id, 'the fixture hand is empty').toBeDefined()
+    const broken = {
+      ...v,
+      hand: v.hand.slice(1),
+      fields: { ...v.fields, [HUMAN]: { ...v.fields[HUMAN], breakZone: [id!] } },
+      pending: { kind: 'chooseTargets' as const, player: HUMAN, min: 1, max: 1, candidates: [id!] },
+    }
+    mountView(broken, [{ type: 'chooseTargets', player: HUMAN, targets: [id!] }])
+    const code = broken.cards[id!]?.code
+    const name = code === undefined ? '?' : broken.defs[code]?.name ?? '?'
+    const orphan = [...document.querySelectorAll<HTMLElement>('.zone .card')]
+      .find((c) => (c.getAttribute('aria-label') ?? '').startsWith(name))
+    expect(orphan, 'the orphan target row did not render the Break Zone card').toBeDefined()
+    hover(orphan!)
+    expect(details(), 'the orphan path does not forward onInspect').toContain(name)
   })
 })
 

@@ -447,8 +447,9 @@ body {
   flex: 0 0 auto;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
-  /* The longest text in the pool is Ramuh's four lines. Cap the panel and scroll rather than let it push
-     the log out of the rail, which is a flex column sharing a fixed height with it. */
+  /* Cap the panel and scroll rather than let it push the log out of the rail, which is a flex column
+     sharing a fixed height with it. Sized for the longest text in the pool — Cloud's 373 characters, not
+     Ramuh's 174, which is the one that LOOKS longest because it prints on four lines. */
   max-height: 40%;
   overflow-y: auto;
 }
