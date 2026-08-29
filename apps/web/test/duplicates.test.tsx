@@ -247,6 +247,83 @@ describe('two DIFFERENT cards that print the same name', () => {
   })
 })
 
+describe('the Break Zone, which I had left out (E9-A1)', () => {
+  // Found by asking where else the rung's claim could fail, after playing had already found one such place.
+  // Billy Bob (18-124C, ×2 here) and Prishe (22-068R, ×3) both print "choose 1 Character in your Break Zone",
+  // and a Break Zone routinely holds several cards of one name. Excluding the zone left "Target Cloud" offered
+  // twice — the exact defect this rung exists to remove.
+  /**
+   * `onOffer` is what a Billy Bob or Prishe trigger produces: a `chooseTargets` pending naming those cards.
+   * A Break Zone card is numbered only then — see `occurrenceOf`. Passing `false` is the narration case.
+   */
+  function breakZoneOf(codes: string[], onOffer = true): PlayerView {
+    const s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+    const v = structuredClone(viewFor(s, HUMAN)) as PlayerView
+    const ids = codes.map((code, i) => {
+      const id = 900 + i
+      v.cards[id] = { id, code, owner: HUMAN }
+      v.defs[code] = CARD_DEFS.find((d) => d.code === code)!
+      return id
+    })
+    v.fields[HUMAN].breakZone = ids
+    v.pending = onOffer ? { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: ids } : null
+    return v
+  }
+
+  it('is targeted by cards that are actually in this deck — the premise, checked', () => {
+    const deck = new Set(DECKS[0])
+    expect(deck.has('18-124C'), 'Billy Bob is not in this deck, so this case is unreachable').toBe(true)
+    expect(deck.has('22-068R'), 'Prishe is not in this deck, so this case is unreachable').toBe(true)
+  })
+
+  it('no longer offers two choices reading exactly alike', () => {
+    const v = breakZoneOf(['27-124S', '27-124S'])
+    const labels = buildChoiceSet(v, [
+      { type: 'chooseTargets', player: HUMAN, targets: [900] },
+      { type: 'chooseTargets', player: HUMAN, targets: [901] },
+    ]).all.map((c) => c.label)
+    expect(labels[0], 'two Break Zone choices still read exactly alike').not.toBe(labels[1])
+    expect(labels).toEqual([`Target ${v.defs['27-124S']!.name} (1)`, `Target ${v.defs['27-124S']!.name} (2)`])
+  })
+
+  it('tells the two Red Mages apart there too, where the cards genuinely differ', () => {
+    // Prishe's filter is CHARACTER, so both Red Mages qualify — a choice between a one-CP card and a two-CP
+    // card that read identically before this.
+    const v = breakZoneOf(['1-121C', '18-069C'])
+    const name = v.defs['1-121C']!.name
+    expect(qualifiedName(v, 900)).toBe(`${name} (1)`)
+    expect(qualifiedName(v, 901)).toBe(`${name} (2)`)
+  })
+
+  it('stays UNnumbered when nobody is being asked to choose — the log case', () => {
+    // Numbering the Break Zone unconditionally put "(1)" into the game log: `the AI's Prishe (1) is broken`.
+    // That is unverifiable noise — the reader cannot see the pile, the position refers to an instant that has
+    // passed, and a later line about the same card can carry a different number. An existing test caught it,
+    // and the rule changed rather than the expectation.
+    const v = breakZoneOf(['27-124S', '27-124S'], false)
+    expect(occurrenceOf(v, 900), 'a Break Zone card was numbered with no choice pending').toBe(null)
+    expect(qualifiedName(v, 900)).toBe(v.defs['27-124S']!.name)
+  })
+
+  it('leaves a lone Break Zone card bare', () => {
+    const v = breakZoneOf(['27-124S', '1-121C'])
+    expect(occurrenceOf(v, 900), 'a Break Zone card alone under its name was numbered anyway').toBe(null)
+  })
+
+  it('does not let a Break Zone card borrow a number from the field', () => {
+    // Zone-scoped means zone-scoped: a Cloud in play and a Cloud in the Break Zone are one each, not two.
+    const v = breakZoneOf(['27-124S'])
+    const code = '27-124S'
+    v.cards[950] = { id: 950, code, owner: HUMAN }
+    v.fields[HUMAN].forwards = [{
+      id: 950, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false,
+      granted: [], powerBonus: 0, flags: [], usedThisTurn: [],
+    }]
+    expect(occurrenceOf(v, 900), 'the Break Zone card was numbered against the field').toBe(null)
+    expect(occurrenceOf(v, 950), 'the field card was numbered against the Break Zone').toBe(null)
+  })
+})
+
 describe('the Miner position that refused the collapse (E9-A2)', () => {
   it('is reachable by playing, not hypothetical', () => {
     expect(MINER_ASYMMETRY, 'never reached the Miner asymmetry, so this rung rests on nothing').not.toBe(null)

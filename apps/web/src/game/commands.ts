@@ -117,16 +117,41 @@ export const ownedCard = (v: PlayerView, owner: PlayerId, id: CardId): string =>
  *
  * Zone-scoped: a Cloud in hand and a Cloud on the field are already distinguished by everything around them,
  * and numbering across zones would attach "(2)" to cards nothing else in the interface separates.
+ *
+ * The BREAK ZONE counts as a zone here, and leaving it out was a defect. Billy Bob and Prishe both print
+ * "choose 1 Character in your Break Zone" and both are in this deck; a Break Zone routinely holds several
+ * cards of one name, so the strip offered "Target Cloud" twice — the exact defect this rung exists to remove.
+ * It matters most for the two Red Mages, where the choice is between cards costing one CP and two.
+ *
+ * KNOWN LIMIT, and it is not small: the Break Zone is rendered as a COUNT, not as cards. So a number there
+ * makes the two buttons different from each other, but there is no rendered card for it to point AT, and the
+ * E9 ruling asked for an identifier that corresponds to something the player can see. Numbering is the floor,
+ * not the fix. The fix is to render the candidates of a Break Zone choice as cards, which is a UI rung of its
+ * own and is deliberately NOT smuggled in here.
+ *
+ * Which is why a Break Zone card is numbered ONLY while the player is being asked to choose among those very
+ * cards. Numbering it always put "(1)" into the game log — `the AI's Prishe (1) is broken` — where it is
+ * unverifiable noise: the reader cannot see the pile, the position refers to an instant that has passed, and
+ * a later line about the same card can carry a different number. An existing test caught that, and the fix is
+ * the rule and not the test. A number earns its place when the player can act on it; a hand or field card is
+ * rendered, so it is numbered always, and a Break Zone card only when it is on offer.
  */
+/** Is the game asking the player to pick this exact card right now? Only `chooseTargets` names candidates. */
+const isOnOffer = (v: PlayerView, id: CardId): boolean =>
+  v.pending?.kind === 'chooseTargets' && v.pending.candidates.includes(id)
+
 export function occurrenceOf(v: PlayerView, id: CardId): number | null {
   const owner = v.cards[id]?.owner
   if (v.cards[id]?.code === undefined || owner === undefined) return null
   const name = bareName(v, id)
+  const field = [...v.fields[owner].forwards, ...v.fields[owner].backups]
   const zone = v.hand.includes(id)
     ? v.hand
-    : [...v.fields[owner].forwards, ...v.fields[owner].backups].some((c) => c.id === id)
-      ? [...v.fields[owner].forwards, ...v.fields[owner].backups].map((c) => c.id)
-      : null
+    : field.some((c) => c.id === id)
+      ? field.map((c) => c.id)
+      : v.fields[owner].breakZone.includes(id) && isOnOffer(v, id)
+        ? v.fields[owner].breakZone
+        : null
   if (zone === null) return null
   const sameName = zone.filter((other) => bareName(v, other) === name)
   if (sameName.length < 2) return null
