@@ -1,7 +1,7 @@
 import { act, createElement, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { apply, applyChooseFirst, createGame, legalCommands, viewFor, type CardDef, type Command, type GameState, type PlayerView } from '@fftcg/engine'
+import { apply, applyChooseFirst, createGame, legalCommands, viewFor, type CardDef, type CardId, type Command, type GameState, type PlayerView } from '@fftcg/engine'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
 import { CardDetails } from '../src/ui/CardDetails.js'
@@ -118,9 +118,9 @@ const named = (name: string): HTMLElement => {
   return el!
 }
 /** The printed name of a card instance in the mounted view, for matching against a rendered aria-label. */
-const nameOf = (id: number): string => {
+const nameOf = (id: CardId): string => {
   const v = viewFor(mountedState!, HUMAN)
-  const code = v.cards[id as never]?.code
+  const code = v.cards[id]?.code
   return (code === undefined ? undefined : v.defs[code]?.name) ?? '?'
 }
 
@@ -375,7 +375,9 @@ describe('the details panel, on defs the current pool cannot produce', () => {
     const out = renderDetails(def({
       hasAbilities: true, abilityClauses: 2,
       text: 'Implemented clause. UNIMPLEMENTED CLAUSE.',
-      abilities: [{ id: 'a', text: 'Implemented clause.', trigger: { kind: 'onCast' }, effects: [] }] as never,
+      // Typed exactly, not cast: `onCast` is not a trigger this engine has, and an `as never` would have
+      // hidden that while the fixture went on claiming to describe a real card.
+      abilities: [{ id: 'X-001:a', text: 'Implemented clause.', trigger: { kind: 'enterField' }, effects: [] }],
     }))
     expect(out, 'the unimplemented clause was dropped — the panel is rendering the AST, not the card').toContain('UNIMPLEMENTED CLAUSE.')
     expect(out).toContain('Implemented clause.')

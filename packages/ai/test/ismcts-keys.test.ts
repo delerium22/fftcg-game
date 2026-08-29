@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, seedRng, viewFor,
-  type Ability, type CardDef, type CardId, type Command, type Effect, type Frame, type GameState, type Payment, type PlayerId, type PlayerView,
+  type Ability, type CardDef, type CardId, type Command, type Effect, type Frame, type GameState, type Payment, type PlayerId, type PlayerView, type TargetFilter,
 } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
 import { GreedyAgent } from '../src/greedy.js'
@@ -443,7 +443,7 @@ describe('chooseFromDeck keys name the CARD, not the position (rung C9)', () => 
   const CODES = ['V-F1', 'V-F2', 'V-B1'] as const
 
   /** A view where `chooser`'s top three are `order`, all known to `chooser`, with a deck prompt owed. */
-  function deckPrompt(order: readonly string[], chooser: PlayerId = 0, filter?: { type?: string }): PlayerView {
+  function deckPrompt(order: readonly string[], chooser: PlayerId = 0, filter?: TargetFilter): PlayerView {
     const base = viewFor(makeGame(), 0)
     const ids = order.map((_, i) => 8000 + i)
     const cards = { ...base.cards }
@@ -456,7 +456,7 @@ describe('chooseFromDeck keys name the CARD, not the position (rung C9)', () => 
     return {
       ...base, cards, fields,
       pending: { kind: 'chooseFromDeck', player: chooser, min: 0, max: 1, count: order.length, scope: 'top', to: 'hand',
-        ...(filter ? { filter: filter as never } : {}) },
+        ...(filter ? { filter } : {}) },
     }
   }
 
