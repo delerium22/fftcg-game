@@ -1,12 +1,13 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX } from 'react'
 import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
-import { describeResult, fieldCardDisplay } from '../game/commands.js'
+import { fieldCardDisplay } from '../game/commands.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card, cardAccessibleName, type CardProps } from './Card.js'
 import { CardDetails } from './CardDetails.js'
 import { CardGrid, type GridItem } from './CardGrid.js'
 import { EventLog } from './EventLog.js'
+import { GameOverDialog } from './GameOverDialog.js'
 import { PromptStrip } from './PromptStrip.js'
 
 const MAX_DAMAGE = 7   // §12.2.2: a player with 7 damage loses
@@ -181,6 +182,28 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   const inspect = (code: string | undefined, action: string | null = null): void => {
     if (code !== undefined) setInspected({ code, action })
   }
+  /**
+   * Put focus back on the game after "Play again".
+   *
+   * The dialog is modal, so the button the player pressed is destroyed with it and the browser drops focus
+   * to `document.body` — measured, not assumed. From there a keyboard player is tabbing in from the top of
+   * the document to make the first decision of a brand new game, which is precisely the state this rung
+   * exists to prevent at the END of one.
+   */
+  const restarting = useRef(false)
+  useEffect(() => {
+    if (!restarting.current || view.result) return
+    const target = document.querySelector<HTMLButtonElement>('.prompt__actions button')
+    // Keep waiting if there is nothing to focus YET. A new game's first decision is often the AI's — it
+    // chooses who goes first — so on the render right after the restart the strip says "Waiting for the
+    // opponent…" and offers no button at all. Consuming the flag there left focus on `document.body` until
+    // the player tabbed in from the top of the document. The jsdom test missed it because its fixture
+    // started past that decision; the real browser did not.
+    if (!target) return
+    restarting.current = false
+    target.focus()
+  }, [view])
+
   /** "The player is looking at this card", for every zone. Pointer and keyboard alike — see `CardGrid`. */
   const look = (id: CardId): void => { inspect(defOf(view, id)?.code, actionFor(id) ?? null) }
 
@@ -398,13 +421,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
         <EventLog log={log} />
       </aside>
 
-      {view.result && (
-        <div className="banner" role="alertdialog" aria-label="Game over">
-          <h2 className="banner__title">{view.result.winner === null ? 'Draw' : view.result.winner === HUMAN ? 'You win' : 'The AI wins'}</h2>
-          <p className="banner__reason">{describeResult(view.me, view.result)}</p>
-          <button className="btn btn--primary" onClick={restart}>Play again</button>
-        </div>
-      )}
+      {view.result && <GameOverDialog result={view.result} me={view.me} onRestart={() => { restarting.current = true; restart() }} />}
     </div>
   )
 }

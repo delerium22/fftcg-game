@@ -1,7 +1,7 @@
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
-import { actingPlayer, createGame, viewFor, type GameResult, type GameState } from '@fftcg/engine'
+import { actingPlayer, applyChooseFirst, createGame, legalCommands, viewFor, type GameResult, type GameState } from '@fftcg/engine'
 import { GreedyAgent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
@@ -38,15 +38,143 @@ function playToTheEnd(seed: number): { state: GameState; log: LogLine[] } {
   return { state: s, log }
 }
 
-function mountFinished(s: GameState, log: LogLine[], choices?: ChoiceSet): void {
+function mountFinished(s: GameState, log: LogLine[], choices?: ChoiceSet, onRestart?: () => void): void {
   const v = viewFor(s, HUMAN)
   const api: GameApi = {
     view: v, choices: choices ?? buildChoiceSet(v, []), log, aiThinking: false,
-    choose: (_c: Choice) => {}, restart: () => {},
+    choose: (_c: Choice) => {}, restart: onRestart ?? (() => {}),
   }
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
   act(() => { root!.render(createElement(Board, { game: api })) })
 }
+
+/** A brand-new game where the AI owes the first decision, so the human has no action to focus. */
+function remountPending(): void {
+  const s = createGame({ seed: 5, decks: DECKS, defs: CARD_DEFS })
+  const v = { ...viewFor(s, HUMAN), pending: { kind: 'chooseFirst' as const, player: AI }, priority: AI }
+  const api: GameApi = {
+    view: v, choices: buildChoiceSet(v, []), log: [], aiThinking: true,
+    choose: (_c: Choice) => {}, restart: () => {},
+  }
+  act(() => { root!.render(createElement(Board, { game: api })) })
+}
+
+/**
+ * The SAME Board rendered on a fresh, unfinished game — what a restart actually produces.
+ *
+ * Advanced past `chooseFirst`, because at a brand-new game that decision can belong to the AI and the human
+ * then has no actions at all to receive focus. The first thing a restart really shows a player is their
+ * mulligan; a fixture stopping one step earlier tests a screen nobody is looking at.
+ */
+function remountLive(): void {
+  let s = createGame({ seed: 5, decks: DECKS, defs: CARD_DEFS })
+  const first = s.pending?.kind === 'chooseFirst' ? s.pending.player : HUMAN
+  s = applyChooseFirst(s, first, first === HUMAN)[0]
+  const v = viewFor(s, HUMAN)
+  const api: GameApi = {
+    view: v, choices: buildChoiceSet(v, legalCommands(s, HUMAN)), log: [], aiThinking: false,
+    choose: (_c: Choice) => {}, restart: () => {},
+  }
+  act(() => { root!.render(createElement(Board, { game: api })) })
+}
+
+describe('the game-over dialog is a dialog (rung E7)', () => {
+  const dialog = (): HTMLDialogElement => {
+    const d = document.querySelector<HTMLDialogElement>('dialog.banner')
+    expect(d, 'the game-over dialog did not render').not.toBe(null)
+    return d!
+  }
+  /** Resolve an aria relationship to the text it actually points at. */
+  const resolves = (el: Element, attr: string): string => {
+    const id = el.getAttribute(attr)
+    expect(id, `the dialog has no ${attr}`).not.toBe(null)
+    return document.getElementById(id!)?.textContent ?? ''
+  }
+
+  it('is a native dialog with the alertdialog contract', () => {
+    const { state, log } = playToTheEnd(3)
+    mountFinished(state, log)
+    const d = dialog()
+    expect(d.tagName).toBe('DIALOG')
+    expect(d.getAttribute('role')).toBe('alertdialog')
+    expect(d.getAttribute('aria-modal'), 'the board behind is still exposed to assistive technology').toBe('true')
+  })
+
+  it('names and describes itself with the OUTCOME, not just "Game over"', () => {
+    // The plan review's CRITICAL, and the third time this shape has been caught in this program. The old
+    // banner's only accessible name was `aria-label="Game over"`, so a screen reader announced that and
+    // stopped: the player learned the game had ended, not who won. Both relationships are resolved to their
+    // text here, so neither can be removed or mispointed without this failing.
+    const { state, log } = playToTheEnd(3)
+    mountFinished(state, log)
+    const d = dialog()
+    expect(d.getAttribute('aria-label'), 'a bare aria-label would override the heading it is meant to use').toBe(null)
+    expect(resolves(d, 'aria-labelledby'), 'the dialog is not named by the outcome').toBe('The AI wins')
+    expect(resolves(d, 'aria-describedby'), 'the dialog is not described by the reason').toBe('You have taken 7 damage.')
+  })
+
+  it('puts focus on the HEADING, not the dialog and not the button', () => {
+    // Focusing the container announces the dialog's own name and stops. Focusing the button announces the
+    // action before the outcome. The heading is what carries "The AI wins", with the reason after it.
+    const { state, log } = playToTheEnd(3)
+    mountFinished(state, log)
+    const heading = dialog().querySelector<HTMLElement>('h2')!
+    expect(heading.getAttribute('tabindex'), 'the heading cannot take focus').toBe('-1')
+    expect(document.activeElement, 'focus did not land on the outcome').toBe(heading)
+  })
+
+  it('calls showModal, which is what makes the board inert', () => {
+    // A SPY, not an emulation. This jsdom implements neither `showModal` nor `inert`, so the actual modality
+    // — top layer, focus containment, the board leaving the tab order — is proven in a real browser and
+    // nowhere else. What can honestly be checked here is that the lifecycle asks for it.
+    const calls: string[] = []
+    const proto = window.HTMLDialogElement?.prototype as { showModal?: () => void } | undefined
+    const had = proto !== undefined && typeof proto.showModal === 'function'
+    if (proto) proto.showModal = function spy() { calls.push('showModal') }
+    try {
+      const { state, log } = playToTheEnd(3)
+      mountFinished(state, log)
+      expect(calls, 'the dialog was rendered but never opened modally').toEqual(['showModal'])
+    } finally {
+      if (proto && !had) delete proto.showModal
+    }
+  })
+
+  it('puts focus back on the new game after Play again', () => {
+    // The dialog is modal, so the button the player just pressed is destroyed with it and focus falls to
+    // `document.body` — measured in a browser, not assumed. From there a keyboard player tabs in from the
+    // top of the document to make the first decision of a brand new game, which is the very state this rung
+    // exists to prevent at the end of one.
+    const { state, log } = playToTheEnd(3)
+    let restarted = false
+    mountFinished(state, log, undefined, () => { restarted = true })
+    act(() => { dialog().querySelector('button')!.click() })
+    expect(restarted, 'Play again did not restart').toBe(true)
+
+    // The real sequence, not a shortcut. A new game's first decision is often the AI's, so the render right
+    // after a restart offers NO prompt button — the strip says "Waiting for the opponent…". The first
+    // version of this test jumped straight to the mulligan and so never exercised that gap, while the real
+    // browser left focus on `document.body` until the player tabbed in from the top of the document.
+    remountPending()
+    expect(document.querySelectorAll('.prompt__actions button'), 'this step is meant to have no actions').toHaveLength(0)
+    remountLive()
+    expect(document.activeElement, 'focus fell to the document body after restarting').not.toBe(document.body)
+    expect(
+      document.activeElement?.closest('.prompt__actions'),
+      'focus did not land on an action of the new game',
+    ).not.toBe(null)
+  })
+
+  it('refuses to be dismissed — there is nothing to dismiss to', () => {
+    // `defaultPrevented` read AFTER dispatch. Reading it inside a listener on the target is the mistake the
+    // card grid taught: events bubble target-first, so such a listener runs before the handler under test.
+    const { state, log } = playToTheEnd(3)
+    mountFinished(state, log)
+    const ev = new Event('cancel', { bubbles: false, cancelable: true })
+    act(() => { dialog().dispatchEvent(ev) })
+    expect(ev.defaultPrevented, 'Escape would close the dialog onto a dead board').toBe(true)
+  })
+})
 
 describe('a finished game in a real Board', () => {
   it('leaks neither a player index nor a rules citation, anywhere in the DOM', () => {
