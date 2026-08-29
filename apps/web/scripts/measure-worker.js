@@ -157,12 +157,18 @@ export async function drive({ maxSteps = 2000 } = {}) {
       if (action) { action.click(); acted = true }
     }
     if (!acted) {
-      const card = document.querySelector('.hand button.card, .table__seat button.card')
-      if (card) {
+      // EVERY card, not the first one. `querySelector` returns the first hand card, and in this deck that is
+      // very often Lightning at cost 7 — uncastable for most of a game. The driver clicked it, found no
+      // action, and passed, every turn: the human seat essentially never played, boards stayed narrow, and
+      // the wide-board decisions that ARE the expensive ones never happened. Every latency figure this
+      // harness has produced was taken under that, which is why they looked calm.
+      for (const card of document.querySelectorAll('.hand button.card, .table__seat button.card')) {
         card.click()
         await wait(40)
         const action = strip().find((b) => !['Pass', 'Concede'].includes(label(b)))
-        if (action) { action.click(); acted = true }
+        if (action) { action.click(); acted = true; break }
+        card.click()          // deselect and try the next one
+        await wait(10)
       }
     }
     if (!acted) {

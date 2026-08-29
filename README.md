@@ -132,7 +132,7 @@ Measured strength, all on seeded runs:
 |---|---|
 | ISMCTS vs greedy, 120 mirrored games, 200 iterations | **75.0 %**, CI95 [66.7, 82.5] |
 | Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
-| ISMCTS in the browser (production build, Apple Silicon) | p50 **77–215 ms**, p95 **127–1021 ms** per decision, over 5 games |
+| ISMCTS in the browser (production build, Apple Silicon) | p50 **133–429 ms**, p95 **192–1347 ms** per decision, over 5 finished games |
 
 **The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; by rung D3
 it was 78.3 %, and re-measured at rung D7 over the same 120 mirrored games it is 75.0 % — with 90.0 % well
@@ -142,9 +142,17 @@ removal, search, a Break-Zone retrieve and several combat tricks. The leading ex
 untested one is that games now run 13.6 turns, giving a search fewer turns to compound an edge.
 
 **The browser figure is a RANGE because a single number would be a fiction.** Measured over five full games
-on a production preview, per-game p50 runs 77–215 ms and per-game p95 runs 127–1021 ms — an eight-fold
+on a production preview, per-game p50 runs 133–429 ms and per-game p95 runs 192–1347 ms — a seven-fold
 spread in the tail, because the expensive decisions are the wide boards and how many of those a game reaches
 varies. Quoting one game's p95, as this table used to, describes that game and nothing else.
+
+**These numbers went UP when the measuring instrument was fixed (rung F3), and the old ones were never real.**
+`measure-worker.js` drove the human seat with `querySelector('.hand button.card')` — the FIRST hand card,
+which in this deck is very often Lightning at cost 7 and therefore uncastable. The driver clicked it, found no
+action, and passed. Every browser latency figure this project has ever published was measured on a game where
+the human never played, so both boards stayed narrow and the wide-board decisions that dominate the tail
+barely occurred. The driver now tries each card in turn; a full game went from not finishing in 166 seconds
+to finishing in 27.
 
 What did NOT vary: **zero long tasks in all five runs**, and a worst frame gap of 21–47 ms. The search runs
 in a worker (rung D2) and the main thread is never blocked, so a slow decision is a wait with a "thinking"
@@ -188,8 +196,8 @@ That one reaches the tail, because the rollout is 99.4 % of engine work:
 
 | cap | win rate (120 games) | ms/decision | browser p95 |
 |---|---|---|---|
-| 24 | 78.3 %, CI95 [70.8, 85.0] | 392 ms | 1385 ms |
-| **12** | **75.0 %**, CI95 [66.7, 82.5] | **240 ms** | **604 ms** |
+| 24 | 78.3 %, CI95 [70.8, 85.0] | 392 ms | 1385 ms † |
+| **12** | **75.0 %**, CI95 [66.7, 82.5] | **240 ms** | **604 ms** † |
 | 6 | 45.0 % (40 games) | — | — |
 
 The worst case more than halves and lands at the 600 ms pacing floor, so nearly every decision now finishes
@@ -198,6 +206,12 @@ points of win rate, which 120 games cannot distinguish from zero, though it move
 samples, so it is more likely small-but-real than nothing. **The dial has a cliff just below 12**: at 6 the
 agent falls to a coin flip, because a rollout that stops before it reaches informative states is evaluating
 noise.
+
+† **Those two p95 figures are historical and each describes ONE game**, which is the very thing this README
+criticises two sections above. They are also pre-F3, so they were taken through the broken driver described
+there and are understated. They are kept because the COMPARISON between them — the effect of halving the cap —
+is what the row is for, and both sides carry the same bias. The current figure to trust is the range in the
+strength table.
 
 The numbers carry the harness's own instrumentation overhead and come from one machine under a scripted
 driver, so treat them as indicative.
