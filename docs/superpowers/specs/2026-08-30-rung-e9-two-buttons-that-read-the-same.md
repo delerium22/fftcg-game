@@ -1,6 +1,10 @@
 # Rung E9 — two buttons that read the same
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built. Found by playing, not named by a review.
+> **STATUS: REFUSED. The defect is real; my explanation of it was wrong.** Collapsing is ruled OUT — the two
+> buttons are NOT equivalent, and I claimed to have verified that they were. Build DISAMBIGUATION instead.
+> Read *Plan review outcome*; everything above it about "interchangeable" is false.
+>
+> Found by playing, not named by a review.
 
 ## Why
 
@@ -91,3 +95,75 @@ invisible until it was irreversible. Rule on it.
 | the collapse drops ALL copies rather than the duplicates | A2 |
 | the collapse keys on label alone, ignoring mechanical equivalence | A3 |
 | the collapse is applied in `legalCommands` instead of the UI layer | A4 |
+
+---
+
+## Plan review outcome — refused, and my "verified at three layers" was wrong at two
+
+I wrote, one commit before this review: *"That argument is load-bearing, so I checked it at three layers
+rather than asserting it."* Two of those three checks were wrong, and the conclusion they supported is false.
+**The two buttons are not equivalent, and collapsing them would take a real decision away from the player.**
+
+### CRITICAL 1 — two copies in hand can differ in what the OPPONENT knows
+
+`knownBy` is keyed by `CardId` and persists across movement. Miner publicly reveals five cards, so both
+players learn their identities before one Backup enters hand. Two identical Backups in hand can therefore be:
+one the opponent knows about, one it does not.
+
+Discarding the known copy rather than the unknown one decides whether the opponent's known card stays in your
+hand. **That is a genuine information choice** — precisely the shape of rung E4, where the UI decided a
+payment on the player's behalf and disclosed it only afterwards.
+
+And the sharpest part, which I would not have thought of: the opponent view currently *forgets* known
+opponent-hand cards, but that is an **explicitly marked MVP0 simplification**. E9 must not convert a marked
+engine simplification into an unmarked UI justification for deleting a choice. A simplification that is
+declared in one place does not license a silent one somewhere else.
+
+### CRITICAL 2 — "same code + same zone" is already insufficient in THIS pool
+
+My proposed safe rule would collapse commands that are mechanically different today:
+
+- Two same-code **Forwards** can differ in damage, flags, status, power bonus, or per-instance activation
+  use. Ramuh targeting either produces the same label while one target survives and the other breaks.
+- Two same-code **Break Zone** cards can differ by Sphene eligibility, and that filter reads an exact id. If
+  Billy Bob returns the eligible copy, no eligible copy remains; if it returns the other, Sphene can still
+  retrieve one.
+
+So E9-A3 is not vacuous, and my instruction to "say so explicitly if no such case exists" was the wrong
+instinct — there is a case, and stating an absence would have papered over a live defect.
+
+### MAJOR — my determinisation evidence did not say what I said it said
+
+`determinise` copies the exact ids of visible Break Zone cards from the view; it does not rebuild them by
+code. And the ISMCTS quotient I cited establishes what the **search** treats as equivalent, not that the
+underlying states or the CR choices are identical. I checked what the key digests, then drew a conclusion
+about the game. Reading real evidence and over-claiming from it is a worse failure than not checking, because
+it comes with a warrant attached.
+
+### MAJOR — and `buildChoiceSet` is the right layer only for the right operation
+
+The duplicates live inside `byCard[Luso]`, after Luso is selected. A global deduplication pass risks either
+removing one hand card's clickability, or filing one representative under both instances so that clicking
+the second Shantotto submits a command containing the first.
+
+Also: my stated rationale was wrong. `apply` does **not** re-derive `legalCommands`; it dispatches and
+validates independently. The browser's `choose` and the AI handler are what re-derive legality.
+
+## Ruling: disambiguate
+
+Give each duplicate an occurrence identifier that corresponds visibly *and accessibly* to the rendered hand
+card, so the player can see which copy each button acts on. `legalCommands` stays untouched. The "not a
+change to any label" exclusion above is withdrawn — it contradicts the ruling.
+
+## Revised acceptance
+
+- **E9-A1** In a mounted `Board` at a real discard position, after selecting the anchor card, the rendered
+  button labels are distinct and are asserted as exact strings.
+- **E9-A2** A reachable **Miner** case: two same-code hand cards differing in `knownBy`, both selectable,
+  each disambiguator mapping to the correct `CardId`.
+- **E9-A3** A hand-built same-code case that is mechanically different — a damaged Forward, or Sphene
+  eligibility — proving such commands are never merged.
+- **E9-A4** `legalCommands` multiplicity is asserted exactly, not merely described as unchanged.
+- **E9-A5** Mutations: remove the disambiguator; swap its id mapping; map both labels to one id. Each must
+  fail.
+- **E9-A6** Existing tests pass unedited; full gates green including `pnpm test:browser`.
