@@ -38,24 +38,36 @@ G1b is about the leaves that stay heuristic — longer-horizon preparation, not 
 Predeclared before the run: **if fewer than 10 % of repriceable leaves sat at five or six damage, G1b would
 be abandoned**, because a curve would then be tuning a corner the search rarely reaches.
 
-Measured — `profile --games 8 --seed 1 --iterations 200`, 373 searched decisions, 74,600 leaves:
+Measured twice, at shipping iterations, on **disjoint seed sets** — the second run was launched before the
+first was interpreted, so it is a confirmation rather than a second look at the same data:
 
-| | |
-|---|---|
-| terminal leaves (a curve cannot move these) | 9,376 — **12.6 %** |
-| repriceable (heuristic) leaves | 65,224 |
-| …with either player at **five or six** damage | **28.2 %** |
-| …with either player at **six** | 12.1 % |
-| …both players under five | 71.8 % |
+| | pilot, seeds 1–8 | confirmation, seeds 101–140 |
+|---|---|---|
+| games / searched decisions | 8 / 373 | 40 / 2,031 |
+| leaves | 74,600 | 406,200 |
+| terminal (a curve cannot move these) | 12.6 % | **14.5 %** |
+| repriceable (heuristic) leaves | 65,224 | **347,446** |
+| …either player at **five or six** damage | 28.2 % | **26.6 %** |
+| …either player at **six** | 12.1 % | 14.9 % |
+| …both under five | 71.8 % | 73.4 % |
 
-**The gate clears with room to spare.** The terminal share independently corroborates the review's own
-13.7 % figure from F5's shipping measurement, taken by different code on a different run.
+**The gate clears with room to spare, and the estimate is stable across seed sets** — 26.6 % against 28.2 %
+on data that shares no seeds. The terminal share now has three independent estimates: 12.6 %, 14.5 %, and the
+13.7 % the plan review computed from F5's shipping measurement, by different code on a different run.
 
-Two things worth recording about the shape. The root player (ISMCTS) sits at 0–2 damage in 74 % of leaves
-while the opponent (greedy) is spread across 0–6 — the profile harness plays ISMCTS against greedy, so the
-distribution is that of a matchup the search is winning. Against a stronger opponent the root's own damage
-would be higher, which if anything *understates* the opportunity. And damage 7 is empty in both marginals,
-exactly as it must be, since seven is terminal and terminals are counted apart.
+The apply attribution reconciled on all 2,031 decisions of the confirmation run (`mismatchedDecisions: 0`),
+so the same profile object that carried the histogram was not drifting.
+
+Two things worth recording about the shape. The root player (ISMCTS) sits at 0–2 damage in 71 % of
+confirmation-run leaves while the opponent (greedy) is spread across 0–6 with 32 % at four or more — the
+profile harness plays ISMCTS against greedy, so this is the distribution of a matchup the search is winning.
+Against a stronger opponent the root's own damage would be higher, which if anything *understates* the
+opportunity. And damage 7 is empty in both marginals, exactly as it must be, since seven is terminal and
+terminals are counted apart — a standing check on the recorder that the numbers themselves cannot fake.
+
+The honest caveat: leaves within one game are heavily correlated, so 406,200 leaves are nowhere near 406,200
+independent observations, and the right unit is closer to the 2,031 decisions or the 40 games. That is why
+the gate was decided on the agreement of two disjoint seed sets rather than on either run's leaf count.
 
 ## Design
 

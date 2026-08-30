@@ -1,0 +1,58 @@
+$ tsx src/main.ts profile --games 40 --seed 101 --iterations 200
+{
+  "games": 40,
+  "decisions": 2031,
+  "loopGenerated": 11841267,
+  "loopScored": 11524586,
+  "loopScoringApplies": 11524586,
+  "resolverGenerated": 105033015,
+  "resolverScored": 99488732,
+  "resolverScoringApplies": 99488732,
+  "tailGenerated": 0,
+  "tailScored": 0,
+  "tailScoringApplies": 0,
+  "loopAdvanceApplies": 4540112,
+  "resolverAdvanceApplies": 26892152,
+  "tailAdvanceApplies": 176879,
+  "refusals": 1507009,
+  "applies": 142622461,
+  "firstRefusalAtCommand": 0,
+  "shares": {
+    "loopScoring": "8.1 %",
+    "resolverScoring": "69.8 %",
+    "tailScoring": "0.0 %",
+    "loopAdvance": "3.2 %",
+    "resolverAdvance": "18.9 %",
+    "tailAdvance": "0.1 %",
+    "allScoring": "77.8 %"
+  },
+  "mismatchedDecisions": 0,
+  "leaves": {
+    "terminal": 58754,
+    "heuristic": 347446,
+    "terminalShare": "14.5 %",
+    "byRootDamage": [
+      89132,
+      81201,
+      78067,
+      41109,
+      29641,
+      11897,
+      16399,
+      0
+    ],
+    "byOpponentDamage": [
+      79401,
+      69970,
+      49234,
+      36160,
+      40171,
+      35644,
+      36866,
+      0
+    ],
+    "atFiveOrSix": "26.6 %",
+    "atSix": "14.9 %",
+    "bothUnderFive": "73.4 %"
+  }
+}
