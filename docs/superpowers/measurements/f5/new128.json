@@ -1,0 +1,129 @@
+$ tsx src/main.ts mirror --pairs 60 --seed 1 --a ismcts:128 --b greedy
+{
+  "agents": [
+    "ismcts:128",
+    "greedy:1"
+  ],
+  "pairs": 60,
+  "games": 120,
+  "points": 91,
+  "pointScore": 0.7583333333333333,
+  "ci95": [
+    0.6833333333333333,
+    0.8333333333333334
+  ],
+  "pairScores": [
+    0.5,
+    0.5,
+    1,
+    1,
+    0.5,
+    1,
+    0.5,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0.5,
+    0.5,
+    0,
+    0.5,
+    1,
+    0.5,
+    1,
+    0.5,
+    1,
+    0.5,
+    1,
+    0.5,
+    0.5,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0.5,
+    1,
+    0.5,
+    1,
+    1,
+    0.5,
+    1,
+    1,
+    1,
+    0.5,
+    1,
+    1,
+    0,
+    1,
+    0.5,
+    1,
+    1,
+    1,
+    1,
+    0.5,
+    0.5,
+    0,
+    1,
+    0.5,
+    0.5,
+    1,
+    1,
+    0.5,
+    1,
+    0.5
+  ],
+  "bootstrapSamples": 2000,
+  "record": {
+    "games": 120,
+    "wins": 91,
+    "draws": 0,
+    "losses": 29,
+    "failures": 0,
+    "points": 91
+  },
+  "perSeat": [
+    {
+      "games": 60,
+      "wins": 43,
+      "draws": 0,
+      "losses": 17,
+      "failures": 0,
+      "points": 43
+    },
+    {
+      "games": 60,
+      "wins": 48,
+      "draws": 0,
+      "losses": 12,
+      "failures": 0,
+      "points": 48
+    }
+  ],
+  "seatBias": -0.08333333333333337,
+  "completed": 120,
+  "avgTurns": 14.075,
+  "unimplementedAbilities": 0,
+  "msPerDecision": [
+    167.91561875242104,
+    0.9865131239514038
+  ],
+  "decisions": [
+    6402,
+    6438
+  ],
+  "search": [
+    {
+      "decisions": 6402,
+      "determinisations": 819456,
+      "treeApplies": 2963674,
+      "rolloutApplies": 297777251,
+      "evaluations": 704870,
+      "nodes": 979178,
+      "maxCommandDepth": 25
+    },
+    null
+  ],
+  "failures": []
+}

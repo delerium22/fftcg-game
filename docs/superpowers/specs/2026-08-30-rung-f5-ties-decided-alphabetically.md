@@ -263,3 +263,46 @@ and would fail −2.5. **The lesson for every later rung: put the number in the 
 ### And the 5-of-60 corroboration was not one
 
 Retracted in place above. A pair score is not a decision count.
+
+---
+
+## The interior, measured — the gap the code review found is closed
+
+The plan required 128 as a diagnostic because the time box can stop the search anywhere between the floor of
+64 and the full 200, so passing at both endpoints says nothing about what happens between them. I had not run
+it. Now run, both arms, same seeds:
+
+| | pre-F5 | post-F5 | delta | paired 95 % CI | non-inferior at −5 |
+|---|---|---|---|---|---|
+| `ismcts:8` | 12.5 % | 50.8 % | **+38.3** | [+30.0, +46.7] | YES |
+| `ismcts:64` *(the floor)* | 66.7 % | 74.2 % | +7.5 | [+0.0, +15.0] | YES |
+| **`ismcts:128`** *(the interior)* | 75.0 % | 75.8 % | +0.8 | [−4.2, +5.8] | **YES** |
+| `ismcts:200` | 75.0 % | 74.2 % | −0.8 | [−4.2, +2.5] | YES |
+
+**All four clear the margin**, so the change is non-inferior across the whole range the boxed browser search
+can land in — not merely at its ends. The scenario the review named (+7.5 at 64, −8 at 128, −0.8 at 200
+passing both endpoints while the browser played the regressed policy) is ruled out.
+
+What is claimed, precisely: **safe across 8–200 on 120-game arms**, decisively better at 8, and positive but
+underpowered at 64. Not a demonstrated strength gain at 128 or 200, where the intervals straddle zero.
+
+### Also measured, and it changes what the F4 floor should probably be
+
+Post-F5 the strength curve is far flatter, because the regime F5 fixes is exactly the low-iteration one:
+
+| iterations | pre-F5 | post-F5 |
+|---:|---:|---:|
+| 8 | 12.5 % | **50.8 %** |
+| 16 | 33.3 % | **67.5 %** |
+| 32 | 63.3 % | 65.0 % |
+| 64 | 66.7 % | 74.2 % |
+| 200 | 75.0 % | 74.2 % |
+
+16 iterations now plays better than 32 did before. F4 set the floor at 64 against the OLD comparator, so it
+is probably far more conservative than it now needs to be — and the floor is what stops the box binding, so
+lowering it would buy real latency headroom on a slow machine.
+
+**Not done here, deliberately.** The 16 and 32 pre-F5 figures are 30-pair runs against 60-pair post-F5 ones,
+so those two rows are indicative rather than paired — and this rung has already shown the same code and seeds
+moving five points between 30 and 60 pairs. Lowering a floor on figures like that is precisely how the floor
+of 8 shipped. It needs its own measurement at the candidate value.

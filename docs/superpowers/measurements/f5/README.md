@@ -17,6 +17,9 @@ So the arms are committed here, and `mirror` now records its own `provenance` â€
 | `p-unboxed.json` | pre-F5 | `ismcts:200` | 60 |
 | `tie200.json` | post-F5 | `ismcts:200` | 60 |
 | `new16.json` | post-F5 | `ismcts:16` | 60 |
+| `new32.json` | post-F5 | `ismcts:32` | 60 |
+| `old128.json` | pre-F5 | `ismcts:128` | 60 |
+| `new128.json` | post-F5 | `ismcts:128` | 60 |
 
 All against `greedy:1`, seed 1, the Starter Set 2025 Vol. 2 list on both sides.
 
