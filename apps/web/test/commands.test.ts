@@ -132,7 +132,16 @@ describe('promptFor via buildChoiceSet', () => {
       if (actingPlayer(state) === AI) { state = stepAi(state, agent).state; continue }
       state = apply(state, legalCommands(state, HUMAN).find((c) => c.type !== 'concede')!).state
     }
-    expect([...seen]).toContain('Main Phase 1 — cast, attack, or pass')
+    // The Main Phase 1 prompt, asserted by its SHAPE rather than its exact words. This line used to pin the
+    // constant 'Main Phase 1 — cast, attack, or pass' in place — while that string was naming an attack you
+    // cannot declare in Main Phase 1 at all (rung G2). A literal ossifies whichever wording is current; what
+    // matters is that the phase announces itself and never offers an attack. The G2 corpus test then checks
+    // every sampled position's prompt against the legal commands, which is the part a literal cannot do.
+    const main1 = [...seen].filter((p) => p.startsWith('Main Phase 1 — '))
+    expect(main1.length, 'Main Phase 1 was never reached, so this asserts nothing').toBeGreaterThan(0)
+    for (const p of main1) {
+      expect(p.slice(p.indexOf(' — ')), `"${p}" offers an attack in Main Phase 1`).not.toMatch(/\battack\b/)
+    }
     expect([...seen].some((p) => p === 'Choose who goes first' || p === 'Keep your hand or mulligan' || p === 'Waiting for the opponent…')).toBe(true)
   })
 })
@@ -345,9 +354,9 @@ describe('effective power on the board (spec C1-7)', () => {
 
 describe('chooseTargets in the UI (spec C1-6)', () => {
   it('says what is wanted, read off the clause the agenda is suspended on', () => {
-    expect(promptFor(upTo2())).toBe('Noel: choose up to 2 Forwards the AI controls to dull')
-    expect(promptFor(dullView(DULL_EXACTLY_1, [CLOUD]))).toBe('Noel: choose 1 Forward the AI controls to dull')
-    expect(promptFor(breakZoneView())).toBe('Billy Bob: choose 1 card in your Break Zone to return to hand')
+    expect(promptFor(upTo2(), [])).toBe('Noel: choose up to 2 Forwards the AI controls to dull')
+    expect(promptFor(dullView(DULL_EXACTLY_1, [CLOUD]), [])).toBe('Noel: choose 1 Forward the AI controls to dull')
+    expect(promptFor(breakZoneView(), [])).toBe('Billy Bob: choose 1 card in your Break Zone to return to hand')
   })
 
   it('labels a pre-enumerated target SET with the effect the click will have', () => {
@@ -373,7 +382,7 @@ describe('chooseMode in the UI (spec C1-6)', () => {
   const v = modeView()
 
   it('names the card asking and how many of the printed effects to pick', () => {
-    expect(promptFor(v)).toBe('Reeve: choose up to 2 of the 3 following effects')
+    expect(promptFor(v, [])).toBe('Reeve: choose up to 2 of the 3 following effects')
   })
 
   it('puts the printed wording on the button verbatim', () => {
@@ -415,8 +424,8 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
   }
 
   it('takes the verb from the mode that is actually running', () => {
-    expect(promptFor(nestedView(0))).toBe('Noel: choose 1 Forward the AI controls to dull')
-    expect(promptFor(nestedView(1))).toBe('Noel: choose 1 Forward the AI controls to give Haste')
+    expect(promptFor(nestedView(0), [])).toBe('Noel: choose 1 Forward the AI controls to dull')
+    expect(promptFor(nestedView(1), [])).toBe('Noel: choose 1 Forward the AI controls to give Haste')
     expect(describeChoice(nestedView(0), targets([901]))).toBe('Dull Cloud')
     expect(describeChoice(nestedView(1), targets([901]))).toBe('Give Haste to Cloud')
   })
@@ -438,7 +447,7 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
     v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
     expect(describeChoice(v, targets([903]))).toBe('Protect Cloud')
     // The prompt still distinguishes the two protections, because they differ after the verb.
-    expect(promptFor(v)).toBe("Noel: choose 1 Forward the AI controls to protect from being broken and from the opponent's return effects")
+    expect(promptFor(v, [])).toBe("Noel: choose 1 Forward the AI controls to protect from being broken and from the opponent's return effects")
   })
 
   it('an effect repeated with nothing to distinguish it is said once, not doubled', () => {
@@ -457,7 +466,7 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
     const id = instance(v, 905, CLOUD, AI)
     v.fields[AI].forwards = [fieldCard(id)]
     v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
-    expect(promptFor(v)).toBe('Noel: choose 1 Forward the AI controls to dull')
+    expect(promptFor(v, [])).toBe('Noel: choose 1 Forward the AI controls to dull')
     expect(describeChoice(v, targets([905]))).toBe('Dull Cloud')
   })
 
@@ -479,7 +488,7 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
     v.fields[AI].forwards = [fieldCard(id)]
     v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
     expect(describeChoice(v, targets([904]))).toBe('Give Haste to Cloud')
-    expect(promptFor(v)).toBe('Noel: choose 1 Forward the AI controls to give Haste and dull')
+    expect(promptFor(v, [])).toBe('Noel: choose 1 Forward the AI controls to give Haste and dull')
   })
 
   it('says WHOSE card when the same name is on both fields', () => {
@@ -537,7 +546,7 @@ describe('a target choice nested inside a chosen mode (Shantotto, Ramuh)', () =>
     const id = instance(v, 902, CLOUD, AI)
     v.fields[AI].forwards = [fieldCard(id)]
     v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [id] }
-    expect(promptFor(v)).toBe('Noel: choose 1 Forward the AI controls to give +2000 power and Brave')
+    expect(promptFor(v, [])).toBe('Noel: choose 1 Forward the AI controls to give +2000 power and Brave')
     expect(describeChoice(v, targets([902]))).toBe('Give +2000 power and Brave to Cloud')
   })
 })
@@ -573,24 +582,24 @@ describe('a prompt raised by an observer trigger names its cause (spec C2-5)', (
 
   it('leads with the cause, then the ask', () => {
     const broken: TriggerEvent = { kind: 'zoneChange', card: THEIRS, from: 'field', to: 'breakZone', controller: AI, owner: AI , reason: 'ability'}
-    expect(promptFor(watchView(broken))).toBe(`The AI's Sphene was broken — ${ask}`)
+    expect(promptFor(watchView(broken), [])).toBe(`The AI's Sphene was broken — ${ask}`)
   })
 
   it('C2-10: reads "opponent" from the ability controller, so it flips with the seat', () => {
     const mineBroken: TriggerEvent = { kind: 'zoneChange', card: MINE, from: 'field', to: 'breakZone', controller: HUMAN, owner: HUMAN , reason: 'ability'}
-    expect(promptFor(watchView(mineBroken))).toBe(`Your Cloud was broken — ${ask}`)
+    expect(promptFor(watchView(mineBroken), [])).toBe(`Your Cloud was broken — ${ask}`)
   })
 
   it('names a damage cause, to a Forward or to a player', () => {
     const onForward: TriggerEvent = { kind: 'damage', source: MINE, sourceController: HUMAN, target: THEIRS, victim: null, amount: 3000 }
-    expect(promptFor(watchView(onForward))).toBe(`Cloud dealt 3000 damage to Sphene — ${ask}`)
+    expect(promptFor(watchView(onForward), [])).toBe(`Cloud dealt 3000 damage to Sphene — ${ask}`)
     const onPlayer: TriggerEvent = { kind: 'damage', source: MINE, sourceController: HUMAN, target: null, victim: AI, amount: 1 }
-    expect(promptFor(watchView(onPlayer))).toBe(`Cloud dealt damage to the AI — ${ask}`)
+    expect(promptFor(watchView(onPlayer), [])).toBe(`Cloud dealt damage to the AI — ${ask}`)
   })
 
   it('says nothing extra for a clause about its own card', () => {
     // `enterField`/`summonResolve` carry no trigger event: rung C1's wording is unchanged, to the character.
-    expect(promptFor(watchView(null))).toBe(ask)
+    expect(promptFor(watchView(null), [])).toBe(ask)
   })
 })
 
@@ -598,7 +607,7 @@ describe('wording degrades gracefully when the clause cannot be read', () => {
   it('falls back to neutral wording with no agenda frame behind the pending', () => {
     const v = upTo2()
     v.resolution = { active: null, queue: [], continuation: null, steps: 0 }
-    expect(promptFor(v)).toBe('Choose up to 2 Forwards the AI controls')
+    expect(promptFor(v, [])).toBe('Choose up to 2 Forwards the AI controls')
     expect(describeChoice(v, targets([901]))).toBe('Target Cloud')
   })
 })
@@ -754,11 +763,11 @@ describe('the prompt strip says what a deck choice is (rung C9)', () => {
     // was testing (Codex MAJOR); it could not have caught the false positive the third case below pins.
     const search = deckPending(HUGH_YURG)
     expect(search.pending?.kind).toBe('chooseFromDeck')
-    expect(promptFor(search)).toContain('in your deck')
-    expect(promptFor(search)).not.toContain('you looked at')
+    expect(promptFor(search, [])).toContain('in your deck')
+    expect(promptFor(search, [])).not.toContain('you looked at')
 
     const look = deckPending(REEVE)
-    expect(promptFor(look)).toContain('among the 3 cards you looked at')
+    expect(promptFor(look, [])).toContain('among the 3 cards you looked at')
   })
 
   it('a top-3 look at a 3-card deck is still a LOOK, not a search', () => {
@@ -769,20 +778,20 @@ describe('the prompt strip says what a deck choice is (rung C9)', () => {
     const v = deckPending(REEVE, 3)
     expect(v.pending?.kind === 'chooseFromDeck' && v.pending.count).toBe(3)
     expect(v.fields[HUMAN].deck, 'the fixture no longer has count === deck length, so it proves nothing').toHaveLength(3)
-    expect(promptFor(v)).toContain('among the 3 cards you looked at')
-    expect(promptFor(v)).not.toContain('in your deck')
+    expect(promptFor(v, [])).toContain('among the 3 cards you looked at')
+    expect(promptFor(v, [])).not.toContain('in your deck')
   })
 
   it('names the choice instead of falling through to the phase', () => {
-    const line = promptFor(withPending({}))
+    const line = promptFor(withPending({}), [])
     expect(line).not.toMatch(/cast, attack, or pass/)
     expect(line).toMatch(/^Choose /)
     expect(line).toContain('3 cards')
   })
 
   it('says where the card is going, because a search does not add it to hand', () => {
-    expect(promptFor(withPending({ to: 'field', min: 0, count: 40 }))).toContain('play onto the field')
-    expect(promptFor(withPending({ to: 'hand' }))).toContain('add to your hand')
+    expect(promptFor(withPending({ to: 'field', min: 0, count: 40 }), [])).toContain('play onto the field')
+    expect(promptFor(withPending({ to: 'hand' }), [])).toContain('add to your hand')
   })
 })
 

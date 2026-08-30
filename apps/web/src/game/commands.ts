@@ -647,7 +647,7 @@ function actingIn(v: PlayerView): PlayerId | null {
 }
 
 /** One line stating what the game is waiting for, derived from `pending` first, then `phase`/`attack.step`. */
-export function promptFor(v: PlayerView): string {
+export function promptFor(v: PlayerView, legal: readonly Command[]): string {
   if (v.result) return v.result.winner === null ? 'Game over — a draw' : v.result.winner === v.me ? 'Game over — you win' : 'Game over — the AI wins'
   if (actingIn(v) !== v.me) return 'Waiting for the opponent…'
   if (v.pending) {
@@ -681,10 +681,58 @@ export function promptFor(v: PlayerView): string {
       }
     }
   }
+  return phasePrompt(v, legal)
+}
+
+/**
+ * The fallback, when no pending is asking for anything in particular — derived from the moves on offer rather
+ * than from the phase alone.
+ *
+ * It used to be three constant strings, and they were wrong in most positions. Over seeds 1–6 with greedy
+ * driving, 225 of the sampled human turns carried a prompt naming a move the engine would have rejected:
+ * "cast" with nothing castable 92 times, "attack" with no legal attack 133 times. On an empty or fully dull
+ * board that is the normal case, not an edge one.
+ *
+ * `commands.ts` already had the principle written down one branch above — the `chooseFromDeck` case exists
+ * because the strip "told the player to 'cast, attack, or pass' while the only legal answers were deck picks
+ * — a prompt instructing a move the engine would reject". That fix gave the pending its own sentence and left
+ * the fallback it was falling through TO untouched.
+ *
+ * The verbs come from the COMMANDS, never from a second opinion about legality. Recomputing "can I attack
+ * here?" would be a second implementation of a rule the engine already owns, and this repo has been bitten by
+ * exactly that divergence twice (`preferredPayment` against `canPay`, `backupElements` against `def.elements`).
+ */
+function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
+  const has = (f: (c: Command) => boolean): boolean => legal.some(f)
+  const canCast = has((c) => c.type === 'castCharacter' || c.type === 'castSummon')
+  const canActivate = has((c) => c.type === 'activateAbility')
+  // Listed in the order a player would try them, and joined so the sentence reads as one offer rather than a
+  // menu: "cast, use an ability, or pass".
+  // The clause after the em dash is the OFFER; the words before it are the phase's NAME. That split is not
+  // cosmetic — "Attack Phase" contains the word "attack" without offering one, so a reader (or a test) that
+  // scans the whole sentence for verbs will find one that is not on the table. The no-offer wordings below
+  // deliberately avoid restating the verb for the same reason.
+  const offer = (verbs: string[], nothing: string): string =>
+    verbs.length === 0 ? nothing : `${[...verbs, 'pass'].join(', ').replace(/, ([^,]*)$/, verbs.length > 1 ? ', or $1' : ' or $1')}`
+
   switch (v.phase) {
-    case 'main1': return 'Main Phase 1 — cast, attack, or pass'
-    case 'main2': return 'Main Phase 2 — cast or pass'
-    case 'attack': return v.attack?.step === 'declaration' ? 'Attack Phase — declare an attack or pass' : `Attack Phase — ${v.attack?.step ?? 'resolving'}`
+    // NOT "cast, attack, or pass". An attack is declared in the Attack Phase — `legalCommands` only ever emits
+    // `declareAttack` under `case 'attack'` — so Main Phase 1 naming one is not merely unavailable in this
+    // position, it is not a Main Phase 1 move at all. Passing is how you get there, which is what it now says.
+    case 'main1': return `Main Phase 1 — ${offer(
+      [...(canCast ? ['cast'] : []), ...(canActivate ? ['use an ability'] : [])],
+      'pass to continue',
+    )}`
+    case 'main2': return `Main Phase 2 — ${offer(
+      [...(canCast ? ['cast'] : []), ...(canActivate ? ['use an ability'] : [])],
+      'pass to end your turn',
+    )}`
+    case 'attack': {
+      if (v.attack?.step !== 'declaration') return `Attack Phase — ${v.attack?.step ?? 'resolving'}`
+      return has((c) => c.type === 'declareAttack')
+        ? 'Attack Phase — declare an attack or pass'
+        : 'Attack Phase — no Forward of yours is ready; pass'
+    }
     default: return `${PHASE_LABEL[v.phase] ?? v.phase} — nothing to do`
   }
 }
@@ -776,7 +824,7 @@ export function buildChoiceSet(v: PlayerView, legal: Command[], alternatives?: M
     if (!subjects.length) { loose.push(choice); continue }
     for (const id of subjects) byCard.set(id, [...(byCard.get(id) ?? []), choice])
   }
-  return { all, byCard, loose, prompt: promptFor(v) }
+  return { all, byCard, loose, prompt: promptFor(v, legal) }
 }
 
 /**

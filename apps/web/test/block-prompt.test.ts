@@ -72,14 +72,14 @@ function blocking(build: (v: PlayerView) => CardId[]): PlayerView {
 describe('the block prompt', () => {
   it('names the attacker and its power', () => {
     const v = blocking((view) => [attacker(view, 901, CLOUD)])
-    expect(promptFor(v)).toBe('Choose a blocker for Cloud (power 7000)')
+    expect(promptFor(v, [])).toBe('Choose a blocker for Cloud (power 7000)')
   })
 
   it('reports EFFECTIVE power, not printed', () => {
     // A pumped attacker. Printed 7000, effective 10000 — if the prompt reads the definition instead of the
     // field card, the two are indistinguishable on an unpumped attacker and this criterion proves nothing.
     const v = blocking((view) => [attacker(view, 901, CLOUD, { powerBonus: 3000 })])
-    expect(promptFor(v)).toBe('Choose a blocker for Cloud (power 10000)')
+    expect(promptFor(v, [])).toBe('Choose a blocker for Cloud (power 10000)')
   })
 
   it('does NOT subtract damage already marked on the attacker', () => {
@@ -88,7 +88,7 @@ describe('the block prompt', () => {
     // wrong — marked damage does not reduce a Forward's power or the combat damage it deals. A blocker
     // choosing against a damaged 7000 Cloud is still about to eat 7000.
     const v = blocking((view) => [attacker(view, 901, CLOUD, { damage: 5000 })])
-    expect(promptFor(v), 'the prompt understated the incoming damage').toBe('Choose a blocker for Cloud (power 7000)')
+    expect(promptFor(v, []), 'the prompt understated the incoming damage').toBe('Choose a blocker for Cloud (power 7000)')
   })
 
   it('lists a party member by member, with each power, and never a total', () => {
@@ -98,7 +98,7 @@ describe('the block prompt', () => {
       attacker(view, 901, LUSO, { powerBonus: 4000 }),
       attacker(view, 902, CLOUD),
     ])
-    expect(promptFor(v)).toBe('Choose a blocker for Luso (power 7000) and Cloud (power 7000)')
+    expect(promptFor(v, [])).toBe('Choose a blocker for Luso (power 7000) and Cloud (power 7000)')
     // No `not.toContain('14000')` here: the exact equality above already implies it, so it could never fail
     // and killed no mutant. A dead assertion is worse than none — it reads like coverage.
   })
@@ -112,7 +112,7 @@ describe('the block prompt', () => {
       attacker(view, 902, CLOUD),
       attacker(view, 903, LIGHTNING),
     ])
-    expect(promptFor(v)).toBe('Choose a blocker for Luso (power 3000), Cloud (power 7000) and Lightning (power 9000)')
+    expect(promptFor(v, [])).toBe('Choose a blocker for Luso (power 3000), Cloud (power 7000) and Lightning (power 9000)')
   })
 
   it('says nothing about taking damage', () => {
@@ -120,7 +120,7 @@ describe('the block prompt', () => {
     // text takes precedence over general rules — so printing it would become a quiet lie with no test
     // watching. This test is that watch.
     const v = blocking((view) => [attacker(view, 901, CLOUD)])
-    expect(promptFor(v).toLowerCase()).not.toContain('damage')
+    expect(promptFor(v, []).toLowerCase()).not.toContain('damage')
   })
 
   it('falls back rather than throwing when no attacker resolves', () => {
@@ -129,7 +129,7 @@ describe('the block prompt', () => {
     // not reachable in play today. Asserting otherwise would be pretending to reach a position that does
     // not exist.
     const v = blocking(() => [])
-    expect(promptFor(v)).toBe('Choose a blocker')
+    expect(promptFor(v, [])).toBe('Choose a blocker')
   })
 })
 
@@ -152,7 +152,7 @@ describe('a declareBlock position reached by playing', () => {
       if (actor === null) break
       if (state.pending?.kind === 'declareBlock') {
         const v = viewFor(state, state.pending.player)
-        seen = promptFor(v)
+        seen = promptFor(v, [])
         break
       }
       state = stepAi(state, agent).state
