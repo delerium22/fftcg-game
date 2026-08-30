@@ -193,12 +193,25 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   // does, which is a property of the definition, and a code survives the instance leaving play mid-look.
   // `action` rides along because it belongs to the INSTANCE, not the definition — two copies of one card
   // could in principle be paid for differently — so it is captured when the player looks, not looked up later.
-  const [inspected, setInspected] = useState<{ code: string; action: string | null } | null>(null)
+  const [inspected, setInspected] = useState<{ code: string; card: CardId } | null>(null)
   /** The move whose other payments are being shown, or `null` for the ordinary strip (rung E11). */
   const [paying, setPaying] = useState<Choice | null>(null)
-  const inspect = (code: string | undefined, action: string | null = null): void => {
-    if (code !== undefined) setInspected({ code, action })
+  const inspect = (code: string | undefined, card: CardId): void => {
+    if (code !== undefined) setInspected({ code, card })
   }
+  /**
+   * What clicking the looked-at card does — RE-DERIVED each render, not captured with the look.
+   *
+   * The code above is captured, and rightly: it is a property of the definition and it survives the instance
+   * leaving play mid-read, which is what you want when the card you are reading gets broken. The ACTION used
+   * to be captured alongside it, and a snapshot cannot go stale gracefully — cast Luso from hand and the panel
+   * went on reading "Luso … 4 ways to pay" while Luso stood on the field, describing a click that could no
+   * longer be made. That is the defect G2 removed from the prompt strip, in the other half of the screen.
+   *
+   * Keying on the card ID keeps the reason the action was captured in the first place: it belongs to the
+   * INSTANCE, not the definition, so two copies of one card can carry different actions. It just looks the
+   * current one up instead of remembering an old one.
+   */
   /**
    * Put focus back on the game after "Play again".
    *
@@ -222,7 +235,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   }, [view])
 
   /** "The player is looking at this card", for every zone. Pointer and keyboard alike — see `CardGrid`. */
-  const look = (id: CardId): void => { inspect(defOf(view, id)?.code, actionFor(id) ?? null) }
+  const look = (id: CardId): void => { inspect(defOf(view, id)?.code, id) }
 
   // Which public pile is open, if any. One at a time: two open rows do not fit the board's fixed grid rows,
   // and a player is comparing against one pile at a time anyway.
@@ -306,6 +319,8 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
     const ways = (forCard[0]?.alternatives?.length ?? 0) + 1
     return `${ways} ways to pay`
   }
+
+  const inspectedAction = inspected === null ? null : actionFor(inspected.card) ?? null
 
   // The choice set is rebuilt on every state change; a card selected under the old one may no longer be
   // clickable (or may not exist), so drop the selection rather than leave a highlight pointing at nothing.
@@ -496,7 +511,7 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
 
 
       <aside className="table__rail">
-        <CardDetails def={inspected === null ? undefined : view.defs[inspected.code]} action={inspected === null ? null : inspected.action} />
+        <CardDetails def={inspected === null ? undefined : view.defs[inspected.code]} action={inspectedAction} />
         <EventLog log={log} silenced={view.result !== null} />
       </aside>
 
