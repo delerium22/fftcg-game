@@ -7,11 +7,11 @@ with Square Enix.
 Design spec and MVP ladder:
 [`docs/superpowers/specs/2026-08-25-fftcg-game-design.md`](docs/superpowers/specs/2026-08-25-fftcg-game-design.md).
 
-## Status: rung D — playable in the browser against a search-based AI
+## Status: rung G — playable in the browser against a search-based AI
 
 **You can sit down and play a full game against the AI in a browser**: first-player choice and
 mulligan, casting Backups/Forwards/Summons with CP paid for you, attacking and blocking, party
-damage, and win/loss. The engine (`packages/engine`) and the AI (`packages/ai`) contain no `node:`
+damage, EX Burst on damage, and win/loss. The engine (`packages/engine`) and the AI (`packages/ai`) contain no `node:`
 imports, so the whole game — rules, opponent, and card database — runs client-side. There is no
 server.
 
@@ -21,8 +21,12 @@ while it thinks (rung D2). It beats the heuristic agent comfortably — the meas
 and drifted: it still read 78.3 % after the shipped rollout cap changed the answer to 75.0 %. If the
 worker fails for any reason the game falls back to the heuristic agent permanently and says so in
 the log, in amber — a weaker opponent is never silent. A clause proven unreachable does NOT warn: a
-warning that fires when nothing was lost teaches the player to ignore the ones that matter, and the EX
-Burst warnings matter. Each such suppression is a claim about the pool that `packages/cards` proves.
+warning that fires when nothing was lost teaches the player to ignore the ones that matter. Each such
+suppression is a claim about the pool that `packages/cards` proves.
+
+That principle used to be illustrated with the EX Burst warnings, which were real and fired on about a
+fifth of all damage. Rung G3 implemented the rule, so they are gone — a full game on this pool now warns
+about **nothing**, which a test asserts directly rather than leaving to inspection.
 
 Card abilities are implemented to **27 of the starter deck's 28 printed ability clauses**. The 28th —
 Sphene's "cards in your Break Zone cannot be removed from the game by your opponent" — is left out
