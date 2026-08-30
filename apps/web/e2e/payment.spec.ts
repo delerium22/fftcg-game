@@ -20,9 +20,10 @@ test('the other ways to pay are real controls that name the cards they spend', a
   await page.getByRole('button', { name: /Keep hand/ }).click()
 
   // Selecting, not casting: a move that hides a payment choice must not fire on the first touch.
-  // Named WITHOUT its cast: a card hiding a payment choice no longer announces an action, because pressing it
-  // no longer performs one. That is E11's own doing and this route proves it — the name here would still say
-  // "Cast Class Tenth Moogle paying: …" if `actionFor` had been left agreeing with the old click behaviour.
+  // Named WITHOUT its cast. A card hiding a payment choice does not name the cast, because pressing it does
+  // not cast — it opens the chooser. Since rung F6 it is not SILENT either: it says "3 ways to pay", which
+  // is what the press actually does. Matching on the card's own facts keeps this route independent of that
+  // wording.
   await page.getByRole('button', { name: /^Class Tenth Moogle, cost/ }).click()
   const strip = page.locator('.prompt__actions')
   await expect(strip.locator('[data-command="castCharacter"]'),

@@ -276,16 +276,30 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   }
 
   /**
-   * What clicking this card will do, but ONLY when it does exactly one thing.
+   * What clicking this card will do — ALWAYS, when it does anything at all.
    *
-   * That is the click which commits immediately, and the one that silently spent a 5-cost Odin on a 2-cost
-   * Ramuh. A card offering several options does not commit on click — it opens the prompt strip, which lists
-   * every option with this same label — so disclosing one of them here would name a payment the click is not
-   * about to make.
+   * When the click commits, that is the exact action, and naming one of several options instead would state
+   * a payment the click is not about to make (rung E4, and the click that silently spent a 5-cost Odin on a
+   * 2-cost Ramuh). But saying NOTHING was the other half of that mistake: measured over six seeded games,
+   * 38.6 % of clickable cards announced no action, and in 21.6 % of positions not one clickable card did.
+   * Turn 1 shows six pressable cards under "cast, attack, or pass" and tells you nothing about any of them.
+   *
+   * So a card that does not commit says what pressing it DOES do — open a choice, and how big a choice.
+   * `Cast Cloud, 4 ways to pay` was considered and rejected in review: that click selects Cloud, it does not
+   * cast it, and naming the cast would be E4's defect wearing a hat. A bare count states only what is true,
+   * and stays true when pressing an already-selected card closes the options again.
+   *
+   * The two counts are different questions and are counted differently. Several MOVES is
+   * `forCard.length` — each is its own entry. One move funded several ways is ONE entry whose
+   * `alternatives` hold the rest, so it is `alternatives.length + 1`: the preferred payment plus the others.
    */
   const actionFor = (id: CardId): string | undefined => {
     const forCard = choices.byCard.get(id) ?? []
-    return commitsOnClick(forCard) ? forCard[0]?.label : undefined
+    if (forCard.length === 0) return undefined
+    if (commitsOnClick(forCard)) return forCard[0]?.label
+    if (forCard.length > 1) return `${forCard.length} options`
+    const ways = (forCard[0]?.alternatives?.length ?? 0) + 1
+    return `${ways} ways to pay`
   }
 
   // The choice set is rebuilt on every state change; a card selected under the old one may no longer be
@@ -361,7 +375,13 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   const field = (p: PlayerId, kind: 'forwards' | 'backups'): GridItem[] =>
     view.fields[p][kind].map((c) => {
       const selectable = (choices.byCard.get(c.id) ?? []).length > 0
-      const props = fieldCardProps(view, c, selectable, kind === 'backups' ? 'small' : 'field')
+      // The action, which a field card never carried. A Forward whose sole choice is `Block with Luso`
+      // COMMITS when pressed and announced only its power — the same silence as a hand card, on the row
+      // where the click is most often irreversible.
+      const props = {
+        ...fieldCardProps(view, c, selectable, kind === 'backups' ? 'small' : 'field'),
+        ...(actionFor(c.id) === undefined ? {} : { action: actionFor(c.id) }),
+      }
       return gridItem(c.id, props, {
         selected: selected === c.id,
         ...(selectable ? { onClick: () => pick(c.id) } : {}),
@@ -386,6 +406,11 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
       selectable: true,
       size: 'small',
       ...(d?.text === undefined ? {} : { text: d.text }),
+      // And here too. Every card in this row is selectable BY CONSTRUCTION — it exists only because a choice
+      // named it — so one that says nothing about its action is the worst case of the three: a card the
+      // player has never seen, in a row that appeared for reasons the board does not explain, offering a
+      // press whose effect is unstated. A Hugh Yurg deck-search candidate COMMITS `Play X onto the field`.
+      ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
     }, { selected: selected === id, onClick: () => pick(id) })
   })
 

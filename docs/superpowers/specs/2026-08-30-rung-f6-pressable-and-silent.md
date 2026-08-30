@@ -1,7 +1,7 @@
 # Rung F6 — a card you can press that will not say what pressing it does
 
-> **STATUS: PLAN REVIEWED — revise, then build.** The fix is right and the wording is ruled on, but my
-> measurement was an UNDERCOUNT and this is not the one-string change I claimed. Nothing built. Found by playing, then measured. The margin was
+> **STATUS: BUILT.** Every pressable card now says what pressing it does. The review's undercount claim is
+> confirmed by mutation: the real pre-F6 figure was 279 of 443 (63 %), not 171 (38.6 %). Found by playing, then measured. The margin was
 > predeclared before any run in F5's review, so it is stated here too — see *Acceptance*.
 
 ## Found by playing
@@ -188,3 +188,47 @@ Ordinary strip choices are fine: they are exact committing labels.
 - **A4** split into the two counts.
 - **A5** predeclare exact routes and exact suffixes: seed 11 for multi-payment, seed 21 for several options.
 - **A6** names `card-details.test.tsx:1137` and `payment.spec.ts:22` as the expectations that must change.
+
+---
+
+## Built — and the review's undercount claim is now measured
+
+A card that commits keeps naming its exact action. A card that opens a choice says which kind and how big:
+`3 options` for several moves, `N ways to pay` for one move funded several ways. The disclosure is threaded
+through all three render paths — hand, field, and the orphan row — because it reached only the hand before.
+
+### The real pre-F6 figure was 63 %, not 38.6 %
+
+Two mutations, run against the corpus test, which is what settles it:
+
+| revert | silent cards |
+|---|---|
+| `actionFor`'s non-commit branch only | **171** of 443 — reproduces my original measurement exactly |
+| that AND the field/orphan threading | **279** of 443 |
+
+So **108 cards** were silent that my first probe scored as fine, because it measured the PREDICATE instead of
+the rendered button. They include *committing* ones — `Attack with Undead Princess`, `Give Haste to Undead
+Princess` — where the click really does commit and the card announced only its power. The review said 171 was
+an undercount; it was, by 63 %.
+
+That the first mutation lands on exactly 171 is the check that the corpus and method are unchanged, so the two
+numbers are comparable rather than two different experiments.
+
+### The oracle is structural
+
+Each announced action must equal one of three forms chosen by what the click will do, and a non-committing
+card must contain **no `Choice.label` at all** — not merely no payment and no target. A Forward leaking
+`Attack with Cloud` passes a "no payment, no target" rule and fails this one, which was the review's example.
+Each case also asserts what clicking actually submits: one choice for a committing card, nothing for a card
+that only opens a choice.
+
+### Named in advance, and both changed as predicted
+
+- `card-details.test.tsx` required the details panel to be EMPTY for a multi-choice Geomancer. `look` feeds
+  `actionFor` into `CardDetails`, so it now shows `2 options`. The property that test exists for — a
+  non-committing card must not name a payment — is untouched and still asserted; the replacement checks the
+  exact count rather than merely "not null", which is stronger than what it replaced.
+- `payment.spec.ts` carried prose saying such a card "no longer announces an action". True of E11, false
+  since F6. Corrected.
+
+**979 tests, 9 Playwright, typecheck, lint, 200/200 selfplay seed 1.**

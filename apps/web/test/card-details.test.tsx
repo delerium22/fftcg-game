@@ -1148,7 +1148,13 @@ describe('what a cast will cost, before the click (rung E4)', () => {
     const geo = named('Geomancer')
     expect(geo.getAttribute('aria-label') ?? '', 'a card that does not commit on click named a payment anyway').not.toContain('paying')
     hover(geo)
-    expect(document.querySelector('.details__action')).toBe(null)
+    // CHANGED BY RUNG F6, and the property this test exists for is untouched: a card that does not commit
+    // must not name a payment, and `2 options` names none. What changed is that it used to disclose NOTHING,
+    // which measured out at 38.6 % of clickable cards saying nothing about what pressing them does. It now
+    // says what the press actually does — open a choice, and how big — which is a strictly stronger
+    // assertion than the `toBe(null)` this replaces.
+    const n = mounted?.byCard.get(geoId!)?.length ?? 0
+    expect(document.querySelector('.details__action')?.textContent).toBe(`${n} options`)
   })
 
   it('discloses the string the click actually submits', () => {
