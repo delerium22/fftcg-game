@@ -61,9 +61,19 @@ pnpm --filter @fftcg/cli hotseat --seed 1                              # play a 
 pnpm --filter @fftcg/cli selfplay --games 200 --seed 1                 # random-vs-random fuzzer
 pnpm --filter @fftcg/cli selfplay --games 200 --seed 1 --p0 greedy --p1 random --fast   # greedy AI vs random
 pnpm --filter @fftcg/cli mirror --pairs 60 --a ismcts --b greedy --fast                 # ISMCTS vs greedy, seats swapped
+pnpm --filter @fftcg/cli mirror --pairs 60 --a ismcts:200+damage=25 --b ismcts:200      # one weight against the default
 pnpm --filter @fftcg/cli deckorder --seed 1                            # print a seeded deck order
-pnpm --filter @fftcg/cli run profile --games 3 --seed 1                 # where a rollout's applies go (rung D7)
+pnpm --filter @fftcg/cli run profile --games 3 --seed 1                  # where a rollout's applies go (rung D7)
+pnpm --filter @fftcg/cli run profile --games 3 --seed 1 --opponent ismcts:200   # ...and where damage sits at each leaf
 ```
+
+An agent spec is `random | greedy[:0-2] | ismcts[:N][+weight=value,...]`. The weight suffix is what makes an
+evaluation A/B possible at all — the search used to hardcode its weights, so the only way to change one was to
+edit source, and a comparison whose two arms are different checkouts is not one to ship on. Both an unknown
+weight name and a value `Number()` would silently coerce (`1e3`, `0x10`, `' 1'`) are refused at the flag: an
+arm that quietly runs the default policy while the report names it as the treatment is an A/B reporting one
+arm twice. `profile`'s `--opponent` takes the same specs, because the leaf-damage distribution is a property
+of the *matchup* and not of the searching agent alone.
 
 Note the `run` in that last one. `profile` collides with pnpm's own built-in `profile` command, exactly as
 `fetch` does below, so it needs `run` to reach the package script.
