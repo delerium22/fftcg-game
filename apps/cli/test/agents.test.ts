@@ -5,7 +5,7 @@ import { loadCards } from '@fftcg/cards'
 import { actingPlayer, apply, createGame, legalCommands, viewFor } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { parseDeckFile } from '../src/deck.js'
-import { MAX_ITERATIONS, MAX_ROLLOUT_CAP, describeAgentSpec, makeAgent, parseAgentSpec, parseDepth, parseIterations, parsePositiveInt, parseRolloutCap, type AgentSpec } from '../src/agents.js'
+import { MAX_ITERATIONS, MAX_ROLLOUT_CAP, describeAgentSpec, makeAgent, parseAgentSpec, parseDepth, parseWeightOverrides, parseIterations, parsePositiveInt, parseRolloutCap, type AgentSpec } from '../src/agents.js'
 import { selfPlay } from '../src/selfplay.js'
 
 const deck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
@@ -191,5 +191,58 @@ describe('activated abilities reach the agents (C3-A1)', () => {
       '19-052C:pump', '19-052C:remove', '20-074C:draw',
     ]
     for (const id of chosen.keys()) expect(ACTIVATED).toContain(id)
+  })
+})
+
+describe('weight overrides on an ISMCTS arm (G1a)', () => {
+  it('parses `ismcts:N+name=value` and keeps the iteration count', () => {
+    expect(parseAgentSpec('ismcts:200+damage=8'))
+      .toEqual({ kind: 'ismcts', iterations: 200, weights: { damage: 8 } })
+    expect(parseAgentSpec('ismcts+damage=25')).toEqual({ kind: 'ismcts', weights: { damage: 25 } })
+    expect(parseAgentSpec('ismcts:200+damage=25,threat=0.9'))
+      .toEqual({ kind: 'ismcts', iterations: 200, weights: { damage: 25, threat: 0.9 } })
+  })
+
+  it('takes decimals and negatives, which are both real weight values', () => {
+    expect(parseWeightOverrides('handQuality=0.5')).toEqual({ handQuality: 0.5 })
+    expect(parseWeightOverrides('expiredThreat=-1.5')).toEqual({ expiredThreat: -1.5 })
+  })
+
+  it('refuses what `Number()` would silently accept, because a coerced weight reads as a strength difference', () => {
+    for (const bad of ['damage= 1', 'damage=1e3', 'damage=0x10', 'damage=', 'damage=1.', 'damage=+1', 'damage=01']) {
+      expect(() => parseWeightOverrides(bad), `"${bad}" was accepted`).toThrow(/invalid weight override/)
+    }
+  })
+
+  it('refuses an unknown weight at the FLAG, not silently at runtime', () => {
+    // The failure this prevents: `damagee` overrides nothing, so the arm runs the CONTROL's policy while the
+    // report names it as the treatment. That is an A/B reporting one arm twice under two names.
+    expect(() => parseAgentSpec('ismcts:200+damagee=8')).toThrow(/unknown weight "damagee"/)
+    expect(() => parseWeightOverrides('damage=1,damage=2')).toThrow(/given twice/)
+    expect(() => parseAgentSpec('ismcts:200+')).toThrow(/invalid weight override/)
+  })
+
+  it('reports the ITERATIONS as bad when the iterations are bad, not the whole spec', () => {
+    // The suffix is split off first precisely so this error names the half that is actually wrong.
+    expect(() => parseAgentSpec('ismcts:0+damage=1')).toThrow(/invalid iterations "0"/)
+  })
+
+  it('names the weights in the agent description, so an arm is not reported as its own control', () => {
+    const spec = parseAgentSpec('ismcts:200+threat=0.9,damage=25')
+    expect(describeAgentSpec(spec)).toBe('ismcts:200+damage=25,threat=0.9')
+    // Sorted, so one arm carries ONE name however the flag was typed.
+    expect(describeAgentSpec(parseAgentSpec('ismcts:200+damage=25,threat=0.9'))).toBe(describeAgentSpec(spec))
+    expect(describeAgentSpec(parseAgentSpec('ismcts:200'))).toBe('ismcts:200')
+  })
+
+  it('builds an agent that carries them — a description alone would be a label on nothing', () => {
+    const d = decks()
+    const s = createGame({ seed: 3, decks: d, defs: loadCards() })
+    const p = actingPlayer(s) ?? 0
+    expect(() => makeAgent(parseAgentSpec('ismcts:20+damage=25'), 1, d).decide(viewFor(s, p), legalCommands(s, p)))
+      .not.toThrow()
+    // And a poisoned weight fails loudly rather than playing badly in silence.
+    expect(() => makeAgent({ kind: 'ismcts', iterations: 20, weights: { damage: NaN } }, 1, d)
+      .decide(viewFor(s, p), legalCommands(s, p))).toThrow(/every score NaN/)
   })
 })

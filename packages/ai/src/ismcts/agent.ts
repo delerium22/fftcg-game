@@ -2,6 +2,7 @@ import { SYNTHETIC_ID_BASE, nextInt, seedRng, type CardId, type Command, type Pl
 import type { Agent } from '../agent.js'
 import { DEFAULT_EXPLORATION_C, DEFAULT_ITERATIONS, DEFAULT_ROLLOUT_COMMAND_CAP, searchIsmcts } from './search.js'
 import type { SearchBudget, SearchDiagnostics, SearchInput } from './keys.js'
+import type { WeightOverrides } from '../evaluate.js'
 
 export interface IsmctsOptions {
   /** D7: collect the rollout apply attribution. Diagnostic only; off in play. */
@@ -14,6 +15,8 @@ export interface IsmctsOptions {
   explorationC?: number | undefined
   /** F4: a wall-clock box on each decision. Absent means the iteration count is the only bound. */
   budget?: SearchBudget | undefined
+  /** G1a: a sparse override over `DEFAULT_WEIGHTS` for this agent's rollouts — see `SearchInput.weights`. */
+  weights?: WeightOverrides | undefined
 }
 
 /** Every `CardId` a command names — the W4 guard `GreedyAgent` carries, for the same reason. */
@@ -49,6 +52,7 @@ export class IsmctsAgent implements Agent {
   /** D7: ask each search for its rollout apply attribution. Off unless a measurement turns it on. */
   private readonly profile: boolean
   private readonly budget: SearchBudget | undefined
+  private readonly weights: WeightOverrides | undefined
   readonly needsLegalCommands = false
   /** Last decision's counters (spec D-A4). `null` before the first `decide`, and on the non-acting fallback. */
   lastDiagnostics: SearchDiagnostics | null = null
@@ -61,6 +65,7 @@ export class IsmctsAgent implements Agent {
     this.explorationC = opts.explorationC ?? DEFAULT_EXPLORATION_C
     this.profile = opts.profile ?? false
     this.budget = opts.budget
+    this.weights = opts.weights
   }
 
   decide(view: PlayerView, legal: Command[]): Command {
@@ -84,6 +89,7 @@ export class IsmctsAgent implements Agent {
       explorationC: this.explorationC,
       ...(this.profile ? { profile: true } : {}),
       ...(this.budget === undefined ? {} : { budget: this.budget }),
+      ...(this.weights === undefined ? {} : { weights: this.weights }),
     }
     const { command, diagnostics } = searchIsmcts(input)
     this.lastDiagnostics = diagnostics

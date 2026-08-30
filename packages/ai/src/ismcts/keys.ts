@@ -1,5 +1,6 @@
 import { ELEMENTS, matchesDefFilter, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type TriggerEvent } from '@fftcg/engine'
 import type { RolloutProfile } from '../greedy.js'
+import type { WeightOverrides } from '../evaluate.js'
 
 /**
  * Canonical, cross-determinisation identity for search (spec D-2). **This is the crux of the rung.**
@@ -619,6 +620,18 @@ export interface SearchInput {
    * Absent by default: with no budget the clock is never consulted, and output is identical to before F4.
    */
   readonly budget?: SearchBudget
+  /**
+   * Rung G1a: a SPARSE override laid over `DEFAULT_WEIGHTS`, used by every rollout of this search.
+   *
+   * Plain data, like `profile` and `budget`, so it crosses the worker boundary by `structuredClone`. Sparse
+   * rather than a full `Weights` so an A/B arm names the one weight it varies and cannot drift on the others.
+   *
+   * Note what this does and does not make comparable. One search models BOTH rollout players with its own
+   * evaluator — that is the normal arrangement and it is not a bug — so this does not pit two weight sets
+   * against each other inside one tree. It makes two SEARCHES differ, which is what an `ismcts(a)` against
+   * `ismcts(b)` tournament needs, and which was impossible while the weights were hardcoded.
+   */
+  readonly weights?: WeightOverrides
 }
 
 /** A wall-clock box on a search. Both fields are validated at entry — see `searchTree`. */

@@ -3,7 +3,7 @@ import {
   type CardId, type CardInstance, type Command, type FieldView, type GameState, type PlayerId, type PlayerView, type Rng,
 } from '@fftcg/engine'
 import { candidateCommands } from '../candidates.js'
-import { DEFAULT_WEIGHTS, evaluate, type Weights } from '../evaluate.js'
+import { DEFAULT_WEIGHTS, evaluate, resolveWeights, type Weights } from '../evaluate.js'
 import { greedyStep, newRolloutProfile, resolveForcedDecisions, type Budget, type RolloutProfile } from '../greedy.js'
 import {
   actionKey, compareKeys, decodeAction, isOpaque, observationKey,
@@ -446,6 +446,10 @@ export function searchTree(input: SearchInput, now: SearchClock = () => globalTh
   // position to be searched.
   if (actorOf(input.view) !== root) throw new Error(`searchIsmcts: player ${root} is not the acting player`)
 
+  // G1a: resolved ONCE and at entry, next to the budget's checks — a bad weight must throw before any work,
+  // not on the thousandth rollout, and certainly not silently inside a Worker where a throw reads as worker
+  // death and permanently downgrades the opponent to the heuristic agent.
+  const weights = resolveWeights(input.weights)
   const decks = sortedDecks(input.decks)
   const streams = makeStreams(input.seed)
   const counters = newCounters()
@@ -535,7 +539,7 @@ export function searchTree(input: SearchInput, now: SearchClock = () => globalTh
       if (expansion) break
     }
 
-    const rollout = rolloutToCap(state, root, input.rolloutCommandCap, DEFAULT_WEIGHTS, counters, DEFAULT_ROLLOUT_APPLY_CAP, profile)
+    const rollout = rolloutToCap(state, root, input.rolloutCommandCap, weights, counters, DEFAULT_ROLLOUT_APPLY_CAP, profile)
     counters.maxCommandDepth = Math.max(counters.maxCommandDepth, commands + rollout.commands)
     backpropagate(path, rollout.reward)
   }

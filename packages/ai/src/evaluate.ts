@@ -56,6 +56,44 @@ export const DEFAULT_WEIGHTS: Weights = {
 }
 
 /**
+ * Rung G1a — DEFAULT_WEIGHTS with a sparse override laid over it, so a caller can vary ONE weight and leave
+ * the rest alone. That is what makes a weights A/B possible at all: the search used to hardcode
+ * `DEFAULT_WEIGHTS` for every rollout, so the only way to change a weight was to edit the source, and a
+ * comparison whose two arms are different checkouts is not a comparison anyone should ship on.
+ *
+ * Both checks below are load-bearing rather than defensive:
+ *
+ *  - a non-finite weight does not fail, it POISONS. `evaluate` returns NaN, every comparison against it is
+ *    false, and the agent silently keeps whichever candidate it happened to score first. That would look like
+ *    "the curve made it play badly" instead of "the weight was a typo".
+ *  - an unknown key does nothing at all, which is worse: a run named `damageCurv` would report the control's
+ *    numbers under the treatment's name. The CLI already carries an unknown-flag guard for exactly this.
+ *
+ * A key present but `undefined` is treated as absent, and `WeightOverrides` admits one rather than using
+ * `Partial<Weights>`: under `exactOptionalPropertyTypes` a `Partial` claims the key can only be absent, while
+ * `structuredClone` cheerfully preserves an explicit `undefined` across the worker boundary. The type says
+ * what can actually arrive, so the runtime guard below is not guarding against something the types deny.
+ */
+export type WeightOverrides = { readonly [K in keyof Weights]?: number | undefined }
+
+export function resolveWeights(overrides?: WeightOverrides | undefined): Weights {
+  if (!overrides) return DEFAULT_WEIGHTS
+  for (const key of Object.keys(overrides)) {
+    if (!(key in DEFAULT_WEIGHTS)) {
+      throw new RangeError(`unknown weight "${key}" — it would silently do nothing, so it is refused`)
+    }
+  }
+  const out: Weights = { ...DEFAULT_WEIGHTS }
+  for (const key of Object.keys(DEFAULT_WEIGHTS) as (keyof Weights)[]) {
+    const v = overrides[key]
+    if (v === undefined) continue
+    if (!Number.isFinite(v)) throw new RangeError(`weight "${key}" is ${String(v)}, which would make every score NaN`)
+    out[key] = v
+  }
+  return out
+}
+
+/**
  * What Haste (§15.2.3) is worth on this card RIGHT NOW, in power/1000 units and ignoring whether the card
  * already has it: exactly what it unlocks — an attack this turn by a Forward that entered this turn. On a
  * Forward that is dull, has already attacked, is not this turn's, or was already attack-eligible (§10.1.2.1.1),

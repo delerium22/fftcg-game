@@ -79,7 +79,7 @@ function withDefaults(
 
 const usage = [
   'usage: <hotseat|selfplay|mirror|profile|deckorder> [options]',
-  '  agent spec: random | greedy[:0-2] | ismcts[:N]',
+  '  agent spec: random | greedy[:0-2] | ismcts[:N][+weight=value,...]   (G1a: e.g. ismcts:200+damage=25)',
   '  selfplay: [--seed N] [--games N] [--p0 spec] [--p1 spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--budget-ms N] [--min-iterations N] [--fast]',
   '  mirror:   [--seed N] [--pairs N] [--a spec] [--b spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--budget-ms N] [--min-iterations N] [--bootstrap N] [--fast]',
   '            plays every seed twice with the seats swapped; every score is agent A\'s (spec D-A1)',

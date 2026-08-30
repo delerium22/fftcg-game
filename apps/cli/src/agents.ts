@@ -1,9 +1,14 @@
-import { GreedyAgent, IsmctsAgent, RandomAgent, type Agent } from '@fftcg/ai'
+import { DEFAULT_WEIGHTS, GreedyAgent, IsmctsAgent, RandomAgent, type Agent, type WeightOverrides, type Weights } from '@fftcg/ai'
 
 export type AgentSpec =
   | { kind: 'random' }
   | { kind: 'greedy'; depth?: 0 | 1 | 2 }
-  | { kind: 'ismcts'; iterations?: number; rolloutCap?: number; profile?: boolean; budgetMs?: number; minIterations?: number }
+  | {
+      kind: 'ismcts'; iterations?: number; rolloutCap?: number; profile?: boolean
+      budgetMs?: number; minIterations?: number
+      /** G1a: sparse weight overrides for THIS arm's rollouts, so an A/B names the one weight it varies. */
+      weights?: WeightOverrides
+    }
 
 /** Upper bound on `ismcts:N`. Not a performance claim — a typo guard, so `ismcts:100000000` fails at the flag
  *  rather than after an hour of wall clock. D1's measured floor is ~107 µs per determinisation. */
@@ -50,16 +55,57 @@ export const MAX_BUDGET_MS = 60_000
 export const parseBudgetMs = (s: string): number => parsePositiveInt(s, 'budget ms', MAX_BUDGET_MS)
 export const parseMinIterations = (s: string): number => parsePositiveInt(s, 'min iterations', MAX_ITERATIONS)
 
-/** Parses `random | greedy | greedy:0..2 | ismcts | ismcts:N`; throws on anything else. */
+/**
+ * G1a: `name=value` weight overrides on an ISMCTS arm, comma-separated — `ismcts:200+damageCurve=8,damage=25`.
+ *
+ * The value regex, not `Number()`, does the work, for the same reason `parsePositiveInt` says so: `Number`
+ * turns `''`, `' 1'`, `'1e3'` and `'0x10'` into perfectly good numbers, and a silently-coerced weight is a
+ * measurement bug that reads as a strength difference. Decimals and negatives ARE allowed — real weights
+ * include 1.2 and 0.6, and a negative weight is a legitimate hypothesis — but `Infinity` and `NaN` are not
+ * spellable by this grammar, and `resolveWeights` refuses them again on the far side.
+ *
+ * An unknown name throws here as well as in `resolveWeights`, so a mistyped arm fails at the flag rather than
+ * silently running the control's policy under the treatment's name.
+ */
+export function parseWeightOverrides(s: string): WeightOverrides {
+  const out: Partial<Weights> = {}
+  for (const part of s.split(',')) {
+    const m = /^([A-Za-z][A-Za-z0-9]*)=(-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?)$/.exec(part)
+    if (!m) throw new Error(`invalid weight override "${part}" (expected name=number)`)
+    const name = m[1] as string
+    const value = m[2] as string
+    if (!(name in DEFAULT_WEIGHTS)) {
+      throw new Error(`unknown weight "${name}" (expected one of ${Object.keys(DEFAULT_WEIGHTS).join(', ')})`)
+    }
+    if (name in out) throw new Error(`weight "${name}" given twice in "${s}"`)
+    out[name as keyof Weights] = Number(value)
+  }
+  if (Object.keys(out).length === 0) throw new Error('empty weight override')
+  return out
+}
+
+/** Serialises overrides back into the spec's own syntax, sorted so one arm has ONE name across runs. */
+const describeWeights = (w: WeightOverrides): string =>
+  Object.keys(w).sort().map((k) => `${k}=${String(w[k as keyof Weights])}`).join(',')
+
+/** Parses `random | greedy | greedy:0..2 | ismcts | ismcts:N | ismcts[:N]+name=value[,name=value]`. */
 export function parseAgentSpec(s: string): AgentSpec {
   if (s === 'random') return { kind: 'random' }
   if (s === 'greedy') return { kind: 'greedy' }
-  if (s === 'ismcts') return { kind: 'ismcts' }
   const g = /^greedy:(.*)$/s.exec(s)
   if (g) return { kind: 'greedy', depth: parseDepth(g[1] as string) }
-  const i = /^ismcts:(.*)$/s.exec(s)
-  if (i) return { kind: 'ismcts', iterations: parseIterations(i[1] as string) }
-  throw new Error(`unknown agent spec "${s}" (expected random | greedy[:0-2] | ismcts[:N])`)
+  // The weight suffix is split off FIRST, so `ismcts:200+damageCurve=8` still validates its iteration count
+  // through `parseIterations` rather than handing `200+damageCurve=8` to a regex that would reject it as a
+  // bad integer and hide which half was actually wrong.
+  const plus = s.indexOf('+')
+  const head = plus === -1 ? s : s.slice(0, plus)
+  const weights = plus === -1 ? undefined : parseWeightOverrides(s.slice(plus + 1))
+  const i = /^ismcts:(.*)$/s.exec(head)
+  if (head !== 'ismcts' && !i) {
+    throw new Error(`unknown agent spec "${s}" (expected random | greedy[:0-2] | ismcts[:N][+name=value,...])`)
+  }
+  const base = i ? { kind: 'ismcts' as const, iterations: parseIterations(i[1] as string) } : { kind: 'ismcts' as const }
+  return weights === undefined ? base : { ...base, weights }
 }
 
 export function describeAgentSpec(spec: AgentSpec): string {
@@ -71,8 +117,11 @@ export function describeAgentSpec(spec: AgentSpec): string {
   const capped = spec.rolloutCap === undefined ? base : `${base}/cap${spec.rolloutCap}`
   // The box is part of the identity for the same reason the cap is, and BOTH halves of it are: "ismcts:200
   // boxed at 500 ms" describes two different agents depending on whether its floor is 8 or 80.
-  return spec.budgetMs === undefined ? capped
+  const boxed = spec.budgetMs === undefined ? capped
     : `${capped}/box${spec.budgetMs}ms+min${spec.minIterations ?? 1}`
+  // G1a: and the WEIGHTS most of all. An arm that varies a weight and reports itself as plain "ismcts:200" is
+  // indistinguishable from its own control in the output, which is how an A/B silently reports one arm twice.
+  return spec.weights === undefined ? boxed : `${boxed}+${describeWeights(spec.weights)}`
 }
 
 /**
@@ -94,5 +143,6 @@ export function makeAgent(spec: AgentSpec, seed: number, decks: [string[], strin
     ...(spec.rolloutCap === undefined ? {} : { rolloutCommandCap: spec.rolloutCap }),
     ...(spec.profile === true ? { profile: true } : {}),
     ...(spec.budgetMs === undefined ? {} : { budget: { ms: spec.budgetMs, minIterations: spec.minIterations ?? 1 } }),
+    ...(spec.weights === undefined ? {} : { weights: spec.weights }),
   })
 }
