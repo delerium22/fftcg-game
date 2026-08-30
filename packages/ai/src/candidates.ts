@@ -277,8 +277,10 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
       // Indices, so the candidate list is world-independent and needs no card reasoning at all — the whole
       // point of answering a deck choice by index (spec C9-1).
       case 'chooseFromDeck': return legalCommands(state, player).filter((c) => c.type === 'chooseFromDeck')
-      // G3: BOTH answers, never a default. An agent that always declined would leave the offered/used/declined
-      // tallies looking healthy while playing strictly worse than before the rule existed.
+      // G3: both answers reach the agent, so the SEARCH always weighs them. Greedy is weaker than that and the
+      // comment used to overclaim: under an exhausted apply budget `greedyStep` keeps candidate zero without
+      // pricing the rest, so a budget-starved rollout takes whichever answer `legalCommands` lists first.
+      // That is why it lists decline first — see the reasoning there.
       case 'chooseExBurst': return legalCommands(state, player).filter((c) => c.type === 'chooseExBurst')
       // W3: exhaustive — a new Pending kind must fail to compile here rather than silently falling through to phase generation.
       default: { const _exhaustive: never = pending; return _exhaustive }

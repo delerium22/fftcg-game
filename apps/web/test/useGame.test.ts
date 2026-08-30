@@ -481,6 +481,9 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
     const need = new Set<Command['type']>([
       'chooseFirst', 'mulligan', 'castCharacter', 'castSummon',
       'declareAttack', 'declareBlock', 'assignPartyDamage', 'discardToHandSize', 'pass',
+      // G3. Added because a code review noticed it was missing: the set is what makes this test a claim about
+      // EVERY command, and a new command type that is not in it is a command the UI is never checked to reach.
+      'chooseExBurst',
     ])
     // The seed range has to be generous: abilities roughly HALVE game length (the greedy-vs-random gate went
     // from 23.7 average turns to 12.5), so a short game reaches the discard limit and an affordable Summon far

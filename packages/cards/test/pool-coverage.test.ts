@@ -24,6 +24,27 @@ describe('the card pool', () => {
     expect(short, 'a card prints clauses this build does not implement — the details panel will now caveat it, and the log warns at cast time').toEqual([])
   })
 
+  it('marks exactly one EX BURST clause on every card that prints one (rung G3)', () => {
+    // The guard `exBurstAbility` says exists. It did not: I wrote the comment claiming the pool test asserts
+    // this, shipped it, and a code review found the assertion was never added. `exBurstAbility` now refuses to
+    // fire on a card whose def does not print EX BURST, and this is the other half — the two must agree.
+    //
+    // Both directions are defects, and neither shows up in play as an error:
+    //   a card printing EX BURST with no marked clause silently loses its burst;
+    //   a marked clause on a card that prints none fires a rule the card does not have;
+    //   two marked clauses make `find` pick whichever was authored first, silently.
+    const wrong = loadCards()
+      .map((d) => ({ code: d.code, prints: d.exBurst, marked: (d.abilities ?? []).filter((a) => a.exBurst === true).length }))
+      .filter((r) => (r.prints ? r.marked !== 1 : r.marked !== 0))
+    expect(wrong, 'a card’s printed EX BURST and its marked clauses disagree').toEqual([])
+  })
+
+  it('has EX BURST cards to check, so the rule above is not vacuous', () => {
+    // Same reason the count check below exists: an invariant over an empty set proves nothing, and this one
+    // would hold perfectly on a pool where nobody had marked anything at all.
+    expect(loadCards().filter((d) => d.exBurst).length, 'no card in the pool prints EX BURST').toBeGreaterThan(0)
+  })
+
   it('has cards to check in the first place', () => {
     // Without this, deleting the pool would make the invariant above pass over an empty list. An invariant
     // that holds vacuously is the same defect as a negative test that does not contain the thing it excludes.

@@ -61,7 +61,13 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
       // G3: both answers, always. An offer with only one legal reply is not a decision, and the AI reads this
       // list — see G3-A6, which requires the search to be able to pick either.
       case 'chooseExBurst':
-        out.push({ type: 'chooseExBurst', player, use: true }, { type: 'chooseExBurst', player, use: false })
+        // DECLINE first, and the order is a policy rather than a detail. `greedyStep` scores candidates under
+        // an apply budget and, once that budget is exhausted, keeps candidate ZERO without pricing the rest
+        // (rung A's W1 floor). So whichever answer is listed first is what a budget-starved rollout does
+        // blind — and "use" is not safe to do blind: Odin's clause targets a Forward of cost 5 or less
+        // controlled by ANYONE, so with only your own Forward on the board, using the burst breaks it.
+        // Declining only ever wastes the burst, which is the strictly recoverable mistake.
+        out.push({ type: 'chooseExBurst', player, use: false }, { type: 'chooseExBurst', player, use: true })
         break
       case 'chooseMode':
         // Σ C(modes, k). `modes` is a printed list of 2–3, so this is a handful of commands.

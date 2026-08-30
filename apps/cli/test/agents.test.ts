@@ -198,6 +198,12 @@ describe('activated abilities reach the agents (C3-A1)', () => {
       '19-052C:pump', '19-052C:remove', '20-074C:draw', '27-126S:retrieve',
     ]
     for (const id of chosen.keys()) expect(ACTIVATED).toContain(id)
+    // And Sphene's is actually REACHED, not merely permitted. A whitelist entry proves nothing about whether
+    // the interaction happens — a code review pointed out that adding the id was compatible with it staying
+    // unreachable, which would make the claim in G3's commit message false.
+    expect(chosen.get('27-126S:retrieve'),
+      'Sphene’s retrieve was whitelisted but never chosen — the EX Burst interaction is not actually live')
+      .toBeGreaterThan(0)
   })
 })
 

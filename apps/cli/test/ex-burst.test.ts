@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { actingPlayer, apply, createGame, legalCommands, viewFor, type Command, type Event, type GameState } from '@fftcg/engine'
+import { actingPlayer, apply, checkInvariants, createGame, dealPlayerDamage, legalCommands, viewFor, type Command, type Event, type GameState } from '@fftcg/engine'
 import { loadCards } from '@fftcg/cards'
 import { GreedyAgent } from '@fftcg/ai'
+import { selfPlay } from '../src/selfplay.js'
 import { parseDeckFile } from '../src/deck.js'
 import { readFileSync } from 'node:fs'
 
@@ -24,6 +25,8 @@ import { readFileSync } from 'node:fs'
 
 const DECK = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 const DEFS = loadCards()
+/** Each of these plays twenty to forty complete games; the 5 s default is nowhere near enough. */
+const CORPUS_TIMEOUT = 120_000
 const EX_CODES = new Set(DEFS.filter((d) => d.exBurst).map((d) => d.code))
 
 interface Tally {
@@ -65,10 +68,20 @@ function play(games: number, answer: boolean): Tally {
       // standing right there, so these clauses nearly always have a legal target.)
       if (awaiting && r.state.resolution.active?.abilityId === awaiting.abilityId
         && r.state.resolution.active.origin === 'exBurst') t.ownClauseRan++
-      // The reveal is a `playerDamaged` naming a card whose def prints EX BURST; whether it was OFFERED is
-      // the separate question this closed sum exists to answer.
+      // Each reveal is classified AT THE REVEAL, from the state it produced — not by subtracting offers from
+      // reveals afterwards. Deriving it was the defect a code review found: `lethalSuppressed = reveals -
+      // offered` silently relabels every offer that went missing for any other reason as "suppressed", so the
+      // sum closes by construction and the criterion cannot fail for the reason it names.
       for (const e of r.events) {
-        if (e.type === 'playerDamaged' && EX_CODES.has(defCodeOf(s, e.card))) t.reveals++
+        if (e.type !== 'playerDamaged' || !EX_CODES.has(defCodeOf(s, e.card))) continue
+        t.reveals++
+        const lethal = r.state.players[e.player].damageZone.length >= 7 || r.state.result !== null
+        if (lethal) {
+          t.lethalSuppressed++
+          expect(r.events.some((x) => x.type === 'exBurstOffered'),
+            'a lethal reveal was offered anyway').toBe(false)
+          expect(r.state.result, 'a seventh damage did not end the game').not.toBeNull()
+        }
       }
       awaiting = r.state.pending?.kind === 'chooseExBurst'
         ? { card: r.state.pending.card, abilityId: r.state.pending.abilityId }
@@ -76,7 +89,6 @@ function play(games: number, answer: boolean): Tally {
       s = r.state
     }
   }
-  t.lethalSuppressed = t.reveals - t.offered
   return t
 }
 
@@ -95,6 +107,8 @@ describe('G3-A1 — every revealed EX Burst is accounted for exactly once', () =
     it(`closes the sum when the burst is ${label}`, () => {
       const t = play(20, answer)
       expect(t.reveals, 'no EX Burst was revealed in 20 games, so this asserts nothing').toBeGreaterThan(20)
+      // Both terms are now MEASURED, so this can actually fail: an offer that never happened for some third
+      // reason leaves the sum short instead of being quietly booked as suppressed.
       expect(t.offered + t.lethalSuppressed, 'reveals are not fully accounted for').toBe(t.reveals)
       // Every offer reaches exactly one answer. An offer left on the table would show up here as a shortfall,
       // which is the shape the `attack.ts` `pending: null` bug would have taken had it survived.
@@ -104,7 +118,7 @@ describe('G3-A1 — every revealed EX Burst is accounted for exactly once', () =
       // Some reveals MUST be lethal-suppressed across 20 games, or G3-A5 is untested by this corpus.
       expect(t.lethalSuppressed, 'no lethal reveal occurred, so the suppression path is unexercised')
         .toBeGreaterThan(0)
-    })
+    }, CORPUS_TIMEOUT)
   }
 
   it('a used burst runs the card’s own marked clause, and declining runs nothing (G3-A2)', () => {
@@ -120,11 +134,13 @@ describe('G3-A1 — every revealed EX Burst is accounted for exactly once', () =
     const used = play(20, true)
     const declined = play(20, false)
     expect(used.used, 'no burst was used').toBeGreaterThan(0)
-    expect(used.ownClauseRan, 'no used burst was ever traced back to its own ability id, on a frame marked exBurst')
-      .toBeGreaterThan(0)
+    // EVERY use, not merely one. `> 0` let some cards or some uses fail silently while the test passed, which
+    // a code review pointed out; a used burst that never ran its clause is the whole defect this guards.
+    expect(used.ownClauseRan, 'a burst was used whose own marked clause never ran')
+      .toBe(used.used)
     expect(used.broken + used.dulled, 'using every burst did nothing to any board')
       .toBeGreaterThan(declined.broken + declined.dulled)
-  })
+  }, CORPUS_TIMEOUT)
 })
 
 describe('G3-A8 — at most one EX Burst can ever be pending', () => {
@@ -161,4 +177,69 @@ describe('G3-A8 — at most one EX Burst can ever be pending', () => {
       .toBeLessThanOrEqual(1)
     expect(worst, 'no player damage occurred at all, so this proves nothing').toBe(1)
   })
+})
+
+describe('G3-A4 — an opted-in burst with no legal target settles instead of stranding', () => {
+  it('Odin’s clause, opted into, finds nothing and the game carries on', () => {
+    // Reached THROUGH the new command, which is the part that matters. Odin's no-target path already worked
+    // from a normal cast, so asserting `abilityNoLegalTarget` alone would pass on behaviour that predates
+    // this rung entirely.
+    const odin = DEFS.find((d) => d.code === '13-072R')
+    expect(odin?.exBurst, 'Odin is not the EX card this test assumes').toBe(true)
+
+    let s: GameState = createGame({ seed: 4, decks: [DECK, DECK], defs: DEFS })
+    // Odin on top of P1's deck, and no Forward anywhere for its clause to break.
+    const odinId = Object.values(s.cards).find((c) => c.code === '13-072R' && c.owner === 1)?.id
+    expect(odinId, 'no Odin in P1’s cards').toBeDefined()
+    // Placed in the ATTACK phase, mid-damage-step, because that is the only place a burst arises — and
+    // `applyChooseExBurst` finishes that step. A setup-phase fixture makes `checkInvariants` complain that an
+    // attack state exists outside the attack phase, which is the invariant doing its job on a bad fixture.
+    s = {
+      ...s,
+      phase: 'attack',
+      turnPlayer: 0,
+      attack: { step: 'damage', attackers: [], blocker: null },
+      pending: null,
+      players: [
+        { ...s.players[0], forwards: [] },
+        { ...s.players[1], forwards: [], deck: [odinId as number, ...s.players[1].deck.filter((c) => c !== odinId)] },
+      ],
+    }
+
+    const [damaged] = dealPlayerDamage(s, 1, null)
+    expect(damaged.pending, 'Odin on top did not raise an offer').toEqual({
+      kind: 'chooseExBurst', player: 1, card: odinId, abilityId: '13-072R:summon',
+    })
+
+    const r = apply(damaged, { type: 'chooseExBurst', player: 1, use: true })
+    expect(r.events.some((e) => e.type === 'abilityNoLegalTarget' && e.abilityId === '13-072R:summon'),
+      'the opted-in clause did not report that it found nothing').toBe(true)
+    expect(r.state.pending, 'the game is waiting on a target that cannot exist').toBeNull()
+    expect(r.state.resolution.active, 'a frame was left suspended with nothing to choose').toBeNull()
+    expect(checkInvariants(r.state)).toEqual([])
+  })
+})
+
+describe('G3-A6/A7 — the agent decides, and the counters can fail', () => {
+  it('a searching agent picks BOTH answers across a corpus, so neither is a default', () => {
+    // `legalCommands` lists decline first precisely because a budget-starved rollout keeps candidate zero
+    // without pricing the rest. If that degradation were the whole story the agent would never use a burst —
+    // so seeing both answers chosen is what shows the decision is actually being scored.
+    const r = selfPlay({
+      games: 40, seed: 1, decks: [DECK, DECK], defs: DEFS,
+      agents: [{ kind: 'greedy', depth: 1 }, { kind: 'greedy', depth: 1 }],
+    })
+    expect(r.exBurst.offered, 'no burst was offered in 40 greedy games').toBeGreaterThan(10)
+    expect(r.exBurst.used, 'the agent never used a burst — decline is acting as a default').toBeGreaterThan(0)
+    expect(r.exBurst.declined, 'the agent never declined a burst — use is acting as a default').toBeGreaterThan(0)
+  }, CORPUS_TIMEOUT)
+
+  it('every offer reaches exactly one answer (G3-A7)', () => {
+    // The gate `unimplementedAbilities: 0` could not be: it counts a different event and stayed at zero
+    // throughout the period when every EX Burst was being skipped. This one fails if an offer is ever left
+    // unanswered, which is the exact shape of the `attack.ts` bug that erased the decision.
+    const r = selfPlay({ games: 40, seed: 1, decks: [DECK, DECK], defs: DEFS })
+    expect(r.exBurst.used + r.exBurst.declined, 'an offer was never answered').toBe(r.exBurst.offered)
+    expect(r.completed, 'games failed, so the counters describe a broken corpus').toBe(40)
+  }, CORPUS_TIMEOUT)
 })

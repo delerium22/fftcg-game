@@ -94,21 +94,70 @@ describe('dealPlayerDamage', () => {
     expect(t.pending).toBeNull()
   })
 
+  it('ignores a marked clause on a card that does not print EX BURST (G3)', () => {
+    // The runtime half of the contract `pool-coverage` states. Removing the def check passed every other test
+    // here, because no other fixture makes the two disagree — and disagreement is precisely the case it
+    // guards: a clause mistakenly marked `exBurst` on a card printing no EX BURST would otherwise fire a rule
+    // the card does not have, in play, with nothing to flag it.
+    const [s] = withTopCard([makeDef({
+      code: 'V-NOEX', exBurst: false, hasAbilities: true,
+      abilities: [{ ...EX_ABILITY, id: 'V-NOEX:etb' }],
+    })], 'V-NOEX')
+    const [t, events] = dealPlayerDamage(s, 1, null)
+    expect(events.some((e) => e.type.startsWith('exBurst')), 'a card that prints no EX BURST was offered one').toBe(false)
+    expect(t.pending).toBeNull()
+  })
+
   it('does NOT offer when the damage was the seventh, because the game is over (G3-A5)', () => {
     // Asserted against a fixture proven to offer BELOW lethal, one line up in this same shape — otherwise this
     // passes on any implementation that never offers at all.
     const defs = [makeDef({ code: 'V-EX', exBurst: true, hasAbilities: true, abilities: [EX_ABILITY] })]
     const [six, id] = withTopCard(defs, 'V-EX')
+    // Card 0 is the EX card the next damage will reveal, so the damage zone is filled from index 1 onward and
+    // those cards LEAVE the deck — a card in two zones at once is a state `checkInvariants` rejects.
     const stack = (n: number): GameState => ({
       ...six,
-      players: [six.players[0], { ...six.players[1], damageZone: six.players[1].deck.slice(1, 1 + n) }],
+      players: [six.players[0], {
+        ...six.players[1],
+        damageZone: six.players[1].deck.slice(1, 1 + n),
+        deck: [six.players[1].deck[0] as CardId, ...six.players[1].deck.slice(1 + n)],
+      }],
     })
     expect(dealPlayerDamage(stack(5), 1, null)[0].pending, 'the sixth damage should still offer').not.toBeNull()
     const [t, events] = dealPlayerDamage(stack(6), 1, null)
     expect(t.players[1].damageZone.length, 'the fixture did not reach seven').toBe(7)
     expect(events.some((e) => e.type.startsWith('exBurst')), 'a lethal damage offered a burst').toBe(false)
     expect(t.pending, 'a lethal damage left an offer on the table').toBeNull()
+    // ...and the game really does end. Without this the reason given above — "because the game is over" — was
+    // unproven: the assertions hold on any build where the seventh damage quietly fails to end anything.
+    expect(runRuleProcesses(t)[0].result, 'the seventh damage did not end the game').not.toBeNull()
     void id
+  })
+
+  it('a game that ends while an offer is outstanding clears it (G3, found in code review)', () => {
+    // The offer is raised when the VICTIM survives, which says nothing about the OTHER player. P0 already at
+    // seven, P1 below it and dealt an EX card: `dealPlayerDamage` offers P1 the burst, then `runRuleProcesses`
+    // ends the game because P0 is at seven — and `stopped` used to clear only `resolution`, leaving a finished
+    // game with a decision nobody could answer, which `checkInvariants` forbids.
+    //
+    // The attack path happened to clear it a moment later in `finishDamageStep`, so no game-level test could
+    // see it. This calls `runRuleProcesses` directly, which is the only place the invalid state was visible.
+    const [base] = withTopCard([makeDef({ code: 'V-EX', exBurst: true, hasAbilities: true, abilities: [EX_ABILITY] })], 'V-EX')
+    // The cards MOVE, they are not copied. Slicing into `damageZone` while leaving them in `deck` builds a
+    // state where the same card is in two zones, and `checkInvariants` says so — which is the check working.
+    const doomed: GameState = {
+      ...base,
+      players: [
+        { ...base.players[0], damageZone: base.players[0].deck.slice(0, 7), deck: base.players[0].deck.slice(7) },
+        base.players[1],
+      ],
+    }
+    const [damaged] = dealPlayerDamage(doomed, 1, null)
+    expect(damaged.pending?.kind, 'the fixture never raised an offer').toBe('chooseExBurst')
+    const [after] = runRuleProcesses(damaged)
+    expect(after.result, 'the fixture did not end the game').not.toBeNull()
+    expect(after.pending, 'a finished game kept an offer nobody could answer').toBeNull()
+    expect(checkInvariants(after)).toEqual([])
   })
 
   it('a used burst goes to the FRONT of the agenda, ahead of the attacker’s damage triggers (G3)', () => {

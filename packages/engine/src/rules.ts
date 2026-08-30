@@ -17,7 +17,14 @@ import { enqueueDamageTriggers, enqueueZoneChangeTriggers } from './resolve.js'
  * coverage hole, and `pool-coverage` is where it is caught, not here at damage time.
  */
 export function exBurstAbility(state: GameState, card: CardId): Ability | null {
-  return defOf(state, card).abilities?.find((a) => a.exBurst === true) ?? null
+  const def = defOf(state, card)
+  // BOTH must agree. The def's `exBurst` is what the card actually prints (it comes from the card data), and
+  // the ability flag is which clause the tag prefixes. Reading only the ability would let a mistakenly marked
+  // clause on a card that prints no EX BURST fire in play; reading only the def would leave a card with the
+  // tag and no marked clause silently doing nothing. `pool-coverage` asserts the two never disagree, so this
+  // is the runtime half of a contract the pool test states.
+  if (!def.exBurst) return null
+  return def.abilities?.find((a) => a.exBurst === true) ?? null
 }
 
 /**
@@ -110,7 +117,13 @@ export function pendingBreakTransitions(state: GameState): ZoneTransition[] {
  * `dealtDamage` clause like any other (spec C2-8) — would otherwise outlive game over and trip `checkInvariants`.
  */
 function stopped(state: GameState): GameState {
-  return state.result ? { ...state, resolution: EMPTY_RESOLUTION } : state
+  // `pending` as well as the agenda, and the omission was a real hole rather than a theoretical one. G3's EX
+  // Burst offer is raised when the VICTIM survives the damage, which says nothing about whether the OTHER
+  // player is already at seven: P0 at seven, P1 below it and dealt an EX card, and this returned a finished
+  // game with an offer nobody could ever answer — exactly what `checkInvariants` forbids. The attack path
+  // happened to clear it a moment later in `finishDamageStep`, so only `runRuleProcesses` itself could show
+  // the invalid state, which is why no game-level test caught it.
+  return state.result ? { ...state, resolution: EMPTY_RESOLUTION, pending: null } : state
 }
 
 export function runRuleProcesses(state: GameState): [GameState, Event[]] {

@@ -87,6 +87,18 @@ export interface GameStats {
   decisions: [number, number]
   totalMs: [number, number]
   unimplementedAbilities: number
+  /**
+   * Rung G3-A7. `unimplementedAbilities` is NOT a gate for EX Burst and reading it as one was my mistake: it
+   * counts `unimplementedAbility` events, these four clauses have always counted as implemented, and the
+   * number stayed at zero for the whole time every burst was being skipped. A gate that cannot fail is not a
+   * gate.
+   *
+   * These can. `offered` must equal `used + declined` — an offer that goes unanswered is the exact shape of
+   * the `attack.ts` bug that erased the decision before the player saw it.
+   */
+  exBurstOffered: number
+  exBurstUsed: number
+  exBurstDeclined: number
   search: [SearchCostReport | null, SearchCostReport | null]
 }
 
@@ -94,6 +106,9 @@ export const newGameStats = (): GameStats => ({
   decisions: [0, 0],
   totalMs: [0, 0],
   unimplementedAbilities: 0,
+  exBurstOffered: 0,
+  exBurstUsed: 0,
+  exBurstDeclined: 0,
   search: [null, null],
 })
 
@@ -139,6 +154,11 @@ export function playGame(opts: PlayGameOptions, stats: GameStats): { winner: Pla
       }
     }
     stats.unimplementedAbilities += r.events.filter((e) => e.type === 'unimplementedAbility').length
+    for (const e of r.events) {
+      if (e.type === 'exBurstOffered') stats.exBurstOffered++
+      else if (e.type === 'exBurstUsed') stats.exBurstUsed++
+      else if (e.type === 'exBurstDeclined') stats.exBurstDeclined++
+    }
   }
   if (!s.result) throw new Error(`no result after ${opts.maxCommands} commands`)
   if (!strict) {
@@ -155,6 +175,14 @@ export interface SelfPlayReport {
   draws: number
   avgTurns: number
   unimplementedAbilities: number
+  /**
+   * G3-A7. A gate that CAN fail, unlike `unimplementedAbilities`, which counts a different event and sat at
+   * zero throughout the period when every EX Burst was being skipped.
+   *
+   * `offered` must equal `used + declined`: an offer that never reaches an answer is the exact shape of the
+   * bug that erased the decision before the player ever saw it.
+   */
+  exBurst: { offered: number; used: number; declined: number }
   failures: { seed: number; error: string }[]
   agents: [string, string]
   msPerDecision: [number, number]
@@ -176,6 +204,7 @@ export function selfPlay(opts: SelfPlayOptions): SelfPlayReport {
     draws: 0,
     avgTurns: 0,
     unimplementedAbilities: 0,
+    exBurst: { offered: 0, used: 0, declined: 0 },
     failures: [],
     agents: [describeAgentSpec(specs[0]), describeAgentSpec(specs[1])],
     msPerDecision: [0, 0],
@@ -202,6 +231,7 @@ export function selfPlay(opts: SelfPlayOptions): SelfPlayReport {
   }
   report.avgTurns = report.completed ? turns / report.completed : 0
   report.unimplementedAbilities = stats.unimplementedAbilities
+  report.exBurst = { offered: stats.exBurstOffered, used: stats.exBurstUsed, declined: stats.exBurstDeclined }
   report.decisions = [stats.decisions[0], stats.decisions[1]]
   report.search = [stats.search[0], stats.search[1]]
   report.msPerDecision = [
