@@ -1,7 +1,7 @@
 # Rung F6 — a card you can press that will not say what pressing it does
 
-> **STATUS: BUILT.** Every pressable card now says what pressing it does. The review's undercount claim is
-> confirmed by mutation: the real pre-F6 figure was 279 of 443 (63 %), not 171 (38.6 %). Found by playing, then measured. The margin was
+> **STATUS: BUILT and code-reviewed.** Every pressable card now says what pressing it does. The pre-F6
+> figure was **403 of 443 (91 %)** — I understated it twice before the reviews caught each one. Found by playing, then measured. The margin was
 > predeclared before any run in F5's review, so it is stated here too — see *Acceptance*.
 
 ## Found by playing
@@ -232,3 +232,68 @@ that only opens a choice.
   since F6. Corrected.
 
 **979 tests, 9 Playwright, typecheck, lint, 200/200 selfplay seed 1.**
+
+---
+
+## Code review: the runtime is sound, my arithmetic was not
+
+### CRITICAL — the real figure is 403 of 443 (91 %), and I have now understated it twice
+
+My two mutations are **independent, not cumulative**. Reverting only `actionFor`'s non-commit branch leaves the
+field/orphan threading in place; reverting only that threading leaves the non-commit branch in place. 47 card
+occurrences fall in both groups, so the true pre-F6 count is `171 + 279 − 47 = 403`. Verified by reverting both
+at once, which the test reports as exactly **403**.
+
+Equivalently, and more starkly: pre-F6 only **40** committing hand cards carried an action, out of 443
+clickable card occurrences. **147 of 176 positions (83.5 %)** had nothing on the board saying anything — not
+the 21.6 % I published.
+
+| | |
+|---|---|
+| first published | 171 / 443 = 38.6 % |
+| after the plan review | 279 / 443 = 63 % |
+| **actual** | **403 / 443 = 91 %** |
+
+The corpus breakdown is hand 164, field 214, orphan 65 — reproduced independently by the reviewer and by the
+test, which is what makes the numbers comparable at all.
+
+### MAJOR — the corpus could skip a whole rendering path and still pass
+
+`checked > 200` does not protect a zone: drop all 65 orphan buttons and 378 remain; drop all 214 field buttons
+and 229 remain. The `continue` that skips an unrendered card could swallow exactly the missing-button
+regression the test exists to catch. Now asserted **per zone**, with the skip count required to be zero in
+every zone.
+
+(The path counters I had were also wrong: `onBoard` held only hand ids, so field cards were classified as
+"orphan" — and then discarded unused.)
+
+### MAJOR — my "exact" oracle was a substring match
+
+`includes` and `toContain` mean `"…, 12 ways to pay"` satisfies an expected `"2 ways to pay"`. The reviewer's
+mutation — add ten to every count below ten — passed it. `cardAccessibleName` joins with `", "`, so the
+separator has to be part of the comparison: the name must end with exactly `, ${action}`. Under that,
+mutation 33 fails **84** cards.
+
+### MAJOR — the browser check did not read what it claimed to
+
+It used a CSS locator and read the literal `aria-label` attribute while claiming to check the accessible name,
+so `aria-hidden="true"` on those buttons would have left it green. Rewritten to match through `getByRole`,
+whose name matching IS the browser's computation, with the exact suffixes the spec predeclared — and a second
+pinned route (seed 11) asserting a specific count of **3 ways to pay**, cross-checked against the payment
+chooser itself so the number cannot drift from the strip.
+
+Writing that test also corrected me: I asserted six "ways to pay" on seed 21 and it failed, because
+**Geomancer says `2 options`** — it can be cast *or* used for its hand ability, which is two different moves
+rather than two ways to fund one. Both forms appear on the same board, which is why that route is worth
+pinning.
+
+### MINOR — two contracts still described the old behaviour
+
+`Card.tsx` said `action` is "only ever set when the card offers exactly ONE thing", and `CardDetails.tsx` said
+it is always "the same `Choice.label` the click submits". Both updated.
+
+### Ruled sound
+
+The count itself: four activation entries aimed at four different Forwards really are four executable
+commands, and selecting the card reveals four buttons, so `4 options` is true rather than inflated. No runtime
+regression in the details panel or any other consumer — nothing branches on the absence of an action.

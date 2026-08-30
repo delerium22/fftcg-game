@@ -99,8 +99,11 @@ export interface CardProps {
    * name, cost, element, type and power first. They were the ones worst served before: a sighted player at
    * least saw the log update afterwards.
    *
-   * Only ever set when the card offers exactly ONE thing, because that is the click that commits
-   * immediately. A card with several options opens the prompt strip instead, which lists all of them.
+   * ALWAYS what pressing this card does, in one of three forms (rung F6): the exact `Choice.label` when the
+   * click commits, `N options` when it opens a list of moves, `N ways to pay` when it opens the payment
+   * chooser for one move. Only the first names an action, because only the first performs one — naming a
+   * cast the click will not make is the E4 defect. Saying nothing was the other half of it: pre-F6, 403 of
+   * 443 clickable cards in a six-seed corpus announced no action at all.
    */
   action?: string | undefined
 }

@@ -2,7 +2,8 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  actingPlayer, apply, createGame, legalCommands, viewFor, type CardId, type GameState,
+  actingPlayer, apply, createGame, legalCommands, viewFor,
+  type CardId, type GameState, type PlayerView,
 } from '@fftcg/engine'
 import { GreedyAgent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
@@ -59,6 +60,23 @@ function announced(id: CardId): string | null {
   return button?.getAttribute('aria-label') ?? null
 }
 
+/**
+ * Does the announced name end with EXACTLY this action?
+ *
+ * `includes` is not good enough and a review proved it: `cardAccessibleName` joins its parts with ", ", so
+ * "…, 12 ways to pay" contains "2 ways to pay", and a mutation adding ten to every small count passed. The
+ * separator has to be part of the match, which is what makes the comparison exact rather than a suffix.
+ */
+const endsWithAction = (said: string, action: string): boolean => said.endsWith(`, ${action}`)
+
+/** Which row drew this card — so coverage can be asserted per zone rather than in aggregate. */
+function zoneOf(view: PlayerView, id: CardId): 'hand' | 'field' | 'orphan' {
+  if (view.hand.includes(id)) return 'hand'
+  const onField = ([0, 1] as const).some((p) =>
+    [...view.fields[p].forwards, ...view.fields[p].backups].some((c) => c.id === id))
+  return onField ? 'field' : 'orphan'
+}
+
 /** The one of three forms this card's action must take, from the choices alone. */
 function expectedAction(choices: ChoiceSet, id: CardId): string {
   const forCard = choices.byCard.get(id) ?? []
@@ -85,7 +103,9 @@ function* positions(): Generator<GameState> {
 
 describe('every pressable card says what pressing it does (F6-A1)', () => {
   it('leaves NO clickable card silent, across hand, field and the orphan row', () => {
-    let checked = 0, silent = 0, fromField = 0, fromOrphan = 0
+    let silent = 0
+    const seen = { hand: 0, field: 0, orphan: 0 }
+    const skipped = { hand: 0, field: 0, orphan: 0 }
     const examples: string[] = []
     for (const s of positions()) {
       const view = viewFor(s, HUMAN)
@@ -93,22 +113,28 @@ describe('every pressable card says what pressing it does (F6-A1)', () => {
       const choices = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
       if (choices.byCard.size === 0) continue
       mount(s)
-      const onBoard = new Set(view.hand)
       for (const id of choices.byCard.keys()) {
+        const zone = zoneOf(view, id)
         const said = announced(id)
-        if (said === null) continue          // not rendered as a button in this position
-        checked++
+        if (said === null) { skipped[zone]++; continue }   // in byCard but no button in this position
+        seen[zone]++
         const want = expectedAction(choices, id)
-        if (!said.includes(want)) {
+        if (!endsWithAction(said, want)) {
           silent++
-          if (!onBoard.has(id)) fromOrphan++
-          else fromField++
-          if (examples.length < 4) examples.push(`${id}: "${said}" lacks "${want}"`)
+          if (examples.length < 4) examples.push(`${zone} ${id}: "${said}" is not "…, ${want}"`)
         }
       }
       act(() => { root?.unmount() }); host?.remove(); root = null; host = null
     }
-    expect(checked, 'no clickable card was examined, so this asserts nothing').toBeGreaterThan(200)
+    // PER ZONE, not in aggregate. A review showed the aggregate floor passes with an entire row missing:
+    // drop all 65 orphan buttons and 378 remain, drop all 214 field buttons and 229 remain. The `continue`
+    // above can swallow exactly the missing-button regression this test exists to catch, so each row has to
+    // prove it was examined.
+    expect(seen.hand, 'no HAND card was examined').toBeGreaterThan(50)
+    expect(seen.field, 'no FIELD card was examined — the row F6 had to reach').toBeGreaterThan(50)
+    expect(seen.orphan, 'no ORPHAN card was examined — the row F6 had to reach').toBeGreaterThan(20)
+    expect(skipped, 'a card was in byCard but rendered no button — that IS the defect this test catches')
+      .toEqual({ hand: 0, field: 0, orphan: 0 })
     expect(silent, `cards announcing no action: ${examples.join(' | ')}`).toBe(0)
     // The two mutations that make this test earn its place, and the second settles a review's CRITICAL:
     //   revert `actionFor`'s non-commit branch  -> 171 silent
@@ -116,7 +142,7 @@ describe('every pressable card says what pressing it does (F6-A1)', () => {
     // The extra 108 are cards my first probe scored as fine because it measured the PREDICATE rather than
     // the rendered button — including committing ones like "Attack with Undead Princess", where the click
     // does commit and the card said only its power. Pre-F6 the real figure was 279 of 443, not 171.
-    void fromField; void fromOrphan
+    // For scale, this corpus is hand 164, field 214, orphan 65 — 443 card occurrences in all.
   })
 })
 
@@ -162,8 +188,8 @@ describe('the three forms are exact (F6-A3, F6-A4)', () => {
       for (const c of [...list, ...(list[0]?.alternatives ?? [])]) {
         expect(said, `a non-committing card leaked the label "${c.label}"`).not.toContain(c.label)
       }
-      expect(said, 'a non-committing card does not say what pressing it does')
-        .toContain(expectedAction(choices, id))
+      expect(endsWithAction(said, expectedAction(choices, id)),
+        `"${said}" does not end in exactly ", ${expectedAction(choices, id)}"`).toBe(true)
       act(() => { document.querySelector<HTMLElement>(`[data-card-id="${id}"] button`)!.click() })
       expect(chosen.length, 'a card that only opens a choice submitted something').toBe(0)
       if (checked >= 3) return

@@ -289,6 +289,11 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
    * cast it, and naming the cast would be E4's defect wearing a hat. A bare count states only what is true,
    * and stays true when pressing an already-selected card closes the options again.
    *
+   * The 38.6 % above was measured wrong, twice, and the corrected figure is worse: it counted the PREDICATE
+   * rather than the rendered button, missing that this reached only the hand, and then a second measurement
+   * treated two independent mutations as cumulative. Reverting both — the true pre-F6 state — leaves 403 of
+   * 443 clickable cards silent, and 147 of 176 positions with nothing on the board saying anything.
+   *
    * The two counts are different questions and are counted differently. Several MOVES is
    * `forCard.length` — each is its own entry. One move funded several ways is ONE entry whose
    * `alternatives` hold the rest, so it is `alternatives.length + 1`: the preferred payment plus the others.

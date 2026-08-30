@@ -45,9 +45,12 @@ export function CardDetails({ def, action }: { def: CardDef | undefined; action?
           those happen to reconstruct the printed text exactly, so joining them looks right and silently
           drops whatever this build has not implemented, which is the one thing this panel exists to show. */}
       {def.text !== '' && <p className="details__text">{def.text}</p>}
-      {/* What clicking this card will spend, BEFORE the click. One click used to cast a 2-cost Summon by
-          discarding a 5-cost bomb, and said so only afterwards, in the past tense, in the log. This is the
-          same `Choice.label` string the click submits — passed in, never rebuilt, so the two cannot drift. */}
+      {/* What clicking this card will DO, before the click. One click used to cast a 2-cost Summon by
+          discarding a 5-cost bomb, and said so only afterwards, in the past tense, in the log. When the click
+          commits this is the same `Choice.label` string it submits — passed in, never rebuilt, so the two
+          cannot drift. Since rung F6 it is also set when the click only OPENS a choice, and then it is a bare
+          count (`2 options`, `3 ways to pay`) rather than a label, because no single label would be true of
+          a click that does not commit. */}
       {action != null && action !== '' && <p className="details__action">{action}</p>}
       {missing > 0 && (
         <p className="details__caveat">
