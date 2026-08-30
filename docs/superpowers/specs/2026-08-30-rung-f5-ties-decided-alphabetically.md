@@ -84,3 +84,92 @@ indication why.
 
 Changing what `evaluate` returns, the exploration constant, or the visit-count primary criterion. This rung
 touches one comparator.
+
+---
+
+## Plan review: sound comparator, sound sign, but A4 could have shipped a regression
+
+> **Verdict: revise A4 and the measurement procedure, then build.** The comparator and the reward direction are
+> both confirmed correct.
+
+### The sign question is settled, and it was the one I could not test
+
+The review traced it rather than asserting it: `leafReward` builds a ROOT-player reward (win 1 / loss 0 /
+draw ½, or `evaluate` squashed into [0,1]), the rollout returns it unchanged, and backpropagation adds **the
+same root-relative reward to every selected edge including the root edge**. Opponent awareness lives only in
+selection, where opponent nodes use `1 - mean`; stored rewards are never negated.
+
+**So a higher root-edge mean is better for the searcher. There is no sign trap.** That was the thing a win-rate
+measurement could only have reported as "it got worse", so having it settled by reading is worth more than the
+tournament it saves.
+
+### CRITICAL — A4 would have approved a regression in the policy that actually ships
+
+I wrote "200 non-inferior AND at least one low count improves materially". The browser's worst-platform policy
+is specifically **64** — F4's floor — not "any low count". So this passes:
+
+| iterations | change |
+|---|---|
+| 8 | **+15 points** |
+| 32 | unchanged |
+| 64 | **−8 points** |
+| 200 | −1 point, inside a 5-point margin |
+
+…while every move on a slow machine gets the 64-iteration regression. My rule would have shipped it.
+
+"Non-inferior" and "materially" were also undefined — no margin, no CI direction, no confidence level, no
+power, and testing "at least one of 8/32/64" at α=.05 carries up to a **14.3 % family-wise false-positive
+rate**.
+
+**A4 replaced:**
+
+- **64 and 200 are both SAFETY endpoints**, each with a predeclared non-inferiority margin and a paired lower
+  confidence bound. 64 is also the **primary efficacy endpoint**, because it is what ships.
+- 8 and 32 are diagnostic, or Holm-corrected if either is allowed to satisfy the efficacy gate.
+- **128 as a further diagnostic**: the box can finish anywhere between 64 and 200, and endpoint success does
+  not guarantee the interval between them.
+- "Material" is defined: **paired improvement ≥ 5 percentage points with a CI excluding zero**.
+- Compare `new pairScore − old pairScore` **by identical seed index**. `mirror`'s `ci95` is an interval for one
+  arm, NOT for the cross-arm difference, and using it as one would be the same error as comparing two
+  intervals for overlap.
+
+### MAJOR — my 7% counts changed choices, not advantage
+
+At 200: 27 of 230 decisions had a top-visit tie, and 16 of those would change — so the mean leader differs from
+the key leader in **59 % of tied decisions**. That is a real mechanism rather than the rare all-one-visit case.
+
+But exactly-equal means do not inflate it (the key still decides), while **near-equal means do**, and I
+reported no mean-gap distribution. The 230 decisions are also clustered inside only three games, so a naïve
+Wilson interval of 4.3–11.0 % is optimistic.
+
+**The 7 % justifies testing the comparator. It is not evidence of a 7 % strength opportunity**, and the spec
+above should not be read as claiming otherwise.
+
+### MINOR, all accepted
+
+- *"Equal visits means the luck objection does not apply"* is too strong. Equal visits equalise the
+  **sample-count** objection; two edges with three samples each can still have noisy means. The comparator is
+  still right, because when a choice must be made between equal-visit edges the mean is the only
+  quality-bearing statistic and the key has none.
+- **Cross-machine determinism was overstated.** The new comparator observes floating means produced through
+  `tanh`, division, logs and square roots; the key tie-break only settles EXACTLY equal means and does not
+  protect a near-tie that rounds differently on another engine. The existing test proves same-runtime
+  reproducibility, not cross-engine identity. The claim is narrowed accordingly.
+- **F5-A6 already has a known casualty**, and naming it now is the point: `ismcts-search.test.ts:278` asserts
+  that key order beats mean when visits tie — `aaa` at mean .1 is expected to beat `bbb` at .9. That test
+  encodes the behaviour this rung changes and must be updated, with its insertion-order-independence and
+  equal-mean-key-fallback assertions preserved separately.
+
+### Sample sizes, which change what is practical
+
+| comparison | games per arm |
+|---|---|
+| 75 % → 80 % | ~1,094 |
+| non-inferiority near 71.7 % (the 64 baseline) | ~1,004 |
+| 12.5 % → 17.5 % | ~800 |
+| 12.5 % → 22.5 % | ~226 |
+| 12.5 % → 27.5 % | ~111 |
+
+Pairing may reduce these materially, but only a pilot's variance of the per-seed differences can say by how
+much. **Procedure: pilot on separate seeds to size the variance, then freeze the confirmatory sample and use
+held-out seeds.** Reusing the pilot's seeds for the confirmation is how a pilot becomes a fishing expedition.
