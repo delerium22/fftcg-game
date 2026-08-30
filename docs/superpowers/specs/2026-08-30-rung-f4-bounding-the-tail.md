@@ -1,6 +1,7 @@
 # Rung F4 — bounding the tail (D3 revived)
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built.
+> **STATUS: PLAN REVIEWED — revise before building.** The time box is confirmed as the right lever, but two
+> CRITICALs must be fixed first; the budget as specified would never have reached the worker. Nothing built.
 >
 > This is not a new design. **D3 already specified it correctly** — a dual budget, iterations plus an optional
 > time box. It was deferred, and this spec exists to say what has changed, fix the blocker its review found,
@@ -104,3 +105,104 @@ D3-A1 … D3-A7 carry over verbatim; they are good criteria and were never the r
 4. Should the CLI expose `--budget-ms`, so F4-A2's two measurements can be run without a code edit?
 5. Is `minIterations` the right floor, or should it be a floor on the ROOT's visit count, which is what
    actually determines whether the answer is better than random?
+
+---
+
+## Plan review: the lever is right, the plan is not. Two CRITICALs.
+
+> **Verdict: keep the time box — do NOT replace it with a pace-only change — but do not implement this plan
+> until the wire test and the strength measurement are repaired.**
+
+### CRITICAL 1 — my blocker fix targets an object that never crosses the boundary
+
+I proposed putting `budget` on `SearchInput` because `SearchInput` carries the "cannot carry a function"
+comment. **The coordinator does not post a `SearchInput`.** It posts a bespoke `WorkerSearchRequest`
+(`protocol.ts:26`), which is `{ type, requestId, view, seed, iterations }` and nothing else, and the worker
+rebuilds a `SearchInput` field by field in `searchInputFor` (`protocol.ts:55`).
+
+So a budget added to `SearchInput` is **silently dropped at the boundary**, and my F4-A1 — clone a
+budget-bearing `SearchInput` — would have passed while the browser went on running all 200 iterations. Verified
+by reading both, not taken on trust.
+
+The budget has to be threaded through `SearchCoordinatorOptions`, `WorkerSearchRequest`, the coordinator's
+payload, and `searchInputFor`, and **F4-A1 must clone the actual request and assert the end-to-end
+translation**, not a locally constructed input.
+
+That is the fifth spec I have written against something I had not read, and the lesson is now narrower than
+"read first": I *did* read `SearchInput` and its structuredClone comment. What I did not read was the wire
+itself. **The type that looks like the wire format is not the wire format.**
+
+### CRITICAL 2 — the two measurements could describe different policies
+
+A 500 ms budget in Node completes far more iterations than 500 ms in the emitted browser worker — especially on
+the slow laptop `minIterations` exists to protect. So F4 could report good browser latency AND good CLI
+strength with **neither environment having exhibited both**: the CLI runs 150 iterations and keeps 75%, while
+wide browser states bottom out at the floor.
+
+The browser already returns `diagnostics.determinisations` and the harness throws it away. Required:
+
+- record and report the browser's per-decision ITERATION COUNT distribution beside the latency;
+- and gate the deterministic `iterations = minIterations` policy against greedy as the **worst-platform
+  strength floor**, which is a Node-measurable proxy for what the slowest machine actually plays.
+
+### MAJOR — 750 ms pacing is a real competitor and must be a control arm
+
+Pace-only is not the better *tail* lever: it does not reduce search time, worker occupation, supersession
+backlog or watchdog exposure. Hiding the worst observed p95 would need ~1350 ms pacing — 23–41 extra seconds
+per game across 31–54 AI moves; hiding the 2088 ms max needs 47–81 seconds.
+
+**But a 750 ms pace costs only 4.7–8.1 seconds per game and already puts four of the five observed per-game
+p95s under the beat.** So an aggressive 250–500 ms box must not be assumed better than simply pacing at 750.
+F4 compares four arms: unboxed/600, unboxed/750, boxed/600, and a mild hybrid.
+
+### MAJOR — my statistics were not decision rules
+
+"Not worse" and "outside its CI" are not tests of a difference, and the README already says 120 games could
+not distinguish a 3.3-point change. Comparing whether two intervals overlap is not a hypothesis test.
+
+Required: a **predeclared non-inferiority margin** and a **paired** confidence interval on boxed-minus-unboxed
+over identical seed pairs. As a planning guide, five points near 75% needs ~1200 games per arm unpaired;
+pairing reduces that by an amount only a pilot can establish. Exact "no loss" is not provable with a finite
+tournament and the spec must stop implying it is.
+
+### MAJOR — D3-A6 is both unachievable and vacuous, and its baselines are stale
+
+The five per-game p95s have a sample SD of ~409 ms, so five games cannot support "p95 within 1.2× of the box":
+distinguishing 742 from 600 ms needs ~130 games per arm; a 400 ms box needs ~40. And a box of ≥1123 ms would
+let the *unchanged* 1347 ms p95 satisfy the criterion outright.
+
+Both carried-over baselines are also stale: D3-A6's 1351 ms was the pre-F3 broken-driver figure, and D3-A7's
+78.3% is not what ships — cap 12 measures **75.0%, CI [66.7, 82.5]**. Both need a fresh same-commit same-seed
+unboxed control.
+
+Replacement: a predefined seed set, a matched unboxed control, a material *relative* reduction, and preferably
+the **rate of decisions exceeding 600/750 ms** with a confidence interval — a rate is far more stable than a
+per-game p95.
+
+### MAJOR — the budget values need validating, and one of them bricks the opponent
+
+`minIterations: 0` with an already-expired deadline runs zero iterations and throws *"no root action was ever
+visited"*. In the browser that is a post failure, which the coordinator treats as worker death — **permanent
+Greedy fallback for the rest of the game**, silently. `NaN`, infinities, fractions, negatives and a floor above
+`iterations` are all unspecified. Require finite positive `ms`, integer `minIterations >= 1`, normally
+`minIterations <= iterations`, with rejection tests.
+
+### MAJOR — the CLI needs both fields
+
+`--budget-ms` alone cannot reproduce F4-A2. Expose the floor too, validate both, and include both in
+`describeAgentSpec`, or the report cannot name the policy that produced it.
+
+### Confirmed sound
+
+- The defaulted clock parameter breaks no caller; Node ≥22 has global `performance.now()`. With no budget the
+  implementation should never invoke the clock at all — assert that with a throwing clock.
+- `performance.now()` IS available in the emitted dedicated worker; `globalThis.performance.now()` makes it
+  explicit.
+- **A search finishing inside the pacing delay is safe** — it is already the common path (F3's p50 is
+  133–429 ms). A result clears its watchdog then waits for `notBefore`; delivery is singular and state identity
+  is re-checked, so it cannot race the fallback into two commands. The serial-worker limitation stands: a
+  superseded search still delays the next one before its own budget begins.
+- `minIterations` is the right primitive — each iteration backpropagates exactly one root visit, so a
+  root-visit floor is equivalent. After one iteration the result is well-defined and legal (the seeded randomly
+  expanded root action), just barely informed. Its VALUE is unjustified and must be calibrated by the
+  floor-only strength gate above.
