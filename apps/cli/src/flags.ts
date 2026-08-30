@@ -18,7 +18,7 @@ export const KNOWN_FLAGS: Record<string, readonly string[]> = {
   hotseat: ['deck', 'seed'],
   selfplay: ['deck', 'seed', 'games', 'p0', 'p1', 'depth', 'iterations', 'rollout-cap', 'budget-ms', 'min-iterations', 'fast'],
   mirror: ['deck', 'seed', 'pairs', 'a', 'b', 'depth', 'iterations', 'rollout-cap', 'budget-ms', 'min-iterations', 'bootstrap', 'fast'],
-  profile: ['deck', 'seed', 'games', 'iterations'],
+  profile: ['deck', 'seed', 'games', 'iterations', 'opponent'],
   deckorder: ['deck', 'seed'],
 }
 

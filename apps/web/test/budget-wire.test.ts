@@ -157,3 +157,38 @@ describe('the box the browser actually ships (F4)', () => {
       .toBeGreaterThanOrEqual(LOWEST_MEASURED_ABOVE_PARITY)
   })
 })
+
+describe('a weight override reaches the worker too (G1a)', () => {
+  /**
+   * The same boundary, the same failure mode, and by now a pattern rather than a coincidence.
+   *
+   * F4 put the budget on `SearchInput` — which does not cross — and it was silently dropped. G1a put weights
+   * on `SearchInput` and the CLI's `withDefaults` dropped them on a different rebuild, so a treatment arm ran
+   * the control's policy under the treatment's name. Both defects are "a field added to the type that LOOKS
+   * like the wire, rebuilt field by field somewhere in the middle".
+   *
+   * So the weight is on `WorkerInit`, and this asserts it survives a real `structuredClone` and lands in the
+   * search's input — the same three things F4-A1 asserts about the budget.
+   */
+  const init = (over: Partial<WorkerInit> = {}): WorkerInit => ({
+    type: 'init', decks: DECKS, rolloutCommandCap: 12, explorationC: 1.4, ...over,
+  })
+  const request = (view: PlayerView): WorkerSearchRequest =>
+    ({ type: 'search', requestId: 1, view, seed: 5, iterations: 40 })
+
+  it('survives structuredClone and reaches SearchInput', () => {
+    const s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+    const view = viewFor(s, actingPlayer(s) ?? 0)
+    const posted = structuredClone(init({ weights: { damage: 25 } }))
+    expect(posted.weights, 'the override did not survive the clone').toEqual({ damage: 25 })
+    expect(searchInputFor(posted, request(view)).weights,
+      'the worker rebuilt a SearchInput without the weights — the browser would play a different agent')
+      .toEqual({ damage: 25 })
+  })
+
+  it('is ABSENT, not undefined, when nothing overrides — exactOptionalPropertyTypes depends on it', () => {
+    const s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+    const view = viewFor(s, actingPlayer(s) ?? 0)
+    expect('weights' in searchInputFor(init(), request(view))).toBe(false)
+  })
+})

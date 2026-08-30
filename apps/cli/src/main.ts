@@ -62,7 +62,7 @@ const usage = [
   '  selfplay: [--seed N] [--games N] [--p0 spec] [--p1 spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--budget-ms N] [--min-iterations N] [--fast]',
   '  mirror:   [--seed N] [--pairs N] [--a spec] [--b spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--budget-ms N] [--min-iterations N] [--bootstrap N] [--fast]',
   '            plays every seed twice with the seats swapped; every score is agent A\'s (spec D-A1)',
-  '  profile:  [--seed N] [--games N] [--iterations N]   (rung D7: where a rollout\'s applies go)',
+  '  profile:  [--seed N] [--games N] [--iterations N] [--opponent spec]   (rung D7: where a rollout\'s applies go)',
   '  common:   [--deck path]',
 ].join('\n')
 
@@ -104,7 +104,9 @@ if (cmd === 'hotseat') {
     // D7: where a rollout's applies go. Its own command because it answers one question and reports a shape
     // of its own; `selfplay`'s report stays the strength/cost report it already is.
     const games = parsed(() => parsePositiveInt(flag('games', '3'), 'games', 10_000))
-    const r = profileSearch({ games, seed, decks: [deck, deck], defs, iterations })
+    // G1b-A0: seat 1's policy. Default greedy:1, which is what every earlier profile measured.
+    const opponent = withDefaults(parsed(() => parseAgentSpec(flag('opponent', 'greedy:1'))), depth, iterations, rolloutCap, budget)
+    const r = profileSearch({ games, seed, decks: [deck, deck], defs, iterations, opponent })
     console.log(JSON.stringify(r, null, 2))
     process.exit(r.mismatchedDecisions === 0 ? 0 : 1)
   }

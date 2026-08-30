@@ -1,4 +1,4 @@
-import { searchIsmcts, type SearchBudget, type SearchInput, type SearchResult } from '@fftcg/ai'
+import { searchIsmcts, type SearchBudget, type SearchInput, type SearchResult, type WeightOverrides } from '@fftcg/ai'
 import type { PlayerView } from '@fftcg/engine'
 
 /**
@@ -29,6 +29,17 @@ export interface WorkerInit {
    * the worker would go on running every iteration. That is exactly the mistake F4's plan review caught.
    */
   readonly budget?: SearchBudget
+  /**
+   * Rung G1a's weight override, here for exactly the reason the budget is: stable policy rather than a
+   * property of a position, and `SearchInput` is NOT what crosses this boundary. A weight added only to
+   * `SearchInput` would be silently dropped by `searchInputFor` below and the browser would quietly play a
+   * DIFFERENT agent from the one the tournament measured — the same defect F4's review caught for the budget,
+   * and the same one that turned up in the CLI's `withDefaults`.
+   *
+   * A shipped default reaches the browser through `DEFAULT_WEIGHTS` and needs none of this; this exists so a
+   * configured override cannot fail silently.
+   */
+  readonly weights?: WeightOverrides
 }
 
 /** One search. `seed` is allocated per game POSITION by the coordinator (D2-3), never from `requestId`. */
@@ -72,6 +83,7 @@ export function searchInputFor(init: WorkerInit, request: WorkerSearchRequest): 
     // Carried through, or the box never reaches the search. `exactOptionalPropertyTypes` is on, so an absent
     // budget must be an ABSENT key rather than an explicit undefined.
     ...(init.budget === undefined ? {} : { budget: init.budget }),
+    ...(init.weights === undefined ? {} : { weights: init.weights }),
   }
 }
 

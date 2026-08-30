@@ -1,5 +1,6 @@
 import { actingPlayer, apply, createGame, legalCommands, viewFor, type CardDef, type GameState } from '@fftcg/engine'
-import { IsmctsAgent, GreedyAgent, profiledApplies, type RolloutProfile } from '@fftcg/ai'
+import { IsmctsAgent, profiledApplies, type RolloutProfile } from '@fftcg/ai'
+import { describeAgentSpec, makeAgent, type AgentSpec } from './agents.js'
 
 /**
  * Rung D7 — where a rollout's `apply` calls actually go.
@@ -10,6 +11,8 @@ import { IsmctsAgent, GreedyAgent, profiledApplies, type RolloutProfile } from '
  */
 export interface ProfileReport {
   games: number
+  /** G1b-A0: seat 1's policy, which the leaf distribution is a property of. */
+  opponent: string
   decisions: number
   /** Summed across every decision. The six apply buckets sum to `applies` — that identity is the check. */
   loopGenerated: number
@@ -67,6 +70,13 @@ const DAMAGE_SLOTS = 8
 
 export function profileSearch(opts: {
   games: number; seed: number; decks: [string[], string[]]; defs: CardDef[]; iterations: number
+  /**
+   * G1b-A0: seat 1's policy. It defaults to greedy depth 1, which is what every D7 measurement used — but it
+   * has to be configurable, because the leaf-damage distribution is a property of the MATCHUP and not of the
+   * searching agent alone. Profiling ISMCTS against greedy answered "where does damage sit while the search
+   * beats a heuristic", and G1b needs "where does it sit when both sides search".
+   */
+  opponent?: AgentSpec
 }): ProfileReport {
   const total = { ...ZERO }
   let decisions = 0
@@ -80,7 +90,7 @@ export function profileSearch(opts: {
     let s: GameState = createGame({ seed, decks: opts.decks, defs: opts.defs })
     // Seat 0 searches and is profiled; seat 1 is the heuristic, so the run costs one search per pair of moves.
     const searcher = new IsmctsAgent({ seed, decks: opts.decks, iterations: opts.iterations, profile: true })
-    const other = new GreedyAgent({ seed: seed + 1, decks: opts.decks, depth: 1 })
+    const other = makeAgent(opts.opponent ?? { kind: 'greedy', depth: 1 }, seed + 1, opts.decks)
 
     for (let i = 0; i < 4000 && !s.result; i++) {
       const p = actingPlayer(s)
@@ -110,6 +120,9 @@ export function profileSearch(opts: {
   const share = (n: number): string => (applies === 0 ? '—' : `${((n / applies) * 100).toFixed(1)} %`)
   return {
     games: opts.games,
+    // Named in the REPORT, because a leaf distribution without its matchup is a number nobody can compare
+    // against another one — the same argument `describeAgentSpec` already makes for a tournament's arms.
+    opponent: describeAgentSpec(opts.opponent ?? { kind: 'greedy', depth: 1 }),
     decisions,
     ...total,
     applies,
