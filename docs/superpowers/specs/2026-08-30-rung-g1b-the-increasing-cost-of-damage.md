@@ -1,6 +1,21 @@
 # Rung G1b — does the cost of damage *increase* as you approach seven?
 
-> **STATUS: SPEC, revised after plan review. Nothing built.** Every value, seed partition and margin is
+> **STATUS: PARKED after A0–A2, awaiting a compute decision.** The weight is built, defaulting to `0`, and
+> A0, A1 and A2 all pass. **A3 has not been run**: it was launched and stopped a minute later along with every
+> other background task, so no arm produced a single pair. Nothing is half-measured — there is no partial data
+> and no result to distrust.
+>
+> What remains is A3 (≈4 core-hours) and A4 (≈8.7 hours for one arm), and that is the whole cost of the rung.
+> It should be spent deliberately rather than because a loop was still running: by the spec's own arithmetic
+> the likeliest outcome is **undetermined** — this program can resolve a ~4-point effect and no smaller one,
+> and there is no prior reason to expect a damage curve to be worth four points. The apparatus below is the
+> durable part and is already committed; the sweep is a bet on top of it.
+>
+> To resume: `mirror --pairs 60 --seed 1 --a ismcts:200+damageCurve=$c --b ismcts:200` for `c` in
+> {0.5, 1, 2, 4}, then A4 per the criteria below. Nothing else is needed — the arms are now distinguishable
+> end to end, which they were not when this spec was written.
+
+> **Revised after plan review.** Every value, seed partition and margin is
 > predeclared before any arm has been run. The first draft of this spec was itself found unsound: its
 > experiment could not have detected the effect it demanded (~10 % power), its acceptance criteria would have
 > accepted the basis the previous review rejected, and its confidence interval was compared against the wrong
