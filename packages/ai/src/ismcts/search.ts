@@ -384,11 +384,14 @@ const actorOf = (view: PlayerView): PlayerId => view.pending?.player ?? view.pri
  *
  * Unvisited edges (available, never selected) are dropped.
  */
-const meanOf = (e: SearchEdge): number => e.reward / e.visits
-
 export function rankRootEdges(edges: readonly SearchEdge[]): SearchEdge[] {
+  // `meanReward`, not a local divide: it already exists, is what `rootChildren` reports, and guards
+  // `visits === 0` by returning 0 instead of NaN. The filter above makes that guard unreachable today, but a
+  // NaN reaching a comparator is the one input that makes `Array.prototype.sort` incoherent — it makes the
+  // comparison non-transitive, so the "sorted" order depends on the engine's algorithm and the input order.
+  // Depending on a filter three tokens away to keep that impossible is not worth the two-line saving.
   return edges.filter((e) => e.visits > 0)
-    .sort((a, b) => b.visits - a.visits || meanOf(b) - meanOf(a) || compareKeys(a.key, b.key))
+    .sort((a, b) => b.visits - a.visits || meanReward(b) - meanReward(a) || compareKeys(a.key, b.key))
 }
 
 /**

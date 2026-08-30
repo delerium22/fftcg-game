@@ -143,9 +143,14 @@ describe('the box the browser actually ships (F4)', () => {
     // is supposed to beat, because eight iterations on a wide root tie at one visit each and the reward is
     // discarded entirely.
     //
-    // 32 is the lowest measured value clearing greedy parity; this pins the floor at or above it so a later
-    // "let's lower it for latency" cannot quietly reintroduce a reward-blind opponent. Lowering it means
-    // re-running the sweep, which is the point.
+    // 32 was the lowest value measured above greedy parity, and this pins the floor at or above it so a later
+    // "let's lower it for latency" cannot quietly reintroduce a weak opponent. Lowering it means re-running
+    // the sweep, which is the point.
+    //
+    // Those figures predate rung F5, which removed the cause of the collapse — the same 8-iteration agent now
+    // measures 50.8 % rather than 12.5 %. The bound is deliberately NOT relaxed on that basis: it would have
+    // to be re-measured post-F5 first, and shipping a floor on un-re-measured numbers is precisely how 8 got
+    // here.
     const LOWEST_MEASURED_ABOVE_PARITY = 32
     expect(SEARCH_BUDGET.minIterations,
       'the shipped floor is below the lowest value measured to beat greedy — re-run the floor sweep')

@@ -303,6 +303,28 @@ describe('the final root choice (D-5)', () => {
   it('drops actions that were available but never selected', () => {
     expect(rankRootEdges([edge('never', 0, 0), edge('once', 1, 0.5)]).map((e) => e.key)).toEqual(['once'])
   })
+
+  it('never lets a zero-visit edge reach the mean comparison', () => {
+    // The mean is `reward / visits`, so a zero-visit edge would divide by zero. It cannot reach the comparator
+    // because the filter drops it first — but a NaN in a comparator makes the comparison NON-TRANSITIVE, and
+    // `Array.prototype.sort` on a non-transitive comparator produces an order that depends on the engine and
+    // on the input order. `meanReward` returns 0 rather than NaN for that reason, so the guarantee survives a
+    // future edit that reorders the filter and the sort.
+    const many = [edge('a', 0, 0), edge('b', 0, 0), edge('c', 3, 1.5), edge('d', 0, 0)]
+    expect(rankRootEdges(many).map((e) => e.key)).toEqual(['c'])
+    // and the same set in a different order gives the same answer, which a NaN comparator would not guarantee
+    expect(rankRootEdges([...many].reverse()).map((e) => e.key)).toEqual(['c'])
+  })
+
+  it('orders a whole set totally and identically whatever order it arrives in', () => {
+    // The property the key tie-break exists for (D-8), now that a floating mean sits in front of it: three
+    // edges tying on visits, two of them tying on mean as well.
+    const set = [edge('ccc', 5, 2.5), edge('aaa', 5, 2.5), edge('bbb', 5, 4)]
+    const expected = ['bbb', 'aaa', 'ccc']   // best mean first, then the two equal means by key
+    expect(rankRootEdges(set).map((e) => e.key)).toEqual(expected)
+    expect(rankRootEdges([...set].reverse()).map((e) => e.key)).toEqual(expected)
+    expect(rankRootEdges([set[1]!, set[2]!, set[0]!]).map((e) => e.key)).toEqual(expected)
+  })
 })
 
 describe('opponent nodes minimise the root reward (D-5)', () => {

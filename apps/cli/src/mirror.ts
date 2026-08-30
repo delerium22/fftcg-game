@@ -60,6 +60,23 @@ export interface MirrorGame {
 export interface MirrorReport {
   /** `[A, B]`, the same order as `options.agents`. */
   agents: [string, string]
+  /**
+   * What produced this report, so two of them can be shown to be comparable rather than assumed to be.
+   *
+   * A code review pointed out that the summary could not substantiate its own pairing: two runs over
+   * DIFFERENT seed ranges both emit 60-element `pairScores`, and subtracting them by index yields a
+   * plausible paired interval with nothing failing. The seeds lived only in `results`, which the CLI strips
+   * from the summary as noise. Recording the inputs is cheaper than recording every game.
+   */
+  provenance: {
+    seed: number
+    pairs: number
+    /** Ordered deck contents, hashed — two runs on different decks are not comparable however they are seeded. */
+    deckHash: string
+    /** `strict` off is `--fast`: it stops the invariant checks, so a fast run and a strict one are different work. */
+    strict: boolean
+    bootstrapSeed: number
+  }
   pairs: number
   games: number
   points: number
@@ -94,6 +111,20 @@ export interface MirrorReport {
   failures: { seed: number; seatOfA: 0 | 1; error: string }[]
   /** Every game, in play order — the raw material behind every aggregate above. */
   results: readonly MirrorGame[]
+}
+
+/**
+ * A stable digest of both decks IN ORDER. Not cryptographic — it exists to make "these two runs used the same
+ * decks" checkable at a glance, and to fail loudly when they did not.
+ */
+function deckHash(decks: readonly [readonly string[], readonly string[]]): string {
+  const text = `${decks[0].join(',')}|${decks[1].join(',')}`
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return (h >>> 0).toString(16).padStart(8, '0')
 }
 
 const emptyRecord = (): MirrorRecord => ({ games: 0, wins: 0, draws: 0, losses: 0, failures: 0, points: 0 })
@@ -236,6 +267,13 @@ export function mirrorTournament(opts: MirrorOptions): MirrorReport {
     points: record.points,
     pointScore: record.points / games,
     ci95: pairedBootstrapCi(pairScores, samples, opts.bootstrapSeed ?? opts.seed),
+    provenance: {
+      seed: opts.seed,
+      pairs: opts.pairs,
+      deckHash: deckHash(opts.decks),
+      strict: opts.strict !== false,
+      bootstrapSeed: opts.bootstrapSeed ?? opts.seed,
+    },
     pairScores,
     bootstrapSamples: samples,
     record,

@@ -33,10 +33,15 @@ export const AI_STEP_MS = 600
  *      ismcts:64   71.7 %   CI [63.3, 80.0]
  *      ismcts:200  75.0 %   CI [66.7, 82.5]  (unboxed)
  *
- * A floor of 8 is not "a bit weaker": with eight or more root actions, the first eight iterations expand eight
- * DIFFERENT actions at one visit each, `rankRootEdges` then ties on visits and falls through to the key
- * comparison, and every rollout reward is discarded. The answer is the alphabetically first action of a random
- * sample — far worse than the heuristic fallback the box was protecting the player from.
+ * WHY 8 was that bad, and what changed since: with eight or more root actions the first eight iterations
+ * expand eight DIFFERENT actions at one visit each, and `rankRootEdges` used to tie on visits and fall
+ * through to the key comparison, discarding every rollout reward — the answer was the alphabetically first
+ * action of a random sample. **Rung F5 fixed that cause**: equally-visited edges now break on the better mean,
+ * and the same 8-iteration agent measures 50.8 % rather than 12.5 %.
+ *
+ * The floor stays at 64 regardless. The numbers above were taken BEFORE F5, so they no longer describe what a
+ * slow machine plays, and lowering the floor on the strength of that is a decision that needs its own
+ * measurement — which is exactly the mistake that shipped the floor of 8.
  *
  * 64 is indistinguishable from the full 200 (the intervals overlap heavily) and costs ~77 ms of the 500 ms
  * box, so on normal hardware the clock stops the search long before the floor is relevant. On a slow machine
