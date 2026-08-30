@@ -73,6 +73,18 @@ export interface RolloutProfile {
   depth: number
   inTail: boolean
   command: number
+  /**
+   * Rung G1's gate: the damage pair at every leaf whose reward was backpropagated, so the opportunity for a
+   * damage curve can be SIZED before one is written. A curve can only reprice a leaf that reaches `material`,
+   * and a plan review established that a good share of leaves do not: terminals bypass `material` entirely and
+   * are already priced exactly.
+   *
+   * Indexed `root * 8 + opponent`, both clamped to 0..7 — from the ROOT player's perspective, named because
+   * getting a perspective backwards has cost this repo a rung before. Non-terminal leaves only; terminals are
+   * counted separately so the two always sum to the leaves seen.
+   */
+  leafDamage: number[]
+  terminalLeaves: number
 }
 
 export const newRolloutProfile = (): RolloutProfile => ({
@@ -81,6 +93,7 @@ export const newRolloutProfile = (): RolloutProfile => ({
   tailGenerated: 0, tailScored: 0, tailScoringApplies: 0,
   loopAdvanceApplies: 0, resolverAdvanceApplies: 0, tailAdvanceApplies: 0,
   refusals: 0, firstRefusalAtCommand: -1, depth: 0, inTail: false, command: 0,
+  leafDamage: new Array<number>(64).fill(0), terminalLeaves: 0,
 })
 
 /** The six apply buckets, which must equal `budget.used` for a rollout (spec D7-A1). */

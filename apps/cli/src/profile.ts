@@ -35,6 +35,25 @@ export interface ProfileReport {
    * cover those; this catches arithmetic drift over a long run.
    */
   mismatchedDecisions: number
+  /**
+   * Rung G1's gate, and the reason it may not be built at all: how many backpropagated leaves a damage weight
+   * could actually reprice, and where they sit on the road to seven.
+   *
+   * A terminal leaf bypasses `material` and is already priced exactly, so it is counted apart. `atFiveOrSix`
+   * is the share of REPRICEABLE leaves where either player stands at five or six damage — the states a curve
+   * exists to distinguish. If that share is small, a curve is tuning noise and G1 should be abandoned.
+   */
+  leaves: {
+    terminal: number
+    heuristic: number
+    terminalShare: string
+    /** Non-terminal leaves by the root player's own damage, then by the opponent's. Index is the count. */
+    byRootDamage: number[]
+    byOpponentDamage: number[]
+    atFiveOrSix: string
+    atSix: string
+    bothUnderFive: string
+  }
 }
 
 const ZERO = {
@@ -44,6 +63,8 @@ const ZERO = {
   loopAdvanceApplies: 0, resolverAdvanceApplies: 0, tailAdvanceApplies: 0, refusals: 0,
 }
 
+const DAMAGE_SLOTS = 8
+
 export function profileSearch(opts: {
   games: number; seed: number; decks: [string[], string[]]; defs: CardDef[]; iterations: number
 }): ProfileReport {
@@ -51,6 +72,8 @@ export function profileSearch(opts: {
   let decisions = 0
   let mismatched = 0
   let firstRefusal: number | null = null
+  const leafDamage = new Array<number>(DAMAGE_SLOTS * DAMAGE_SLOTS).fill(0)
+  let terminalLeaves = 0
 
   for (let g = 0; g < opts.games; g++) {
     const seed = opts.seed + g
@@ -73,6 +96,8 @@ export function profileSearch(opts: {
         // search itself from `budget.used`, while these four are accumulated at the apply sites.
         if (profiledApplies(prof) !== diag.rolloutApplies) mismatched++
         add(total, prof)
+        for (let k = 0; k < leafDamage.length; k++) leafDamage[k] = (leafDamage[k] ?? 0) + (prof.leafDamage[k] ?? 0)
+        terminalLeaves += prof.terminalLeaves
         if (prof.firstRefusalAtCommand >= 0) {
           firstRefusal = firstRefusal === null ? prof.firstRefusalAtCommand : Math.min(firstRefusal, prof.firstRefusalAtCommand)
         }
@@ -100,6 +125,40 @@ export function profileSearch(opts: {
       allScoring: share(total.loopScoringApplies + total.resolverScoringApplies + total.tailScoringApplies),
     },
     mismatchedDecisions: mismatched,
+    leaves: summariseLeaves(leafDamage, terminalLeaves),
+  }
+}
+
+/**
+ * The histogram, read back. Every share is over HEURISTIC leaves, not over all of them — a curve cannot move a
+ * terminal, so including terminals in the denominator would understate exactly the quantity being sized.
+ */
+function summariseLeaves(hist: readonly number[], terminal: number): ProfileReport['leaves'] {
+  const heuristic = hist.reduce((a, b) => a + b, 0)
+  const byRootDamage = new Array<number>(DAMAGE_SLOTS).fill(0)
+  const byOpponentDamage = new Array<number>(DAMAGE_SLOTS).fill(0)
+  let fiveOrSix = 0
+  let six = 0
+  let bothUnderFive = 0
+  for (let mine = 0; mine < DAMAGE_SLOTS; mine++) {
+    for (let theirs = 0; theirs < DAMAGE_SLOTS; theirs++) {
+      const n = hist[mine * DAMAGE_SLOTS + theirs] ?? 0
+      if (n === 0) continue
+      byRootDamage[mine] = (byRootDamage[mine] ?? 0) + n
+      byOpponentDamage[theirs] = (byOpponentDamage[theirs] ?? 0) + n
+      const hi = mine > theirs ? mine : theirs
+      if (hi >= 5) fiveOrSix += n
+      if (hi >= 6) six += n
+      if (hi < 5) bothUnderFive += n
+    }
+  }
+  const pct = (n: number): string => (heuristic === 0 ? '—' : `${((n / heuristic) * 100).toFixed(1)} %`)
+  const all = heuristic + terminal
+  return {
+    terminal, heuristic,
+    terminalShare: all === 0 ? '—' : `${((terminal / all) * 100).toFixed(1)} %`,
+    byRootDamage, byOpponentDamage,
+    atFiveOrSix: pct(fiveOrSix), atSix: pct(six), bothUnderFive: pct(bothUnderFive),
   }
 }
 

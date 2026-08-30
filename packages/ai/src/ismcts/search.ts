@@ -340,7 +340,20 @@ export function rolloutToCap(
   if (!s.result) s = resolveForcedDecisions(s, weights, ROLLOUT_AGGRESSION, root, budget)
   if (profile) profile.inTail = false
   if (counters) counters.rolloutApplies += budget.used
+  if (profile) recordLeafDamage(profile, s, root)
   return { state: s, reward: leafReward(s, root, weights, counters), commands, applies: budget.used }
+}
+
+/**
+ * G1's gate. A terminal leaf never reaches `material`, so no weight can reprice it — those are tallied apart
+ * from the histogram rather than folded into damage 7, which would claim a curve could move states it cannot.
+ */
+function recordLeafDamage(profile: RolloutProfile, state: GameState, root: PlayerId): void {
+  if (state.result) { profile.terminalLeaves++; return }
+  const clamp = (n: number): number => (n < 0 ? 0 : n > 7 ? 7 : n)
+  const mine = clamp(state.players[root].damageZone.length)
+  const theirs = clamp(state.players[root === 0 ? 1 : 0].damageZone.length)
+  profile.leafDamage[mine * 8 + theirs] = (profile.leafDamage[mine * 8 + theirs] ?? 0) + 1
 }
 
 // ---------------------------------------------------------------------------
