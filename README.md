@@ -132,7 +132,7 @@ Measured strength, all on seeded runs:
 |---|---|
 | ISMCTS vs greedy, 120 mirrored games, 200 iterations | **75.0 %**, CI95 [66.7, 82.5] |
 | Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
-| ISMCTS in the browser (production build, Apple Silicon) | p50 **133–429 ms**, p95 **192–1347 ms** per decision, over 5 finished games |
+| ISMCTS in the browser (production build, Apple Silicon) | p50 **91–343 ms**, p95 **140–504 ms** per decision, over 5 finished games |
 
 **The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; by rung D3
 it was 78.3 %, and re-measured at rung D7 over the same 120 mirrored games it is 75.0 % — with 90.0 % well
@@ -146,7 +146,19 @@ on a production preview, per-game p50 runs 133–429 ms and per-game p95 runs 19
 spread in the tail, because the expensive decisions are the wide boards and how many of those a game reaches
 varies. Quoting one game's p95, as this table used to, describes that game and nothing else.
 
-**These numbers went UP when the measuring instrument was fixed (rung F3), and the old ones were never real.**
+**The tail is bounded by a wall-clock box (rung F4).** The search stops starting new iterations after 500 ms,
+with a floor of 8 so a slow machine cannot answer from three. It is very nearly free: over 60 mirrored seed
+pairs against greedy, **58 of 60 produced the identical result** boxed and unboxed, the mean paired difference
+was 0.0000 points per game with a 95 % interval of [-2.5, +2.5], and Node decision time fell 243.9 → 206.3 ms.
+In the browser the worst single decision fell from **2088 ms to 505 ms**, and every game's p95 now sits under
+the 600 ms pacing floor — so on these runs every decision lands inside the beat the player already waits.
+
+It SHORTENS the tail rather than bounding it: the worker handles messages serially, so a superseded search
+still runs to completion before the next one starts. A hard bound needs the search chunked across turns of the
+event loop.
+
+**Before F4, these numbers went UP when the measuring instrument was fixed (rung F3), and the old ones were
+never real.**
 `measure-worker.js` drove the human seat with `querySelector('.hand button.card')` — the FIRST hand card,
 which in this deck is very often Lightning at cost 7 and therefore uncastable. The driver clicked it, found no
 action, and passed. Every browser latency figure this project has ever published was measured on a game where

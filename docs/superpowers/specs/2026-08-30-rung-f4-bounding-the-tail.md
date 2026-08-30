@@ -1,7 +1,7 @@
 # Rung F4 — bounding the tail (D3 revived)
 
-> **STATUS: PLAN REVIEWED — revise before building.** The time box is confirmed as the right lever, but two
-> CRITICALs must be fixed first; the budget as specified would never have reached the worker. Nothing built.
+> **STATUS: BUILT and MEASURED.** 500 ms box with a floor of 8, shipping. Strength unchanged (58 of 60 seed
+> pairs identical, paired CI [-2.5%, +2.5%]); worst browser decision 2088 ms -> 505 ms. See *Result*.
 >
 > This is not a new design. **D3 already specified it correctly** — a dual budget, iterations plus an optional
 > time box. It was deferred, and this spec exists to say what has changed, fix the blocker its review found,
@@ -206,3 +206,69 @@ Greedy fallback for the rest of the game**, silently. `NaN`, infinities, fractio
   root-visit floor is equivalent. After one iteration the result is well-defined and legal (the seeded randomly
   expanded root action), just barely informed. Its VALUE is unjustified and must be calibrated by the
   floor-only strength gate above.
+
+---
+
+## Result — the box is very nearly free, and the tail collapses
+
+Built across the mechanism (`9b07b1d`), the CLI instrument (`1ea1fd2`), `pairScores` for a paired comparison
+(`fba3d7b`), and the box wired into the app at 500 ms with a floor of 8.
+
+### Strength: no detectable cost, and measured PAIRWISE
+
+60 mirrored seed pairs (120 games) against greedy, same seeds in both arms:
+
+| | unboxed | boxed 500 ms / floor 8 |
+|---|---|---|
+| point score | 0.7500 | **0.7500** |
+| ci95 | [0.667, 0.825] | [0.675, 0.833] |
+| ms/decision | 243.9 | **206.3** |
+
+The aggregate is not the interesting part, and the review was right that comparing two intervals tests
+nothing. The **paired** view:
+
+| | |
+|---|---|
+| seed pairs with an identical result | **58 of 60** |
+| pairs that changed | 2 — one better, one worse |
+| mean paired difference | **0.0000** points per game |
+| paired 95 % CI on the difference | **[−2.5 %, +2.5 %]** |
+
+That interval is far tighter than either arm's own ±8 %, which is why the pairing was worth building. The
+structural fact matters more than the interval: **the box changes almost nothing about what the search plays**,
+because at 200 iterations most decisions already finish well inside 500 ms. What it removes is the tail.
+
+### The browser tail, which is the number a player feels
+
+Five finished games each, same harness. Unboxed is F3's measurement:
+
+| | unboxed | boxed |
+|---|---|---|
+| p50, per game | 133–429 ms | **91–343 ms** |
+| p95, per game | 192–1347 ms | **140–504 ms** |
+| worst single decision | **2088 ms** | **505 ms** |
+
+**Every boxed game's p95 is under the 600 ms pacing floor**, so on these runs every decision lands inside the
+beat the player already waits. The worst decision fell from 2.1 s to 0.5 s.
+
+505 ms against a 500 ms box is the design working rather than leaking: the deadline is checked at the top of an
+iteration, so one that has begun always finishes.
+
+Zero long tasks and a worst frame gap of 9–39 ms across every run, unchanged — the search is in a worker and
+the main thread is never blocked.
+
+### One run discarded, and reported rather than re-rolled
+
+A sixth boxed run came back `finished: false` with 7 AI moves — the driver stalled before the game ended. It is
+excluded under F3-A1, which requires a finished valid run, and is recorded here rather than quietly re-run
+until one passed. Its numbers (p50 130, p95 159) would have flattered the result.
+
+### What this does NOT do, restated
+
+It shortens the tail; it does not bound it. The worker handles messages serially, so a superseded search still
+runs to completion before the next one starts. A hard bound needs the search chunked across turns of the event
+loop, which is a larger rung.
+
+The floor of 8 is **not calibrated**. The strength of a floor-only agent — what a slow machine actually plays —
+has not been measured, so 8 is a guess with a reason rather than a number with evidence. That is the review's
+"worst-platform strength floor" and the obvious follow-up.

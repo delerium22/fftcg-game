@@ -12,6 +12,28 @@ import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 /** Spec B7: the agent decides in ~0.27 ms, far too fast to watch — one move per this many ms instead. */
 export const AI_STEP_MS = 600
 
+/**
+ * Rung F4: the search's wall-clock box, and the floor below which the clock cannot stop it.
+ *
+ * `AI_STEP_MS` paces DELIVERY — a result that arrives early is held until the beat — and cannot do this job,
+ * because it does not start until there is a result to hold. This bounds the search itself.
+ *
+ * 500 ms, measured rather than chosen: over 60 mirrored seed pairs against greedy, 58 of 60 produced the
+ * IDENTICAL result boxed and unboxed (the two that differed went one way each), the mean paired difference was
+ * 0.0000 points per game with a 95 % interval of [-2.5, +2.5], and mean decision time fell 243.9 -> 206.3 ms.
+ * It is very nearly free because at 200 iterations most decisions already finish well inside it; what it
+ * removes is the tail.
+ *
+ * The floor of 8 is the guard for a slow machine, where the box binds far harder than it does here. It is not
+ * calibrated — the strength of a floor-only agent has not been measured, and until it is, 8 is a guess with a
+ * reason rather than a number with evidence.
+ *
+ * NOT a hard bound on how long a player waits: the worker handles messages serially, so a superseded search
+ * still runs to completion before the next one starts. Bounding that needs the search chunked across turns of
+ * the event loop, which this rung does not do.
+ */
+export const SEARCH_BUDGET = { ms: 500, minIterations: 8 } as const
+
 const PHASE_LABEL: Record<string, string> = {
   setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase',
   main1: 'Main Phase 1', attack: 'Attack Phase', main2: 'Main Phase 2', end: 'End Phase',
@@ -423,7 +445,7 @@ export function createAiSearch(readState: () => GameState, seed: number, seams: 
   let coordinator: SearchCoordinator | null = null
   const drop = (): void => { coordinator?.dispose(); coordinator = null }
   const live = (): SearchCoordinator => (coordinator ??= new SearchCoordinator({
-    decks: DECKS, gameSeed, readState, stepMs: AI_STEP_MS, ...seams,
+    decks: DECKS, gameSeed, readState, stepMs: AI_STEP_MS, budget: SEARCH_BUDGET, ...seams,
   }))
   return {
     request: (state, handlers) => { live().request(state, handlers) },
