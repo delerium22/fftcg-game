@@ -68,6 +68,15 @@ export interface MirrorReport {
   /** Paired-bootstrap 95 % interval on `pointScore`, resampling PAIRS (not games). */
   ci95: [number, number]
   bootstrapSamples: number
+  /**
+   * A's score for each SEED PAIR, in seed order — 0, 0.5 or 1 (both games lost, split, both won).
+   *
+   * Emitted so two runs over the same seeds can be compared PAIRWISE rather than as two aggregates. Comparing
+   * aggregate win rates cannot tell "the change altered almost nothing" from "it altered twenty games
+   * symmetrically", and those are different facts about a change. It is also what a paired confidence interval
+   * needs; `pairedBootstrapCi` above already resamples exactly this array.
+   */
+  pairScores: number[]
   record: MirrorRecord
   /** `[A as player 0, A as player 1]` — the split the old harness could not produce. */
   perSeat: [MirrorRecord, MirrorRecord]
@@ -227,6 +236,7 @@ export function mirrorTournament(opts: MirrorOptions): MirrorReport {
     points: record.points,
     pointScore: record.points / games,
     ci95: pairedBootstrapCi(pairScores, samples, opts.bootstrapSeed ?? opts.seed),
+    pairScores,
     bootstrapSamples: samples,
     record,
     perSeat,
