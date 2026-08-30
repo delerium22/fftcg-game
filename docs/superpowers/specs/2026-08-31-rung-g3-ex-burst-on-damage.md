@@ -16,8 +16,16 @@ Measured over 20 greedy-vs-greedy games on the shipping deck:
 | EX Bursts revealed and skipped | **43 — 22.6 % of all damage** |
 | deck codes with EX BURST | 4 of 18 (Lightning, Noel, Reeve, Odin) |
 
-Nearly a quarter of every damage event in the game silently does nothing. To a player who knows FFTCG,
-flipping a Lightning off the top and watching nothing happen is the single most obviously-missing rule.
+Nearly a quarter of every damage event in the game does nothing. To a player who knows FFTCG, flipping a
+Lightning off the top and watching nothing happen is the single most obviously-missing rule.
+
+**Correction to my own first draft: it is not silent.** The UI already renders `exBurstSkipped` as an amber
+warning — *"EX Burst on Lightning skipped (not implemented)"* — so the player is told, every time, that a rule
+was not applied. `types.ts` even argues the point: *"A warning that cries wolf is worse than no warning,
+because the EX Burst ones are real."* That is the right way to ship an unimplemented rule, and it raises the
+bar for this rung rather than lowering it: the gap is already visible and honestly labelled, so the only thing
+worth shipping is the rule itself, correctly. Half-implementing it would replace an accurate warning with
+inaccurate play.
 
 ## Why it is smaller than it looks
 
