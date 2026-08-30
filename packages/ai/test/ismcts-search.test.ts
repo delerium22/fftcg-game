@@ -275,9 +275,27 @@ describe('the final root choice (D-5)', () => {
     expect(rankRootEdges([solid, lucky])[0]).toBe(solid)   // and not an artefact of the argument order
   })
 
-  it('breaks a visit tie on the total key order, never on insertion order', () => {
-    const a = edge('aaa', 10, 1)
-    const b = edge('bbb', 10, 9)
+  /**
+   * CHANGED BY RUNG F5, deliberately. This used to assert that a visit tie resolves on the KEY, so `aaa` at
+   * mean 0.1 beat `bbb` at mean 0.9 — the search discarding everything it had learned about two equally
+   * sampled actions and answering alphabetically. Ties are not rare: measured over 230 real decisions, the top
+   * group ties 11.7 % of the time at the shipping 200 iterations and 90.9 % at 8.
+   *
+   * Both properties the old test protected are kept, as separate assertions: the answer never depends on
+   * insertion order, and an exact tie on BOTH visits and mean still falls back to the key.
+   */
+  it('breaks a visit tie on the better MEAN, never on insertion order', () => {
+    const a = edge('aaa', 10, 1)     // mean 0.1
+    const b = edge('bbb', 10, 9)     // mean 0.9 — equally sampled, and better
+    expect(rankRootEdges([b, a]).map((e) => e.key)).toEqual(['bbb', 'aaa'])
+    expect(rankRootEdges([a, b]).map((e) => e.key)).toEqual(['bbb', 'aaa'])
+  })
+
+  it('falls back to the total key order when visits AND mean both tie', () => {
+    // The determinism guarantee (D-8) that the key tie-break exists for. Same-runtime: these means come
+    // through `tanh`, division and logs, so a NEAR-tie can still round differently on another engine.
+    const a = edge('aaa', 10, 5)
+    const b = edge('bbb', 10, 5)
     expect(rankRootEdges([b, a]).map((e) => e.key)).toEqual(['aaa', 'bbb'])
     expect(rankRootEdges([a, b]).map((e) => e.key)).toEqual(['aaa', 'bbb'])
   })

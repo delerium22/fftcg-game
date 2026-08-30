@@ -360,13 +360,35 @@ const sortedDecks = (decks: SearchInput['decks']): [string[], string[]] =>
 const actorOf = (view: PlayerView): PlayerId => view.pending?.player ?? view.priority
 
 /**
- * Root actions best-first (D-5): most VISITS, never best mean. The visit count is the robust statistic — an
- * edge with three visits and a mean of 0.99 was lucky, not good, and picking by mean makes the search's answer
- * a hostage to whichever rollout happened to find a win first. Ties break on the total key order, so the
- * answer never depends on `Map` insertion order (D-8). Unvisited edges (available, never selected) are dropped.
+ * Root actions best-first (D-5): most VISITS first, then the higher MEAN, then the key.
+ *
+ * The primary rule is unchanged and D-5's reasoning for it still holds: an edge with three visits and a mean
+ * of 0.99 was lucky, not good, so a better-sampled edge always wins however good the under-sampled one looks.
+ *
+ * What changed (rung F5) is the TIE. Ties are not rare — measured over 230 real decisions, the top group ties
+ * on visits 11.7 % of the time at the shipping 200 iterations and 90.9 % at 8 — and the tie used to be settled
+ * by `compareKeys`, a total order that exists for determinism (D-8) and is arbitrary with respect to quality.
+ * So the search discarded every reward it had gathered about the tied actions and answered alphabetically.
+ *
+ * Equal visits do not make two means trustworthy; they make them equally sampled, which is what the luck
+ * objection above was about. Between equal-visit edges the mean is the only quality-bearing statistic there
+ * is, and the key has none.
+ *
+ * The reward is ROOT-RELATIVE at every edge — `leafReward` builds it for the root player and backpropagation
+ * adds it unchanged, with opponent awareness living only in selection (`1 - mean` at opponent nodes). So
+ * higher is better here, with no negation to get wrong.
+ *
+ * The key remains the FINAL tie-break, so exactly-equal means still resolve totally and reproducibly. It does
+ * not protect a NEAR-tie that rounds differently on another JS engine: these means come through `tanh`,
+ * division and logs, so the guarantee is same-runtime reproducibility, not cross-engine identity.
+ *
+ * Unvisited edges (available, never selected) are dropped.
  */
+const meanOf = (e: SearchEdge): number => e.reward / e.visits
+
 export function rankRootEdges(edges: readonly SearchEdge[]): SearchEdge[] {
-  return edges.filter((e) => e.visits > 0).sort((a, b) => b.visits - a.visits || compareKeys(a.key, b.key))
+  return edges.filter((e) => e.visits > 0)
+    .sort((a, b) => b.visits - a.visits || meanOf(b) - meanOf(a) || compareKeys(a.key, b.key))
 }
 
 /**
