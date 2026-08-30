@@ -61,6 +61,7 @@ export const ABILITY_CLAUSES: Record<string, number> = {
  */
 const NOEL_ETB: Ability = {
   id: '16-092C:etb',
+  exBurst: true,
   trigger: { kind: 'enterField' },
   text: 'EX BURST When Noel enters the field, choose up to 2 Forwards opponent controls. Dull them.',
   effects: [{
@@ -198,6 +199,7 @@ const RAMUH_SUMMON: Ability = {
  */
 const LIGHTNING_ETB: Ability = {
   id: '27-127S:etb',
+  exBurst: true,
   trigger: { kind: 'enterField' },
   text: 'EX BURST When Lightning enters the field, choose 1 Forward of cost 4 or less opponent controls. Break it.',
   effects: [{
@@ -435,6 +437,7 @@ const CLOUD_ATTACK_PHASE: Ability = {
  */
 const REEVE_ETB: Ability = {
   id: '20-105C:etb',
+  exBurst: true,
   trigger: { kind: 'enterField' },
   text: 'EX BURST When Reeve enters the field, look at the top 3 cards of your deck. Add 1 card among them to '
     + 'your hand and return the other cards to the bottom of your deck in any order.',
@@ -494,6 +497,7 @@ const ODIN_COST_REDUCTION: Ability = {
  */
 const ODIN_SUMMON: Ability = {
   id: '13-072R:summon',
+  exBurst: true,
   trigger: { kind: 'summonResolve' },
   text: 'EX BURST Choose 1 Forward of cost 5 or less. Break it.',
   effects: [{

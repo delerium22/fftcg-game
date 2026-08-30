@@ -2,11 +2,23 @@ import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import { EMPTY_RESOLUTION } from './abilities.js'
 import type { ZoneTransitionReason } from './abilities.js'
+import type { Ability } from './abilities.js'
 import type { CardId, FieldCard, GameState } from './state.js'
 import { DAMAGE_TO_LOSE, defOf, powerOf, updatePlayer } from './state.js'
 import type { Event } from './events.js'
 import type { DamageOccurrence } from './resolve.js'
 import { enqueueDamageTriggers, enqueueZoneChangeTriggers } from './resolve.js'
+
+/**
+ * The clause the printed EX BURST tag prefixes, or null. Read off the ability list rather than off `text`, so
+ * a reworded comment cannot change which clause fires (spec G3).
+ *
+ * A card whose def says `exBurst` but which marks no clause returns null and is simply not offered — that is a
+ * coverage hole, and `pool-coverage` is where it is caught, not here at damage time.
+ */
+export function exBurstAbility(state: GameState, card: CardId): Ability | null {
+  return defOf(state, card).abilities?.find((a) => a.exBurst === true) ?? null
+}
 
 /**
  * §10.1.4.1. `sources` is EVERY card dealing this one point of damage — for an unblocked party, all of it, because
@@ -22,7 +34,18 @@ export function dealPlayerDamage(state: GameState, victim: PlayerId, sources: re
   }
   let s = updatePlayer(state, victim, (q) => ({ ...q, deck: q.deck.slice(1), damageZone: [...q.damageZone, top] }))
   const events: Event[] = [{ type: 'playerDamaged', player: victim, card: top }]
-  if (defOf(s, top).exBurst) events.push({ type: 'exBurstSkipped', player: victim, card: top })   // MVP0-SIMPLIFICATION: §11.10 EX Burst not resolved
+  // §11.10 (rung G3): a card printing EX BURST that is dealt as damage lets its owner use the marked clause.
+  //
+  // Offered only when the damage was NOT the seventh. The alternative — offer, then withdraw once
+  // `runRuleProcesses` sets the result — would put an `exBurstOffered` in the log for a burst nobody could
+  // ever answer, and the accounting in G3-A1 depends on every offer reaching exactly one terminal state. The
+  // check mirrors the rule rather than duplicating the loss condition: this is "was that the seventh", and
+  // `runRuleProcesses` remains the only thing that ends the game.
+  const burst = exBurstAbility(s, top)
+  if (burst && s.players[victim].damageZone.length < DAMAGE_TO_LOSE) {
+    s = { ...s, pending: { kind: 'chooseExBurst', player: victim, card: top, abilityId: burst.id } }
+    events.push({ type: 'exBurstOffered', player: victim, card: top, abilityId: burst.id })
+  }
   // Dispatched only once the damage has LANDED: the empty-deck branch above ends the game instead (§3.1.3), and
   // `checkInvariants` forbids anything staying queued after game over.
   if (sources) s = enqueueDamageTriggers(s, sources)

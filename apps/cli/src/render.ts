@@ -77,8 +77,18 @@ export function renderView(v: PlayerView): string {
   return lines.join('\n')
 }
 
+/** The card a `chooseExBurst` offer is about. The command carries only the answer, so the card comes from the
+ *  pending — which is the authority, and is public in the damage zone either way. */
+const exBurstCardOf = (v: PlayerView): CardId =>
+  (v.pending?.kind === 'chooseExBurst' ? v.pending.card : 0) as CardId
+
 export function describeCommand(v: PlayerView, c: Command): string {
   switch (c.type) {
+    // G3. Two answers that must never read alike — E9 was a rung about exactly that. "Use" names the card so
+    // the player knows WHICH burst; "Decline" names it too, because the strip shows both side by side and a
+    // bare "Decline" beside a named "Use" reads as declining something else.
+    case 'chooseExBurst':
+      return c.use ? `Use the EX Burst on ${cardName(v, exBurstCardOf(v))}` : `Decline the EX Burst on ${cardName(v, exBurstCardOf(v))}`
     case 'chooseFirst': return c.goFirst ? 'Take the first turn' : 'Let the opponent go first'
     case 'mulligan': return c.redraw ? 'Mulligan (redraw 5)' : 'Keep hand'
     case 'castCharacter':

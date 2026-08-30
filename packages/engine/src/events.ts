@@ -51,7 +51,17 @@ export type Event =
   | { type: 'blockDeclared'; player: PlayerId; blocker: CardId | null }
   | { type: 'battleDamage'; source: CardId; target: CardId; amount: number }
   | { type: 'playerDamaged'; player: PlayerId; card: CardId }
-  | { type: 'exBurstSkipped'; player: PlayerId; card: CardId }
+  /**
+   * Rung G3, the EX Burst lifecycle (§11.10). `exBurstSkipped` is gone: it was the honest warning that the
+   * rule was NOT applied, and deleting it without replacement would have left the new behaviour unnarrated
+   * and the acceptance figures unauditable.
+   *
+   * Every revealed EX card ends in exactly one terminal state — declined, used, or neither because the damage
+   * was lethal and the game ended first — which is what makes the accounting in G3-A1 a closed sum.
+   */
+  | { type: 'exBurstOffered'; player: PlayerId; card: CardId; abilityId: string }
+  | { type: 'exBurstUsed'; player: PlayerId; card: CardId; abilityId: string }
+  | { type: 'exBurstDeclined'; player: PlayerId; card: CardId; abilityId: string }
   | { type: 'broken'; card: CardId }                                   // §12.4.5 damage ≥ power
   | { type: 'putIntoBreakZone'; card: CardId; reason: 'zeroPower' }     // §12.4.4
   // --- ability resolution (spec C1-3) ---

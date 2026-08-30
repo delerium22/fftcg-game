@@ -125,7 +125,12 @@ const within = (b: Budget | undefined): boolean => !b || b.used < b.cap
 const isForcedDecision = (state: GameState): boolean => {
   const kind = state.pending?.kind
   if (kind === undefined) return false
-  if (kind === 'declareBlock' || kind === 'assignPartyDamage' || kind === 'chooseTargets' || kind === 'chooseMode') return true
+  // G3's `chooseExBurst` joins the unconditional list rather than relying on the fallback below. A burst
+  // whose card queues nothing — a decline, or Reeve looking at a deck — leaves `hasResolutionWork` false, so
+  // the fallback would hand `evaluate` a board with an unanswered offer sitting on it and price a position
+  // that cannot occur in play.
+  if (kind === 'declareBlock' || kind === 'assignPartyDamage' || kind === 'chooseTargets' || kind === 'chooseMode'
+    || kind === 'chooseExBurst') return true
   return hasResolutionWork(state.resolution)
 }
 
@@ -354,7 +359,9 @@ function commandCardIds(c: Command): CardId[] {
     // C3: the activation names its source AND every CP source it spends; all are ids that must be real.
     case 'activateAbility': return [c.source, ...c.payment.dullBackups, ...c.payment.discards.map((d) => d.card)]
     // `chooseFromDeck` answers with INDICES, so like `chooseMode` it carries no card id to check.
-    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'pass': case 'concede': return []
+    // G3's `chooseExBurst` is a bare boolean, so like `chooseMode` it names no card to validate.
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst':
+    case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }
 }

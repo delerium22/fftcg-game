@@ -185,11 +185,17 @@ describe('activated abilities reach the agents (C3-A1)', () => {
   })
 
   it('every activation it chose is a real activated clause', () => {
-    // Grows as rungs land: C3 shipped six, C7 added Undead Princess's removal. The point of the assertion is
-    // that the agent never invents an id, not that the list is frozen at six.
+    // Grows as rungs land: C3 shipped six, C7 added Undead Princess's removal, and G3 added Sphene's.
+    //
+    // Sphene's retrieve needs a Forward that was put into the Break Zone FROM THE FIELD this turn, and until
+    // EX Burst existed the agents never reached one on a turn where Sphene could also act. Lightning's and
+    // Odin's bursts break a Forward on the DEFENDER's turn, which is exactly the window that was missing — so
+    // this line is evidence that G3 unlocked a card interaction rather than merely adding an event.
+    //
+    // The point of the assertion is that the agent never invents an id, not that the list is frozen.
     const ACTIVATED = [
       '1-121C:haste', '16-092C:dull-all', '18-064C:draw', '18-069C:draw',
-      '19-052C:pump', '19-052C:remove', '20-074C:draw',
+      '19-052C:pump', '19-052C:remove', '20-074C:draw', '27-126S:retrieve',
     ]
     for (const id of chosen.keys()) expect(ACTIVATED).toContain(id)
   })

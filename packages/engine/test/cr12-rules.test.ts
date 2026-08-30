@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { dealPlayerDamage, runRuleProcesses } from '../src/rules.js'
+import { applyChooseExBurst } from '../src/attack.js'
 import { checkInvariants } from '../src/invariants.js'
+import type { Ability, Frame } from '../src/abilities.js'
+import type { CardId, GameState } from '../src/state.js'
+import type { CardDef } from '../src/types.js'
 import { makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
 
 describe('§12.4 rule processes', () => {
@@ -55,12 +59,85 @@ describe('dealPlayerDamage', () => {
     s = { ...s, players: [s.players[0], { ...s.players[1], deck: [] }] }
     expect(dealPlayerDamage(s, 1, null)[0].result).toEqual({ winner: 0, cause: 'damageWithEmptyDeck', reason: expect.stringMatching(/empty/i) })
   })
-  it('logs a skipped EX Burst', () => {
-    let s = makeGame({ defs: [...VANILLA_POOL, makeDef({ code: 'V-EX', exBurst: true, hasAbilities: true })] })
+  /** A deck whose top card is `code`, so the next damage reveals exactly that card. */
+  const withTopCard = (defs: CardDef[], code: string): [GameState, CardId] => {
+    const base = makeGame({ defs: [...VANILLA_POOL, ...defs] })
     const id = 999
-    s = { ...s, cards: { ...s.cards, [id]: { id, code: 'V-EX', owner: 1 } }, players: [s.players[0], { ...s.players[1], deck: [id, ...s.players[1].deck] }] }
-    const [, events] = dealPlayerDamage(s, 1, null)
-    expect(events).toContainEqual({ type: 'exBurstSkipped', player: 1, card: id })
+    return [{
+      ...base,
+      cards: { ...base.cards, [id]: { id, code, owner: 1 } },
+      players: [base.players[0], { ...base.players[1], deck: [id, ...base.players[1].deck] }],
+    }, id]
+  }
+
+  const EX_ABILITY: Ability = {
+    id: 'V-EX:etb', trigger: { kind: 'enterField' }, exBurst: true,
+    text: 'EX BURST When V-EX enters the field, nothing happens.', effects: [],
+  }
+
+  it('§11.10: offers the marked clause when an EX Burst card is dealt as damage', () => {
+    const [s, id] = withTopCard([makeDef({ code: 'V-EX', exBurst: true, hasAbilities: true, abilities: [EX_ABILITY] })], 'V-EX')
+    const [t, events] = dealPlayerDamage(s, 1, null)
+    expect(events).toContainEqual({ type: 'exBurstOffered', player: 1, card: id, abilityId: 'V-EX:etb' })
+    expect(t.pending).toEqual({ kind: 'chooseExBurst', player: 1, card: id, abilityId: 'V-EX:etb' })
+    // The damage still happened. A burst is damage that has an ability, not a card being cast.
+    expect(t.players[1].damageZone).toContain(id)
+  })
+
+  it('offers nothing when the card prints EX BURST but marks no clause', () => {
+    // A coverage hole rather than a crash: `pool-coverage` is where a card printing EX BURST with no marked
+    // ability is caught, and damage time must not care. This was the original fixture, which passed the old
+    // assertion for the wrong reason — the def had `exBurst` and no abilities at all.
+    const [s] = withTopCard([makeDef({ code: 'V-EX', exBurst: true, hasAbilities: true })], 'V-EX')
+    const [t, events] = dealPlayerDamage(s, 1, null)
+    expect(events.some((e) => e.type.startsWith('exBurst')), 'an unmarked card was offered').toBe(false)
+    expect(t.pending).toBeNull()
+  })
+
+  it('does NOT offer when the damage was the seventh, because the game is over (G3-A5)', () => {
+    // Asserted against a fixture proven to offer BELOW lethal, one line up in this same shape — otherwise this
+    // passes on any implementation that never offers at all.
+    const defs = [makeDef({ code: 'V-EX', exBurst: true, hasAbilities: true, abilities: [EX_ABILITY] })]
+    const [six, id] = withTopCard(defs, 'V-EX')
+    const stack = (n: number): GameState => ({
+      ...six,
+      players: [six.players[0], { ...six.players[1], damageZone: six.players[1].deck.slice(1, 1 + n) }],
+    })
+    expect(dealPlayerDamage(stack(5), 1, null)[0].pending, 'the sixth damage should still offer').not.toBeNull()
+    const [t, events] = dealPlayerDamage(stack(6), 1, null)
+    expect(t.players[1].damageZone.length, 'the fixture did not reach seven').toBe(7)
+    expect(events.some((e) => e.type.startsWith('exBurst')), 'a lethal damage offered a burst').toBe(false)
+    expect(t.pending, 'a lethal damage left an offer on the table').toBeNull()
+    void id
+  })
+
+  it('a used burst goes to the FRONT of the agenda, ahead of the attacker’s damage triggers (G3)', () => {
+    // `dealPlayerDamage` has already queued the attacker's `dealtDamage` clauses by the time the offer is
+    // answered, and the agenda is FIFO. An EX Burst resolves immediately and unrespondably, so appending it
+    // would let the attacker's trigger run first and see a board the burst was supposed to have changed.
+    //
+    // Asserted structurally rather than through a game, because a corpus does not catch it: the queue is
+    // usually EMPTY when a burst is queued, so append and unshift agree and the mutation survives every
+    // aggregate. This is the position where they differ.
+    const [base, id] = withTopCard([makeDef({ code: 'V-EX', exBurst: true, hasAbilities: true, abilities: [EX_ABILITY] })], 'V-EX')
+    const decoy: Frame = {
+      abilityId: 'V-OTHER:dealt', source: 1, controller: 0,
+      path: [], chosen: [], modes: [], triggerEvent: null,
+    }
+    const [damaged] = dealPlayerDamage(base, 1, null)
+    const withTrigger: GameState = { ...damaged, resolution: { ...damaged.resolution, queue: [decoy] } }
+    expect(withTrigger.pending?.kind, 'the fixture never raised an offer').toBe('chooseExBurst')
+
+    const [used] = applyChooseExBurst(withTrigger, 1, true)
+    expect(used.resolution.queue.map((f) => f.abilityId),
+      'the burst was queued behind the attacker’s trigger').toEqual(['V-EX:etb', 'V-OTHER:dealt'])
+    expect(used.resolution.queue[0]?.origin, 'the burst frame is not marked as one').toBe('exBurst')
+
+    // And declining queues nothing at all — the decoy is left exactly as it was.
+    const [declined] = applyChooseExBurst(withTrigger, 1, false)
+    expect(declined.resolution.queue.map((f) => f.abilityId)).toEqual(['V-OTHER:dealt'])
+    expect(declined.pending, 'declining left the offer on the table').toBeNull()
+    void id
   })
 
   it('§12.4.4/§15.1.1.3: a broken card goes to its OWNER’s break zone, not its controller’s', () => {

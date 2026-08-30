@@ -1,5 +1,6 @@
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
+import type { Frame } from './abilities.js'
 import type { AttackState, CardId, GameState } from './state.js'
 import { defOf, findFieldCard, keywordsOf, powerOf, updatePlayer } from './state.js'
 import type { Event } from './events.js'
@@ -181,7 +182,61 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
   }
   const [ruled, ruleEvents] = runRuleProcesses(s)
   s = ruled; events.push(...ruleEvents)
-  s = { ...s, attack: IDLE, pending: null, priority: s.turnPlayer }   // §10.1.4.5–6
+  // An unanswered EX Burst offer (rung G3) holds the damage step open. Without this the line below would
+  // clear it before the player ever saw it — `pending: null` is unconditional — and the whole rule would be
+  // unreachable while every board-level test still passed. The plan review caught exactly this.
+  //
+  // A game that ENDED still finishes the step: `dealPlayerDamage` never offers on lethal damage, so a result
+  // here means no offer is outstanding, and leaving combat mid-step after game over is what `checkInvariants`
+  // forbids.
+  if (!s.result && s.pending?.kind === 'chooseExBurst') return [s, events]
+  s = finishDamageStep(s)
   if (s.result) events.push({ type: 'gameOver', result: s.result })
   return [s, events]
+}
+
+/**
+ * Rung G3 — the answer to a `chooseExBurst` offer (§11.10).
+ *
+ * On **use**, the marked clause runs as an ordinary frame, but at the FRONT of the queue. `dealPlayerDamage`
+ * has already enqueued the attacker's `dealtDamage` clauses and the agenda is FIFO, so appending would resolve
+ * the attacker's trigger first — an EX Burst resolves immediately and unrespondably, ahead of them. Unshifting
+ * is also why no continuation is needed to carry deferred occurrences: the triggers stay queued exactly where
+ * they were, the burst simply goes in front.
+ *
+ * The frame is built from the ability's ID and runs through `abilityOf`/`runFrame` like any other, so there is
+ * no second copy of the clause anywhere. `origin: 'exBurst'` keeps `drainResolution` from narrating it as an
+ * ordinary trigger.
+ *
+ * On **decline**, nothing is queued and the damage step simply finishes. Note the asymmetry with Noel's
+ * `min: 0`: declining the burst is not "use it and pick nothing", and the two produce different events.
+ */
+export function applyChooseExBurst(state: GameState, player: PlayerId, use: boolean): [GameState, Event[]] {
+  const pending = state.pending
+  if (pending?.kind !== 'chooseExBurst') throw new IllegalCommandError('no EX Burst is being offered')
+  if (pending.player !== player) throw new IllegalCommandError(`EX Burst belongs to player ${pending.player}`)
+  const events: Event[] = [{
+    type: use ? 'exBurstUsed' : 'exBurstDeclined',
+    player, card: pending.card, abilityId: pending.abilityId,
+  }]
+  let s: GameState = { ...state, pending: null }
+  if (use) {
+    const frame: Frame = {
+      abilityId: pending.abilityId, source: pending.card, controller: player,
+      path: [], chosen: [], modes: [], triggerEvent: null, origin: 'exBurst',
+    }
+    s = { ...s, resolution: { ...s.resolution, queue: [frame, ...s.resolution.queue] } }
+  }
+  return [finishDamageStep(s), events]
+}
+
+/**
+ * §10.1.4.5–6: combat is over, the defender owes nothing more, and priority returns to the turn player.
+ *
+ * Split out because there are now two ways to reach it — straight through `resolveDamage`, or later, once an
+ * EX Burst offer has been answered. Two copies of this line would be two chances to forget one of the three
+ * fields it resets.
+ */
+export function finishDamageStep(s: GameState): GameState {
+  return { ...s, attack: IDLE, pending: null, priority: s.turnPlayer }
 }

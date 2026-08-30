@@ -503,9 +503,19 @@ export function fieldCardDisplay(v: PlayerView, c: FieldCard): FieldCardDisplay 
   }
 }
 
+/** The card a `chooseExBurst` offer is about. The command carries only the answer, so the card comes from the
+ *  pending — which is the authority, and is public in the damage zone either way. */
+const exBurstCardOf = (v: PlayerView): CardId =>
+  (v.pending?.kind === 'chooseExBurst' ? v.pending.card : 0) as CardId
+
 /** English label for one command, from the acting player's point of view. Ported from `apps/cli/src/render.ts`. */
 export function describeChoice(v: PlayerView, c: Command): string {
   switch (c.type) {
+    // G3. Two answers that must never read alike — E9 was a rung about exactly that. "Use" names the card so
+    // the player knows WHICH burst; "Decline" names it too, because the strip shows both side by side and a
+    // bare "Decline" beside a named "Use" reads as declining something else.
+    case 'chooseExBurst':
+      return c.use ? `Use the EX Burst on ${qualifiedName(v, exBurstCardOf(v))}` : `Decline the EX Burst on ${qualifiedName(v, exBurstCardOf(v))}`
     case 'chooseFirst': return c.goFirst ? 'Take the first turn' : 'Let the opponent go first'
     case 'mulligan': return c.redraw ? 'Mulligan (redraw 5)' : 'Keep hand'
     case 'castCharacter':
@@ -670,6 +680,11 @@ export function promptFor(v: PlayerView, legal: readonly Command[]): string {
       }
       // Without this the strip fell through to the PHASE line and told the player to "cast, attack, or pass"
       // while the only legal answers were deck picks — a prompt instructing a move the engine would reject.
+      // G3. Named rather than left to the phase line, for the reason the `chooseFromDeck` case below states:
+      // a prompt must not instruct a move the engine would reject, and "Attack Phase — declare an attack" is
+      // exactly what the strip would otherwise say while the only legal answers are use and decline.
+      case 'chooseExBurst':
+        return `${capitalise(qualifiedName(v, v.pending.card))} has EX Burst — use it?`
       case 'chooseFromDeck': {
         const { min, max, count, to } = v.pending
         const what = to === 'field' ? 'to play onto the field' : 'to add to your hand'
@@ -768,7 +783,10 @@ function subjectsOf(c: Command): CardId[] {
     case 'activateAbility': return [...new Set([c.source, ...c.targets])]
     // `chooseMode` and `chooseFromDeck` have no card subject at all — indices, not board cards — so they
     // are strip buttons.
-    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'pass': case 'concede': return []
+    // G3's `chooseExBurst` is a strip button too: its card sits in the damage zone, which is not a pressable
+    // row, so hanging the choice off a card would put it on nothing.
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst':
+    case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }
 }
@@ -890,6 +908,9 @@ export function sameCommand(a: Command, b: Command): boolean {
       return a.source === o.source && a.abilityId === o.abilityId
         && sameIds([...a.targets], [...o.targets]) && samePayment(a.payment, o.payment)
     }
+    // Compares the ANSWER, not just the type — two chooseExBurst commands differ precisely in the boolean,
+    // and treating them as the same command would let a click on "Decline" be matched against "Use".
+    case 'chooseExBurst': return a.use === (b as typeof a).use
     case 'pass': case 'concede': return true
     default: { const _exhaustive: never = a; return _exhaustive }
   }

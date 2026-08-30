@@ -61,7 +61,17 @@ describe('hotseat', () => {
     expect(text).toMatch(/enter a number from the list/)
     expect(clears.length).toBeGreaterThanOrEqual(2)
     expect(text).toMatch(/Turn \d/)
-    expect(lines.some((l) => l.includes('!'))).toBe(true)
+    // This used to assert that SOME line contained "!", and the only "!" a normal game produced was the
+    // `! EX Burst ... skipped (not implemented)` warning. Rung G3 implemented the rule, so that warning is
+    // gone and the assertion was passing on a thing it never named. The remaining "!" line is
+    // `unimplementedAbility`, which this pool does not emit.
+    //
+    // Replaced with what the game should now actually show: an EX Burst offered and answered, end to end
+    // through the real hotseat loop. That is the strongest form of G3-A1 available here — not a count, but a
+    // whole game in which the rule fires and the player answers it.
+    expect(text, 'no EX Burst was offered in a full game').toMatch(/EX Burst revealed on /)
+    expect(text, 'an EX Burst was offered and never answered').toMatch(/(uses|declines) the EX Burst on /)
+    expect(text, 'the skipped-EX-Burst warning is still being printed').not.toMatch(/not implemented/)
     expect(turns).toBeGreaterThan(0)
   })
 })

@@ -208,8 +208,13 @@ describe('describeEvent', () => {
     expect(line?.kind).toBe('warning')
     expect(line?.text).toContain('25-001H')
   })
-  it('surfaces a skipped EX Burst as a warning', () => {
-    expect(describeEvent(view, { type: 'exBurstSkipped', player: HUMAN, card: 1 })?.kind).toBe('warning')
+  it('narrates the EX Burst lifecycle as events, not warnings (rung G3)', () => {
+    // It WAS a warning, and correctly so: `exBurstSkipped` reported that a rule had not been applied. Now the
+    // rule is applied, so a warning here would cry wolf — which is the argument `types.ts` makes about these
+    // very cards, and the reason the old warning was worth keeping until it could be replaced.
+    for (const type of ['exBurstOffered', 'exBurstUsed', 'exBurstDeclined'] as const) {
+      expect(describeEvent(view, { type, player: HUMAN, card: 1, abilityId: '16-092C:etb' })?.kind, type).toBe('event')
+    }
   })
   it('drops the events the move line already states', () => {
     expect(describeEvent(view, { type: 'cast', player: HUMAN, card: 1, cardType: 'forward' })).toBeNull()
@@ -443,12 +448,24 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
     expect(played.commandTypes).toContain('declareAttack')
   })
 
-  it('logs the game, ending in a result line, with the vanilla-pool warning visible (B-A6)', () => {
+  it('logs the game, ending in a result line, with every line kind represented (B-A6)', () => {
     expect(played.log.at(-1)?.kind).toBe('result')
-    expect(played.log.some((l) => l.kind === 'warning')).toBe(true)
     expect(played.log.some((l) => l.kind === 'phase')).toBe(true)
     expect(played.log.some((l) => l.kind === 'ai')).toBe(true)
     expect(played.log.some((l) => l.kind === 'human')).toBe(true)
+  })
+
+  it('narrates the EX Burst lifecycle in a real game, and warns about nothing (rung G3)', () => {
+    // This was `some(l => l.kind === 'warning')`, and the warning it was finding was the EX Burst skip — the
+    // one thing a full game on this pool reliably produced. The rule is implemented now, so the honest state
+    // is NO warnings at all, and an assertion for "some warning" would have to be satisfied by regressing
+    // something. Splitting it says what is actually being checked.
+    expect(played.log.filter((l) => l.kind === 'warning').map((l) => l.text),
+      'a full game on the shipping pool should now warn about nothing').toEqual([])
+    const offered = played.log.filter((l) => /has EX Burst/.test(l.text))
+    const answered = played.log.filter((l) => /(use|uses|decline|declines) the EX Burst/.test(l.text))
+    expect(offered.length, 'no EX Burst was offered across a whole game').toBeGreaterThan(0)
+    expect(answered.length, 'every offer must reach exactly one answer').toBe(offered.length)
   })
 
   it('is deterministic for a fixed seed', () => {
@@ -1626,10 +1643,15 @@ describe('a mirror match names both sides of a trade (found by playing)', () => 
     v.fields[AI].forwards = [...v.fields[AI].forwards, fieldCardFor(theirs)]
     expect(v.fields[AI].forwards.some((c) => c.id === theirs), 'no opposing twin, so nothing is ambiguous').toBe(true)
 
-    expect(describeEvent(v, { type: 'exBurstSkipped', player: HUMAN, card: gone })?.text)
-      .toBe('EX Burst on your Billy Bob skipped (not implemented)')
-    expect(describeEvent(v, { type: 'exBurstSkipped', player: AI, card: theirs })?.text)
-      .toBe("EX Burst on the AI's Billy Bob skipped (not implemented)")
+    // The same ownership problem the removed-from-game line has, and the reason all of these use `ownedCard`:
+    // the subject sits in the damage zone, so `qualifiedName` cannot tell two Billy Bobs apart and the
+    // sentence has to say whose it is.
+    expect(describeEvent(v, { type: 'exBurstUsed', player: HUMAN, card: gone, abilityId: 'x' })?.text)
+      .toBe('You use the EX Burst on your Billy Bob')
+    expect(describeEvent(v, { type: 'exBurstUsed', player: AI, card: theirs, abilityId: 'x' })?.text)
+      .toBe("The AI uses the EX Burst on the AI's Billy Bob")
+    expect(describeEvent(v, { type: 'exBurstDeclined', player: HUMAN, card: gone, abilityId: 'x' })?.text)
+      .toBe('You decline the EX Burst on your Billy Bob')
     expect(describeEvent(v, { type: 'removedFromGame', player: HUMAN, card: gone })?.text)
       .toBe('Your Billy Bob is removed from the game to pay for it')
   })

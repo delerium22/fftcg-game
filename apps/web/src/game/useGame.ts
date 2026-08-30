@@ -111,7 +111,18 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // These three name a subject that has already LEFT the table — the damage zone, the removed pile — so
     // `name` cannot qualify it and the sentence has to. The event's own `player` is the authority; a lookup
     // would be guessing about a card that is no longer anywhere to look (Codex MAJOR).
-    case 'exBurstSkipped': return { kind: 'warning', text: `EX Burst on ${ownedCard(v, e.player, e.card)} skipped (not implemented)` }
+    // G3. These replace the `exBurstSkipped` warning, which was the honest report that a rule was NOT applied.
+    // They are plain events, not warnings: nothing is wrong now, and a warning that cries wolf is worse than
+    // no warning — which is the argument `types.ts` makes about these very cards.
+    //
+    // `ownedCard` for the same reason the three above it use it: the subject is in the damage zone, so `name`
+    // cannot qualify it and the sentence has to.
+    case 'exBurstOffered':
+      return { kind: 'event', text: `${capitalise(ownedCard(v, e.player, e.card))} has EX Burst — ${who(v, e.player)} may use it` }
+    case 'exBurstUsed':
+      return { kind: 'event', text: `${who(v, e.player)} use${e.player === v.me ? '' : 's'} the EX Burst on ${ownedCard(v, e.player, e.card)}` }
+    case 'exBurstDeclined':
+      return { kind: 'event', text: `${who(v, e.player)} decline${e.player === v.me ? '' : 's'} the EX Burst on ${ownedCard(v, e.player, e.card)}` }
     case 'battleDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
     case 'playerDamaged': return { kind: 'event', text: `${who(v, e.player)} take${e.player === v.me ? '' : 's'} 1 damage` }
     case 'broken': return { kind: 'event', text: `${qualifiedName(v, e.card)} is broken` }

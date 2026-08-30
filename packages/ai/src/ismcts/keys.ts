@@ -218,6 +218,11 @@ export function actionKey(view: PlayerView, command: Command): ActionKey {
       return `${head}${FIELD}${command.goFirst ? 'first' : 'second'}`
     case 'mulligan':
       return `${head}${FIELD}${command.redraw ? 'redraw' : 'keep'}`
+    // G3. Keyed by the ANSWER alone, deliberately: the card is already public in the damage zone by the time
+    // the offer exists, so nothing here needs a `CardRef`, and keying on the card would make one boolean
+    // question look like a different question in every determinisation.
+    case 'chooseExBurst':
+      return `${head}${FIELD}${command.use ? 'use' : 'decline'}`
     case 'castCharacter':
     case 'castSummon': {
       // Payment sources are a SET: `generateCp` and `pay` are both order-insensitive, and `enumeratePayments`
@@ -306,6 +311,11 @@ const DECODERS: Record<Command['type'], Decoder> = {
     if (!pendingIs('mulligan')) return null
     const v = args[0]
     return v === 'redraw' || v === 'keep' ? { type: 'mulligan', player, redraw: v === 'redraw' } : null
+  },
+  chooseExBurst: ({ player, args, pendingIs }) => {
+    if (!pendingIs('chooseExBurst')) return null
+    const v = args[0]
+    return v === 'use' || v === 'decline' ? { type: 'chooseExBurst', player, use: v === 'use' } : null
   },
   chooseFromDeck: ({ player, args, pendingIs, view, ids }) => {
     const pending = pendingIs('chooseFromDeck')
@@ -537,6 +547,12 @@ function pendingDigest(view: PlayerView, pending: Pending | null): string {
     case 'declareBlock':
     case 'assignPartyDamage':
       return head
+    // G3. The observation names the card and the clause, because "may I use Odin" and "may I use Reeve" are
+    // different questions and a digest that collapsed them would merge two information sets. The card is a
+    // `CardRef` like every other observed card, but a damage-zone card is public (§7.8.2) so it is never
+    // opaque here — the reveal happens before the offer precisely so this can be true.
+    case 'chooseExBurst':
+      return `${head}/${r(pending.card)}/${pending.abilityId}`
     case 'discardToHandSize':
       return `${head}/${pending.count}`
     case 'chooseTargets':

@@ -23,7 +23,9 @@ export interface HotseatIo {
 function describeEvent(v: PlayerView, e: Event): string | null {
   switch (e.type) {
     case 'unimplementedAbility': return `  ! ${e.code} has abilities that are not implemented yet (played as vanilla)`
-    case 'exBurstSkipped': return `  ! EX Burst on ${eventCardName(v, e.card)} skipped (not implemented)`
+    case 'exBurstOffered': return `  EX Burst revealed on ${eventCardName(v, e.card)} — P${e.player} may use it`
+    case 'exBurstUsed': return `  P${e.player} uses the EX Burst on ${eventCardName(v, e.card)}`
+    case 'exBurstDeclined': return `  P${e.player} declines the EX Burst on ${eventCardName(v, e.card)}`
     case 'playerDamaged': return `  P${e.player} takes 1 damage`
     case 'broken': return `  ${eventCardName(v, e.card)} is broken`
     case 'battleDamage': return `  ${eventCardName(v, e.source)} deals ${e.amount} to ${eventCardName(v, e.target)}`

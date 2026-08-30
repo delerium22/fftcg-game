@@ -11,6 +11,13 @@ export type Command =
   | { type: 'declareBlock'; player: PlayerId; blocker: CardId | null }
   | { type: 'assignPartyDamage'; player: PlayerId; assignments: { target: CardId; amount: number }[] }
   | { type: 'discardToHandSize'; player: PlayerId; cards: CardId[] }
+  /**
+   * Answers a `chooseExBurst` pending (rung G3, §11.10): use the burst, or decline it.
+   *
+   * A bare boolean, and world-independent by construction — the card is already public in the damage zone, so
+   * unlike `chooseFromDeck` there is nothing here to redact and nothing for a search key to leak.
+   */
+  | { type: 'chooseExBurst'; player: PlayerId; use: boolean }
   /** Answers a `chooseTargets` pending (spec C1-6). `apply` re-validates uniqueness, min/max and membership. */
   | { type: 'chooseTargets'; player: PlayerId; targets: readonly CardId[] }
   /** Answers a `chooseMode` pending: indices into the pending's `labels`. Chosen modes run in listed order. */

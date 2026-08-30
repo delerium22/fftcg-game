@@ -58,6 +58,11 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
         }
         break
       }
+      // G3: both answers, always. An offer with only one legal reply is not a decision, and the AI reads this
+      // list — see G3-A6, which requires the search to be able to pick either.
+      case 'chooseExBurst':
+        out.push({ type: 'chooseExBurst', player, use: true }, { type: 'chooseExBurst', player, use: false })
+        break
       case 'chooseMode':
         // Σ C(modes, k). `modes` is a printed list of 2–3, so this is a handful of commands.
         for (let k = pending.min; k <= pending.max; k++) {

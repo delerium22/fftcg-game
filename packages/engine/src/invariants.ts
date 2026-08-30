@@ -78,6 +78,9 @@ export function checkInvariants(state: GameState): string[] {
   // An ability pending and the active frame are two halves of one suspension — neither may exist alone.
   // Every kind an ABILITY can suspend on. A new one must be added here or the invariant reports the frame as
   // orphaned — which is what it did, correctly, the moment C9 added `chooseFromDeck`.
+  // G3's `chooseExBurst` is deliberately NOT here. It is asked BEFORE any frame exists — that is the whole
+  // reason it needed its own kind — so pairing it with an active frame would report every legitimate offer as
+  // an orphan.
   const ABILITY_PENDINGS = ['chooseTargets', 'chooseMode', 'chooseFromDeck'] as const
   const abilityPending = ABILITY_PENDINGS.some((k) => state.pending?.kind === k)
   if (abilityPending && !r.active) problems.push(`pending ${state.pending?.kind} with no active frame`)

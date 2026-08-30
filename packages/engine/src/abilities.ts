@@ -306,6 +306,17 @@ export interface Ability {
   /** The printed wording this AST encodes, quoted verbatim. Reviewers check the AST against THIS. */
   readonly text: string
   readonly effects: readonly Effect[]
+  /**
+   * Rung G3: this is the clause the printed EX BURST tag prefixes, so it also fires when the card is dealt as
+   * damage (§11.10).
+   *
+   * A FLAG rather than a match on `text`. The tag is quoted at the front of the wording of every clause that
+   * carries it, so `text.startsWith('EX BURST')` would work today and would silently start mis-triggering the
+   * moment someone rewords a comment. It also lets the pool check assert that each `def.exBurst` card marks
+   * exactly one clause — a card printing EX BURST with no marked clause is a coverage hole that nothing else
+   * would notice.
+   */
+  readonly exBurst?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -340,9 +351,11 @@ export interface Frame {
    * It exists so the log can stop calling an activation a trigger. An activated ability's action frame runs
    * through the same agenda as a triggered one — which is right, they resolve identically — but starting a
    * frame emitted `abilityTriggered` unconditionally, so a move the player deliberately made was narrated
-   * both as "activates" and as "triggers" in the same breath.
+   * both as "activates" and as "triggers" in the same breath. G3 adds `exBurst` for the same reason: a burst
+   * is not an ordinary trigger, it does not use the stack, and narrating it as one would be a third wording
+   * for a thing the player deliberately chose.
    */
-  readonly origin?: 'triggered' | 'activated'
+  readonly origin?: 'triggered' | 'activated' | 'exBurst'
 }
 
 /**

@@ -9,7 +9,7 @@ import { actingPlayer } from './legal.js'
 import { applyChooseFirst, applyMulligan } from './setup.js'
 import { applyDiscardToHandSize, applyPass } from './phases.js'
 import { applyCastCharacter, applyCastSummon } from './cast.js'
-import { applyAssignPartyDamage, applyDeclareAttack, applyDeclareBlock } from './attack.js'
+import { applyAssignPartyDamage, applyChooseExBurst, applyDeclareAttack, applyDeclareBlock } from './attack.js'
 import { runRuleProcesses } from './rules.js'
 import { applyChooseFromDeck, applyChooseMode, applyChooseTargets, drainResolution } from './resolve.js'
 
@@ -74,6 +74,7 @@ export function apply(state: GameState, command: Command): ApplyResult {
       case 'assignPartyDamage': [s, events] = applyAssignPartyDamage(state, command.player, command.assignments); break
       case 'discardToHandSize': [s, events] = applyDiscardToHandSize(state, command.player, command.cards); break
       case 'chooseTargets': [s, events] = applyChooseTargets(state, command.player, command.targets); break
+      case 'chooseExBurst': [s, events] = applyChooseExBurst(state, command.player, command.use); break
       case 'chooseMode': [s, events] = applyChooseMode(state, command.player, command.modes); break
       case 'chooseFromDeck': [s, events] = applyChooseFromDeck(state, command.player, command.picks); break
       case 'activateAbility':

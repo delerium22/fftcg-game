@@ -59,6 +59,23 @@ export type Pending =
   | { kind: 'discardToHandSize'; player: PlayerId; count: number }
   | { kind: 'declareBlock'; player: PlayerId }          // §10.1.3.1
   | { kind: 'assignPartyDamage'; player: PlayerId }     // §10.1.4.2.1
+  /**
+   * Rung G3, §11.10: a card printing EX BURST was just dealt as damage, and its owner may use the marked
+   * clause. `card` is the damage card and `abilityId` the clause that would run.
+   *
+   * PRE-FRAME, and that is the whole reason it is its own kind. Every other ability pending here is a
+   * projection of a suspended `resolution.active` frame — `applyChooseMode` even requires the frame's current
+   * AST node to be `chooseModes` — whereas this is asked BEFORE any frame exists, to decide whether one
+   * should. It therefore stays out of the invariant pairing ability pendings with an active frame, or every
+   * offer would report as an orphan.
+   *
+   * Nor can Noel's `min: 0` stand in for it: "use the clause and choose no targets" is a different answer from
+   * "decline the burst", and the log has to be able to tell them apart.
+   *
+   * Naming the card leaks nothing — a damage zone is public (§7.8.2) and `viewFor` already shows every card in
+   * both players'. The reveal happens BEFORE the offer for exactly that reason.
+   */
+  | { kind: 'chooseExBurst'; player: PlayerId; card: CardId; abilityId: string }
   /** `candidates` is the exact legal set the executor computed; `apply` re-checks membership rather than trusting it. */
   | { kind: 'chooseTargets'; player: PlayerId; min: number; max: number; candidates: readonly CardId[] }
   /** `labels` are the printed mode wordings, in listed order; an answer is a set of indices into them. */

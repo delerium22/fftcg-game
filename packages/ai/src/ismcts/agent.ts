@@ -30,7 +30,9 @@ function commandCardIds(c: Command): readonly CardId[] {
     case 'chooseTargets': return c.targets
     case 'activateAbility': return [c.source, ...c.payment.dullBackups, ...c.payment.discards.map((d) => d.card)]
     // `chooseFromDeck` answers with INDICES, so like `chooseMode` it carries no card id to check.
-    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'pass': case 'concede': return []
+    // G3's `chooseExBurst` is a bare boolean, so like `chooseMode` it names no card to validate.
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst':
+    case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }
 }

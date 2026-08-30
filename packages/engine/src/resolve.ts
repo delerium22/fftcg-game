@@ -557,7 +557,10 @@ export function drainResolution(state: GameState): [GameState, Event[]] {
       // An ACTIVATED ability already announced itself with `abilityActivated` when the player paid for it
       // (spec C3-A7). Saying "triggers" here as well would report their own deliberate move back to them as
       // something that merely happened.
-      if (frame.origin !== 'activated') {
+      // G3 adds  for the same reason: the player was just asked whether to use it and said yes, and
+      // `exBurstUsed` already said so. A burst does not use the stack, so calling it a trigger would be wrong
+      // as well as repetitive.
+      if (frame.origin !== 'activated' && frame.origin !== 'exBurst') {
         events.push({ type: 'abilityTriggered', player: frame.controller, card: frame.source, abilityId: frame.abilityId })
       }
     }
