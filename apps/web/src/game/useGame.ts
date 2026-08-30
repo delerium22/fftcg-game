@@ -24,15 +24,30 @@ export const AI_STEP_MS = 600
  * It is very nearly free because at 200 iterations most decisions already finish well inside it; what it
  * removes is the tail.
  *
- * The floor of 8 is the guard for a slow machine, where the box binds far harder than it does here. It is not
- * calibrated — the strength of a floor-only agent has not been measured, and until it is, 8 is a guess with a
- * reason rather than a number with evidence.
+ * THE FLOOR IS 64, AND 8 WAS DANGEROUS. The floor is what a slow machine actually plays, so its strength is
+ * the strength of the opponent on that machine. Measured against greedy over mirrored seed pairs:
+ *
+ *      ismcts:8    12.5 %   <- what this shipped as, and it loses seven games in eight
+ *      ismcts:16   33.3 %
+ *      ismcts:32   63.3 %
+ *      ismcts:64   71.7 %   CI [63.3, 80.0]
+ *      ismcts:200  75.0 %   CI [66.7, 82.5]  (unboxed)
+ *
+ * A floor of 8 is not "a bit weaker": with eight or more root actions, the first eight iterations expand eight
+ * DIFFERENT actions at one visit each, `rankRootEdges` then ties on visits and falls through to the key
+ * comparison, and every rollout reward is discarded. The answer is the alphabetically first action of a random
+ * sample — far worse than the heuristic fallback the box was protecting the player from.
+ *
+ * 64 is indistinguishable from the full 200 (the intervals overlap heavily) and costs ~77 ms of the 500 ms
+ * box, so on normal hardware the clock stops the search long before the floor is relevant. On a slow machine
+ * the floor wins and the box bounds less — which is the correct way round, because an opponent that answers
+ * quickly and badly is worse than one that answers slowly and well.
  *
  * NOT a hard bound on how long a player waits: the worker handles messages serially, so a superseded search
  * still runs to completion before the next one starts. Bounding that needs the search chunked across turns of
  * the event loop, which this rung does not do.
  */
-export const SEARCH_BUDGET = { ms: 500, minIterations: 8 } as const
+export const SEARCH_BUDGET = { ms: 500, minIterations: 64 } as const
 
 const PHASE_LABEL: Record<string, string> = {
   setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase',

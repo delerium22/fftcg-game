@@ -392,6 +392,15 @@ export function searchTree(input: SearchInput, now: SearchClock = () => globalTh
     if (!Number.isInteger(budget.minIterations) || budget.minIterations < 1) {
       throw new RangeError(`budget.minIterations must be an integer of at least 1, got ${budget.minIterations}`)
     }
+    // A floor at or above the cap means the deadline is never reached, so the search runs every iteration
+    // while its label still advertises a box. That is not a harmless no-op: it is a measurement reporting a
+    // policy it did not run — `ismcts:8/box1ms+min9` ran an unboxed 8-iteration search. Rejected rather than
+    // silently ignored, on the same grounds as an unknown CLI flag.
+    if (budget.minIterations > input.iterations) {
+      throw new RangeError(
+        `budget.minIterations (${budget.minIterations}) exceeds iterations (${input.iterations}), so the box could never bind`,
+      )
+    }
   }
   if (input.view.result) throw new Error('searchIsmcts: the game is already over')
   // D-9 has this function seeing a `PlayerView` and two declared lists and nothing else; the root actor is

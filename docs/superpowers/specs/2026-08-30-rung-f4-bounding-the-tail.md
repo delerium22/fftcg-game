@@ -229,14 +229,27 @@ nothing. The **paired** view:
 
 | | |
 |---|---|
-| seed pairs with an identical result | **58 of 60** |
-| pairs that changed | 2 — one better, one worse |
+| seed pairs with an identical SCORE | 58 of 60 |
+| pairs whose score changed | 2 — one better, one worse |
 | mean paired difference | **0.0000** points per game |
 | paired 95 % CI on the difference | **[−2.5 %, +2.5 %]** |
 
-That interval is far tighter than either arm's own ±8 %, which is why the pairing was worth building. The
-structural fact matters more than the interval: **the box changes almost nothing about what the search plays**,
-because at 200 iterations most decisions already finish well inside 500 ms. What it removes is the tail.
+That interval is far tighter than either arm's own ±8 %, which is why the pairing was worth building.
+
+**But two things I wrote here were wrong, and the code review was right to strike them.**
+
+*"58 of 60 pairs identical" does not mean 58 identical games.* `pairScores` stores the AVERAGE of the two
+seat-swapped games, so a pair scoring 0.5 in both arms can have both constituent winners flip. Identical pair
+scores are consistent with many changed games. Establishing that the search played the SAME MOVES needs command
+traces, which were not collected.
+
+*And 58/60 is not evidence that the box rarely binds.* It is equally consistent with the box binding often,
+changing many moves, and leaving the two-game aggregate unchanged. Binding frequency is `determinisations <
+iterations` per decision, and that was not reported — the browser harness discards
+`diagnostics.determinisations` outright.
+
+What the paired analysis DOES support is the narrow claim it was run for: **the box costs no measurable
+strength on this corpus.** Not that the search plays the same, and not that the box rarely binds.
 
 ### The browser tail, which is the number a player feels
 
@@ -250,6 +263,11 @@ Five finished games each, same harness. Unboxed is F3's measurement:
 
 **Every boxed game's p95 is under the 600 ms pacing floor**, so on these runs every decision lands inside the
 beat the player already waits. The worst decision fell from 2.1 s to 0.5 s.
+
+**These are DESCRIPTIVE samples, not an inferential comparison**, and the review was right to say so: five
+games per arm cannot estimate a population p95 when F3 measured a per-game SD of ~409 ms. The ranges describe
+these ten games. The **505 ms maximum** is the load-bearing number, and it is mechanistic rather than
+statistical — it is direct evidence the box ran, and it cannot be explained by sampling.
 
 505 ms against a 500 ms box is the design working rather than leaking: the deadline is checked at the top of an
 iteration, so one that has begun always finishes.
@@ -272,3 +290,47 @@ loop, which is a larger rung.
 The floor of 8 is **not calibrated**. The strength of a floor-only agent — what a slow machine actually plays —
 has not been measured, so 8 is a guess with a reason rather than a number with evidence. That is the review's
 "worst-platform strength floor" and the obvious follow-up.
+
+---
+
+## Code review: the floor I shipped is dangerous, and I was told to measure it first
+
+> **The review's previous CRITICAL was not closed, and I shipped anyway.** Its plan review required a
+> floor-only strength gate; my spec recorded that it had not been run and called the floor "a guess with a
+> reason". It is worse than a guess. Measured now:
+
+| agent | vs greedy, 60 mirrored pairs | |
+|---|---|---|
+| `ismcts:200` (unboxed) | **75.0 %** | |
+| `ismcts:8` (what the floor plays) | **12.5 %** | CI [6.7, 18.3] |
+
+**A search at exactly the shipped floor loses seven games in eight to the agent it is supposed to be better
+than.** For scale, greedy beats the random baseline ≥98 %. So on a slow machine where the box binds hard, the
+opponent would be dramatically worse than the heuristic fallback it replaced — the precise failure the floor
+exists to prevent, caused by the floor.
+
+### Why 8 iterations is not "a bit weaker" but reward-blind
+
+The review supplied the mechanism and it checks out. Unvisited root actions always take priority, so on a root
+with ≥8 available actions the first 8 iterations expand 8 DIFFERENT actions, one visit each. `rankRootEdges`
+then orders by visits and breaks ties on the key:
+
+```ts
+edges.filter((e) => e.visits > 0).sort((a, b) => b.visits - a.visits || compareKeys(a.key, b.key))
+```
+
+Every edge has one visit, so the comparison falls through to `compareKeys` and **all eight rollout rewards are
+discarded**. The answer is the lexicographically first action of a seeded random sample.
+
+The "most visits, never best mean" rule is right for a well-sampled tree — an edge with three visits and a
+mean of 0.99 was lucky, not good. It carries no information at all when every edge has exactly one visit.
+
+### Two fixes, and only one belongs in this rung
+
+1. **Raise the floor to a measured-safe value.** Configuration only, no change to how the search behaves.
+   Being measured now.
+2. **Break ties on mean reward before key order.** Strictly more informative in the degenerate case, cannot
+   affect any decision where visit counts differ, and keeps the key as the final tie-break so determinism
+   holds. This is the better fix and it helps every low-iteration search, not just the floor — but it changes
+   search behaviour in the 200-iteration case too, so it needs its own rung and its own review rather than
+   being smuggled in behind a CRITICAL.

@@ -21,7 +21,23 @@ import { unknownFlagError } from './flags.js'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 
 const [, , cmd, ...rest] = process.argv
-const flag = (name: string, dflt: string) => { const i = rest.indexOf(`--${name}`); return i >= 0 && rest[i + 1] ? (rest[i + 1] as string) : dflt }
+/**
+ * A flag's value, or `dflt` when the flag is absent.
+ *
+ * A flag PRESENT with no value is an error, not the default. `--budget-ms` as the last argument used to read
+ * as "no budget at all", so a run intended to be boxed measured the unboxed agent and said nothing — the same
+ * class of silent-wrong-measurement as the unknown flag that ran 400 games instead of 120.
+ */
+const flag = (name: string, dflt: string) => {
+  const i = rest.indexOf(`--${name}`)
+  if (i < 0) return dflt
+  const v = rest[i + 1]
+  if (v === undefined || v.startsWith('--')) {
+    console.error(`--${name} needs a value`)
+    process.exit(2)
+  }
+  return v
+}
 const has = (name: string) => rest.includes(`--${name}`)
 const deckArg = flag('deck', '')
 const deckPath = deckArg ? resolve(deckArg) : resolve(repoRoot, 'decks/starter-2025-vol2.txt')

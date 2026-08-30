@@ -113,6 +113,12 @@ the ground-truth state. Neither ever sees hidden information beyond what a real 
 from the deck lists being public, and both are seeded and deterministic: same seed + same views ⇒
 same decisions.
 
+**One exception, and it is deliberate:** the browser gives the search a wall-clock box (rung F4), and a
+wall clock is not reproducible. Determinism is preserved by OMISSION — the box is optional and absent
+everywhere else, so the CLI, every tournament and every test are unchanged and still byte-identical for a
+seed. Only the browser opts in, and only because a player waiting on a move cares about the clock in a way a
+measurement does not.
+
 **`IsmctsAgent` is what the browser plays, and it is the stronger of the two.** It runs
 single-observer ISMCTS: a fresh determinisation per iteration, one shared tree, and UCB1 corrected
 for *availability* — an action's exploration bonus counts only the iterations in which that action
@@ -142,16 +148,27 @@ removal, search, a Break-Zone retrieve and several combat tricks. The leading ex
 untested one is that games now run 13.6 turns, giving a search fewer turns to compound an edge.
 
 **The browser figure is a RANGE because a single number would be a fiction.** Measured over five full games
-on a production preview, per-game p50 runs 133–429 ms and per-game p95 runs 192–1347 ms — a seven-fold
-spread in the tail, because the expensive decisions are the wide boards and how many of those a game reaches
-varies. Quoting one game's p95, as this table used to, describes that game and nothing else.
+on a production preview, per-game p50 runs 91–343 ms and per-game p95 runs 140–504 ms. Before the search was
+boxed (below) the same measurement gave p50 133–429 ms and p95 192–1347 ms — a seven-fold spread in the tail,
+because the expensive decisions are the wide boards and how many of those a game reaches varies. Quoting one
+game's p95, as this table used to, describes that game and nothing else.
 
-**The tail is bounded by a wall-clock box (rung F4).** The search stops starting new iterations after 500 ms,
-with a floor of 8 so a slow machine cannot answer from three. It is very nearly free: over 60 mirrored seed
-pairs against greedy, **58 of 60 produced the identical result** boxed and unboxed, the mean paired difference
-was 0.0000 points per game with a 95 % interval of [-2.5, +2.5], and Node decision time fell 243.9 → 206.3 ms.
-In the browser the worst single decision fell from **2088 ms to 505 ms**, and every game's p95 now sits under
-the 600 ms pacing floor — so on these runs every decision lands inside the beat the player already waits.
+Five games per arm **describe those games**; they do not estimate the population tail, whose per-game standard
+deviation is around 409 ms. The number that carries weight is the observed maximum, because it is mechanistic
+rather than statistical.
+
+**The tail is SHORTENED by a wall-clock box (rung F4).** The search stops starting new iterations after
+500 ms, with a floor of 64 iterations that the clock cannot cut into. It costs no measurable strength: over 60
+mirrored seed pairs against greedy the mean paired difference was 0.0000 points per game, 95 % interval
+[-2.5, +2.5], and Node decision time fell 243.9 → 206.3 ms. In the browser the worst single decision fell from
+**2088 ms to 505 ms**, and every game's p95 now sits under the 600 ms pacing floor.
+
+**The floor is 64 because 8 was dangerous**, which only a measurement showed. The floor is what a slow machine
+actually plays, so its strength IS the opponent's strength there — and against greedy: 8 → 12.5 %, 16 → 33.3 %,
+32 → 63.3 %, 64 → 71.7 %, against the unboxed 200's 75.0 %. At eight iterations a wide root expands eight
+different actions at one visit each, the ranking ties on visits and falls through to a key comparison, and
+every rollout reward is discarded — so it answers with the alphabetically first action of a random sample.
+This shipped for one commit, caught by a code review insisting on a gate that had been specified and skipped.
 
 It SHORTENS the tail rather than bounding it: the worker handles messages serially, so a superseded search
 still runs to completion before the next one starts. A hard bound needs the search chunked across turns of the
