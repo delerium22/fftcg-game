@@ -164,11 +164,18 @@ mirrored seed pairs against greedy the mean paired difference was 0.0000 points 
 **2088 ms to 505 ms**, and every game's p95 now sits under the 600 ms pacing floor.
 
 **The floor is 64 because 8 was dangerous**, which only a measurement showed. The floor is what a slow machine
-actually plays, so its strength IS the opponent's strength there — and against greedy: 8 → 12.5 %, 16 → 33.3 %,
-32 → 63.3 %, 64 → 71.7 %, against the unboxed 200's 75.0 %. At eight iterations a wide root expands eight
-different actions at one visit each, the ranking ties on visits and falls through to a key comparison, and
-every rollout reward is discarded — so it answers with the alphabetically first action of a random sample.
-This shipped for one commit, caught by a code review insisting on a gate that had been specified and skipped.
+actually plays, so its strength IS the opponent's strength there — and against greedy, before rung F5:
+8 → 12.5 %, 16 → 33.3 %, 32 → 63.3 %, 64 → 71.7 % (30 pairs; 66.7 % on 60), against the unboxed 200's 75.0 %.
+That shipped for one commit at a floor of 8, caught by a code review insisting on a gate that had been
+specified and skipped.
+
+**Rung F5 then removed the cause.** The ranking used to break a visit tie on the action KEY — a total order
+that exists for determinism and is arbitrary with respect to quality — so equally-visited actions were decided
+alphabetically and their rollout rewards discarded. Ties are common: 11.7 % of decisions at 200 iterations and
+90.9 % at 8. Preferring the higher mean among equally-visited edges (the key remains the final tie-break) is
+non-inferior at 200 and at 64, and at 8 iterations takes the agent from **12.5 % to 50.8 %**, paired 95 %
+interval [+30.0, +46.7]. At the shipping floor of 64 it measures +7.5 points with an interval of [+0.0, +15.0]
+— positive, safe, and underpowered at 120 games rather than the ~1,000 the claim would want.
 
 It SHORTENS the tail rather than bounding it: the worker handles messages serially, so a superseded search
 still runs to completion before the next one starts. A hard bound needs the search chunked across turns of the

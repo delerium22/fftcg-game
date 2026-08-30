@@ -1,7 +1,7 @@
 # Rung F5 — 7% of decisions are settled alphabetically
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built. Measured first, because the last rung shipped a value
-> its own review had told me to measure.
+> **STATUS: BUILT and MEASURED.** Safe at both endpoints; +38.3 points at 8 iterations, +7.5 (underpowered)
+> at the shipping floor of 64, non-inferior at 200. See *Result*.
 
 ## The finding
 
@@ -173,3 +173,46 @@ above should not be read as claiming otherwise.
 Pairing may reduce these materially, but only a pilot's variance of the per-seed differences can say by how
 much. **Procedure: pilot on separate seeds to size the variance, then freeze the confirmatory sample and use
 held-out seeds.** Reusing the pilot's seeds for the confirmation is how a pilot becomes a fishing expedition.
+
+---
+
+## Result — safe everywhere, decisive where ties dominate, unproven where it ships
+
+Predeclared before running: non-inferiority margin **−5 points**; "material" = **≥ +5 points with a CI
+excluding zero**; comparison is `new − old` pair score by identical seed index, paired bootstrap, 60 pairs
+(120 games) per arm against greedy.
+
+| | old | new | delta | paired 95 % CI | pairs changed | non-inferior | material |
+|---|---|---|---|---|---|---|---|
+| `ismcts:8` | 12.5 % | **50.8 %** | **+38.3** | [+30.0, +46.7] | 43 / 60 | **YES** | **YES** |
+| `ismcts:64` *(the floor that ships)* | 66.7 % | **74.2 %** | **+7.5** | [+0.0, +15.0] | 23 / 60 | **YES** | no |
+| `ismcts:200` *(what normally runs)* | 75.0 % | 74.2 % | −0.8 | [−4.2, +2.5] | 5 / 60 | **YES** | no |
+
+**Both safety endpoints pass.** The change cannot be shown to cost anything at either the shipping iteration
+count or the floor.
+
+**At 8 iterations it is transformative**: an agent that lost seven games in eight to greedy now plays it
+roughly even, purely by consulting rewards it had already gathered instead of sorting alphabetically. 43 of 60
+seed pairs changed. That is the reward-blind regime F4's floor sweep found, and it is no longer reward-blind.
+
+**At 64 it is positive but NOT established.** +7.5 points sounds material and the delta clears the threshold,
+but the interval's lower bound sits exactly on zero, so by the rule written before the run this does not
+count as a demonstrated improvement. Stated as: safe, directionally positive, underpowered. The review's
+sizing said ~1,000 games per arm for a claim like this and these are 120.
+
+**At 200 only 5 of 60 pairs changed**, which matches the 7 % "would choose differently" rate measured
+beforehand — the mechanism predicted from the tie statistics is the mechanism that shows up in play.
+
+### A caution about the numbers this rung itself quotes
+
+The old 64-iteration figure was **71.7 % on 30 pairs and 66.7 % on 60** — the same code, the same seeds,
+five points apart purely from sample size. F4's floor table quoted the 30-pair number, and the README quoted
+it too. Both are within noise of each other and neither was wrong, but it is a concrete reminder that a
+five-point difference at these sample sizes is not a finding.
+
+### Verdict
+
+Ship. The comparator uses information it already had rather than discarding it, the sign is confirmed by
+reading rather than inferred from a win rate, both safety endpoints clear their margin, and the one regime
+where ties dominate improves enormously. What is NOT claimed is a strength gain at 200 or a demonstrated one
+at 64.
