@@ -140,7 +140,13 @@ describe('promptFor via buildChoiceSet', () => {
     const main1 = [...seen].filter((p) => p.startsWith('Main Phase 1 — '))
     expect(main1.length, 'Main Phase 1 was never reached, so this asserts nothing').toBeGreaterThan(0)
     for (const p of main1) {
-      expect(p.slice(p.indexOf(' — ')), `"${p}" offers an attack in Main Phase 1`).not.toMatch(/\battack\b/)
+      const offer = p.slice(p.indexOf(' — ') + 3)
+      expect(offer, `"${p}" offers an attack in Main Phase 1`).not.toMatch(/\battack\b/)
+      // ...and it still SAYS something. Dropping the literal left this accepting any suffix at all, including
+      // an empty one — a code review pointed out that a prompt reduced to "Main Phase 1 — " would have passed.
+      // Every Main Phase 1 position can at minimum pass, so every one of these must offer that much.
+      expect(offer.length, `"${p}" names no move at all`).toBeGreaterThan(0)
+      expect(offer, `"${p}" does not offer the one move always available in Main Phase 1`).toMatch(/\bpass\b/)
     }
     expect([...seen].some((p) => p === 'Choose who goes first' || p === 'Keep your hand or mulligan' || p === 'Waiting for the opponent…')).toBe(true)
   })
