@@ -1,7 +1,7 @@
 import { SYNTHETIC_ID_BASE, nextInt, seedRng, type CardId, type Command, type PlayerView, type Rng } from '@fftcg/engine'
 import type { Agent } from '../agent.js'
 import { DEFAULT_EXPLORATION_C, DEFAULT_ITERATIONS, DEFAULT_ROLLOUT_COMMAND_CAP, searchIsmcts } from './search.js'
-import type { SearchDiagnostics, SearchInput } from './keys.js'
+import type { SearchBudget, SearchDiagnostics, SearchInput } from './keys.js'
 
 export interface IsmctsOptions {
   /** D7: collect the rollout apply attribution. Diagnostic only; off in play. */
@@ -12,6 +12,8 @@ export interface IsmctsOptions {
   iterations?: number | undefined
   rolloutCommandCap?: number | undefined
   explorationC?: number | undefined
+  /** F4: a wall-clock box on each decision. Absent means the iteration count is the only bound. */
+  budget?: SearchBudget | undefined
 }
 
 /** Every `CardId` a command names — the W4 guard `GreedyAgent` carries, for the same reason. */
@@ -46,6 +48,7 @@ export class IsmctsAgent implements Agent {
   private readonly explorationC: number
   /** D7: ask each search for its rollout apply attribution. Off unless a measurement turns it on. */
   private readonly profile: boolean
+  private readonly budget: SearchBudget | undefined
   readonly needsLegalCommands = false
   /** Last decision's counters (spec D-A4). `null` before the first `decide`, and on the non-acting fallback. */
   lastDiagnostics: SearchDiagnostics | null = null
@@ -57,6 +60,7 @@ export class IsmctsAgent implements Agent {
     this.rolloutCommandCap = opts.rolloutCommandCap ?? DEFAULT_ROLLOUT_COMMAND_CAP
     this.explorationC = opts.explorationC ?? DEFAULT_EXPLORATION_C
     this.profile = opts.profile ?? false
+    this.budget = opts.budget
   }
 
   decide(view: PlayerView, legal: Command[]): Command {
@@ -79,6 +83,7 @@ export class IsmctsAgent implements Agent {
       rolloutCommandCap: this.rolloutCommandCap,
       explorationC: this.explorationC,
       ...(this.profile ? { profile: true } : {}),
+      ...(this.budget === undefined ? {} : { budget: this.budget }),
     }
     const { command, diagnostics } = searchIsmcts(input)
     this.lastDiagnostics = diagnostics

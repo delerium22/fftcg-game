@@ -5,7 +5,10 @@ import { DEFAULT_ITERATIONS } from '@fftcg/ai'
 import { loadCards } from '@fftcg/cards'
 import { profileSearch } from './profile.js'
 import type { AgentSpec } from './agents.js'
-import { MAX_ITERATIONS, parseAgentSpec, parseDepth, parseIterations, parsePositiveInt, parseRolloutCap } from './agents.js'
+import {
+  MAX_ITERATIONS, parseAgentSpec, parseBudgetMs, parseDepth, parseIterations, parseMinIterations,
+  parsePositiveInt, parseRolloutCap,
+} from './agents.js'
 import { parseDeckFile } from './deck.js'
 import { hotseat } from './hotseat.js'
 import { mirrorTournament } from './mirror.js'
@@ -43,7 +46,10 @@ const seed = parseSeed(flag('seed', '1'))
  * must run the budget its own defaults describe, and resolving it here means `describeAgentSpec` labels the
  * run with the budget that actually produced its ms/decision (D-A4) instead of a bare "ismcts".
  */
-function withDefaults(spec: AgentSpec, depth: 0 | 1 | 2, iterations: number, rolloutCap: number | null): AgentSpec {
+function withDefaults(
+  spec: AgentSpec, depth: 0 | 1 | 2, iterations: number, rolloutCap: number | null,
+  budget: { ms: number; minIterations: number } | null = null,
+): AgentSpec {
   if (spec.kind === 'greedy' && spec.depth === undefined) return { kind: 'greedy', depth }
   if (spec.kind !== 'ismcts') return spec
   // An explicit `undefined` is not an absent key under exactOptionalPropertyTypes, so build the object.
@@ -51,14 +57,15 @@ function withDefaults(spec: AgentSpec, depth: 0 | 1 | 2, iterations: number, rol
     kind: 'ismcts',
     ...(spec.iterations === undefined ? { iterations } : { iterations: spec.iterations }),
     ...(spec.rolloutCap !== undefined ? { rolloutCap: spec.rolloutCap } : rolloutCap === null ? {} : { rolloutCap }),
+    ...(budget === null ? {} : { budgetMs: budget.ms, minIterations: budget.minIterations }),
   }
 }
 
 const usage = [
   'usage: <hotseat|selfplay|mirror|profile|deckorder> [options]',
   '  agent spec: random | greedy[:0-2] | ismcts[:N]',
-  '  selfplay: [--seed N] [--games N] [--p0 spec] [--p1 spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--fast]',
-  '  mirror:   [--seed N] [--pairs N] [--a spec] [--b spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--bootstrap N] [--fast]',
+  '  selfplay: [--seed N] [--games N] [--p0 spec] [--p1 spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--budget-ms N] [--min-iterations N] [--fast]',
+  '  mirror:   [--seed N] [--pairs N] [--a spec] [--b spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--budget-ms N] [--min-iterations N] [--bootstrap N] [--fast]',
   '            plays every seed twice with the seats swapped; every score is agent A\'s (spec D-A1)',
   '  profile:  [--seed N] [--games N] [--iterations N]   (rung D7: where a rollout\'s applies go)',
   '  common:   [--deck path]',
@@ -86,6 +93,18 @@ if (cmd === 'hotseat') {
   // default rather than pinning it to whatever this file happens to think the default is.
   const rawCap = flag('rollout-cap', '')
   const rolloutCap = rawCap === '' ? null : parsed(() => parseRolloutCap(rawCap))
+  // F4: both halves of the box, or neither. A floor without a box is meaningless, and a box whose floor is
+  // unnamed cannot be reported as a policy — `describeAgentSpec` prints both for exactly that reason.
+  const rawBudget = flag('budget-ms', '')
+  const rawMinIters = flag('min-iterations', '')
+  if (rawBudget === '' && rawMinIters !== '') {
+    console.error('--min-iterations needs --budget-ms: a floor with no box bounds nothing')
+    process.exit(2)
+  }
+  const budget = rawBudget === '' ? null : parsed(() => ({
+    ms: parseBudgetMs(rawBudget),
+    minIterations: rawMinIters === '' ? 1 : parseMinIterations(rawMinIters),
+  }))
   if (cmd === 'profile') {
     // D7: where a rollout's applies go. Its own command because it answers one question and reports a shape
     // of its own; `selfplay`'s report stays the strength/cost report it already is.
@@ -96,8 +115,8 @@ if (cmd === 'hotseat') {
   }
   if (cmd === 'selfplay') {
     const agents: [AgentSpec, AgentSpec] = parsed(() => [
-      withDefaults(parseAgentSpec(flag('p0', 'random')), depth, iterations, rolloutCap),
-      withDefaults(parseAgentSpec(flag('p1', 'random')), depth, iterations, rolloutCap),
+      withDefaults(parseAgentSpec(flag('p0', 'random')), depth, iterations, rolloutCap, budget),
+      withDefaults(parseAgentSpec(flag('p1', 'random')), depth, iterations, rolloutCap, budget),
     ])
     const games = parsed(() => parsePositiveInt(flag('games', '200'), 'games', 1_000_000))
     const r = selfPlay({ games, seed, decks: [deck, deck], defs, agents, strict: !has('fast') })
@@ -106,8 +125,8 @@ if (cmd === 'hotseat') {
     process.exit(r.failures.length ? 1 : 0)
   }
   const agents: [AgentSpec, AgentSpec] = parsed(() => [
-    withDefaults(parseAgentSpec(flag('a', 'ismcts')), depth, iterations, rolloutCap),
-    withDefaults(parseAgentSpec(flag('b', 'greedy')), depth, iterations, rolloutCap),
+    withDefaults(parseAgentSpec(flag('a', 'ismcts')), depth, iterations, rolloutCap, budget),
+    withDefaults(parseAgentSpec(flag('b', 'greedy')), depth, iterations, rolloutCap, budget),
   ])
   const pairs = parsed(() => parsePositiveInt(flag('pairs', '200'), 'pairs', 1_000_000))
   const bootstrapSamples = parsed(() => parsePositiveInt(flag('bootstrap', '2000'), 'bootstrap', MAX_ITERATIONS))

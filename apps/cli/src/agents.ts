@@ -3,7 +3,7 @@ import { GreedyAgent, IsmctsAgent, RandomAgent, type Agent } from '@fftcg/ai'
 export type AgentSpec =
   | { kind: 'random' }
   | { kind: 'greedy'; depth?: 0 | 1 | 2 }
-  | { kind: 'ismcts'; iterations?: number; rolloutCap?: number; profile?: boolean }
+  | { kind: 'ismcts'; iterations?: number; rolloutCap?: number; profile?: boolean; budgetMs?: number; minIterations?: number }
 
 /** Upper bound on `ismcts:N`. Not a performance claim — a typo guard, so `ismcts:100000000` fails at the flag
  *  rather than after an hour of wall clock. D1's measured floor is ~107 µs per determinisation. */
@@ -38,6 +38,18 @@ export const parseIterations = (s: string): number => parsePositiveInt(s, 'itera
 export const MAX_ROLLOUT_CAP = 4096
 export const parseRolloutCap = (s: string): number => parsePositiveInt(s, 'rollout cap', MAX_ROLLOUT_CAP)
 
+/**
+ * F4: the search's wall-clock box, and its floor. BOTH are exposed, because a report that names only the
+ * milliseconds cannot identify the policy that produced it — the floor changes what a slow machine actually
+ * plays, and on a fast one it may be what stops the search rather than the clock.
+ *
+ * One minute is the typo guard, on the same grounds as `MAX_ITERATIONS`: a box measured in minutes is a
+ * mistyped flag, not an intent.
+ */
+export const MAX_BUDGET_MS = 60_000
+export const parseBudgetMs = (s: string): number => parsePositiveInt(s, 'budget ms', MAX_BUDGET_MS)
+export const parseMinIterations = (s: string): number => parsePositiveInt(s, 'min iterations', MAX_ITERATIONS)
+
 /** Parses `random | greedy | greedy:0..2 | ismcts | ismcts:N`; throws on anything else. */
 export function parseAgentSpec(s: string): AgentSpec {
   if (s === 'random') return { kind: 'random' }
@@ -56,7 +68,11 @@ export function describeAgentSpec(spec: AgentSpec): string {
   // The rollout cap is part of the agent's IDENTITY, not a hidden setting: a tournament that cannot say
   // which cap produced its number is a measurement nobody can compare against another one.
   const base = spec.iterations === undefined ? 'ismcts' : `ismcts:${spec.iterations}`
-  return spec.rolloutCap === undefined ? base : `${base}/cap${spec.rolloutCap}`
+  const capped = spec.rolloutCap === undefined ? base : `${base}/cap${spec.rolloutCap}`
+  // The box is part of the identity for the same reason the cap is, and BOTH halves of it are: "ismcts:200
+  // boxed at 500 ms" describes two different agents depending on whether its floor is 8 or 80.
+  return spec.budgetMs === undefined ? capped
+    : `${capped}/box${spec.budgetMs}ms+min${spec.minIterations ?? 1}`
 }
 
 /**
@@ -77,5 +93,6 @@ export function makeAgent(spec: AgentSpec, seed: number, decks: [string[], strin
     ...(spec.iterations === undefined ? {} : { iterations: spec.iterations }),
     ...(spec.rolloutCap === undefined ? {} : { rolloutCommandCap: spec.rolloutCap }),
     ...(spec.profile === true ? { profile: true } : {}),
+    ...(spec.budgetMs === undefined ? {} : { budget: { ms: spec.budgetMs, minIterations: spec.minIterations ?? 1 } }),
   })
 }
