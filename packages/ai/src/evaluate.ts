@@ -35,6 +35,21 @@ export interface Weights {
    * `weights-ab.ts` rather than being an unmeasurable code edit.
    */
   expiredThreat: number
+  /**
+   * Rung G1b. How much MORE the next damage costs than the last one — the increasing marginal, alone.
+   *
+   * `material` prices damage linearly, so 0 → 1 and 5 → 6 both cost the same 30.1 (the damage weight plus the
+   * deck card it consumes). The basis here is the CENTRED one, `n(n−1)`, not `n²`: since `n² = n + n(n−1)`, a
+   * quadratic penalty would also raise the price of the FIRST damage, and a win could then mean either "the
+   * approach to seven needs curvature" or merely "the linear weight is too small". With `n(n−1)`, 0 → 1 is
+   * untouched for every value of this weight and each later marginal rises by exactly `2 × damageCurve`.
+   *
+   * `n = 7` never reaches here: a seven-damage state is terminal and `evaluate` returns before `material`.
+   *
+   * Zero by default, like `expiredThreat` — a no-op until a measurement earns it a value, and a weight that
+   * can only be changed by editing source cannot be A/B'd at all.
+   */
+  damageCurve: number
 }
 
 export const DEFAULT_WEIGHTS: Weights = {
@@ -53,6 +68,7 @@ export const DEFAULT_WEIGHTS: Weights = {
   protection: 0.5,
   temporaryPower: 0.4,
   expiredThreat: 0,
+  damageCurve: 0,
 }
 
 /**
@@ -145,7 +161,11 @@ function abilityTerms(state: GameState, p: PlayerId, c: FieldCard, isForward: bo
 
 function material(state: GameState, p: PlayerId, w: Weights): number {
   const ps = state.players[p]
-  let v = (DAMAGE_TO_LOSE - ps.damageZone.length) * w.damage
+  const taken = ps.damageZone.length
+  let v = (DAMAGE_TO_LOSE - taken) * w.damage
+  // G1b: the increasing marginal. Subtracted rather than folded into the line above so the linear term stays
+  // exactly what it was and the two are separable in any measurement of either.
+  v -= taken * (taken - 1) * w.damageCurve
   for (const c of ps.forwards) {
     // Split permanent from until-end-of-turn power: `powerOf` is printed + `powerBonus`, and the two are not
     // worth the same. `threat` deliberately keeps using the full figure — a temporary bonus does swing combat
