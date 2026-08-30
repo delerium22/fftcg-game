@@ -369,9 +369,30 @@ export function rankRootEdges(edges: readonly SearchEdge[]): SearchEdge[] {
   return edges.filter((e) => e.visits > 0).sort((a, b) => b.visits - a.visits || compareKeys(a.key, b.key))
 }
 
-export function searchTree(input: SearchInput): SearchTree {
+/**
+ * The wall clock a budgeted search reads. A PARAMETER rather than a field on `SearchInput`, because the input
+ * crosses the worker boundary by `structuredClone` and a function does not survive that — it throws at
+ * `postMessage`, which the coordinator reads as worker death and answers by downgrading the opponent for the
+ * rest of the game. Injected so a test can drive a fake clock and stay deterministic.
+ */
+export type SearchClock = () => number
+
+export function searchTree(input: SearchInput, now: SearchClock = () => globalThis.performance.now()): SearchTree {
   const root = input.view.me
   if (input.iterations < 1) throw new RangeError(`iterations must be at least 1, got ${input.iterations}`)
+  // Validated here rather than trusted: every one of these produces a search that runs zero iterations and
+  // then throws "no root action was ever visited", and in the browser that throw is indistinguishable from a
+  // dead worker. A rejected budget is a caller bug that fails loudly at the call; a zero-iteration search is a
+  // silently weaker opponent for the rest of the game.
+  const budget = input.budget
+  if (budget) {
+    if (!Number.isFinite(budget.ms) || budget.ms <= 0) {
+      throw new RangeError(`budget.ms must be a finite number greater than 0, got ${budget.ms}`)
+    }
+    if (!Number.isInteger(budget.minIterations) || budget.minIterations < 1) {
+      throw new RangeError(`budget.minIterations must be an integer of at least 1, got ${budget.minIterations}`)
+    }
+  }
   if (input.view.result) throw new Error('searchIsmcts: the game is already over')
   // D-9 has this function seeing a `PlayerView` and two declared lists and nothing else; the root actor is
   // therefore read off the view, and asking it to move for anybody but `view.me` is a caller bug, not a
@@ -388,7 +409,13 @@ export function searchTree(input: SearchInput): SearchTree {
   /** Fallback only: `decodeAction` against the LIVE view is the authority for what the root key means. */
   const rootCommands = new Map<ActionKey, Command>()
 
+  // Fixed ONCE at entry, so a slow first iteration cannot push the deadline out from under itself.
+  const end = budget ? now() + budget.ms : 0
   for (let i = 0; i < input.iterations; i++) {
+    // The floor is checked before the clock, and the deadline at the TOP of an iteration: one that has begun
+    // always finishes, because abandoning it midway would leave the tree updated along the path it descended
+    // but never backpropagated — a node whose visit count and value disagree, for the rest of the search.
+    if (budget && i >= budget.minIterations && now() >= end) break
     const [world, nextWorld] = determinise({ view: input.view, decks, rng: streams.world })
     streams.world = nextWorld
     counters.determinisations++
@@ -508,6 +535,6 @@ export function searchTree(input: SearchInput): SearchTree {
 }
 
 /** The pure, synchronous, structured-cloneable search seam (D-7). `searchTree` is the same run with its tree. */
-export function searchIsmcts(input: SearchInput): SearchResult {
-  return searchTree(input).result
+export function searchIsmcts(input: SearchInput, now?: SearchClock): SearchResult {
+  return now === undefined ? searchTree(input).result : searchTree(input, now).result
 }

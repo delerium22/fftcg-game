@@ -1,5 +1,6 @@
 import {
-  DEFAULT_EXPLORATION_C, DEFAULT_ITERATIONS, DEFAULT_ROLLOUT_COMMAND_CAP, GreedyAgent, type Agent,
+  DEFAULT_EXPLORATION_C, DEFAULT_ITERATIONS, DEFAULT_ROLLOUT_COMMAND_CAP, GreedyAgent,
+  type Agent, type SearchBudget,
 } from '@fftcg/ai'
 import { actingPlayer, legalCommands, viewFor, type Command, type GameState } from '@fftcg/engine'
 import { AI } from '../types.js'
@@ -113,6 +114,13 @@ export interface SearchCoordinatorOptions {
   readonly watchdogMs?: number | undefined
   readonly createTransport?: SearchTransportFactory | undefined
   readonly clock?: Clock | undefined
+  /**
+   * Rung F4: the search's own wall-clock box, sent to the worker with `init`.
+   *
+   * Distinct from `stepMs`, which paces DELIVERY — a result that arrives early is held until the beat. This
+   * bounds how long the search may spend before there is a result at all, which is what `stepMs` cannot do.
+   */
+  readonly budget?: SearchBudget | undefined
 }
 
 export const DEFAULT_STARTUP_WATCHDOG_MS = 10_000
@@ -259,6 +267,10 @@ export class SearchCoordinator {
           decks: this.opts.decks,
           rolloutCommandCap: this.opts.rolloutCommandCap ?? DEFAULT_ROLLOUT_COMMAND_CAP,
           explorationC: this.opts.explorationC ?? DEFAULT_EXPLORATION_C,
+          // F4's time box, posted once as stable policy. An absent key rather than an explicit undefined:
+          // `exactOptionalPropertyTypes` is on, and a budget of `undefined` on the wire is not the same thing
+          // as no budget.
+          ...(this.opts.budget === undefined ? {} : { budget: this.opts.budget }),
         })
         this.initialised = true
       }

@@ -1,4 +1,4 @@
-import { searchIsmcts, type SearchInput, type SearchResult } from '@fftcg/ai'
+import { searchIsmcts, type SearchBudget, type SearchInput, type SearchResult } from '@fftcg/ai'
 import type { PlayerView } from '@fftcg/engine'
 
 /**
@@ -20,6 +20,15 @@ export interface WorkerInit {
   readonly decks: readonly [readonly string[], readonly string[]]
   readonly rolloutCommandCap: number
   readonly explorationC: number
+  /**
+   * Rung F4's time box, and it belongs HERE for the reason stated above: it is stable policy, not a property
+   * of a position, so it is declared once rather than re-sent 200 times a game.
+   *
+   * It also has to be on a message at all. `SearchInput` is NOT what crosses this boundary — `searchInputFor`
+   * below rebuilds one field by field — so a budget added only to `SearchInput` would be silently dropped and
+   * the worker would go on running every iteration. That is exactly the mistake F4's plan review caught.
+   */
+  readonly budget?: SearchBudget
 }
 
 /** One search. `seed` is allocated per game POSITION by the coordinator (D2-3), never from `requestId`. */
@@ -60,6 +69,9 @@ export function searchInputFor(init: WorkerInit, request: WorkerSearchRequest): 
     seed: request.seed,
     rolloutCommandCap: init.rolloutCommandCap,
     explorationC: init.explorationC,
+    // Carried through, or the box never reaches the search. `exactOptionalPropertyTypes` is on, so an absent
+    // budget must be an ABSENT key rather than an explicit undefined.
+    ...(init.budget === undefined ? {} : { budget: init.budget }),
   }
 }
 

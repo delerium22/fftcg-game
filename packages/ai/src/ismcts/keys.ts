@@ -609,6 +609,32 @@ export interface SearchInput {
    * `SearchInput` crosses the worker boundary by `structuredClone`, which cannot carry a function.
    */
   readonly profile?: boolean
+  /**
+   * Rung F4: stop starting new iterations once `ms` have elapsed, with `minIterations` as a floor.
+   *
+   * DATA, for the same reason `profile` is a plain boolean — this crosses the worker boundary and
+   * `structuredClone` cannot carry a function. The CLOCK is a separate parameter of `searchIsmcts`, so a test
+   * can drive a fake one and stay deterministic while nothing on the wire changes.
+   *
+   * Absent by default: with no budget the clock is never consulted, and output is identical to before F4.
+   */
+  readonly budget?: SearchBudget
+}
+
+/** A wall-clock box on a search. Both fields are validated at entry — see `searchTree`. */
+export interface SearchBudget {
+  /** Stop starting new iterations once this many milliseconds have elapsed. Finite and > 0. */
+  readonly ms: number
+  /**
+   * Iterations to run before the clock is allowed to stop anything. Integer >= 1, and NOT decoration: a tight
+   * box on a slow machine that answered from three iterations would play barely better than random, and would
+   * surface as "the AI is bad on my laptop" — invisible to every gate here. Checked BEFORE the clock.
+   *
+   * Zero is rejected rather than allowed: zero iterations makes `searchTree` throw "no root action was ever
+   * visited", and in the browser a throw in the worker is treated as worker death, which permanently
+   * downgrades the opponent to the heuristic agent for the rest of the game. Silently.
+   */
+  readonly minIterations: number
 }
 
 /** Counters that make cost measurable rather than guessed (spec D-A4). */
