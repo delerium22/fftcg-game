@@ -1,6 +1,7 @@
 # Rung G2 — the prompt names moves you cannot make
 
-> **STATUS: SPEC. Nothing built.** Found by playing the app, which is how E9, E11, F3 and F6 were found too.
+> **STATUS: BUILT** — `9ce0fea`. Found by playing the app, which is how E9, E11, F3 and F6 were found too.
+> (This line said "Nothing built" for a while after the commit that built it, which a code review caught.)
 
 ## What I saw
 

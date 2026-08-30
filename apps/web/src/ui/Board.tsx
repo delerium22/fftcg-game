@@ -191,9 +191,29 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
   const [selected, setSelected] = useState<CardId | null>(null)
   // The card the player last pointed at, by CODE rather than by instance id: the panel shows what the CARD
   // does, which is a property of the definition, and a code survives the instance leaving play mid-look.
-  // `action` rides along because it belongs to the INSTANCE, not the definition — two copies of one card
-  // could in principle be paid for differently — so it is captured when the player looks, not looked up later.
+  // The CARD ID rides along because the action belongs to the INSTANCE, not the definition — two copies of one
+  // card can be paid for differently. The action itself is looked up live (see `inspectedAction`); it used to
+  // be captured here alongside the code, and a snapshot cannot go stale gracefully.
   const [inspected, setInspected] = useState<{ code: string; card: CardId } | null>(null)
+  /**
+   * Forget what was being looked at when a NEW GAME starts.
+   *
+   * Card ids are minted from 1 per game and `Board` stays mounted across "Play again", so an id captured in
+   * the old game names a different card in the new one — and the panel would attach that card's action to a
+   * card the player never inspected. A code review found it; checking the captured code does NOT fix it,
+   * because with a fixed deck order the reused id carries the same code and the mismatch stays invisible right
+   * up until deck construction changes.
+   *
+   * Detected from the view rather than from a game id threaded through `GameApi`: only a fresh game is at turn
+   * 0 in the setup phase, and on the very first render `inspected` is already null, so this costs nothing.
+   * Remounting the whole board on a new key would also work and would clear every piece of per-game UI state
+   * at once — but it would reset the `restarting` ref below, which is what puts focus back on the new game
+   * after "Play again" (rung E7).
+   */
+  useEffect(() => {
+    if (view.turn === 0 && view.phase === 'setup') setInspected(null)
+  }, [view.turn, view.phase])
+
   /** The move whose other payments are being shown, or `null` for the ordinary strip (rung E11). */
   const [paying, setPaying] = useState<Choice | null>(null)
   const inspect = (code: string | undefined, card: CardId): void => {

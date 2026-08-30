@@ -704,9 +704,16 @@ export function promptFor(v: PlayerView, legal: readonly Command[]): string {
  * than from the phase alone.
  *
  * It used to be three constant strings, and they were wrong in most positions. Over seeds 1–6 with greedy
- * driving, 225 of the sampled human turns carried a prompt naming a move the engine would have rejected:
- * "cast" with nothing castable 92 times, "attack" with no legal attack 133 times. On an empty or fully dull
- * board that is the normal case, not an edge one.
+ * driving, **168 of the sampled human turns** carried a prompt naming a move the engine would have rejected.
+ * On an empty or fully dull board that is the normal case, not an edge one.
+ *
+ * (The commit that landed this said 225, which was the count of VERB-INSTANCES: a prompt overclaiming both
+ * "cast" and "attack" was counted twice. 92 casts + 133 attacks = 225 overclaims across 168 positions. A code
+ * review caught the wrong noun.)
+ *
+ * The constants also said too LITTLE, which nothing measured until the test's oracle learned about
+ * activations: in **32 positions** an activated ability was legal and no prompt mentioned abilities at all,
+ * because none of the three constants ever did.
  *
  * `commands.ts` already had the principle written down one branch above — the `chooseFromDeck` case exists
  * because the strip "told the player to 'cast, attack, or pass' while the only legal answers were deck picks

@@ -130,4 +130,75 @@ describe('G4 — the details panel never outlives its own claim', () => {
     expect(changed, 'the looked-at card’s action never changed while it was being looked at — staleness was never possible')
       .toBeGreaterThan(0)
   })
+
+  it('drops the claim when the looked-at card is the one you play', () => {
+    // The transition the rung was FOUND on, and the test above cannot see it: playing the inspected card
+    // destroys its button, focus moves, and `inspected` follows focus to some other card — so the assertion
+    // there stops rather than checking the interesting moment. A code review pointed that out.
+    //
+    // Blurring instead of letting focus wander pins `inspected` to the played card, which is what happens in
+    // practice when the pointer is elsewhere or the player used the strip.
+    const { state, card, action } = positionWithPayableCard()
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+    render(state)
+
+    const button = document.querySelector<HTMLElement>(`[data-card-id="${card}"] button`)!
+    act(() => { button.focus() })
+    expect(details()).toBe(action)
+    act(() => { button.blur() })
+
+    const choice = choicesFor(state).byCard.get(card)?.[0]
+    expect(choice, 'the card lost its choice between renders').toBeDefined()
+    const after = apply(state, choice!.command).state
+    expect(after.players[HUMAN].hand.includes(card), 'the card never left the hand').toBe(false)
+    render(after)
+
+    // Whatever the truth is now — no action at all, or a Break-Zone target's "N options" — the panel must say
+    // THAT. Asserting emptiness here would be wrong: this pool can legitimately target a card in the Break
+    // Zone, which is how the first version of this test failed against a correct fix.
+    expect(details(), `the panel still claims "${details()}" for a card that has been played`)
+      .toBe(currentAction(after, card))
+  })
+
+  it('does not carry a claim across "Play again" (found in code review)', () => {
+    // Card ids are minted from 1 per game and `Board` stays mounted across a restart, so an id captured in the
+    // old game names a DIFFERENT card in the new one. With a fixed deck order the reused id happens to carry
+    // the same code, which hides the mismatch — so the panel is checked against the new game's truth for that
+    // id, and `inspectedAction` re-identifies the instance by code before trusting it.
+    const { state, card, action } = positionWithPayableCard()
+    host = document.createElement('div')
+    document.body.appendChild(host)
+    root = createRoot(host)
+    render(state)
+    const button = document.querySelector<HTMLElement>(`[data-card-id="${card}"] button`)!
+    act(() => { button.focus() })
+    expect(details()).toBe(action)
+    act(() => { button.blur() })
+
+    // A brand new game: same component, freshly minted ids starting again at 1. Rendered at SETUP first,
+    // exactly as `restart()` does — the reset watches for turn 0 in the setup phase, so a test that jumped
+    // straight to mid-game would never trigger it and would be testing a path the app does not take.
+    let fresh = createGame({ seed: 99, decks: DECKS, defs: CARD_DEFS })
+    render(fresh)
+    // Then on to a position where that same id DOES have an action, which is the only place the two builds
+    // differ: at setup nothing is clickable, so a stale `inspected` and a cleared one look identical and the
+    // mutation survives. This is what makes the assertion below able to fail.
+    for (let i = 0; i < 200 && !fresh.result; i++) {
+      if (choicesFor(fresh).byCard.has(card) && actingPlayer(fresh) === HUMAN) break
+      const p2 = actingPlayer(fresh)
+      if (p2 === null) break
+      const next = legalCommands(fresh, p2).find((c) => c.type !== 'concede')
+      if (!next) break
+      fresh = apply(fresh, next).state
+    }
+    expect(choicesFor(fresh).byCard.has(card), 'the reused id never became actionable, so nothing is proven')
+      .toBe(true)
+    render(fresh)
+    // NOTHING, not `currentAction(fresh, card)`. Asserting the latter was my first attempt and it could not
+    // fail: the buggy build looks up exactly that, and with a fixed deck order the reused id even carries the
+    // same code. The player has not looked at anything in this game, so the panel must claim nothing.
+    expect(details(), `the panel carried "${details()}" into a new game`).toBe('')
+  })
 })
