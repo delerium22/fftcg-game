@@ -293,13 +293,24 @@ https://fftcg.cdn.sewest.net/2026-08/fftcg-comprules-v3.3.pdf
 
 ## Deliberate shortcuts
 
-MVP0 takes a number of known shortcuts against the full CR (no priority passing, no stack,
-Summons resolve with no effect, EX Burst skipped, etc.), each marked in the source with a
-comment. Find them all with:
+Known deviations from the full CR, each marked in the source with a comment. Find them all with:
 
 ```sh
 grep -rn MVP0-SIMPLIFICATION packages apps --include='*.ts' --exclude-dir=dist
 ```
+
+The big one, from which most of the others follow, is that **there is no stack and no priority passing**:
+priority is always the turn player, every ability resolves the moment it is put on the agenda, and there is no
+response window. That in turn is why a Summon cannot be cast during the Attack Phase (§9.3.1.6) and why the
+Damage Resolution Step auto-advances (§10.1.4.4). Smaller ones: First Strike is not implemented (§15.2.3 — no
+card in the shipping deck prints it), simultaneous triggers use a fixed attacking-player-first FIFO rather than
+letting each controller order their own (§11.8.7), the mulligan keeps hand order rather than letting you choose
+it, and Monster-type cards are out of scope entirely (the pool has none).
+
+Two entries that used to be in this list are **no longer true**, and were left here stale for a while:
+Summons resolve their effects (rung C4 — Odin and Ramuh both work), and **EX Burst resolves on damage** (rung
+G3, §11.10): a card printing EX BURST that is dealt as damage offers its owner the marked clause, and the
+`selfplay` report counts every offer, use and decline.
 
 ## Repo layout
 
