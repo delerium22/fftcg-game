@@ -80,6 +80,29 @@ for the ISMCTS-vs-ISMCTS matchup G1b actually proposes to measure.
 **G1b-A0 (new, and it gates everything below): profile a mirrored ISMCTS-vs-ISMCTS baseline** and re-read the
 five-or-six share there. The 10 % abandonment threshold applies to *that* number, not to this one.
 
+### A0 — measured, and it clears
+
+`profile --games 20 --seed 201 --iterations 200 --opponent ismcts:200`. Seeds 201–220, disjoint from both
+earlier runs. 1,001 searched decisions, 200,200 leaves, `mismatchedDecisions: 0`.
+
+| at five or six damage | vs greedy | **vs ISMCTS** |
+|---|---|---|
+| the root | 8.1 % | **22.5 %** |
+| the opponent | 20.9 % | **13.4 %** |
+| **either (the gate)** | 26.6 % | **30.4 %** |
+| terminal leaves | 14.5 % | 14.0 % |
+
+**A0 passes at 30.4 %, against a 10 % threshold.**
+
+The two terms moved exactly as the review predicted — root up, opponent down — and the *net* went up rather
+than down, which is what I had guessed and could not justify. The guess being right does not make the
+reasoning sound: the review was correct that it did not follow, and it needed measuring. Now it is measured.
+
+The shape is also different in a way that matters for this rung. Against greedy the root sat at 0–2 damage in
+71 % of leaves; in a mirror both players spend real time across 3–6, because two equal opponents grind. Those
+are precisely the positions a curve exists to tell apart, and they are the ones the earlier profile barely
+sampled.
+
 The honest caveat: leaves within one game are heavily correlated, so 406,200 leaves are nowhere near 406,200
 independent observations, and the right unit is closer to the 2,031 decisions or the 40 games. That is why
 the gate was decided on the agreement of two disjoint seed sets rather than on either run's leaf count.
