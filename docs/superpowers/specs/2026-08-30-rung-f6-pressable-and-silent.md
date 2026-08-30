@@ -1,6 +1,7 @@
 # Rung F6 — a card you can press that will not say what pressing it does
 
-> **STATUS: SPEC, awaiting plan review.** Nothing built. Found by playing, then measured. The margin was
+> **STATUS: PLAN REVIEWED — revise, then build.** The fix is right and the wording is ruled on, but my
+> measurement was an UNDERCOUNT and this is not the one-string change I claimed. Nothing built. Found by playing, then measured. The margin was
 > predeclared before any run in F5's review, so it is stated here too — see *Acceptance*.
 
 ## Found by playing
@@ -100,3 +101,90 @@ not substantiate them.
 
 Changing what the prompt strip says, the click model itself, or which cards are clickable. This rung changes
 one string.
+
+---
+
+## Plan review: not cleared. My measurement was wrong in the direction I did not check.
+
+> **Wording ruled on:** bare differentiated forms — `3 options` for several moves, `4 ways to pay` (preferred
+> plus alternatives) for one move funded several ways, and the exact `Choice.label` when the click commits.
+> **`Cast Cloud, 4 ways to pay` is REJECTED**: the repo defines E4's invariant as "the stated action is what
+> pressing immediately does", and that click selects Cloud, it does not cast it. The richer form reintroduces
+> E4's defect. A bare count does not — and it stays true when pressing an already-selected card CLOSES the
+> options, since `pick` toggles and the noun phrase holds either way.
+
+### CRITICAL 1 — `actionFor` never reaches two of the three card rows
+
+I measured the predicate. I did not check where its result goes. It is passed to the card button **for hand
+cards only** (`Board.tsx:442`). Selectable FIELD cards get no `action` (`361`), and orphan-row cards get none
+(`377`). So:
+
+- a field Forward whose sole choice is `Block with Luso` **commits on press and announces only its stats** —
+  my predicate scored it as non-silent, wrongly;
+- a Hugh Yurg deck-search candidate in the orphan row commits `Play X onto the field` and announces only the
+  card — **my corpus omitted that row entirely**.
+
+**So 171/443 and 38/176 are UNDERCOUNTS, not overcounts.** I had worried the cell might rescue the number;
+it does not — `CardGrid` deliberately withholds `cellName` from a selectable card because the button is the
+focus target, and the button's name comes only from `cardAccessibleName`.
+
+And it disproves my closing line: **this is not a one-string change.** The disclosure has to be threaded
+through the hand, field and orphan render paths.
+
+### CRITICAL 2 — F6-A3 cannot prove its own invariant
+
+A3 forbade payment or target text on a non-committing card. Plenty of false actions contain neither: a
+Forward with several attacks would leak `Attack with Cloud`, pressing selects rather than attacks, and the
+property passes. Replaced with an exact structural oracle, which also removes the string-matching problem:
+
+| the card | its announced suffix | pressing it |
+|---|---|---|
+| commits | exactly the sole `Choice.label` | submits that choice |
+| one move, several payments | exactly `K+1 ways to pay` | submits nothing |
+| several moves | exactly `N options` | submits nothing |
+
+Leaking any `Choice.label` into a non-commit case then fails structurally rather than by guessing at strings.
+
+### MAJOR — A4 counted the wrong thing
+
+For one move funded several ways, `byCard` holds ONE choice and its `alternatives` hold the rest. Seed 11's
+Class Tenth Moogle is `byCard.length === 1`, `alternatives.length === 2`, **three** ways to pay. "N choices
+from `byCard`" cannot validate `3 ways to pay`. Split: `forCard.length > 1` → that many *options*;
+`forCard.length === 1 && alternatives.length > 0` → `alternatives.length + 1` *ways to pay*.
+
+### MAJOR — the corpus is not reproducible, and one omission would change the answer
+
+I recorded no seeds, human policy, opponent config, step cap, or how the `ChoiceSet` was built. That last one
+matters most: **the walk must pass `paymentAlternatives(rawLegal)`**, or every E11 alternative disappears and
+the classification changes. I did pass it; the spec does not say so, so neither "171 must become zero" nor
+"reversion must exceed 100" is currently repeatable. Method to be recorded as precisely as E11's test header
+does.
+
+### MAJOR — "the E4 suite passes untouched" is false
+
+`look` feeds `actionFor` into `CardDetails` for every card, so the panel will start showing `2 options`. And
+`card-details.test.tsx:1137` explicitly requires the details action to be **absent** for a multi-choice
+Geomancer. That expectation must change, and A6 has to name it in advance — which is the whole reason A6
+exists. The E11 browser test also carries prose asserting the card "no longer announces an action"
+(`payment.spec.ts:22`), now stale.
+
+### Recorded, not fixed here: two more surfaces violate the same principle
+
+Not silent, so out of F6's scope, but they state an action the press does not perform:
+
+- **`Pay differently`** embeds the exact preferred cast and payment in its accessible name, while pressing it
+  only opens the chooser. That is mine, from E11.
+- **`Concede`** says "Concede", but the first press only arms a confirmation.
+
+The pile-browser buttons are fine — they name the pile and count, with `aria-expanded` carrying open/closed.
+Ordinary strip choices are fine: they are exact committing labels.
+
+### Acceptance, as re-ruled
+
+- **A1** must mount `Board`, enumerate every `byCard` id, and inspect the ACTUAL button across hand, field
+  and orphan paths — not the predicate.
+- **A2** intent stands; the "untouched" claim does not.
+- **A3** replaced by the structural oracle above, with click-result assertions.
+- **A4** split into the two counts.
+- **A5** predeclare exact routes and exact suffixes: seed 11 for multi-payment, seed 21 for several options.
+- **A6** names `card-details.test.tsx:1137` and `payment.spec.ts:22` as the expectations that must change.
