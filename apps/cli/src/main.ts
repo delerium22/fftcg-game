@@ -7,7 +7,7 @@ import { profileSearch } from './profile.js'
 import type { AgentSpec } from './agents.js'
 import {
   MAX_ITERATIONS, parseAgentSpec, parseBudgetMs, parseDepth, parseIterations, parseMinIterations,
-  parsePositiveInt, parseRolloutCap,
+  parsePositiveInt, parseRolloutCap, withDefaults,
 } from './agents.js'
 import { parseDeckFile } from './deck.js'
 import { hotseat } from './hotseat.js'
@@ -55,27 +55,6 @@ function parseSeed(s: string): number {
 }
 
 const seed = parseSeed(flag('seed', '1'))
-
-/**
- * Applies `--depth`/`--iterations` to a BARE spec (no explicit `:N`); an explicit suffix always wins. The
- * iteration default is the SEARCH's `DEFAULT_ITERATIONS`, not a number this CLI invented — a bare `ismcts`
- * must run the budget its own defaults describe, and resolving it here means `describeAgentSpec` labels the
- * run with the budget that actually produced its ms/decision (D-A4) instead of a bare "ismcts".
- */
-function withDefaults(
-  spec: AgentSpec, depth: 0 | 1 | 2, iterations: number, rolloutCap: number | null,
-  budget: { ms: number; minIterations: number } | null = null,
-): AgentSpec {
-  if (spec.kind === 'greedy' && spec.depth === undefined) return { kind: 'greedy', depth }
-  if (spec.kind !== 'ismcts') return spec
-  // An explicit `undefined` is not an absent key under exactOptionalPropertyTypes, so build the object.
-  return {
-    kind: 'ismcts',
-    ...(spec.iterations === undefined ? { iterations } : { iterations: spec.iterations }),
-    ...(spec.rolloutCap !== undefined ? { rolloutCap: spec.rolloutCap } : rolloutCap === null ? {} : { rolloutCap }),
-    ...(budget === null ? {} : { budgetMs: budget.ms, minIterations: budget.minIterations }),
-  }
-}
 
 const usage = [
   'usage: <hotseat|selfplay|mirror|profile|deckorder> [options]',

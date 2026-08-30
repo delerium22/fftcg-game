@@ -125,6 +125,32 @@ export function describeAgentSpec(spec: AgentSpec): string {
 }
 
 /**
+ * Applies `--depth`/`--iterations` to a BARE spec (no explicit `:N`); an explicit suffix always wins. The
+ * iteration default is the SEARCH's `DEFAULT_ITERATIONS`, not a number this CLI invented — a bare `ismcts`
+ * must run the budget its own defaults describe, and resolving it here means `describeAgentSpec` labels the
+ * run with the budget that actually produced its ms/decision (D-A4) instead of a bare "ismcts".
+ */
+export function withDefaults(
+  spec: AgentSpec, depth: 0 | 1 | 2, iterations: number, rolloutCap: number | null,
+  budget: { ms: number; minIterations: number } | null = null,
+): AgentSpec {
+  if (spec.kind === 'greedy' && spec.depth === undefined) return { kind: 'greedy', depth }
+  if (spec.kind !== 'ismcts') return spec
+  // SPREAD the parsed spec and override only the fields a default applies to. This used to rebuild the object
+  // field by field, which silently DROPPED every field the list forgot — and G1a's `weights` was one, so
+  // `--a ismcts:200+damage=25` reached the tournament as plain `ismcts:200`. That is the worst shape a bug
+  // can have here: the treatment arm runs the CONTROL's policy while the report names it as the treatment, so
+  // an A/B reports one arm twice and reads as "no effect" no matter what the weight would really have done.
+  // An explicit `undefined` is not an absent key under exactOptionalPropertyTypes, hence the conditionals.
+  return {
+    ...spec,
+    ...(spec.iterations === undefined ? { iterations } : {}),
+    ...(spec.rolloutCap === undefined && rolloutCap !== null ? { rolloutCap } : {}),
+    ...(budget === null ? {} : { budgetMs: budget.ms, minIterations: budget.minIterations }),
+  }
+}
+
+/**
  * Builds a fresh agent for one seat. Self-play constructs one of these per game per seat, seeded
  * `(seed + g) * 2 + p + 1` (see `selfplay.ts`) so seat and game vary the stream independently of the
  * legacy `seed * 2 + 1/2` random-vs-random scheme. The mirrored tournament seeds by AGENT instead of by

@@ -5,8 +5,9 @@ import { loadCards } from '@fftcg/cards'
 import { actingPlayer, apply, createGame, legalCommands, viewFor } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { parseDeckFile } from '../src/deck.js'
-import { MAX_ITERATIONS, MAX_ROLLOUT_CAP, describeAgentSpec, makeAgent, parseAgentSpec, parseDepth, parseWeightOverrides, parseIterations, parsePositiveInt, parseRolloutCap, type AgentSpec } from '../src/agents.js'
+import { MAX_ITERATIONS, MAX_ROLLOUT_CAP, describeAgentSpec, makeAgent, parseAgentSpec, parseDepth, parseWeightOverrides, withDefaults, parseIterations, parsePositiveInt, parseRolloutCap, type AgentSpec } from '../src/agents.js'
 import { selfPlay } from '../src/selfplay.js'
+import { mirrorTournament } from '../src/mirror.js'
 
 const deck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 const decks = (): [string[], string[]] => { const d = deck(); return [d, d] }
@@ -244,5 +245,71 @@ describe('weight overrides on an ISMCTS arm (G1a)', () => {
     // And a poisoned weight fails loudly rather than playing badly in silence.
     expect(() => makeAgent({ kind: 'ismcts', iterations: 20, weights: { damage: NaN } }, 1, d)
       .decide(viewFor(s, p), legalCommands(s, p))).toThrow(/every score NaN/)
+  })
+})
+
+describe('the flag reaches the tournament (G1a, and the bug an A/A caught)', () => {
+  // `withDefaults` used to REBUILD the ismcts spec field by field, so it silently dropped every field its own
+  // list forgot — and `weights` was one. `--a ismcts:200+damage=25` therefore reached the tournament as plain
+  // `ismcts:200`: the treatment arm ran the CONTROL's policy while the report named it as the treatment.
+  //
+  // Nothing caught it. `parseAgentSpec` was tested, `describeAgentSpec` was tested, `makeAgent` was tested —
+  // and the defect lived in the one link between them that no test composed. It surfaced only because an
+  // accidental A/A run printed `"agents": ["ismcts:200", "ismcts:200"]` for two arms that were meant to
+  // differ. So the assertion here is on the COMPOSITION the CLI actually performs, not on its parts.
+  const cliArm = (flagValue: string): string =>
+    describeAgentSpec(withDefaults(parseAgentSpec(flagValue), 1, 200, null, null))
+
+  it('carries weights from the flag string all the way to the reported agent name', () => {
+    expect(cliArm('ismcts:200+damage=25')).toBe('ismcts:200+damage=25')
+    expect(cliArm('ismcts+damage=25')).toBe('ismcts:200+damage=25')
+    expect(cliArm('ismcts:200+damage=25,threat=0.9')).toBe('ismcts:200+damage=25,threat=0.9')
+  })
+
+  it('leaves a treatment arm DISTINGUISHABLE from its control, which is the whole point', () => {
+    expect(cliArm('ismcts:200+damage=25')).not.toBe(cliArm('ismcts:200'))
+  })
+
+  it('still applies the defaults it exists to apply, and still lets an explicit suffix win', () => {
+    expect(cliArm('ismcts')).toBe('ismcts:200')
+    expect(cliArm('ismcts:40')).toBe('ismcts:40')
+    expect(describeAgentSpec(withDefaults(parseAgentSpec('greedy'), 2, 200, null, null))).toBe('greedy:2')
+    expect(describeAgentSpec(withDefaults(parseAgentSpec('greedy:0'), 2, 200, null, null))).toBe('greedy:0')
+    expect(describeAgentSpec(withDefaults(parseAgentSpec('random'), 2, 200, null, null))).toBe('random')
+  })
+
+  it('carries the cap and the box alongside the weights rather than instead of them', () => {
+    const spec = withDefaults(parseAgentSpec('ismcts:200+damage=25'), 1, 200, 40, { ms: 500, minIterations: 64 })
+    expect(describeAgentSpec(spec)).toBe('ismcts:200/cap40/box500ms+min64+damage=25')
+    expect(spec).toMatchObject({ kind: 'ismcts', iterations: 200, rolloutCap: 40, budgetMs: 500, minIterations: 64, weights: { damage: 25 } })
+  })
+
+  it('the tournament REPORT names the weight, which is where the bug was visible', () => {
+    // A one-iteration tournament, because this asserts labelling rather than play: what went wrong was that
+    // both arms printed `"agents": ["ismcts:200", "ismcts:200"]`, and a report that cannot tell its treatment
+    // from its control is a measurement nobody can act on however the games came out.
+    const common = { pairs: 1, seed: 700, decks: decks(), defs: loadCards(), strict: false, bootstrapSamples: 50 }
+    const control = mirrorTournament({ ...common, agents: [parseAgentSpec('ismcts:1'), parseAgentSpec('greedy:1')] })
+    const treated = mirrorTournament({ ...common, agents: [parseAgentSpec('ismcts:1+damage=25'), parseAgentSpec('greedy:1')] })
+    expect(treated.agents[0]).toBe('ismcts:1+damage=25')
+    expect(control.agents[0]).toBe('ismcts:1')
+    expect(treated.search[0]?.decisions ?? 0, 'the arm never searched, so nothing is proven').toBeGreaterThan(0)
+  })
+
+  it('an agent BUILT through the CLI path plays differently under a dominating weight', () => {
+    // The behavioural half, entered where the CLI enters it — `parseAgentSpec` -> `withDefaults` ->
+    // `makeAgent` -> `decide` — rather than by constructing a SearchInput directly. Deliberately not asserted
+    // through `mirrorTournament`: at a test-affordable iteration count the tournament's outcomes coincide
+    // whether or not the weight lands, so it would pass for the wrong reason. One decision at twenty
+    // iterations is enough to show the override reaches the rollouts through this route.
+    const d = decks()
+    const s = createGame({ seed: 5, decks: d, defs: loadCards() })
+    const p = actingPlayer(s) ?? 0
+    const build = (spec: string): AgentSpec => withDefaults(parseAgentSpec(spec), 1, 20, null, null)
+    const decide = (spec: string) => makeAgent(build(spec), 7, d).decide(viewFor(s, p), legalCommands(s, p))
+    const differed = [1, 2, 3, 4, 5, 6].filter((it) =>
+      JSON.stringify(decide(`ismcts:${it * 8}`)) !== JSON.stringify(decide(`ismcts:${it * 8}+damage=4000,forwardPower=-60`)))
+    expect(differed.length, 'no iteration count changed its command — the CLI path drops the weight')
+      .toBeGreaterThan(0)
   })
 })
