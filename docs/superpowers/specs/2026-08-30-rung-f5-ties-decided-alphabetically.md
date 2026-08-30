@@ -176,7 +176,7 @@ held-out seeds.** Reusing the pilot's seeds for the confirmation is how a pilot 
 
 ---
 
-## Result — safe everywhere, decisive where ties dominate, unproven where it ships
+## Result — safe at the endpoints measured, decisive where ties dominate, unproven where it ships
 
 Predeclared before running: non-inferiority margin **−5 points**; "material" = **≥ +5 points with a CI
 excluding zero**; comparison is `new − old` pair score by identical seed index, paired bootstrap, 60 pairs
@@ -200,8 +200,10 @@ but the interval's lower bound sits exactly on zero, so by the rule written befo
 count as a demonstrated improvement. Stated as: safe, directionally positive, underpowered. The review's
 sizing said ~1,000 games per arm for a claim like this and these are 120.
 
-**At 200 only 5 of 60 pairs changed**, which matches the 7 % "would choose differently" rate measured
-beforehand — the mechanism predicted from the tie statistics is the mechanism that shows up in play.
+**At 200 only 5 of 60 pairs changed.** I first wrote that this "matches the 7 % would-choose-differently
+rate", and it does not — those are unrelated observables, which F4's own spec already explains. A pair is two
+games and many decisions; an identical pair score can hide changed moves, or even both winners flipping.
+Corroborating the 7 % mechanism needs command traces, which were not collected. Retracted.
 
 ### A caution about the numbers this rung itself quotes
 
@@ -216,3 +218,48 @@ Ship. The comparator uses information it already had rather than discarding it, 
 reading rather than inferred from a win rate, both safety endpoints clear their margin, and the one regime
 where ties dominate improves enormously. What is NOT claimed is a strength gain at 200 or a demonstrated one
 at 64.
+
+---
+
+## Code review: the comparator is right, the measurement RECORD was not
+
+No CRITICAL. The comparator is confirmed correct for production states, D-5's primary rule is genuinely still
+pinned, only the intended test changed, and no production consumer assumes root results stay key-ordered.
+Four things about the evidence were wrong, and all four are mine.
+
+### The report could not prove its own arms were paired — FIXED
+
+The CLI strips `results`, the only field carrying game seeds, and the summary recorded no seed, deck, strict
+flag or bootstrap seed. **Two runs over different seed ranges both emit 60-element `pairScores`, and
+subtracting them by index yields a plausible paired interval with nothing failing.** The raw outputs also sat
+outside the repo, so the claim was unauditable.
+
+`mirror` now emits `provenance` (seed, pairs, deck hash, `strict`, bootstrap seed), and F5's seven arms are
+committed under `docs/superpowers/measurements/f5/`.
+
+### The +38.3 at 8 iterations is descriptive, not confirmatory
+
+It reuses the F4 floor-sweep arm — **the very corpus whose bad result motivated this rung**. Reusing a
+deterministic historical control is legitimate for a descriptive A/B, and there is no relevant code drift
+between that run and `f270938`. But the accepted plan called for a pilot followed by frozen HELD-OUT seeds,
+precisely so the algorithm and the endpoint are not selected from the same data they are then confirmed on.
+The effect is large enough that this is unlikely to be the whole story, but the nominal interval does not
+account for the selection and the result is labelled accordingly.
+
+### "Safe everywhere" was unsupported — the middle was never measured
+
+The plan required diagnostics at 32 and especially **128**, because the box can stop anywhere between 64 and
+200 and passing at both endpoints says nothing about the interior. I ran 8, 64 and 200 only. A comparator that
+was +7.5 at 64, **−8 at 128** and −0.8 at 200 would have passed both declared endpoints while the browser
+frequently played the regressed policy. The heading is corrected and 128 is being measured.
+
+### The margin was not audibly predeclared
+
+The pre-result commit says "a predeclared non-inferiority margin" and gives no number; **−5 first appears in
+the same commit as the results.** The reviewer was explicit that this is not an accusation — but the
+repository cannot substantiate the predeclaration, and it matters because 200's lower bound of −4.2 passes −5
+and would fail −2.5. **The lesson for every later rung: put the number in the spec commit, before the run.**
+
+### And the 5-of-60 corroboration was not one
+
+Retracted in place above. A pair score is not a decision count.
