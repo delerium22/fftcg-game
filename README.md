@@ -150,9 +150,16 @@ Measured strength, all on seeded runs:
 
 | Matchup | Result |
 |---|---|
-| ISMCTS vs greedy, 120 mirrored games, 200 iterations | **75.0 %**, CI95 [66.7, 82.5] |
+| ISMCTS vs greedy, 120 mirrored games, 200 iterations | **75.0 %**, CI95 [66.7, 82.5] — *measured before rung G3, see below* |
 | Greedy vs the concrete-command random baseline, 200 games | **≥ 98 %**, regardless of seat or depth |
 | ISMCTS in the browser (production build, Apple Silicon) | p50 **91–343 ms**, p95 **140–504 ms** per decision, over 5 finished games |
+
+**The ISMCTS figure predates EX Burst and has not been re-measured.** Rung G3 gave every damage step a new
+decision and made a fifth of all damage do something it previously did not, so the 75.0 % above describes a
+game that is no longer quite the game being played. It is left in place, marked, rather than quietly restated
+as current: re-measuring costs about an hour of wall clock (60 mirrored pairs at roughly 63 s a pair), which is
+worth spending deliberately rather than as a side effect. The same caveat applies to the 13.6-turn figure
+below.
 
 **The ISMCTS number has fallen, and the fall is real.** It measured 90.0 % when rung D1 landed; by rung D3
 it was 78.3 %, and re-measured at rung D7 over the same 120 mirrored games it is 75.0 % — with 90.0 % well
