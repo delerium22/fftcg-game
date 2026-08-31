@@ -21,11 +21,17 @@ Measured over 40 seeded games, 2,288 human decision points:
 
 | | |
 |---|---|
-| decisions where the strip's only button is **Concede** | **345 — 15.1 %** |
+| decisions where the strip's only button is **Concede**, on arrival | **345 — 15.1 %** |
+| …and no card click can ever add one, so it stays that way for the whole prompt | **343 — 15.0 %** |
 | the prompts it happens at | `chooseTargets`, `chooseFromDeck`, `discardToHandSize` |
 
-Every "click a highlighted card" decision. The choices are card-keyed, so `choices.loose` holds nothing but
-concede, and the strip renders exactly that.
+The two rows are stated separately because the strip is not static: selecting a card that does NOT commit on
+click adds that card's choices to the strip. At these prompts almost every candidate commits — clicking a
+target IS the answer — so there is nothing to select and the strip stays as it arrived. Two decisions in 2,288
+differ. This program has twice reported a figure whose noun was wrong, so the noun is pinned here.
+
+What they have in common is that they are every "click a highlighted card" decision: the answers are
+card-keyed, so `choices.loose` holds nothing but concede, and the strip renders exactly that.
 
 ## Why it matters, and why it is not already handled
 
