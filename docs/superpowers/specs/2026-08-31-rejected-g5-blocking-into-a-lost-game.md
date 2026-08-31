@@ -62,8 +62,25 @@ improvement while being measurably nothing.
   ever fires between candidates that already scored identically.
 - **A pool with fewer attackers.** The result depends on the attacker having a second Forward to finish with.
   A deck where the follow-up is rarer would move the 0.
-- **The ISMCTS agent**, which was not measured here. It searches rather than rolling out greedily once, so its
-  behaviour at these positions may differ; the 32/120 figure is greedy's.
+- ~~**The ISMCTS agent**, which was not measured here.~~ **Now measured, and it settles the question the other
+  way: the shipping opponent never does this at all.** Twelve games at the shipping 200 iterations, search on
+  seat 0 against greedy on seat 1 (214 s):
+
+  | | |
+  |---|---|
+  | block decisions by the search | 85 |
+  | **fatal declines** (a block existed that avoided losing on the spot) | **0** |
+  | winning attacks available to the search | 6 |
+  | …not taken | 0 |
+
+  So the alarming behaviour is greedy's alone. The search reaches the same positions and blocks. That is worth
+  knowing for two reasons: the browser opponent — which is the search — never shows a player the thing that
+  looks like a blunder, and greedy's indifference is confined to rollouts and the worker-failure fallback,
+  where it costs nothing measurable (0 of 32 games, above).
+
+  Sample sizes, stated because they differ a lot: 85 block decisions is a solid basis for the 0; **6** lethal
+  opportunities is not, and that half is corroborated by the greedy corpus (60 of 60) rather than standing
+  alone.
 
 ## Method
 
