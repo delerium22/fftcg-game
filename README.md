@@ -307,7 +307,7 @@ https://fftcg.cdn.sewest.net/2026-08/fftcg-comprules-v3.3.pdf
 Known deviations from the full CR, each marked in the source with a comment. Find them all with:
 
 ```sh
-grep -rn MVP0-SIMPLIFICATION packages apps --include='*.ts' --exclude-dir=dist
+grep -rn MVP0-SIMPLIFICATION packages apps --include='*.ts' --include='*.tsx' --exclude-dir=dist
 ```
 
 The big one, from which most of the others follow, is that **there is no stack and no priority passing**:
@@ -316,7 +316,10 @@ response window. That in turn is why a Summon cannot be cast during the Attack P
 Damage Resolution Step auto-advances (§10.1.4.4). Smaller ones: First Strike is not implemented (§15.2.3 — no
 card in the shipping deck prints it), simultaneous triggers use a fixed attacking-player-first FIFO rather than
 letting each controller order their own (§11.8.7), the mulligan keeps hand order rather than letting you choose
-it, and Monster-type cards are out of scope entirely (the pool has none).
+it, Monster-type cards are out of scope entirely (the pool has none), and at a prompt whose every answer is a
+card click — choose targets, choose from deck, discard to hand size — the browser's prompt strip offers no
+buttons at all rather than Concede alone, so for that one decision you cannot concede (§2.1; rung G6, measured
+at 345 of 2,288 decisions before the change).
 
 Two entries that used to be in this list are **no longer true**, and were left here stale for a while:
 Summons resolve their effects (rung C4 — Odin and Ramuh both work), and **EX Burst resolves on damage** (rung

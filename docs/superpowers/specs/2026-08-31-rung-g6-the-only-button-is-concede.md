@@ -1,7 +1,14 @@
 # Rung G6 — for one decision in seven, the only button is "Concede"
 
-> **STATUS: SPEC. Nothing built.** Found by driving the PRODUCTION build, which is how it surfaced at all: a
-> script clicking the first strip button conceded a game it was winning.
+> **STATUS: BUILT 2026-09-08** (`apps/web/test/concede-only.test.tsx`, `PromptStrip.tsx`). Codex plan review
+> skipped by decision. Measured over the same corpus: 2,288 decisions, 345 where the choices would put Concede
+> alone; after the fix 0 render it alone (A1), 0 strips with a real choice lost a button (A2), and every
+> `byCard` key at those 345 decisions renders a pressable control (A4). Mutation: gating on `cardOnly` instead
+> of `concedeOnly` silenced 14 `chooseTargets` strips ("Choose no targets" vanished) and A2 caught it. The
+> README's marker grep only included `*.ts`, which would have hidden this `.tsx` marker; widened (A5).
+>
+> Found by driving the PRODUCTION build, which is how it surfaced at all: a script clicking the first strip
+> button conceded a game it was winning.
 
 ## What I saw, and then measured
 
