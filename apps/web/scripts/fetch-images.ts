@@ -59,7 +59,7 @@ export function cachedCodes(outDir: string): Set<string> {
   return new Set(readdirSync(outDir).filter((f) => f.endsWith('.jpg')).map((f) => f.slice(0, -'.jpg'.length)))
 }
 
-/** Retry-After is either delta-seconds or an HTTP-date (RFC 9110 §10.2.3); accept both, reject junk. */
+/** Retry-After is either delta-seconds or an HTTP-date (RFC 9110 section 10.2.3); accept both, reject junk. */
 export function retryAfterMs(header: string | null | undefined, now: number = Date.now()): number | null {
   const raw = header?.trim()
   if (!raw) return null

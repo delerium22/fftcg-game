@@ -26,7 +26,7 @@ interface Paying {
   ask: { card: CardId; options: Element[] } | null
 }
 
-const MAX_DAMAGE = 7   // §12.2.2: a player with 7 damage loses
+const MAX_DAMAGE = 7   // §12.4.1: a player with 7 damage loses
 
 function defOf(v: PlayerView, id: CardId) {
   const inst = v.cards[id]

@@ -56,7 +56,7 @@ determinisation with private information the way rung C9 does — but this is a 
 
 ## Rules citations
 
-Revision 1's citations were wrong (§1.3.3 and §9.3.2 name unrelated rules). Per the plan review the correct
+Revision 1's citations were wrong (its two section numbers named unrelated rules). Per the plan review the correct
 ones are: **§§11.6.3–11.6.11** activation procedure, **§11.6.10** cost atomicity, **§11.6.5** targeting at
 activation, **§11.5.4** source independence, **§11.6.2.2** the `[Dull]` control-since-start / Haste rule,
 **§15.1.1.3.2** putting into the Break Zone as a cost is not breaking, **§11.2.2.3** CP over-*generation*

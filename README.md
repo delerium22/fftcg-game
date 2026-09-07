@@ -303,6 +303,12 @@ showing name, cost, elements, type and power. Art is an enhancement, never a dep
 Pinned to **Comprehensive Rules v3.3 (7 Aug 2026)**:
 https://fftcg.cdn.sewest.net/2026-08/fftcg-comprules-v3.3.pdf
 
+Every `§x.y.z` cited in the source, tests, specs and this file is checked against that document's section
+index, `docs/rules/cr-3.3-sections.txt` (numbers and opening words only — the rules text is Square Enix's),
+by `packages/engine/test/rules-citations.test.ts`. A citation to a section that does not exist fails the
+build; it caught one on the day it was added. The audit of the engine against every section, and the ladder
+of rungs from it, is `docs/superpowers/specs/2026-09-08-rules-conformance-audit.md`.
+
 ## Deliberate shortcuts
 
 Known deviations from the full CR, each marked in the source with a comment. Find them all with:

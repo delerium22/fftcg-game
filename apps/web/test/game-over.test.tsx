@@ -284,7 +284,7 @@ describe('describeResult', () => {
       if (cause === 'bothReachedSeven') continue
       for (const winner of [HUMAN, AI] as const) {
         it(`${cause}, won by ${winner === HUMAN ? 'you' : 'the AI'}`, () => {
-          const result = { winner, cause, reason: 'player 0 lost somehow (§0)' } as GameResult
+          const result = { winner, cause, reason: 'player 0 lost somehow (§12.4.1)' } as GameResult
           expect(logLine(result)).toContain(describeResult(HUMAN, result))
           expect(logLine(result), 'the log still prints the engine reason').not.toContain('§')
         })
