@@ -504,7 +504,8 @@ body {
   /* Cap the panel and scroll rather than let it push the log out of the rail, which is a flex column
      sharing a fixed height with it. Sized for the longest text in the pool — Cloud's 373 characters, not
      Ramuh's 174, which is the one that LOOKS longest because it prints on four lines. */
-  max-height: 40%;
+  /* 50 %, was 40 %: rung H1 set the text at 15 px, and Cloud's 373 characters must still fit unscrolled. */
+  max-height: 50%;
   overflow-y: auto;
 }
 
@@ -514,7 +515,7 @@ body {
 .details__name {
   margin: 0 0 2px;
   font-family: var(--font-condensed);
-  font-size: 14px;
+  font-size: 18px;
   letter-spacing: 0.02em;
 }
 
@@ -524,7 +525,7 @@ body {
   gap: 6px;
   margin: 0 0 6px;
   color: var(--dim);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -533,8 +534,11 @@ body {
    collapsed, Ramuh's three selectable actions run together into one unreadable paragraph. */
 .details__text {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
+  /* Rung H1: the one thing every decision turns on was the smallest type in the interface (12 px, in the
+     inherited dim ink). Full ink and 15 px, measured in the browser test rather than assumed. */
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
   white-space: pre-line;
 }
 
@@ -544,7 +548,7 @@ body {
   margin: 6px 0 0;
   padding-top: 6px;
   border-top: 1px solid var(--line);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -666,6 +670,79 @@ body {
 .banner__reason {
   margin: 0;
   color: var(--ink-2);
+}
+
+/* ============================ how to play (rung H1) ============================ */
+
+.rail__help {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--s2) var(--s3) 0;
+}
+
+/* A native modal dialog, like `.banner`, but a SHEET rather than a curtain: it has a page of text to hold,
+   scrolls if the viewport is short, and closes. */
+.howto {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: min(44rem, calc(100vw - 2 * var(--s5)));
+  max-height: calc(100vh - 2 * var(--s5));
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 30px 80px -20px rgb(0 0 0 / 80%);
+  overflow: auto;
+}
+
+.howto::backdrop {
+  background: rgb(6 9 12 / 78%);
+  backdrop-filter: blur(3px);
+}
+
+.howto__sheet {
+  padding: var(--s5) var(--s6);
+  font-size: var(--t-base);
+  line-height: 1.55;
+}
+
+.howto__title {
+  margin: 0 0 var(--s2);
+  font-family: var(--font-serif);
+  font-size: var(--t-xl);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+}
+
+.howto__lede {
+  margin: 0 0 var(--s4);
+  color: var(--ink-2);
+}
+
+.howto__section + .howto__section { margin-top: var(--s4); }
+
+.howto__section h3 {
+  margin: 0 0 var(--s1);
+  font-family: var(--font-condensed);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.howto__section p { margin: 0; }
+.howto__section strong { color: var(--gold); font-weight: 600; }
+.howto__section em { color: var(--ink-2); }
+
+.howto__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--s5);
 }
 
 .sr-only {

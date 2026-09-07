@@ -25,7 +25,17 @@ export default defineConfig({
    */
   timeout: 180_000,
   reporter: [['list']],
-  use: { baseURL: 'http://localhost:5199' },
+  use: {
+    baseURL: 'http://localhost:5199',
+    // Rung H1 added a "How to play" sheet that opens once per browser and makes the board inert until
+    // dismissed. Pre-seeding the seen-flag here keeps every older spec landing on the board exactly as it
+    // did, without editing each one; `how-to-play.spec.ts` overrides this with an empty state to meet the
+    // sheet as a first-time player does.
+    storageState: {
+      cookies: [],
+      origins: [{ origin: 'http://localhost:5199', localStorage: [{ name: 'fftcg.howToPlay.seen', value: '1' }] }],
+    },
+  },
   webServer: {
     // A pinned, unusual port with `--strictPort`. Vite silently walks to the next free port otherwise, so a
     // developer already running the app on 5173 would leave these tests waiting on a URL nothing serves.

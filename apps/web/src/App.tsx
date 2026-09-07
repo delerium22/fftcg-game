@@ -1,6 +1,8 @@
-import type { JSX } from 'react'
+import { useState, type JSX } from 'react'
+import { hasSeenIntro } from './game/intro.js'
 import { useGame } from './game/useGame.js'
 import { Board } from './ui/Board.js'
+import { HowToPlay } from './ui/HowToPlay.js'
 
 /**
  * The seed from `?seed=`, or `undefined` for a fresh random game.
@@ -27,5 +29,13 @@ export function seedFromLocation(search: string): number | undefined {
 
 export function App(): JSX.Element {
   const game = useGame(seedFromLocation(window.location.search))
-  return <Board game={game} />
+  // Rung H1: the rules sheet, once per browser (a lazy initialiser, so storage is read once, not per render).
+  // Mounted only while open — a native `<dialog>` that is closed is still in the DOM and still announced.
+  const [help, setHelp] = useState(() => !hasSeenIntro())
+  return (
+    <>
+      <Board game={game} onHelp={() => setHelp(true)} />
+      {help && <HowToPlay onClose={() => setHelp(false)} />}
+    </>
+  )
 }

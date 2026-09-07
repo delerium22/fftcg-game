@@ -186,7 +186,11 @@ export function clickableChoices(view: PlayerView, choices: ChoiceSet): Choice[]
 const commitsOnClick = (forCard: readonly Choice[]): boolean =>
   forCard.length === 1 && !forCard[0]?.alternatives?.length
 
-export function Board({ game }: { game: GameApi }): JSX.Element {
+export function Board({ game, onHelp }: {
+  game: GameApi
+  /** Opens the "How to play" sheet (rung H1). Absent in tests that never asked for one, so nothing renders. */
+  onHelp?: (() => void) | undefined
+}): JSX.Element {
   const { view, choices, log, aiThinking, choose, restart } = game
   const [selected, setSelected] = useState<CardId | null>(null)
   // The card the player last pointed at, by CODE rather than by instance id: the panel shows what the CARD
@@ -531,6 +535,12 @@ export function Board({ game }: { game: GameApi }): JSX.Element {
 
 
       <aside className="table__rail">
+        {/* Rung H1: the way back to the rules. A ghost button, above the details it competes with least. */}
+        {onHelp && (
+          <div className="rail__help">
+            <button type="button" className="btn btn--ghost" onClick={onHelp}>How to play</button>
+          </div>
+        )}
         <CardDetails def={inspected === null ? undefined : view.defs[inspected.code]} action={inspectedAction} />
         <EventLog log={log} silenced={view.result !== null} />
       </aside>
