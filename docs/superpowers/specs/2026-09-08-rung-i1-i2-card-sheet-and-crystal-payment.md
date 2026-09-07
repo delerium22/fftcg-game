@@ -1,6 +1,6 @@
 # Rungs I1 and I2 — the card sheet, and paying crystal by crystal
 
-> **STATUS: designed 2026-09-08, building.** Asked for by the user in one message: *"when you click a card it
+> **STATUS: BUILT 2026-09-08** (commits ed0be07 and the polish after it; verified: typecheck, lint, 1073 unit tests, 13 browser tests, and played by hand on seed 11). Asked for by the user in one message: *"when you click a card it
 > will enlarge it and bring it to the centre of the screen so we can see the full card text. From there there
 > should be options next to it to show what you can do (play, back) etc; if you don't have enough of what's
 > needed to pay then the pay button should be greyed out. Instead of choosing options when 'paying', make it so
@@ -147,7 +147,10 @@ because its buttons spend cards and must never refer to a stale board.
 - **I2-A6** Property: over every human decision in six seeded games, for every payable move and every subset
   of its candidate sources, "all crystals lit" ⇔ engine `canPay` ⇔ selection is a member of the legal set.
 - **I2-A7** Dual-element discard: on a fixture where both elements are extendable the tray asks; where one is,
-  it does not.
+  it does not. *Built (`toggleSource`); pinned only through I2-A6's walk, which exercises both element
+  declarations of Shantotto and Billy Bob. No mounted-Board fixture reaches a position where both declarations
+  are extendable for one cost, so the ask branch is exercised by `payment.test.tsx`'s built-payment loop only
+  when the corpus supplies one — recorded as a gap, not claimed.*
 - **I2-A8** Browser: seed 11's Class Tenth Moogle (three ways, E11's route) can be paid by clicking Cloud in
   hand, the crystal shows lit, Confirm casts it, and the log says "discard Cloud as earth".
 - **Gates** `pnpm typecheck && pnpm lint && pnpm test`, `pnpm test:browser`, and existing tests updated only

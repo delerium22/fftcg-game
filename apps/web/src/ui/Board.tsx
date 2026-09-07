@@ -381,7 +381,6 @@ export function Board({ game, onHelp }: {
 
   const tray = paying && requirement ? (
     <PaymentTray
-      title={`Paying for ${headline(view, paying.choice)}`}
       crystals={lit}
       complete={completed !== null}
       ask={paying.ask ? { card: paying.ask.card, name: displayName(view, paying.ask.card), options: paying.ask.options } : null}
@@ -392,7 +391,7 @@ export function Board({ game, onHelp }: {
       onDeclare={(card, element) => setPaying({ ...paying, selection: withDiscard(paying.selection, card, element), ask: null })}
     />
   ) : null
-  const payingPrompt = paying ? `${headline(view, paying.choice)} — ${paidText(lit)}` : null
+  const payingPrompt = paying ? `Paying for: ${headline(view, paying.choice)} — ${paidText(lit)}` : null
 
   const inspectedAction = inspected === null ? null : actionFor(inspected.card) ?? null
 

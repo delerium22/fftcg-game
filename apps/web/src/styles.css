@@ -893,14 +893,6 @@ body {
   justify-content: flex-end;
 }
 
-.tray__title {
-  font-family: var(--font-condensed);
-  font-size: var(--t-sm);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--gold);
-}
-
 .tray__crystals {
   display: inline-flex;
   gap: 6px;
@@ -912,11 +904,13 @@ body {
 .crystal {
   --c: var(--ink-3);
   display: inline-block;
-  width: 18px;
-  height: 25px;
+  width: 26px;
+  height: 36px;
   clip-path: polygon(50% 0%, 100% 34%, 72% 100%, 28% 100%, 0% 34%);
-  background: linear-gradient(155deg, color-mix(in srgb, var(--c) 35%, #0b1216), #0b1216);
-  opacity: 0.55;
+  /* Unlit still shows its element, faintly: the player should see WHICH crystal is the earth one before
+     deciding what to dull for it. */
+  background: linear-gradient(155deg, color-mix(in srgb, var(--c) 55%, #0b1216), color-mix(in srgb, var(--c) 20%, #0b1216));
+  opacity: 0.6;
   transition: opacity 180ms ease, filter 180ms ease, transform 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 

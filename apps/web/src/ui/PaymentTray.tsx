@@ -11,11 +11,11 @@ const ELEMENT_LABEL: Record<Element, string> = {
  *
  * It lives in the prompt strip's row — the centre of the table, between the backups it dulls and the hand it
  * discards from — and replaces the strip's buttons while a payment is being built. The crystal row is an
- * image with a spoken total; the running total also goes through the strip's live region, so a screen reader
- * hears every change without a fourth live channel being added.
+ * image with a spoken total; what is being paid for and the running total go through the strip's live
+ * region (its prompt text), so a screen reader hears every change without a fourth live channel being added,
+ * and the tray does not repeat the title beside it.
  */
-export function PaymentTray({ title, crystals, complete, ask, onAuto, onClear, onCancel, onConfirm, onDeclare }: {
-  title: string
+export function PaymentTray({ crystals, complete, ask, onAuto, onClear, onCancel, onConfirm, onDeclare }: {
   crystals: readonly Crystal[]
   complete: boolean
   /** A two-element discard waiting for its element to be declared (I2-D4), or null. */
@@ -29,7 +29,6 @@ export function PaymentTray({ title, crystals, complete, ask, onAuto, onClear, o
   const paid = paidText(crystals)
   return (
     <div className="tray" data-payment-tray>
-      <span className="tray__title">{title}</span>
       <span className="tray__crystals" role="img" aria-label={paid}>
         {crystals.map((c, i) => (
           <i

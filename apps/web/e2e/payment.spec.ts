@@ -39,7 +39,7 @@ test('a cast is paid by pressing the cards you spend, and Confirm casts it', asy
   await expect(tray.locator('.crystal.is-lit')).toHaveCount(0)
   await expect(tray.getByRole('button', { name: 'Confirm' })).toBeDisabled()
   // The live region says what is being asked.
-  await expect(page.locator('.prompt__text')).toHaveText(/Cast Class Tenth Moogle — 0 of 2 CP paid/)
+  await expect(page.locator('.prompt__text')).toHaveText(/Paying for: Cast Class Tenth Moogle — 0 of 2 CP paid/)
 
   // A hand card that can pay is a control that says so, in Chromium's computed name.
   const cloud = page.getByRole('button', { name: /^Cloud, cost 3.*, Discard for 2 earth CP$/ })

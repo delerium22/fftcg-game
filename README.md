@@ -10,7 +10,8 @@ Design spec and MVP ladder:
 ## Status: rung G — playable in the browser against a search-based AI
 
 **You can sit down and play a full game against the AI in a browser**: first-player choice and
-mulligan, casting Backups/Forwards/Summons with CP paid for you, attacking and blocking, party
+mulligan, casting Backups/Forwards/Summons by choosing which Backups to dull and which cards to discard
+(crystal by crystal, rung I2), clicking any card to read it at full size with its actions (rung I1), attacking and blocking, party
 damage, EX Burst on damage, and win/loss. The engine (`packages/engine`) and the AI (`packages/ai`) contain no `node:`
 imports, so the whole game — rules, opponent, and card database — runs client-side. There is no
 server.
