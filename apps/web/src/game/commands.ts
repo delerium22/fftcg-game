@@ -1,8 +1,8 @@
 import {
-  HAND_SIZE_LIMIT, abilityCpRequirement, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, pickedDeckCards, seedRng,
+  HAND_SIZE_LIMIT, abilityCpRequirement, castBlocker, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameResult, type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
-  type ZoneTransitionReason,
+  type ZoneTransitionReason, type CastBlocker,
 } from '@fftcg/engine'
 import { preferredPayment, preferredPaymentFor } from '@fftcg/ai'
 import type { Choice, ChoiceSet } from './types.js'
@@ -508,8 +508,17 @@ export function fieldCardDisplay(v: PlayerView, c: FieldCard): FieldCardDisplay 
 const exBurstCardOf = (v: PlayerView): CardId =>
   (v.pending?.kind === 'chooseExBurst' ? v.pending.card : 0) as CardId
 
-/** English label for one command, from the acting player's point of view. Ported from `apps/cli/src/render.ts`. */
-export function describeChoice(v: PlayerView, c: Command): string {
+/**
+ * English label for one command, from the acting player's point of view. Ported from `apps/cli/src/render.ts`.
+ *
+ * `payment: false` (rung I1) is the HEADLINE of a payable command — "Cast Ramuh", the ability without its
+ * "paying …" tail — for the card sheet's button, which opens the tray where the payment is then chosen.
+ * Naming a payment the press will not make is the E4 defect; the full label is what the log prints after
+ * the player has built one. An option rather than a regex over the finished English, so the two forms are
+ * one function and cannot drift.
+ */
+export function describeChoice(v: PlayerView, c: Command, opts: { payment?: boolean } = {}): string {
+  const withPayment = opts.payment !== false
   switch (c.type) {
     // G3. Two answers that must never read alike — E9 was a rung about exactly that. "Use" names the card so
     // the player knows WHICH burst; "Decline" names it too, because the strip shows both side by side and a
@@ -521,6 +530,7 @@ export function describeChoice(v: PlayerView, c: Command): string {
     case 'castCharacter':
     case 'castSummon': {
       const pay = [...c.payment.dullBackups.map((id) => `dull ${choiceName(v, id)}`), ...c.payment.discards.map((d) => `discard ${choiceName(v, d.card)} as ${d.element}`)]
+      if (!withPayment) return `Cast ${choiceName(v, c.card)}`
       return pay.length ? `Cast ${choiceName(v, c.card)} paying: ${pay.join(', ')}` : `Cast ${choiceName(v, c.card)} (free)`
     }
     /*
@@ -561,7 +571,7 @@ export function describeChoice(v: PlayerView, c: Command): string {
       // without them every target of one ability reads identically — and since `payableKey` now keeps them
       // apart, the player would face four buttons with the same words on them.
       const on = c.targets.length ? ` on ${listNames(v, c.targets)}` : ''
-      return `${choiceName(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${on}${pay.length ? ` — paying ${pay.join(', ')}` : ''}`
+      return `${choiceName(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${on}${withPayment && pay.length ? ` — paying ${pay.join(', ')}` : ''}`
     }
     case 'declareAttack': return `Attack with ${c.attackers.map((id) => choiceName(v, id)).join(' + ')}`
     case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${choiceName(v, c.blocker)}`
@@ -621,6 +631,34 @@ function findFieldCardInView(v: PlayerView, id: CardId): FieldCard | undefined {
 function listPhrase(parts: readonly string[]): string {
   if (parts.length <= 1) return parts[0] ?? ''
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1] as string}`
+}
+
+/** The sheet's button text for a choice: the full label, or the payment-free headline for a payable one (rung I1). */
+export function headline(v: PlayerView, c: Choice): string {
+  return describeChoice(v, c.command, { payment: false })
+}
+
+/**
+ * Why a hand card cannot be cast right now, in the player's words (rung I1-D4) — or `null` when it can.
+ *
+ * The engine's `castBlocker` names every reason that is not about CP; when it passes and the card still has
+ * no cast on offer, the only reason left is that no payment covers the cost. Phrased here, once, so the
+ * sheet's greyed Cast always says why and never has to parse the engine's English.
+ */
+const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
+  gameOver: 'The game is over',
+  phase: 'Only in your Main Phase',
+  notInHand: 'Not in your hand',
+  priority: 'Not your turn',
+  pending: 'Answer the current prompt first',
+  monster: 'Monsters are not supported in this build',
+  backupsFull: 'You already have five Backups',
+  sameName: 'You already control a card with this name',
+}
+export function castBlockerText(v: PlayerView, card: CardId, castable: boolean): string | null {
+  if (castable || !v.hand.includes(card)) return null
+  const why = castBlocker(stateShim(v), v.me, card)
+  return why === null ? 'Not enough CP' : CAST_BLOCKER_TEXT[why]
 }
 
 /**
@@ -955,7 +993,7 @@ const payableKey = (c: PayableCommand): string =>
  * rather than threading `GameState` into the view layer (spec B3: the React tree never sees it). Both decks and
  * the opponent's hand stay empty: nothing hidden goes in, so nothing hidden can come back out in a payment.
  */
-function stateShim(v: PlayerView): GameState {
+export function stateShim(v: PlayerView): GameState {
   const side = (p: PlayerId): PlayerState => ({
     deck: [], hand: p === v.me ? [...v.hand] : [],
     forwards: v.fields[p].forwards, backups: v.fields[p].backups,
@@ -1011,7 +1049,7 @@ function preferredFor(shim: GameState, v: PlayerView, c: PayableCommand): Paymen
 }
 
 /** The activated clause `abilityId` names, read off the view's own definitions. */
-function activatedAbilityOf(v: PlayerView, source: CardId, abilityId: string): Ability | undefined {
+export function activatedAbilityOf(v: PlayerView, source: CardId, abilityId: string): Ability | undefined {
   const def = v.defs[v.cards[source]?.code ?? '']
   return (def?.abilities ?? []).find((a) => a.id === abilityId)
 }

@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { playToTheEnd as drive } from './drive.js'
 
 /*
  * WHICH STEPS ACTUALLY EARN THEIR PLACE, measured rather than assumed.
@@ -34,44 +35,9 @@ import { expect, test, type Page } from '@playwright/test'
  * Which step catches what is recorded above, from mutations rather than from reasoning about them.
  */
 
-/**
- * Plays a real game to its end, taking whatever the game currently offers.
- *
- * Uniformly driven from the first decision rather than assuming the opening steps. Who chooses first is not
- * fixed — the AI takes that decision in about half of games, in which case no `chooseFirst` button is ever
- * shown to the human, and a driver that waits for one waits forever.
- */
-async function playToTheEnd(page: Page): Promise<void> {
-  await page.goto('/')
-  /*
-   * IS THIS STABLE ENOUGH TO GATE ON? Measured, not assumed. The app seeds from `Date.now()`, so every run
-   * plays a different game against a real ISMCTS opponent, and `retries: 0` means one slow game reds the
-   * build. Eight consecutive runs gave per-test times of 19.2, 21.6, 21.8, 23.1, 23.2, 26.1, 27.8 and 29.3
-   * seconds — against this 120s deadline and the config's 180s test timeout, four to six times the worst
-   * observed case.
-   *
-   * So the seed stays free. Making it deterministic would mean giving the APP a seed parameter — product
-   * surface added for a test problem that measurement says does not exist — and a fixed seed would test one
-   * game forever, where a free one has already walked hundreds of different ones.
-   *
-   * If this ever starts failing on time, re-measure before widening the budget: a game that suddenly takes
-   * four times longer is a defect in the AI, not a slow test.
-   */
-  const deadline = Date.now() + 120_000
-  while (Date.now() < deadline) {
-    if (await page.locator('dialog.banner').count() > 0) return
-    const action = page.locator('.prompt__actions button').filter({ hasNotText: 'Concede' }).first()
-    const boardCard = page.locator('.zone [role="gridcell"] button').first()
-    const handCard = page.locator('.hand [role="gridcell"] button').first()
-    const next = (await action.count()) ? action : (await boardCard.count()) ? boardCard : (await handCard.count()) ? handCard : null
-    if (next === null) { await page.waitForTimeout(120); continue }
-    await next.click({ timeout: 3000 }).catch(() => {})
-  }
-  throw new Error('the game did not reach an end within the time allowed')
-}
-
 test('the game-over dialog is modal, and the board behind it is not reachable', async ({ page }) => {
-  await playToTheEnd(page)
+  await page.goto('/')
+  await drive(page)
   const dialog = page.locator('dialog.banner')
   await expect(dialog).toBeVisible()
 
@@ -113,7 +79,7 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
   // 6. THE decisive step. Ask a board control to take focus directly; a modal dialog must refuse it. A Tab
   //    count alone cannot distinguish a real modal from a `<div>` that happens to be last in the DOM.
   const refused = await page.evaluate(() => {
-    const outside = document.querySelector<HTMLElement>('.seat button, .hand [role="gridcell"], .prompt__actions button')
+    const outside = document.querySelector<HTMLElement>('.seat button, .hand [role="gridcell"] button, .prompt__actions button')
     if (!outside) return 'no board control to try'
     outside.focus()
     return document.activeElement === outside ? 'took focus' : 'refused'
@@ -128,7 +94,8 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
 test('restarting hands focus to the new game rather than to the document body', async ({ page }) => {
   // The defect the jsdom suite concealed: a new game's first decision is often the AI's, so the render right
   // after a restart offers no button, and an effect that spends its flag there leaves focus on `body`.
-  await playToTheEnd(page)
+  await page.goto('/')
+  await drive(page)
   await page.locator('dialog.banner button').click()
   await expect(page.locator('dialog.banner')).toHaveCount(0)
   await expect

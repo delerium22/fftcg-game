@@ -8,7 +8,7 @@ import {
 import { GreedyAgent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
-import { buildChoiceSet, paymentAlternatives, preferredChoices } from '../src/game/commands.js'
+import { buildChoiceSet, headline, paymentAlternatives, preferredChoices } from '../src/game/commands.js'
 import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
 
 /**
@@ -77,14 +77,15 @@ function zoneOf(view: PlayerView, id: CardId): 'hand' | 'field' | 'orphan' {
   return onField ? 'field' : 'orphan'
 }
 
-/** The one of three forms this card's action must take, from the choices alone. */
-function expectedAction(choices: ChoiceSet, id: CardId): string {
+/**
+ * The one of TWO forms this card's action must take, from the choices alone (rung I1). F6 had three, chosen
+ * by what the click would do; no click commits now, so a sole choice is announced by its payment-free
+ * HEADLINE and several by their count. The `N ways to pay` form is gone with the strip's payment chooser.
+ */
+function expectedAction(view: PlayerView, choices: ChoiceSet, id: CardId): string {
   const forCard = choices.byCard.get(id) ?? []
   if (forCard.length > 1) return `${forCard.length} options`
-  const alts = forCard[0]?.alternatives?.length ?? 0
-  // ONE entry whose alternatives hold the rest, so the count is the preferred payment PLUS the others — not
-  // `byCard.length`, which is always 1 here. Getting that wrong was a MAJOR in review.
-  return alts > 0 ? `${alts + 1} ways to pay` : (forCard[0]?.label ?? '')
+  return headline(view, forCard[0]!)
 }
 
 /** Walks seeds and yields every position where the human has something to click. */
@@ -118,7 +119,7 @@ describe('every pressable card says what pressing it does (F6-A1)', () => {
         const said = announced(id)
         if (said === null) { skipped[zone]++; continue }   // in byCard but no button in this position
         seen[zone]++
-        const want = expectedAction(choices, id)
+        const want = expectedAction(view, choices, id)
         if (!endsWithAction(said, want)) {
           silent++
           if (examples.length < 4) examples.push(`${zone} ${id}: "${said}" is not "…, ${want}"`)
@@ -143,33 +144,32 @@ describe('every pressable card says what pressing it does (F6-A1)', () => {
     // the rendered button — including committing ones like "Attack with Undead Princess", where the click
     // does commit and the card said only its power. Pre-F6 the real figure was 279 of 443, not 171.
     // For scale, this corpus is hand 164, field 214, orphan 65 — 443 card occurrences in all.
-  })
+  }, 30_000)
 })
 
-describe('the three forms are exact (F6-A3, F6-A4)', () => {
-  it('a committing card names its exact action and nothing else', () => {
+describe('the two forms are exact (F6-A3, F6-A4, as rung I1 re-drew them)', () => {
+  it('a sole-choice card names its headline — never a payment — and pressing it opens the sheet, not the move', () => {
     for (const s of positions()) {
       const view = viewFor(s, HUMAN)
       const legal = legalCommands(s, HUMAN)
       const choices = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
-      const commit = [...choices.byCard.entries()]
-        .find(([, list]) => list.length === 1 && !list[0]?.alternatives?.length)
-      if (!commit) continue
+      const sole = [...choices.byCard.entries()].find(([, list]) => list.length === 1 && (list[0]?.alternatives?.length ?? 0) > 0)
+      if (!sole) continue
       const { chosen } = mount(s)
-      const [id, list] = commit
+      const [id, list] = sole
       const said = announced(id)
       if (said === null) { act(() => { root?.unmount() }); host?.remove(); root = null; host = null; continue }
-      expect(said, 'a committing card does not name its action').toContain(list[0]!.label)
-      // and it really does commit — the claim is about the click, so the click is what is checked
+      expect(endsWithAction(said, headline(view, list[0]!)), `"${said}" does not end in the headline`).toBe(true)
+      expect(said, 'the card named a payment the press will not make').not.toContain('paying')
       act(() => { document.querySelector<HTMLElement>(`[data-card-id="${id}"] button`)!.click() })
-      expect(chosen.length, 'the card named an action but pressing it submitted nothing').toBe(1)
-      expect(chosen[0]!.label).toBe(list[0]!.label)
+      expect(chosen.length, 'pressing a card submitted a move').toBe(0)
+      expect(document.querySelector('dialog[data-card-sheet]'), 'pressing the card did not open its sheet').not.toBeNull()
       return
     }
-    throw new Error('no committing card was ever reached, so this test asserts nothing')
+    throw new Error('no payable sole-choice card was ever reached, so this test asserts nothing')
   })
 
-  it('a card that does NOT commit never names a choice label, and submits nothing', () => {
+  it('a card with several choices names only their count, and submits nothing', () => {
     // The structural half. A string rule ("no payment, no target") passes on a leaked `Attack with Cloud`;
     // this fails on ANY leaked label, because the announced action must be the bare count.
     let checked = 0
@@ -177,24 +177,21 @@ describe('the three forms are exact (F6-A3, F6-A4)', () => {
       const view = viewFor(s, HUMAN)
       const legal = legalCommands(s, HUMAN)
       const choices = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
-      const opens = [...choices.byCard.entries()]
-        .find(([, list]) => list.length > 1 || (list[0]?.alternatives?.length ?? 0) > 0)
+      const opens = [...choices.byCard.entries()].find(([, list]) => list.length > 1)
       if (!opens) continue
       const { chosen } = mount(s)
       const [id, list] = opens
       const said = announced(id)
       if (said === null) { act(() => { root?.unmount() }); host?.remove(); root = null; host = null; continue }
       checked++
-      for (const c of [...list, ...(list[0]?.alternatives ?? [])]) {
-        expect(said, `a non-committing card leaked the label "${c.label}"`).not.toContain(c.label)
-      }
-      expect(endsWithAction(said, expectedAction(choices, id)),
-        `"${said}" does not end in exactly ", ${expectedAction(choices, id)}"`).toBe(true)
+      for (const c of list) expect(said, `a several-choice card leaked the label "${c.label}"`).not.toContain(c.label)
+      expect(endsWithAction(said, expectedAction(view, choices, id)),
+        `"${said}" does not end in exactly ", ${expectedAction(view, choices, id)}"`).toBe(true)
       act(() => { document.querySelector<HTMLElement>(`[data-card-id="${id}"] button`)!.click() })
       expect(chosen.length, 'a card that only opens a choice submitted something').toBe(0)
       if (checked >= 3) return
       act(() => { root?.unmount() }); host?.remove(); root = null; host = null
     }
-    expect(checked, 'no non-committing card was ever reached').toBeGreaterThan(0)
+    expect(checked, 'no several-choice card was ever reached').toBeGreaterThan(0)
   })
 })

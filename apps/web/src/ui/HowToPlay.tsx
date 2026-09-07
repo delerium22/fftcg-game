@@ -11,7 +11,7 @@ import { markIntroSeen } from '../game/intro.js'
  * The same native `<dialog>` + `showModal()` mechanism as game over, for the same reason: while the sheet is
  * up the board is inert, so a player cannot start the game through it by accident. Unlike game over it is an
  * ordinary `role="dialog"` and Escape closes it — there is a board to return to. The text describes THIS
- * BUILD's rules (sorcery-speed abilities, auto-paid CP, no First Strike), not the Comprehensive Rules; a
+ * BUILD's rules (sorcery-speed abilities, crystal-by-crystal CP, no First Strike), not the Comprehensive Rules; a
  * rules sheet that promises a combat trick the engine refuses is worse than none.
  */
 export function HowToPlay({ onClose }: { onClose: () => void }): JSX.Element {
@@ -68,8 +68,9 @@ export function HowToPlay({ onClose }: { onClose: () => void }): JSX.Element {
           <p>
             Every card has a cost in Crystal Points. Dull a <strong>Backup</strong> for 1 CP of its element, or
             discard a card from your hand for 2 CP of its element. At least one CP must match the card's
-            element. <strong>This app pays for you</strong>, choosing the cheapest way; when there is more
-            than one way, the strip offers <em>Pay differently</em>.
+            element. When you cast, the cost appears as <strong>greyed crystals</strong> in the middle of the
+            table: click Backups to dull and hand cards to discard, watch the crystals light, then{' '}
+            <strong>Confirm</strong>. <em>Auto</em> fills the cheapest way for you.
           </p>
         </section>
 
@@ -98,10 +99,11 @@ export function HowToPlay({ onClose }: { onClose: () => void }): JSX.Element {
           <h3>Using this table</h3>
           <p>
             The strip in the middle says what the game is waiting for and offers the buttons that answer it.
-            When the answer is a card, the strip goes quiet and says <em>click a highlighted card</em> — the
-            glowing cards are the only ones that do anything. Point at any card, or focus it with the keyboard,
-            to read its full text in the panel on the right. <strong>Concede</strong> asks twice. Reopen this
-            sheet any time with <em>How to play</em> in the right rail.
+            When the answer is a card, the strip goes quiet and says <em>click a highlighted card</em>.{' '}
+            <strong>Click any card</strong> to see it large with its full text and everything it can do —
+            Cast, Attack, Block, or just Back. A Cast you cannot afford is greyed and says why. The glowing
+            cards are the ones with something to do. Point at any card to read it in the panel on the right.{' '}
+            <strong>Concede</strong> asks twice. Reopen this sheet any time with <em>How to play</em>.
           </p>
         </section>
 

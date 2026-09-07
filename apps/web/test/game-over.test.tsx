@@ -173,7 +173,8 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     // update yanked focus back to the first prompt action — mid-game, without the player asking, which is
     // the WCAG 3.2.5 violation the PromptStrip work exists to avoid. Move focus deliberately, then let the
     // board re-render, and it must stay where the player put it.
-    const elsewhere = document.querySelector<HTMLElement>('.hand [role="gridcell"], .seat button')
+    // Since rung I1 every card is a button, so the button — not its cell — is what takes focus.
+    const elsewhere = document.querySelector<HTMLElement>('.hand [role="gridcell"] button, .seat button')
     expect(elsewhere, 'nothing else to focus, so this cannot detect focus being stolen').not.toBe(null)
     act(() => { elsewhere!.focus() })
     remountLive()

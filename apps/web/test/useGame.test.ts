@@ -1050,8 +1050,10 @@ describe('a target the board draws in no named zone is still a real button', () 
     expect(html).toMatch(new RegExp(`<button[^>]*aria-label="${v.defs[REEVE]!.name}[^"]*"`))
     // and the strip says so: this is the exact state that offered Concede alone in C1
     expect(html).toContain('click a highlighted card')
-    // and it is not merely present: the Forward on the field is no candidate, so it stays a plain <div>
-    expect(html).toMatch(new RegExp(`<div[^>]*aria-label="${v.defs[PRISHE]!.name}[^"]*"`))
+    // and it is not merely present: the Forward on the field is no candidate, so it does not GLOW. Since rung
+    // I1 it is still a button (its press opens the card's sheet), so the distinction is the highlight class.
+    expect(html).toMatch(new RegExp(`<button[^>]*class="card[^"]*"[^>]*aria-label="${v.defs[PRISHE]!.name}[^"]*"`))
+    expect(html).not.toMatch(new RegExp(`<button[^>]*is-selectable[^>]*aria-label="${v.defs[PRISHE]!.name}[^"]*"`))
   })
 
   // Billy Bob, Prishe and Sphene all choose a card in your Break Zone, and all three are in this deck.

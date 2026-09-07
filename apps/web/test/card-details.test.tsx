@@ -244,18 +244,19 @@ describe('the details panel, driven by keyboard focus', () => {
     expect(chosen, 'focusing a card played it').toEqual([])
   })
 
-  it('still plays a card on a real click', () => {
+  it('still opens a card’s sheet on a real click (rung I1: the click opens, the sheet commits)', () => {
     // The inspect handlers must not have displaced the click. Picked by what the card can DO — exactly one
-    // way to play it, so a click submits rather than opening a variant menu — rather than by name, which
-    // would re-break the day the seed deals a different hand.
+    // way to play it — rather than by name, which would re-break the day the seed deals a different hand.
     mount(mainPhaseState())
     const single = [...(mounted?.byCard ?? new Map())].find(([, cs]) => cs.length === 1)
     expect(single, 'no hand card with a single way to play it, so this position cannot test a click').toBeDefined()
     const el = handCards().find((c) => (c.getAttribute('aria-label') ?? '').startsWith(nameOf(single![0])))
     expect(el?.tagName, 'the card with a single choice is not rendered as a button').toBe('BUTTON')
     act(() => { (el as HTMLButtonElement).click() })
-    expect(chosen.length, 'clicking a castable card no longer plays it').toBe(1)
-    expect(chosen[0]).toBe(single![1][0])
+    expect(chosen.length, 'clicking a card committed a move from the board').toBe(0)
+    const sheet = document.querySelector('dialog[data-card-sheet]')
+    expect(sheet, 'clicking a castable card no longer opens its sheet').not.toBeNull()
+    expect(sheet!.querySelector(`[data-command="${single![1][0]!.command.type}"]`), 'the sheet does not offer the card’s one move').not.toBeNull()
   })
 })
 
@@ -394,27 +395,24 @@ describe('the hand as a keyboard grid (rung E3b-1)', () => {
   })
 
   it('announces name and printed text on the element that ACTUALLY takes focus', () => {
-    // The MAJOR from review 25. At the mulligan focus lands on the gridcell, but the name and
-    // `aria-describedby` sat on its unfocused `role="img"` child — so the focused element announced nothing,
-    // and the card's `.sr-only` text risked being folded into the cell's name instead, defeating the whole
-    // concise-name / verbose-description split. The earlier tests inspected `.card` and so enforced the
-    // child's relation while proving nothing about what a screen reader lands on.
+    // The MAJOR from review 25: the name and `aria-describedby` must sit on the element a screen reader
+    // lands on. Since rung I1 every card is a button, so at the mulligan too the BUTTON is the focus
+    // target — and the cell must not carry a competing name, or everything is announced twice.
     mount(mulliganState())
     const cell = cells()[0]!
     act(() => { target(cell).focus() })
-    expect(document.activeElement, 'the cell is not the focus target at the mulligan').toBe(cell)
+    const btn = cell.querySelector('button')!
+    expect(document.activeElement, 'the button is not the focus target at the mulligan').toBe(btn)
 
-    const name = cell.getAttribute('aria-label')
+    const name = btn.getAttribute('aria-label')
     expect(name, 'the focused element has no accessible name').not.toBe(null)
     expect(name).toMatch(/^\w[^,]*, cost \d/)
-    const descId = cell.getAttribute('aria-describedby')
+    const descId = btn.getAttribute('aria-describedby')
     expect(descId, 'the focused element has no accessible description').not.toBe(null)
     expect(document.getElementById(descId!)?.textContent ?? '', 'the description is empty').not.toBe('')
 
-    // And the card inside must have stood down, or everything is announced twice.
-    const inner = cell.querySelector('.card')!
-    expect(inner.getAttribute('aria-hidden'), 'the card still announces itself under the cell').toBe('true')
-    expect(inner.getAttribute('aria-label'), 'the card kept a competing name').toBe(null)
+    expect(cell.getAttribute('aria-label'), 'the cell competed with the button it contains').toBe(null)
+    expect(cell.getAttribute('aria-describedby')).toBe(null)
   })
 
   it('leaves a SELECTABLE card announcing itself, since its button is the focus target', () => {
@@ -607,7 +605,11 @@ describe('the field zones as keyboard grids (rung E3b-2)', () => {
     expect(blockerCell, 'the legal blocker is not rendered in a grid').not.toBe(null)
     const btn = blockerCell!.querySelector('button')
     expect(btn, 'a legal blocker is not a button, so it cannot be chosen').not.toBe(null)
+    // Rung I1: the press opens the blocker's sheet; "Block with …" is the sheet's button.
     act(() => { btn!.click() })
+    const block = document.querySelector<HTMLElement>('dialog[data-card-sheet] [data-command="declareBlock"]')
+    expect(block, 'the blocker’s sheet does not offer the block').not.toBe(null)
+    act(() => { block!.click() })
     expect(chosen.map((c) => c.command.type), 'clicking the blocker did not declare a block').toContain('declareBlock')
   })
 })
@@ -690,11 +692,11 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     return v.defs[v.cards[id]?.code ?? '']?.name ?? '?'
   }
 
-  it('renders pile cards as inert cells, not as buttons that do nothing', () => {
-    // `cell.querySelector('button') ?? cell` is how the other pile tests find a focus target, and it accepts
-    // EITHER structure — so flipping pile cards to `selectable: true` passed all 878 tests while turning
-    // every inert card into an actionless `<button aria-pressed="false">`. A test that accepts two shapes
-    // certifies neither. Nothing in a pile can be played, so nothing in a pile is a button.
+  it('renders pile cards as buttons that open their sheet, and do not glow (rung I1)', () => {
+    // Before I1 a pile card was an inert cell: nothing in a pile can be played, so nothing was a button. Now
+    // every card's press opens its sheet — reading a Break Zone card at full size is exactly what a player
+    // deciding on Luso's retrieval wants — but the HIGHLIGHT still means "you can act on this", so a pile
+    // card must not carry it, and its sheet must offer nothing but Back.
     const s = withPile(HUMAN, 'breakZone') ?? withPile(AI, 'breakZone')
     expect(s).not.toBe(null)
     const owner = s!.players[HUMAN].breakZone.length > 0 ? HUMAN : AI
@@ -702,11 +704,14 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     act(() => { ownerOpener(owner, 'Break Zone')!.click() })
     const grid = document.querySelector<HTMLElement>('[role="grid"][aria-label*="Break Zone"]')
     expect(grid, 'the pile did not open').not.toBe(null)
-    expect(grid!.querySelectorAll('button').length, 'a pile card is a button, but there is nothing to press').toBe(0)
-    const cell = grid!.querySelector<HTMLElement>('[role="gridcell"]')!
-    expect(cell.getAttribute('tabindex'), 'the cell is not the focus target for an inert card').toBe('0')
-    act(() => { cell.focus() })
-    expect(document.activeElement, 'the pile cell cannot take focus').toBe(cell)
+    const btn = grid!.querySelector<HTMLButtonElement>('button')
+    expect(btn, 'a pile card is not pressable, so it cannot be read at full size').not.toBe(null)
+    expect(btn!.className, 'a pile card glows as if it could be played').not.toMatch(/is-selectable/)
+    act(() => { btn!.click() })
+    const sheet = document.querySelector('dialog[data-card-sheet]')
+    expect(sheet, 'pressing a pile card opened no sheet').not.toBe(null)
+    expect([...sheet!.querySelectorAll('.sheet__actions button')].map((b) => b.textContent)).toEqual(['Back'])
+    expect(chosen).toEqual([])
   })
 
   it('opens the pile and READS it — not merely opens it', () => {
@@ -923,26 +928,6 @@ describe('the printed text as an accessible description (rung E3b-1)', () => {
     expect(describedText(other!), 'a different card was given Ramuh’s text').not.toBe(ramuh)
   })
 
-  it('keeps a NON-SELECTABLE card’s name concise too', () => {
-    // The "describes rather than renames" test above picks a castable card, so it only ever exercises the
-    // `<button>` branch. The `role="img"` branch is separate code, and a mutant appending the text to its
-    // `aria-label` survived every other assertion — the field lookup still matched, because the value still
-    // starts with the name. Non-selectable cards would then announce the printed text twice.
-    host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host)
-    act(() => {
-      root!.render(createElement(Card, {
-        code: 'X-001', name: 'Fixture', cost: 1, elements: ['fire'], type: 'forward', power: 1000,
-        selectable: false, text: 'PRINTED CLAUSE.',
-      }))
-    })
-    const el = document.querySelector<HTMLElement>('.card')
-    expect(el!.tagName, 'this fixture is meant to exercise the non-button branch').toBe('DIV')
-    expect(el!.getAttribute('aria-label'), 'the printed text was folded into a non-selectable card’s name')
-      .toBe('Fixture, cost 1, fire, forward, power 1000 of 1000')
-    const id = el!.getAttribute('aria-describedby')
-    expect(document.getElementById(id!)?.textContent).toBe('PRINTED CLAUSE.')
-  })
-
   it('gives two copies of the SAME card distinct description ids', () => {
     // The hand at this seed holds five distinct codes, so asserting "all ids differ" across it survives
     // replacing `useId()` with the card's code. Two copies of one card is the case that separates them, and
@@ -1078,39 +1063,34 @@ describe('the other two Board render paths', () => {
   })
 })
 
-describe('what a cast will cost, before the click (rung E4)', () => {
-  it('names the DISCARD in the card’s accessible name, not just the card', () => {
-    // The defect: one click cast a 2-cost Ramuh by discarding a 5-cost Odin, and said so only afterwards in
-    // the log. The button said "Ramuh, cost 2, lightning, summon" and nothing more.
-    //
-    // The expectation is written out BY HAND, not read from the choice set — an assertion built by the code
-    // under test agrees with that code however wrong it is. At this seed casting Ramuh spends Sphene, and
-    // that is the fact a player is entitled to know before clicking.
+describe('what a card offers, before the click (rung E4, re-drawn by rung I1)', () => {
+  // E4 disclosed the exact payment on the card's accessible name, because one click cast a 2-cost Ramuh by
+  // discarding a 5-cost Odin and said so only afterwards. Since rung I1 no click commits: a press opens the
+  // sheet, Cast opens the tray, and the payment is BUILT by the player. So the card now discloses the
+  // HEADLINE of its move — never a payment, which would name a spend the press does not make — and the
+  // details panel shows the same string. The tray is where a payment is read before it is confirmed.
+  it('names the move in the card’s accessible name, with no payment', () => {
     mount(mainPhaseState())
-    const el = named(RAMUH)
-    expect(el.getAttribute('aria-label'), 'the accessible name does not say what the click will spend')
-      .toContain('Cast Ramuh paying: discard Sphene as lightning')
+    const said = named(RAMUH).getAttribute('aria-label') ?? ''
+    expect(said, 'the accessible name does not say what pressing the card offers').toMatch(/, Cast Ramuh$/)
+    expect(said).not.toContain('paying')
   })
 
   it('keeps the card’s own description in the accessible name', () => {
-    // Appended, not substituted. A screen-reader user must still hear name, cost, element and type — they
-    // were already the worst served here, since they cannot see the log update either.
+    // Appended, not substituted. A screen-reader user must still hear name, cost, element and type.
     mount(mainPhaseState())
     const said = named(RAMUH).getAttribute('aria-label') ?? ''
     expect(said, 'the card is no longer described at all').toContain('Ramuh, cost 2')
     expect(said).toContain('lightning')
     expect(said).toContain('summon')
-    expect(said).toContain('paying:')
   })
 
   it('keeps a FORWARD’s power in the accessible name', () => {
     // Ramuh is a Summon, so its `power` is null and the test above never exercises the power phrase at all.
-    // A mutant dropping power whenever an action is present passed all twenty tests — an actionable Forward
-    // would have lost the number a player compares before casting it. Found by mutation.
     mount(mainPhaseState())
     const forward = handCards().find((c) => {
       const l = c.getAttribute('aria-label') ?? ''
-      return l.includes('forward') && l.includes('paying:')
+      return l.includes('forward') && /, Cast /.test(l)
     })
     expect(forward, 'no castable Forward in the opening Main Phase — this cannot check power').toBeDefined()
     expect(forward!.getAttribute('aria-label'), 'a castable Forward lost its power from its accessible name')
@@ -1118,53 +1098,49 @@ describe('what a cast will cost, before the click (rung E4)', () => {
   })
 
   it('shows the same line VISIBLY in the details panel', () => {
-    // A separate surface with its own criterion, because either one alone leaves someone worse off: panel
-    // only abandons screen-reader users, label only leaves sighted users on a slow native tooltip.
     mount(mainPhaseState())
     hover(named(RAMUH))
-    expect(document.querySelector('.details__action')?.textContent, 'the panel does not disclose the payment')
-      .toBe('Cast Ramuh paying: discard Sphene as lightning')
+    expect(document.querySelector('.details__action')?.textContent, 'the panel does not disclose the move')
+      .toBe('Cast Ramuh')
   })
 
   it('discloses nothing for a card that cannot be cast', () => {
-    // At the mulligan no hand card is playable at all, so no card may carry a dangling "paying:" fragment.
+    // At the mulligan no hand card is playable at all, so no card may carry a dangling action.
     mount(mulliganState())
-    for (const c of handCards()) expect(c.getAttribute('aria-label') ?? '').not.toContain('paying')
+    for (const c of handCards()) expect(c.getAttribute('aria-label') ?? '').not.toMatch(/, Cast /)
     hover(named(RAMUH))
     expect(document.querySelector('.details__action')).toBe(null)
   })
 
-  it('discloses nothing for a card that offers SEVERAL things', () => {
-    // Geomancer can be cast or used for its CP ability, so clicking it does not commit — it opens the prompt
-    // strip, which lists both. Naming one payment here would tell the player the click is about to spend
-    // something it is not. Found by mutation: disclosing `forCard[0]` unconditionally passed every other test.
+  it('discloses only a count for a card that offers SEVERAL things', () => {
+    // Geomancer can be cast or used for its CP ability. Naming one move here would tell the player the
+    // sheet is about one thing when it lists two. Found by mutation: disclosing `forCard[0]` unconditionally
+    // passed every other test.
     mount(mainPhaseState())
-    // The guard must be about the card actually asserted on. Checking that SOME card has several choices
-    // would keep passing on the day Geomancer stops having them, leaving the assertion below vacuous.
     const geoId = viewFor(mainPhaseState(), HUMAN).hand.find((id) => nameOf(id) === 'Geomancer')
     expect(geoId, 'Geomancer is not in the opening hand — the fixture deck or seed changed').toBeDefined()
     expect(mounted?.byCard.get(geoId!)?.length ?? 0,
       'Geomancer no longer offers several choices, so this test proves nothing').toBeGreaterThan(1)
     const geo = named('Geomancer')
-    expect(geo.getAttribute('aria-label') ?? '', 'a card that does not commit on click named a payment anyway').not.toContain('paying')
+    expect(geo.getAttribute('aria-label') ?? '').not.toMatch(/, Cast /)
     hover(geo)
-    // CHANGED BY RUNG F6, and the property this test exists for is untouched: a card that does not commit
-    // must not name a payment, and `2 options` names none. What changed is that it used to disclose NOTHING,
-    // which measured out at 38.6 % of clickable cards saying nothing about what pressing them does. It now
-    // says what the press actually does — open a choice, and how big — which is a strictly stronger
-    // assertion than the `toBe(null)` this replaces.
     const n = mounted?.byCard.get(geoId!)?.length ?? 0
     expect(document.querySelector('.details__action')?.textContent).toBe(`${n} options`)
   })
 
-  it('discloses the string the click actually submits', () => {
-    // Not a second formatter that happens to agree: the disclosed text and the submitted choice's own label
-    // are compared against each other, and A1 above supplies the independent hand-written oracle.
+  it('the sheet’s Cast carries the same headline, and the payment confirmed is what the log will name', () => {
+    // The E4 property, one layer down: the string the player reads before committing is the string that is
+    // submitted. Here that is the tray's Confirm — the command it submits is a listed cast of Ramuh whose
+    // full label begins with the headline the sheet showed.
     mount(mainPhaseState())
-    const disclosed = named(RAMUH).getAttribute('aria-label') ?? ''
     act(() => { (named(RAMUH) as HTMLButtonElement).click() })
+    const cast = document.querySelector<HTMLElement>('dialog[data-card-sheet] [data-command="castSummon"]')
+    expect(cast?.textContent).toBe('Cast Ramuh')
+    act(() => { cast!.click() })
+    act(() => { document.querySelector<HTMLElement>('[data-command="payAuto"]')!.click() })
+    act(() => { document.querySelector<HTMLElement>('[data-command="payConfirm"]')!.click() })
     expect(chosen.length).toBe(1)
-    expect(disclosed, 'the card disclosed a different action from the one it submitted').toContain(chosen[0]!.label)
+    expect(chosen[0]!.label.startsWith('Cast Ramuh paying: '), chosen[0]!.label).toBe(true)
   })
 })
 

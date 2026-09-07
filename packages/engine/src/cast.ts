@@ -7,26 +7,50 @@ import { IllegalCommandError } from './errors.js'
 import { canPay, castRequirement, generateCp, pay } from './cp.js'
 import { dispatchTrigger, putOntoField, warnUnimplemented } from './resolve.js'
 
-export function castCheck(state: GameState, player: PlayerId, card: CardId): string | null {
-  if (state.result) return 'game is over'
+/**
+ * WHY a cast is refused, as a code (rung I1) — so the browser can grey a Cast button and say the reason in
+ * its own words rather than pattern-matching the engine's English. `castCheck` is the English form of the
+ * same decision, and is derived from this so the two cannot disagree. Neither says anything about CP: a
+ * `null` here with no legal payment means "cannot afford it", which is the caller's to phrase.
+ */
+export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'priority' | 'pending' | 'monster' | 'backupsFull' | 'sameName'
+
+export function castBlocker(state: GameState, player: PlayerId, card: CardId): CastBlocker | null {
+  if (state.result) return 'gameOver'
   // MVP0-SIMPLIFICATION: Summons are also castable in the Attack Phase (§9.3.1.6); that window needs the stack (MVP3)
-  if (state.phase !== 'main1' && state.phase !== 'main2') return 'characters and summons can only be cast in a main phase (§11.4.1; MVP0 restriction for summons)'
+  if (state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
   const ps = state.players[player]
-  if (!ps.hand.includes(card)) return 'card is not in your hand'
-  if (state.priority !== player) return 'you do not have priority'
-  if (state.pending) return 'a decision is pending'
+  if (!ps.hand.includes(card)) return 'notInHand'
+  if (state.priority !== player) return 'priority'
+  if (state.pending) return 'pending'
   const def = defOf(state, card)
-  if (def.type === 'monster') return 'monsters unsupported in MVP0'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
+  if (def.type === 'monster') return 'monster'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
   // MVP0-SIMPLIFICATION: §7.7.4 is normally a rule process (§12.4.8) that keeps a 6th Backup off the field; here casting one is simply illegal.
-  if (def.type === 'backup' && ps.backups.length >= MAX_BACKUPS) return `you already control ${MAX_BACKUPS} backups (§7.7.4)`
+  if (def.type === 'backup' && ps.backups.length >= MAX_BACKUPS) return 'backupsFull'
   if (def.type !== 'summon' && !def.generic) {
     // MVP0-SIMPLIFICATION: §7.7.3 only prohibits *simultaneous* deployment; casting a second non-generic
     // same-name Character is legal and §12.4.6 then puts ALL copies into the Break Zone as a rule process.
     // Here the cast is simply illegal. §12.4.6/§12.4.7 are MVP3 work.
     const clash = [...ps.forwards, ...ps.backups].some((c) => { const d = defOf(state, c.id); return !d.generic && d.name === def.name })
-    if (clash) return `you already control a non-generic character with the same name (§7.7.3)`
+    if (clash) return 'sameName'
   }
   return null
+}
+
+const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
+  gameOver: 'game is over',
+  phase: 'characters and summons can only be cast in a main phase (§11.4.1; MVP0 restriction for summons)',
+  notInHand: 'card is not in your hand',
+  priority: 'you do not have priority',
+  pending: 'a decision is pending',
+  monster: 'monsters unsupported in MVP0',
+  backupsFull: `you already control ${MAX_BACKUPS} backups (§7.7.4)`,
+  sameName: 'you already control a non-generic character with the same name (§7.7.3)',
+}
+
+export function castCheck(state: GameState, player: PlayerId, card: CardId): string | null {
+  const why = castBlocker(state, player, card)
+  return why === null ? null : CAST_BLOCKER_TEXT[why]
 }
 
 /**

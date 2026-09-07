@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { playToTheEnd } from './drive.js'
 
 /**
  * The live regions, as the BROWSER computes them — not as the DOM declares them.
@@ -145,15 +146,7 @@ test('the live regions fall silent for the dialog and come back for the next gam
   await page.goto('/')
   expect(await live(), 'the regions are not announcing during play').toEqual({ prompt: 'polite', log: 'polite' })
 
-  const deadline = Date.now() + 120_000
-  while (Date.now() < deadline && await page.locator('dialog.banner').count() === 0) {
-    const action = page.locator('.prompt__actions button').filter({ hasNotText: 'Concede' }).first()
-    const boardCard = page.locator('.zone [role="gridcell"] button').first()
-    const handCard = page.locator('.hand [role="gridcell"] button').first()
-    const next = (await action.count()) ? action : (await boardCard.count()) ? boardCard : (await handCard.count()) ? handCard : null
-    if (next === null) { await page.waitForTimeout(120); continue }
-    await next.click({ timeout: 3000 }).catch(() => {})
-  }
+  await playToTheEnd(page)
   await expect(page.locator('dialog.banner')).toBeVisible()
   expect(await live(), 'the regions talk over the game-over dialog').toEqual({ prompt: 'off', log: 'off' })
 

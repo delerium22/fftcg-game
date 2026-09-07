@@ -37,6 +37,15 @@
 .card--hand { --ch: clamp(112px, 16vh, 179px); --cw: calc(var(--ch) * 0.716); }
 .card--field { --ch: clamp(84px, 11.5vh, 134px); --cw: calc(var(--ch) * 0.716); }
 .card--small { --ch: clamp(56px, 7.5vh, 89px); --cw: calc(var(--ch) * 0.716); }
+/* The sheet's card (rung I1): as big as the viewport allows, so the printed text on a scan is readable. */
+.card--large { --ch: min(64vh, 520px); --cw: calc(var(--ch) * 0.716); }
+
+/* At sheet size a loaded scan IS the whole card — plate, gem and pips included — so the frame's own copies of
+   them stand down rather than sit on top of the printed ones. A text card (no art) keeps every element. */
+.card--large .card__body:has(.card__img.is-loaded) .card__plate { display: none; }
+.card--large .card__frame:has(.card__img.is-loaded) > .card__gem,
+.card--large .card__frame:has(.card__img.is-loaded) > .card__pips { display: none; }
+.card--large .card__img { object-fit: contain; }
 
 .card__face {
   position: absolute;
@@ -336,6 +345,38 @@
   clip-path: polygon(50% 0%, 100% 30%, 78% 100%, 22% 100%, 0% 30%);
   background: linear-gradient(155deg, var(--gold), var(--gold-dim));
   opacity: 0.5;
+}
+
+/* ---------------- paying (rung I2) ----------------
+ * A source the player has picked shows what confirming will do to it. A backup is already rotated by
+ * `is-dull`; the badge says why. A hand card is not dulled — it is about to leave — so it gets the danger ring.
+ */
+.card__paying {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--gold);
+  color: #0b1216;
+  font-family: var(--font-condensed);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.card.is-paying-discard .card__paying { background: var(--danger); color: #fff; }
+
+.card.is-paying-discard .card__face {
+  box-shadow: var(--shadow-lift), 0 0 0 3px var(--danger), 0 0 22px -4px rgb(216 87 74 / 60%);
+}
+
+.card.is-paying-dull .card__face {
+  box-shadow: var(--shadow-lift), 0 0 0 3px var(--gold), 0 0 22px -4px var(--gold-glow);
 }
 
 /* ---------------- states ----------------

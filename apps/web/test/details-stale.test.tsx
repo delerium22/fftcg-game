@@ -7,7 +7,7 @@ import {
 } from '@fftcg/engine'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
-import { buildChoiceSet, paymentAlternatives, preferredChoices } from '../src/game/commands.js'
+import { buildChoiceSet, headline, paymentAlternatives, preferredChoices } from '../src/game/commands.js'
 import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
 
 /**
@@ -54,8 +54,8 @@ function currentAction(s: GameState, id: CardId): string {
   const forCard = choicesFor(s).byCard.get(id) ?? []
   if (forCard.length === 0) return ''
   if (forCard.length > 1) return `${forCard.length} options`
-  const ways = (forCard[0]?.alternatives?.length ?? 0) + 1
-  return ways > 1 ? `${ways} ways to pay` : (forCard[0]?.label ?? '')
+  // Rung I1: a sole choice is announced by its HEADLINE (no payment — the tray chooses that).
+  return headline(viewFor(s, HUMAN), forCard[0]!)
 }
 
 /** Walk to a position where the human holds a card that opens a payment choice. */
@@ -69,7 +69,7 @@ function positionWithPayableCard(): { state: GameState; card: CardId; action: st
         const cs = choicesFor(s)
         for (const [id, list] of cs.byCard) {
           const ways = (list[0]?.alternatives?.length ?? 0) + 1
-          if (list.length === 1 && ways > 1) return { state: s, card: id, action: `${ways} ways to pay` }
+          if (list.length === 1 && ways > 1) return { state: s, card: id, action: headline(viewFor(s, HUMAN), list[0]!) }
         }
       }
       const legal = legalCommands(s, p)
@@ -113,7 +113,12 @@ describe('G4 — the details panel never outlives its own claim', () => {
     for (let step = 0; step < 40 && !s.result; step++) {
       const p = actingPlayer(s)
       if (p === null) break
-      const next = legalCommands(s, p).find((c) => c.type !== 'concede')
+      // Pass when possible: the looked-at card then stays in hand (so its button keeps focus) while the turn
+      // changes under it, and "Cast X" becomes nothing at all — the change this test needs to observe. The
+      // first-non-concede policy used to serve because "N ways to pay" moved with every backup; since rung
+      // I1 the action is the move's headline, which only changes when the card's choices do.
+      const legalHere = legalCommands(s, p)
+      const next = legalHere.find((c) => c.type === 'pass') ?? legalHere.find((c) => c.type !== 'concede')
       if (!next) break
       s = apply(s, next).state
       render(s)

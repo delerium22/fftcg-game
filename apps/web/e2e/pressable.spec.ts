@@ -22,39 +22,34 @@ test('seed 21: every hand card names what pressing it does', async ({ page }) =>
   await expect(page.locator('.prompt__text'), 'the pinned route no longer reaches Main Phase 1')
     .toHaveText(/Main Phase 1/)
 
-  // EVERY hand card must end in one of the two forms. Before F6 they ended at "power 9000 of 9000".
+  // EVERY hand card must end in one of the two forms (rung I1: a sole choice's headline, or a count).
+  // Before F6 they ended at "power 9000 of 9000".
   const all = page.locator('.hand [data-card-id] button')
   await expect(all, 'seed 21 turn 1 should offer six pressable hand cards').toHaveCount(6)
   await expect(
-    page.getByRole('button', { name: /, (\d+ options|\d+ ways to pay)$/ }),
+    page.getByRole('button', { name: /, (\d+ options|Cast [^,]+)$/ }),
     'a hand card says nothing about what pressing it does',
   ).toHaveCount(6)
 
-  // Both forms appear here, which is why this route is worth pinning: five cards are funded several ways
-  // (no backups are out, so every cast is paid by discarding), while Geomancer can be cast OR used for its
-  // hand ability — two different MOVES, not two ways to fund one. My first version of this test asserted six
-  // "ways to pay" and failed on exactly that distinction.
-  await expect(page.getByRole('button', { name: /, \d+ ways to pay$/ }),
-    'the payment form is missing').toHaveCount(5)
+  // Both forms appear here, which is why this route is worth pinning: five cards have one move each (a
+  // cast), while Geomancer can be cast OR used for its hand ability — two different MOVES.
+  await expect(page.getByRole('button', { name: /, Cast [^,]+$/ }),
+    'the headline form is missing').toHaveCount(5)
   await expect(page.getByRole('button', { name: /^Geomancer, .*, 2 options$/ }),
     'the several-moves form is missing, or Geomancer no longer offers two').toHaveCount(1)
+  // And never a payment: the tray chooses that, after the press.
+  await expect(page.getByRole('button', { name: /paying/ })).toHaveCount(0)
 })
 
-test('seed 11: the count is the exact number of ways to pay', async ({ page }) => {
+test('seed 11: the sheet offers the cast, and the tray lists the cost', async ({ page }) => {
   await page.goto('/?seed=11')
   await page.getByRole('button', { name: /Keep hand/ }).click()
 
-  // Exactly three: discard Geomancer, Prishe, or Cloud — the same three E11's payment chooser offers, which
-  // is what makes this a check on the NUMBER and not on the wording.
-  await expect(
-    page.getByRole('button', { name: /^Class Tenth Moogle, .*, 3 ways to pay$/ }),
-    'Class Tenth Moogle does not announce exactly 3 ways to pay',
-  ).toHaveCount(1)
-
-  // Confirmed against the chooser itself, so the count cannot drift from what the strip actually lists.
-  await page.getByRole('button', { name: /^Class Tenth Moogle, / }).click()
-  const strip = page.locator('.prompt__actions')
-  await strip.getByRole('button', { name: /^Pay differently/ }).click()
-  await expect(strip.locator('[data-command="castCharacter"]'),
-    'the announced count does not match the payments actually offered').toHaveCount(3)
+  // A sole cast is announced by its headline, and pressing the card opens its sheet rather than casting.
+  await page.getByRole('button', { name: /^Class Tenth Moogle, .*, Cast Class Tenth Moogle$/ }).click()
+  const sheet = page.getByRole('dialog', { name: 'Class Tenth Moogle' })
+  await expect(sheet).toBeVisible()
+  await expect(page.locator('.log__lines')).not.toContainText(/Cast Class Tenth Moogle/)
+  await sheet.getByRole('button', { name: 'Back' }).click()
+  await expect(sheet).toHaveCount(0)
 })

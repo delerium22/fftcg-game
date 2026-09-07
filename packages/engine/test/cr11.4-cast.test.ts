@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyCastCharacter, applyCastSummon, castCheck } from '../src/cast.js'
 import { IllegalCommandError } from '../src/errors.js'
 import { makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
+import type { GameState } from '../src/state.js'
 
 const NAMED = [...VANILLA_POOL, makeDef({ code: 'V-N1', name: 'Cloud', cost: 1, power: 3000 }), makeDef({ code: 'V-N2', name: 'Cloud', cost: 1, power: 3000 }), makeDef({ code: 'V-G1', name: 'Red Mage', generic: true, cost: 1, power: 3000 })]
 
@@ -101,5 +102,25 @@ describe('§11.3 casting a Summon (MVP0: no effect)', () => {
   it('an unknown card id throws IllegalCommandError instead of a plain Error (castCheck runs before defOf)', () => {
     const { s } = ready()
     expect(() => applyCastSummon(s, 0, 99999, { dullBackups: [], discards: [] })).toThrow(IllegalCommandError)
+  })
+})
+
+describe('castBlocker — the structured reason a cast is refused (rung I1)', () => {
+  it('names the reason as a code, and castCheck is its English', async () => {
+    const { castBlocker } = await import('../src/cast.js')
+    let { s } = ready(); let f: number
+    ;[s, f] = withHand(s, 0, 'V-F2')
+    expect(castBlocker(s, 0, f)).toBeNull()
+    expect(castBlocker({ ...s, phase: 'attack' }, 0, f)).toBe('phase')
+    expect(castCheck({ ...s, phase: 'attack' }, 0, f)).toMatch(/main phase/)
+    expect(castBlocker({ ...s, pending: { kind: 'mulligan', player: 0 } }, 0, f)).toBe('pending')
+    expect(castBlocker({ ...s, priority: 1 }, 0, f)).toBe('priority')
+    let b: number
+    ;[s, b] = withHand(s, 0, 'V-B3')
+    const five = { ...s, players: [{ ...s.players[0], backups: [...s.players[0].backups, ...s.players[0].backups, ...s.players[0].backups] }, s.players[1]] as GameState['players'] }
+    expect(castBlocker(five, 0, b)).toBe('backupsFull')
+    let twin: number
+    ;[s, twin] = withHand(s, 0, 'V-B1')
+    expect(castBlocker(s, 0, twin)).toBe('sameName')
   })
 })

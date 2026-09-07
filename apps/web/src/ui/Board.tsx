@@ -1,14 +1,30 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import type { CardId, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
-import { displayName, fieldCardDisplay } from '../game/commands.js'
+import type { CardId, Element, FieldCard, Payment, PlayerId, PlayerView } from '@fftcg/engine'
+import { castBlockerText, displayName, fieldCardDisplay, headline } from '../game/commands.js'
+import {
+  EMPTY_PAYMENT, candidateSources, completedChoice, crystals, extendable, generatedFor, legalPaymentsOf, needsTray,
+  paidText, requirementFor, withBackup, withDiscard,
+} from '../game/payment.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card, cardAccessibleName, type CardProps } from './Card.js'
 import { CardDetails } from './CardDetails.js'
 import { CardGrid, type GridItem } from './CardGrid.js'
+import { CardSheet, type SheetAction } from './CardSheet.js'
 import { EventLog } from './EventLog.js'
 import { GameOverDialog } from './GameOverDialog.js'
+import { PaymentTray } from './PaymentTray.js'
 import { PromptStrip } from './PromptStrip.js'
+
+/**
+ * The payment being built (rung I2): the move, the sources picked so far, and a two-element discard waiting
+ * for its element. Dropped on any change of position, as E11's payment view was — its buttons spend cards.
+ */
+interface Paying {
+  choice: Choice
+  selection: Payment
+  ask: { card: CardId; options: Element[] } | null
+}
 
 const MAX_DAMAGE = 7   // §12.2.2: a player with 7 damage loses
 
@@ -24,7 +40,7 @@ function defOf(v: PlayerView, id: CardId) {
  * is focused through the cell, so the cell carries the accessible name — and it must be the same name, from
  * the same numbers. Two spellings would drift somewhere only a screen-reader user ever goes.
  */
-function fieldCardProps(v: PlayerView, c: FieldCard, selectable: boolean, size: 'field' | 'small'): CardProps {
+function fieldCardProps(v: PlayerView, c: FieldCard, actionable: boolean, size: 'field' | 'small'): CardProps {
   const d = defOf(v, c.id)
   // Spec C1-7: `effectivePower` (via `fieldCardDisplay`) is the ONE power authority, and the board is a
   // consumer of it. Passing printed `def.power` here would show a pumped Forward the wrong power AND the wrong
@@ -42,7 +58,7 @@ function fieldCardProps(v: PlayerView, c: FieldCard, selectable: boolean, size: 
     flags: shown.flags,
     damage: c.damage,
     dull: c.status === 'dull',
-    selectable,
+    actionable,
     size,
     ...(d?.text === undefined ? {} : { text: d.text }),
   }
@@ -171,28 +187,14 @@ export function clickableChoices(view: PlayerView, choices: ChoiceSet): Choice[]
   return choices.all.filter((c) => c.card === null || reachable.has(c.card))
 }
 
-/**
- * Does clicking this card DO something, or merely select it?
- *
- * `pick` and `actionFor` must agree, and they stopped agreeing the moment E11 landed: `pick` began refusing
- * to execute a sole choice that hid several payments, while `actionFor` went on announcing that choice as
- * what the click submits. Seed 5's Hugh Yurg then read "Cast Hugh Yurg paying: …" on a button that only
- * selected it — the E4 invariant, that a card's stated action is what pressing it immediately does, broken by
- * the rung that made the click safer. The E4 tests could not see it: their fixtures build a `ChoiceSet`
- * without payment alternatives, so they still exercise the old world.
- *
- * One predicate, used by both, so they cannot drift apart a second time.
- */
-const commitsOnClick = (forCard: readonly Choice[]): boolean =>
-  forCard.length === 1 && !forCard[0]?.alternatives?.length
-
 export function Board({ game, onHelp }: {
   game: GameApi
   /** Opens the "How to play" sheet (rung H1). Absent in tests that never asked for one, so nothing renders. */
   onHelp?: (() => void) | undefined
 }): JSX.Element {
   const { view, choices, log, aiThinking, choose, restart } = game
-  const [selected, setSelected] = useState<CardId | null>(null)
+  /** The card whose sheet is open (rung I1), or null. */
+  const [sheet, setSheet] = useState<CardId | null>(null)
   // The card the player last pointed at, by CODE rather than by instance id: the panel shows what the CARD
   // does, which is a property of the definition, and a code survives the instance leaving play mid-look.
   // The CARD ID rides along because the action belongs to the INSTANCE, not the definition — two copies of one
@@ -218,8 +220,8 @@ export function Board({ game, onHelp }: {
     if (view.turn === 0 && view.phase === 'setup') setInspected(null)
   }, [view.turn, view.phase])
 
-  /** The move whose other payments are being shown, or `null` for the ordinary strip (rung E11). */
-  const [paying, setPaying] = useState<Choice | null>(null)
+  /** The payment being built (rung I2), or `null` for the ordinary strip. */
+  const [paying, setPaying] = useState<Paying | null>(null)
   const inspect = (code: string | undefined, card: CardId): void => {
     if (code !== undefined) setInspected({ code, card })
   }
@@ -285,7 +287,7 @@ export function Board({ game, onHelp }: {
         elements: d?.elements ?? [],
         type: d?.type ?? 'forward',
         power: d?.power ?? null,
-        selectable: false,
+        actionable: false,
         size: 'small',
         ...(d?.text === undefined ? {} : { text: d.text }),
       })
@@ -313,73 +315,112 @@ export function Board({ game, onHelp }: {
   }
 
   /**
-   * What clicking this card will do — ALWAYS, when it does anything at all.
+   * What pressing this card offers — its sole choice's headline, or how many choices its sheet will list.
    *
-   * When the click commits, that is the exact action, and naming one of several options instead would state
-   * a payment the click is not about to make (rung E4, and the click that silently spent a 5-cost Odin on a
-   * 2-cost Ramuh). But saying NOTHING was the other half of that mistake: measured over six seeded games,
-   * 38.6 % of clickable cards announced no action, and in 21.6 % of positions not one clickable card did.
-   * Turn 1 shows six pressable cards under "cast, attack, or pass" and tells you nothing about any of them.
+   * F6 gave every pressable card an action in one of three forms, chosen by what the click would DO: the exact
+   * label when it committed, a bare count when it only selected. Since rung I1 no press commits — every one
+   * opens the card's sheet — so the forms are two: the HEADLINE of the sole choice ("Cast Ramuh", "Block with
+   * Luso"; never a payment, which the tray has yet to choose), or `N options`. A card with nothing to do says
+   * nothing: its sheet is for reading.
    *
-   * So a card that does not commit says what pressing it DOES do — open a choice, and how big a choice.
-   * `Cast Cloud, 4 ways to pay` was considered and rejected in review: that click selects Cloud, it does not
-   * cast it, and naming the cast would be E4's defect wearing a hat. A bare count states only what is true,
-   * and stays true when pressing an already-selected card closes the options again.
-   *
-   * The 38.6 % above was measured wrong, twice, and the corrected figure is worse: it counted the PREDICATE
-   * rather than the rendered button, missing that this reached only the hand, and then a second measurement
-   * treated two independent mutations as cumulative. Reverting both — the true pre-F6 state — leaves 403 of
-   * 443 clickable cards silent, and 147 of 176 positions with nothing on the board saying anything.
-   *
-   * The two counts are different questions and are counted differently. Several MOVES is
-   * `forCard.length` — each is its own entry. One move funded several ways is ONE entry whose
-   * `alternatives` hold the rest, so it is `alternatives.length + 1`: the preferred payment plus the others.
+   * While a payment is being built (I2) the board's actions are the tray's, not the game's: a candidate
+   * source says what picking it spends.
    */
   const actionFor = (id: CardId): string | undefined => {
+    if (paying) return sourceAction(id)
     const forCard = choices.byCard.get(id) ?? []
     if (forCard.length === 0) return undefined
-    if (commitsOnClick(forCard)) return forCard[0]?.label
-    if (forCard.length > 1) return `${forCard.length} options`
-    const ways = (forCard[0]?.alternatives?.length ?? 0) + 1
-    return `${ways} ways to pay`
+    if (forCard.length === 1) return headline(view, forCard[0] as Choice)
+    return `${forCard.length} options`
   }
+
+  // ---- the payment tray (rung I2) ------------------------------------------------------------------------
+  const legal = paying ? legalPaymentsOf(paying.choice) : []
+  const candidates = paying ? candidateSources(legal) : null
+  const requirement = paying ? requirementFor(view, paying.choice) : null
+  const cp = paying && requirement ? generatedFor(view, paying.selection, requirement) : []
+  const lit = requirement ? crystals(requirement, cp) : []
+  const completed = paying ? completedChoice(paying.choice, paying.selection) : null
+  const backupsOf = (p: PlayerId): Set<CardId> => new Set(view.fields[p].backups.map((c) => c.id))
+
+  /** Is this card a source the tray may take right now — a candidate that is picked, or still addable? */
+  const sourceState = (id: CardId): { role: 'dull' | 'discard' | null; offered: boolean; elements: Element[] } => {
+    if (!paying || !candidates) return { role: null, offered: false, elements: [] }
+    const sel = paying.selection
+    if (backupsOf(HUMAN).has(id)) {
+      if (sel.dullBackups.includes(id)) return { role: 'dull', offered: true, elements: [] }
+      return { role: null, offered: candidates.backups.has(id) && extendable(legal, sel, { backup: id }), elements: [] }
+    }
+    const declared = sel.discards.find((d) => d.card === id)
+    if (declared) return { role: 'discard', offered: true, elements: [declared.element] }
+    const options = (candidates.discards.get(id) ?? []).filter((e) => extendable(legal, sel, { discard: id, element: e }))
+    return { role: null, offered: options.length > 0, elements: options }
+  }
+  const sourceAction = (id: CardId): string | undefined => {
+    const st = sourceState(id)
+    if (st.role === 'dull') return 'Picked: dull for 1 CP — press to put back'
+    if (st.role === 'discard') return `Picked: discard for 2 ${st.elements[0]} CP — press to put back`
+    if (!st.offered) return undefined
+    if (backupsOf(HUMAN).has(id)) return 'Dull for 1 CP'
+    return st.elements.length === 1 ? `Discard for 2 ${st.elements[0]} CP` : 'Discard for 2 CP'
+  }
+  /** Toggle a source in the payment being built. */
+  const toggleSource = (id: CardId): void => {
+    if (!paying) return
+    const st = sourceState(id)
+    const sel = paying.selection
+    if (st.role === 'dull') { setPaying({ ...paying, selection: withBackup(sel, id, false), ask: null }); return }
+    if (st.role === 'discard') { setPaying({ ...paying, selection: withDiscard(sel, id, null), ask: null }); return }
+    if (!st.offered) return
+    if (backupsOf(HUMAN).has(id)) { setPaying({ ...paying, selection: withBackup(sel, id, true), ask: null }); return }
+    // A two-element card asks which element only when both would still lead somewhere (I2-D4).
+    if (st.elements.length === 1) { setPaying({ ...paying, selection: withDiscard(sel, id, st.elements[0] as Element), ask: null }); return }
+    setPaying({ ...paying, ask: { card: id, options: st.elements } })
+  }
+  const startPaying = (c: Choice): void => { setSheet(null); setPaying({ choice: c, selection: EMPTY_PAYMENT, ask: null }) }
+
+  const tray = paying && requirement ? (
+    <PaymentTray
+      title={`Paying for ${headline(view, paying.choice)}`}
+      crystals={lit}
+      complete={completed !== null}
+      ask={paying.ask ? { card: paying.ask.card, name: displayName(view, paying.ask.card), options: paying.ask.options } : null}
+      onAuto={() => setPaying({ ...paying, selection: legal[0] ?? EMPTY_PAYMENT, ask: null })}
+      onClear={() => setPaying({ ...paying, selection: EMPTY_PAYMENT, ask: null })}
+      onCancel={() => setPaying(null)}
+      onConfirm={() => { if (completed) { setPaying(null); choose(completed) } }}
+      onDeclare={(card, element) => setPaying({ ...paying, selection: withDiscard(paying.selection, card, element), ask: null })}
+    />
+  ) : null
+  const payingPrompt = paying ? `${headline(view, paying.choice)} — ${paidText(lit)}` : null
 
   const inspectedAction = inspected === null ? null : actionFor(inspected.card) ?? null
 
-  // The choice set is rebuilt on every state change; a card selected under the old one may no longer be
-  // clickable (or may not exist), so drop the selection rather than leave a highlight pointing at nothing.
-  useEffect(() => { setSelected((id) => (id !== null && choices.byCard.has(id) ? id : null)) }, [choices])
-  // And the payment view is dropped outright on any change of position (rung E11). Keeping it would leave the
-  // strip offering payments for a move that may no longer be legal, which is the shape of the stale-selection
-  // bug the line above exists to prevent — except that these buttons spend cards.
+  // The payment being built is dropped outright on any change of position (rung E11, kept by I2). Keeping it
+  // would leave the tray spending cards against a move that may no longer be legal. The SHEET survives a
+  // change of position: it is for reading, and its actions are re-derived live on every render, so a sheet
+  // opened on the AI's Forward while the AI thinks simply stops offering "Block with" once the attack is over.
   useEffect(() => { setPaying(null) }, [choices])
 
+  /**
+   * A press on a card (rung I1): while a payment is being built it picks or puts back a source; otherwise it
+   * opens the card's sheet. It never commits a command — that is the sheet's job, after the card has been
+   * read. The click used to commit a sole choice at once and select otherwise, and the two behaviours on one
+   * board were the confusion F6 measured.
+   */
   const pick = (id: CardId): void => {
-    const forCard = choices.byCard.get(id) ?? []
-    // One way to use a card: just do it. Several (a cast with options, a party to attack with): select it and
-    // let the prompt strip show what they are, so a click is never a guess about which variant you got.
-    //
-    // A move with several PAYMENTS counts as several options (rung E11), even though it is one entry in
-    // `byCard`. It used to commit on the first click, spending whichever of your cards `preferredPayment`
-    // scored cheapest — a decision about your own hand you were never offered. An action that conceals a
-    // choice is exactly the one that should not fire the instant you touch it.
-    if (commitsOnClick(forCard)) {
-      setSelected(null); setPaying(null); choose(forCard[0] as Choice); return
+    if (paying) {
+      if (sourceState(id).offered) { toggleSource(id); return }
+      setSheet(id); return
     }
-    setPaying(null)
-    setSelected((cur) => (cur === id ? null : id))
+    setSheet(id)
   }
 
   // Concede is legal in every state (§2.1), so `legalCommands` puts it first — which would make it the leftmost,
   // most-reachable button on the strip all game. Sort it to the end; nothing else changes order.
   const order = (c: Choice) => (c.command.type === 'concede' ? 1 : 0)
-  const base = (selected === null ? choices.loose : [...(choices.byCard.get(selected) ?? []), ...choices.loose])
-    .slice().sort((a, b) => order(a) - order(b))
-  // Asking to pay differently REPLACES the strip with that move's payments, rather than adding them to it.
-  // Spec B6 collapsed payments because `legalCommands` explodes — one action reached thirty exact payments in
-  // a twelve-seed trace — and listing them alongside everything else would rebuild the interface B6 removed.
-  // So the alternatives are a place you go, with a way back, not a longer list of buttons.
-  const shown = paying ? [paying, ...paying.alternatives ?? []] : base
+  // Only the subjectless choices (I1-D6): a card's own choices live on its sheet now.
+  const shown = choices.loose.slice().sort((a, b) => order(a) - order(b))
   // Backups render small: they are CP sources rather than combat units, and with auto-pay (spec B6) they are
   // rarely a click target — which also buys the vertical room two full-size field rows per side would not fit in.
   /**
@@ -399,9 +440,12 @@ export function Board({ game, onHelp }: {
     extra: { selected?: boolean; onClick?: (() => void) | undefined } = {},
   ): GridItem => {
     const descriptionId = `card-desc-${id}`
+    // Every face-up card is a button now (rung I1), so the button is always the focus target and the cell
+    // never has to announce for it. `cellName` is still supplied: `CardGrid` decides, in one place.
+    const pressable = props.faceDown !== true
     return {
       id,
-      selectable: props.selectable === true,
+      selectable: pressable,
       cellName: cardAccessibleName({ ...props, ...extra }),
       ...(props.text ? { cellDescribedBy: descriptionId } : {}),
       render: (tabIndex) => (
@@ -410,26 +454,29 @@ export function Board({ game, onHelp }: {
           {...extra}
           tabIndex={tabIndex}
           descriptionId={descriptionId}
-          presentational={props.selectable !== true}
+          presentational={!pressable}
+          onClick={extra.onClick ?? (() => pick(id))}
         />
       ),
     }
   }
 
+  /** Whether a card glows: a key of `byCard`, or — while paying — a source the tray offers or has taken. */
+  const glows = (id: CardId): boolean =>
+    paying ? sourceState(id).offered : (choices.byCard.get(id) ?? []).length > 0
+  const payingRole = (id: CardId): 'dull' | 'discard' | undefined => sourceState(id).role ?? undefined
+
   const field = (p: PlayerId, kind: 'forwards' | 'backups'): GridItem[] =>
     view.fields[p][kind].map((c) => {
-      const selectable = (choices.byCard.get(c.id) ?? []).length > 0
       // The action, which a field card never carried. A Forward whose sole choice is `Block with Luso`
-      // COMMITS when pressed and announced only its power — the same silence as a hand card, on the row
-      // where the click is most often irreversible.
-      const props = {
-        ...fieldCardProps(view, c, selectable, kind === 'backups' ? 'small' : 'field'),
+      // announced only its power — the same silence as a hand card, on the row where the decision is most
+      // often irreversible.
+      const props: CardProps = {
+        ...fieldCardProps(view, c, glows(c.id), kind === 'backups' ? 'small' : 'field'),
         ...(actionFor(c.id) === undefined ? {} : { action: actionFor(c.id) }),
+        ...(payingRole(c.id) === undefined ? {} : { paying: payingRole(c.id) }),
       }
-      return gridItem(c.id, props, {
-        selected: selected === c.id,
-        ...(selectable ? { onClick: () => pick(c.id) } : {}),
-      })
+      return gridItem(c.id, props, { selected: sheet === c.id })
     })
 
   // Every clickable choice must be reachable, or the game dead-ends: Billy Bob's ETB targets your BREAK ZONE,
@@ -447,16 +494,45 @@ export function Board({ game, onHelp }: {
       elements: d?.elements ?? [],
       type: d?.type ?? 'forward',
       power: d?.power ?? null,
-      selectable: true,
+      actionable: true,
       size: 'small',
       ...(d?.text === undefined ? {} : { text: d.text }),
-      // And here too. Every card in this row is selectable BY CONSTRUCTION — it exists only because a choice
+      // And here too. Every card in this row is actionable BY CONSTRUCTION — it exists only because a choice
       // named it — so one that says nothing about its action is the worst case of the three: a card the
       // player has never seen, in a row that appeared for reasons the board does not explain, offering a
-      // press whose effect is unstated. A Hugh Yurg deck-search candidate COMMITS `Play X onto the field`.
+      // press whose effect is unstated.
       ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
-    }, { selected: selected === id, onClick: () => pick(id) })
+    }, { selected: sheet === id })
   })
+
+  /**
+   * The open card's sheet (rung I1), built from the LIVE choice set — never a snapshot, for the reason
+   * `inspectedAction` gives: a snapshot cannot go stale gracefully. While a payment is being built the sheet
+   * is read-only (no nested flows): its actions are the tray's, on the board.
+   */
+  const sheetProps = (id: CardId): JSX.Element | null => {
+    const d = defOf(view, id)
+    if (!d) return null
+    const onField = ([0, 1] as const).flatMap((p) => [...view.fields[p].forwards, ...view.fields[p].backups]).find((c) => c.id === id)
+    const face: CardProps = onField
+      ? fieldCardProps(view, onField, false, 'field')
+      : { code: d.code, name: displayName(view, id), cost: d.cost, elements: d.elements, type: d.type, power: d.power, ...(d.text === undefined ? {} : { text: d.text }) }
+    const forCard = paying ? [] : (choices.byCard.get(id) ?? [])
+    const actions: SheetAction[] = forCard.map((c) => ({
+      choice: c, kind: needsTray(c) ? 'pay' : 'commit',
+      label: needsTray(c) ? headline(view, c) : c.label,
+    }))
+    const castable = forCard.some((c) => c.command.type === 'castCharacter' || c.command.type === 'castSummon')
+    const castBlocked = paying ? null : castBlockerText(view, id, castable)
+    return (
+      <CardSheet
+        face={face} def={d} actions={actions} castBlocked={castBlocked}
+        onCommit={(c) => { setSheet(null); setPaying(null); choose(c) }}
+        onPay={startPaying}
+        onClose={() => setSheet(null)}
+      />
+    )
+  }
 
   return (
     <div className="table">
@@ -502,8 +578,6 @@ export function Board({ game, onHelp }: {
           onLookAt={look}
           items={view.hand.map((id) => {
             const d = defOf(view, id)
-            const forCard = choices.byCard.get(id) ?? []
-            const selectable = forCard.length > 0
             // The SAME occurrence marker the buttons use. A button saying "Discard Shantotto (2)" is only
             // useful if the player can see which rendered card is Shantotto (2) — a disambiguator that
             // appears on one side of the interface and not the other is worse than none, because it looks
@@ -515,23 +589,23 @@ export function Board({ game, onHelp }: {
               elements: d?.elements ?? [],
               type: d?.type ?? 'forward',
               power: d?.power ?? null,
-              selectable,
+              actionable: glows(id),
               size: 'hand',
               ...(d?.text === undefined ? {} : { text: d.text }),
               ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
-            }, {
-              selected: selected === id,
-              ...(selectable ? { onClick: () => pick(id) } : {}),
-            })
+              ...(payingRole(id) === undefined ? {} : { paying: payingRole(id) }),
+            }, { selected: sheet === id })
           })}
         />
       </section>
 
       <PromptStrip
         view={view} choices={choices} shown={shown} aiThinking={aiThinking}
-        paying={paying} onPay={setPaying}
-        onChoose={(c) => { setSelected(null); setPaying(null); choose(c) }}
+        tray={tray} paying={payingPrompt}
+        onChoose={(c) => { setPaying(null); choose(c) }}
       />
+
+      {sheet !== null && sheetProps(sheet)}
 
 
       <aside className="table__rail">

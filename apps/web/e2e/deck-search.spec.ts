@@ -10,9 +10,9 @@ import { expect, test } from '@playwright/test'
  *
  * THE ROUTE IS PINNED, NOT PLAYED. A check that plays randomly until it stumbles into a deck search is
  * vacuous when it misses and flaky when it hits. `?seed=5` reaches Hugh Yurg's whole-deck search in exactly
- * three clicks — "Keep hand", the Hugh Yurg card (which SELECTS since rung E11, because it can be funded more
- * than one way), then "Cast Hugh Yurg" — and, because the human takes the first turn, the route
- * contains no AI decision at all, so no worker timing can move it. If the route ever stops arriving, this
+ * five clicks — "Keep hand", the Hugh Yurg card (which opens its sheet since rung I1), "Cast Hugh Yurg",
+ * then Auto and Confirm on the payment tray (rung I2) — and, because the human takes the first turn, the
+ * route contains no AI decision at all, so no worker timing can move it. If the route ever stops arriving, this
  * fails loudly rather than passing quietly with nothing checked.
  *
  * WHAT IT PROVES THAT NOTHING ELSE DOES. Before E10 this choice was three prompt-strip buttons all reading
@@ -33,8 +33,11 @@ test('a deck search offers its candidates as cards a person can see and press', 
   // Named WITHOUT its cast: since E11 a card that hides a payment choice no longer announces an action,
   // because pressing it no longer performs one. Matching on "…Cast Hugh Yurg paying…" here would be matching
   // on a claim the interface deliberately stopped making.
+  // Rung I1/I2: the card's press opens its sheet, Cast opens the tray, Auto fills the preferred payment.
   await page.getByRole('button', { name: /^Hugh Yurg, cost/ }).click()
-  await page.getByRole('button', { name: /^Cast Hugh Yurg/ }).click()
+  await page.getByRole('dialog', { name: 'Hugh Yurg' }).getByRole('button', { name: 'Cast Hugh Yurg', exact: true }).click()
+  await page.getByRole('button', { name: 'Auto', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click()
 
   // The prompt says what is being asked. If the route drifted, this is where it fails, and it names the
   // reason rather than timing out on a selector.
@@ -56,8 +59,10 @@ test('a deck search offers its candidates as cards a person can see and press', 
     expect(n, 'a candidate does not say what the card actually is').toMatch(/cost \d+.*forward.*power/i)
   }
 
-  // And it is a real choice, not a display: pressing one answers the pending and the row goes away.
+  // And it is a real choice, not a display: pressing one opens its sheet, whose pick answers the pending
+  // and the row goes away.
   await candidates.first().click()
+  await page.getByRole('dialog').getByRole('button', { name: /^Play Luso/ }).click()
   await expect(page.locator('.prompt__text'), 'the search did not resolve when a candidate was pressed')
     .not.toHaveText(/choose up to 1 card in your deck/i)
 })

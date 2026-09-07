@@ -13,7 +13,8 @@ import { stepAi } from '../src/game/useGame.js'
 import { HUMAN, type Choice, type GameApi } from '../src/game/types.js'
 
 /**
- * Rung E11 — you don't get to choose what you pay with.
+ * Rung E11 — you don't get to choose what you pay with. (Re-drawn by rung I2: the strip's "Pay differently"
+ * chooser became the crystal tray; the alternatives still ride on the `Choice`, and are now the tray's list.)
  *
  * Casting, and paying for an activated ability, spends your other cards as CP. `legalCommands` lists one
  * command per minimal payment and spec B6 collapses them to the one `preferredPayment` scores cheapest, so
@@ -147,97 +148,84 @@ describe.each([['a cast', () => CAST, 'cast'], ['an activation', () => ACT, 'act
     })
   })
 
-describe('the strip, before anything is asked for (E11-A6)', () => {
-  it('shows ONE action per move plus one disclosure — never every payment', () => {
+describe('the strip never lists payments (E11-A6, kept by rung I2)', () => {
+  it('shows no payment and no disclosure on the strip; the tray is the only way to pay', () => {
     // Without this, an implementation that simply stops collapsing — every payment as its own button, the
-    // one thing this rung must not do — would satisfy every other criterion here.
-    const s = CAST!
-    const { view } = mount(s)
-    const groups = multiPayment(s)
-    const [key, commands] = [...groups.entries()].find(([k]) => k.startsWith('cast'))!
-    const legal = legalCommands(s, HUMAN)
-    const set = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
-    const choice = set.all.find((c) => actionKey(c.command) === key)!
-    expect(commands.length, 'this move has only one payment, so the collapse is not being tested')
-      .toBeGreaterThan(1)
-
-    const card = choice.card!
-    act(() => { document.querySelector<HTMLElement>(`[data-card-id="${card}"] button`)!.click() })
-    const labels = stripLabels()
-    const forThisMove = labels.filter((l) => l === choice.label)
-    expect(forThisMove.length, 'the move appears more than once in the strip').toBe(1)
-    for (const alt of choice.alternatives ?? []) {
-      expect(labels, 'an alternative payment is in the main strip before being asked for').not.toContain(alt.label)
-    }
-    // One disclosure PER MOVE, not one in total: the strip can legitimately show two different moves that
-    // each hide a payment choice. Asserting a global 1 was my error, and the code was right.
-    const shownWithAlternatives = stripButtons()
-      .map((b) => set.all.find((c) => c.label === b.textContent))
-      .filter((c): c is Choice => c !== undefined && (c.alternatives?.length ?? 0) > 0)
-    expect(byCommand('payDifferently').length, 'a move that hides payments has no disclosure, or has two')
-      .toBe(new Set(shownWithAlternatives.map((c) => c.label)).size)
-    expect(byCommand('payDifferently').length, 'nothing on the strip hides a payment, so this asserts nothing')
-      .toBeGreaterThan(0)
-  })
-
-  it('names how many other ways there are', () => {
+    // one thing E11 must not do — would satisfy every other criterion here.
     const s = CAST!
     const { view } = mount(s)
     const legal = legalCommands(s, HUMAN)
     const set = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
     const choice = set.all.find((c) => (c.alternatives?.length ?? 0) > 0 && c.card !== null)!
+    for (const c of [choice, ...(choice.alternatives ?? [])]) {
+      expect(stripLabels(), 'a payment is on the strip').not.toContain(c.label)
+    }
+    expect(byCommand('payDifferently').length).toBe(0)
     act(() => { document.querySelector<HTMLElement>(`[data-card-id="${choice.card!}"] button`)!.click() })
-    const n = choice.alternatives!.length
-    expect(byCommand('payDifferently')[0]?.textContent)
-      .toBe(`Pay differently (${n} other ${n === 1 ? 'way' : 'ways'})`)
+    for (const c of [choice, ...(choice.alternatives ?? [])]) {
+      expect(stripLabels(), 'pressing the card put a payment on the strip').not.toContain(c.label)
+    }
   })
 })
 
-describe('choosing a different payment (E11-A3)', () => {
-  it('applies the payment the player picked, not the preferred one', () => {
-    const s = CAST!
+/** Open the tray for `choice` through its card's sheet. */
+function openTray(choice: Choice): void {
+  act(() => { document.querySelector<HTMLElement>(`[data-card-id="${choice.card!}"] button`)!.click() })
+  const btn = document.querySelector<HTMLElement>(`dialog[data-card-sheet] [data-command="${choice.command.type}"]`)
+  expect(btn, 'the sheet does not offer the move').not.toBe(null)
+  act(() => { btn!.click() })
+  expect(document.querySelector('[data-payment-tray]'), 'the tray did not open').not.toBe(null)
+}
+const trayButton = (cmd: string): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>(`[data-payment-tray] [data-command="${cmd}"]`)
+
+describe('choosing a different payment (E11-A3, through the tray)', () => {
+  it.each([['a cast', () => CAST], ['an activation', () => ACT]] as const)('%s: applies the payment the player built, not the preferred one', (_name, get) => {
+    const s = get()!
     const { view, chosen } = mount(s)
     const legal = legalCommands(s, HUMAN)
     const set = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
     const choice = set.all.find((c) => (c.alternatives?.length ?? 0) > 0 && c.card !== null)!
     const wanted = choice.alternatives![0]!
+    const target = (wanted.command as Extract<Command, { payment: Payment }>).payment
 
-    act(() => { document.querySelector<HTMLElement>(`[data-card-id="${choice.card!}"] button`)!.click() })
-    act(() => { byCommand('payDifferently')[0]!.click() })
-    const target = stripButtons().find((b) => b.textContent === wanted.label)
-    expect(target, 'the chosen alternative is not offered after asking').not.toBe(undefined)
-    act(() => { target!.click() })
+    openTray(choice)
+    for (const b of target.dullBackups) act(() => { document.querySelector<HTMLElement>(`[data-card-id="${b}"] button`)!.click() })
+    for (const d of target.discards) {
+      act(() => { document.querySelector<HTMLElement>(`[data-card-id="${d.card}"] button`)!.click() })
+      const ask = [...document.querySelectorAll<HTMLButtonElement>('[data-payment-tray] [data-command="declareElement"]')]
+      if (ask.length) act(() => { ask.find((b) => b.textContent?.toLowerCase() === d.element)!.click() })
+    }
+    expect(trayButton('payConfirm')!.disabled, 'the built payment did not enable Confirm').toBe(false)
+    act(() => { trayButton('payConfirm')!.click() })
 
-    expect(chosen.length, 'clicking an alternative submitted nothing').toBe(1)
+    expect(chosen.length, 'confirming submitted nothing').toBe(1)
     const got = chosen[0]!.command as Extract<Command, { payment: Payment }>
     const preferred = choice.command as Extract<Command, { payment: Payment }>
-    expect(idOf(got.payment), 'the applied payment is not the one picked')
-      .toBe(idOf((wanted.command as Extract<Command, { payment: Payment }>).payment))
+    expect(idOf(got.payment), 'the applied payment is not the one built').toBe(idOf(target))
     expect(idOf(got.payment), 'the preferred payment was applied instead').not.toBe(idOf(preferred.payment))
     // Same move, different funding — the action itself must not have changed.
     expect(actionKey(got)).toBe(actionKey(preferred))
   })
 
-  it('goes back to the ordinary strip without spending anything', () => {
+  it('Cancel returns to the ordinary strip without spending anything', () => {
     const s = CAST!
     const { view, chosen } = mount(s)
     const legal = legalCommands(s, HUMAN)
     const set = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
     const choice = set.all.find((c) => (c.alternatives?.length ?? 0) > 0 && c.card !== null)!
-    act(() => { document.querySelector<HTMLElement>(`[data-card-id="${choice.card!}"] button`)!.click() })
-    act(() => { byCommand('payDifferently')[0]!.click() })
-    expect(byCommand('payBack').length, 'there is no way back out of the payments').toBe(1)
-    act(() => { byCommand('payBack')[0]!.click() })
+    openTray(choice)
+    act(() => { trayButton('payCancel')!.click() })
     expect(chosen.length, 'backing out spent something').toBe(0)
-    expect(byCommand('payDifferently').length, 'the ordinary strip did not come back').toBeGreaterThan(0)
-    expect(byCommand('payBack').length, 'the payment view is still open').toBe(0)
+    expect(document.querySelector('[data-payment-tray]'), 'the tray is still open').toBe(null)
+    expect(stripButtons().length, 'the ordinary strip did not come back').toBeGreaterThan(0)
   })
 })
 
-describe('a move with only one way to pay (E11-A2, E11-A4)', () => {
-  it('still commits on a single click, with no disclosure', () => {
-    // Guarded: the payment must be NON-EMPTY and uniquely legal. A free cast would pass this while proving
-    // nothing, since there is nothing to choose between either way.
+describe('a move with only one way to pay (E11-A2, E11-A4, re-drawn by rung I2)', () => {
+  it('goes through the tray like any other, and Auto + Confirm commits it', () => {
+    // Before I2 a uniquely-paid move committed on one click. Now NO move spends cards without the tray:
+    // one way to pay is still a payment the player should see before it is made. Guarded: the payment must
+    // be NON-EMPTY, or a free cast passes this while proving nothing.
     const found = (() => {
       for (let seed = 1; seed <= 20; seed++) {
         const s = play(seed, (st) => {
@@ -267,47 +255,22 @@ describe('a move with only one way to pay (E11-A2, E11-A4)', () => {
     expect(sole, 'the fixture has no uniquely-paid move that is the card\'s only choice').not.toBe(undefined)
 
     act(() => { document.querySelector<HTMLElement>(`[data-card-id="${sole!.card!}"] button`)!.click() })
-    expect(chosen.length, 'a uniquely-paid move no longer commits on one click').toBe(1)
+    expect(chosen.length, 'a uniquely-paid move committed on one click, without showing its payment').toBe(0)
+    openTray(sole!)
+    expect(trayButton('payConfirm')!.disabled, 'Confirm was enabled with nothing paid').toBe(true)
+    act(() => { trayButton('payAuto')!.click() })
+    act(() => { trayButton('payConfirm')!.click() })
+    expect(chosen.length).toBe(1)
     expect(chosen[0]!.command).toEqual(sole!.command)
-    expect(byCommand('payDifferently').length, 'a move with one payment offered a disclosure').toBe(0)
-  })
-})
-
-describe('the payment view does not outlive its position', () => {
-  it('is dropped when the choices change', () => {
-    // The same hazard as the stale selection the board already guards: buttons offering payments for a move
-    // that may no longer be legal. These ones spend cards.
-    const s = CAST!
-    const { view } = mount(s)
-    const legal = legalCommands(s, HUMAN)
-    const set = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
-    const choice = set.all.find((c) => (c.alternatives?.length ?? 0) > 0 && c.card !== null)!
-    act(() => { document.querySelector<HTMLElement>(`[data-card-id="${choice.card!}"] button`)!.click() })
-    act(() => { byCommand('payDifferently')[0]!.click() })
-    expect(byCommand('payBack').length, 'the payments never opened').toBe(1)
-
-    // A new position: same board, a freshly built ChoiceSet, as `useGame` produces on every state change.
-    const next: GameApi = {
-      view,
-      choices: buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal)),
-      log: [], aiThinking: false, choose: () => {}, restart: () => {},
-    }
-    act(() => { root!.render(createElement(Board, { game: next })) })
-    expect(byCommand('payBack').length, 'the payment view survived a change of position').toBe(0)
   })
 })
 
 /**
- * The interaction contract itself, and the test I did not have.
- *
- * Mutation 22 — restoring `forCard.length === 1` so a card commits on click regardless of hidden payments —
- * SURVIVED every test above. All of them happened to click cards with several choices in `byCard` (a cast and
- * an activation, say), which select for the old reason. None exercised the case the rung is about: a card
- * whose ONLY choice is a cast that hides several ways to pay. That card used to spend whichever cards
- * `preferredPayment` scored cheapest the instant you touched it.
+ * The interaction contract itself. Mutation 22 in E11 — a card committing on click regardless of hidden
+ * payments — survived every test that clicked cards with several choices. This is the case the rung was
+ * about: a card whose ONLY choice is a cast that hides several ways to pay.
  */
 describe('a card whose ONE choice hides a payment choice (E11-A4)', () => {
-  /** A position with a card offering exactly one choice, and that choice having alternatives. */
   function reachSoleMultiPayment(): { state: GameState; card: CardId } | null {
     const hitIn = (s: GameState): [CardId, Choice[]] | undefined => {
       const v = viewFor(s, HUMAN)
@@ -333,25 +296,23 @@ describe('a card whose ONE choice hides a payment choice (E11-A4)', () => {
       .not.toBe(null)
   })
 
-  it('SELECTS rather than spending your cards the moment you touch it', () => {
+  it('opens its sheet rather than spending your cards the moment you touch it', () => {
     const { state, card } = FIXTURE!
     const { chosen } = mount(state)
     act(() => { document.querySelector<HTMLElement>(`[data-card-id="${card}"] button`)!.click() })
     expect(chosen.length, 'the card committed on one click, spending cards the player never chose').toBe(0)
-    expect(byCommand('payDifferently').length, 'no way to reach the other payments').toBeGreaterThan(0)
+    expect(document.querySelector('dialog[data-card-sheet]'), 'no sheet opened').not.toBe(null)
   })
 
-  it('and the preferred payment is still one further click away (E11-A4)', () => {
-    // Selecting must not COST the player anything beyond that one click: the default is right there.
+  it('and the preferred payment is Auto + Confirm away (E11-A4)', () => {
     const { state, card } = FIXTURE!
     const { view, chosen } = mount(state)
     const legal = legalCommands(state, HUMAN)
     const set = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
     const sole = (set.byCard.get(card) ?? [])[0]!
-    act(() => { document.querySelector<HTMLElement>(`[data-card-id="${card}"] button`)!.click() })
-    const preferred = stripButtons().find((b) => b.textContent === sole.label)
-    expect(preferred, 'the preferred action is not on the strip after selecting').not.toBe(undefined)
-    act(() => { preferred!.click() })
+    openTray(sole)
+    act(() => { trayButton('payAuto')!.click() })
+    act(() => { trayButton('payConfirm')!.click() })
     expect(chosen.length).toBe(1)
     expect(chosen[0]!.command).toEqual(sole.command)
   })

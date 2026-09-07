@@ -43,11 +43,21 @@ export interface CardProps {
   damage?: number | undefined
   /** Dull = the card is turned sideways (CR 1.4.2). */
   dull?: boolean | undefined
-  /** True iff this card is a key of `ChoiceSet.byCard` — spec B-A4 makes it the only clickable set. */
-  selectable?: boolean | undefined
+  /**
+   * "You can act on this" — the lift and rim (spec B-A4's highlight). Since rung I1 EVERY face-up card is a
+   * button whose press opens its sheet, so this no longer decides whether the card is pressable, only whether
+   * it glows: a key of `ChoiceSet.byCard`, or a payment source the tray is offering.
+   */
+  actionable?: boolean | undefined
   selected?: boolean | undefined
+  /**
+   * The card's role in the payment being built (rung I2): it will be DULLED for CP, or DISCARDED for CP. A
+   * selected backup renders dull with a badge; a selected hand card gets a danger ring and a badge. Stated in
+   * the accessible name too, because a fill is not a channel a screen reader has.
+   */
+  paying?: 'dull' | 'discard' | undefined
   faceDown?: boolean | undefined
-  size?: 'hand' | 'field' | 'small' | undefined
+  size?: 'hand' | 'field' | 'small' | 'large' | undefined
   onClick?: (() => void) | undefined
   /**
    * "The player is looking at this card" — hover, or keyboard focus. Drives the details panel.
@@ -57,9 +67,7 @@ export interface CardProps {
    * looking" signal on purpose: the panel keeps the last card, so reading one and then moving to the button
    * that acts on it does not blank what you just read.
    *
-   * Only fires on FOCUS for a selectable card, since a non-selectable one renders as an unfocusable
-   * `role="img"` div. That is rung E3a's known gap and rung E3b (roving tabindex) is what closes it —
-   * a keyboard-only player currently cannot inspect the mulligan hand, where no card is selectable.
+   * Fires on focus and on hover. Since rung I1 every face-up card is a button, so every card is focusable.
    */
   /**
    * The card's printed text, exposed as an accessible DESCRIPTION rather than folded into its name.
@@ -75,9 +83,8 @@ export interface CardProps {
    */
   text?: string | undefined
   /**
-   * The card's place in its zone's roving tab order (`CardGrid`). Only meaningful for a SELECTABLE card,
-   * whose `<button>` is the focus target; a non-selectable card is focused through its grid cell instead,
-   * because a focusable `role="img"` is a leaf and announces poorly.
+   * The card's place in its zone's roving tab order (`CardGrid`): the card's `<button>` is the focus target.
+   * A face-down card has no button and is focused through its grid cell instead.
    */
   tabIndex?: number | undefined
   /**
@@ -142,19 +149,21 @@ function cardBuffs({ power, powerBonus = 0, granted = [], flags = [] }: CardProp
  * duplication rung E2 was about, with the drift landing somewhere only a screen-reader user would find it.
  */
 export function cardAccessibleName(props: CardProps): string {
-  const { name, cost, elements, type, power, damage = 0, dull = false, faceDown = false, action } = props
+  const { name, cost, elements, type, power, damage = 0, dull = false, faceDown = false, action, paying } = props
   if (faceDown) return 'Face-down card'
   const remaining = power === null ? null : power - damage
   return [
     `${name}, cost ${cost}`, elements.join(' and '), type,
     remaining === null ? '' : `power ${remaining} of ${power}`,
-    dull ? 'dull' : '', ...cardBuffs(props).map((b) => b.said), action ?? '',
+    dull ? 'dull' : '', ...cardBuffs(props).map((b) => b.said),
+    paying === 'dull' ? 'will be dulled to pay' : paying === 'discard' ? 'will be discarded to pay' : '',
+    action ?? '',
   ].filter(Boolean).join(', ')
 }
 
 /** Every card on the board — the opponent's hand, the decks, both fields — renders through here. */
 export function Card(props: CardProps): JSX.Element {
-  const { code, name, cost, elements, type, power, damage = 0, dull = false, selectable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, text, tabIndex, descriptionId, presentational = false } = props
+  const { code, name, cost, elements, type, power, damage = 0, dull = false, actionable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, text, tabIndex, descriptionId, presentational = false, paying } = props
 
   // Local state is keyed on `code` rather than reset by an effect, so reusing one component instance
   // for a different card re-attempts that card's art instead of inheriting the previous failure. The
@@ -173,7 +182,12 @@ export function Card(props: CardProps): JSX.Element {
   if (power !== null && damage > 0) vars['--dmg'] = `${Math.min(100, (damage / power) * 100)}%`
 
   const buffs = cardBuffs(props)
-  const className = ['card', `card--${size}`, dull ? 'is-dull' : '', selectable ? 'is-selectable' : '', selected ? 'is-selected' : ''].filter(Boolean).join(' ')
+  // A backup chosen as a CP source shows AS IT WILL BE — dull — before the payment is confirmed (rung I2).
+  const shownDull = dull || paying === 'dull'
+  const className = [
+    'card', `card--${size}`, shownDull ? 'is-dull' : '', actionable ? 'is-selectable' : '', selected ? 'is-selected' : '',
+    paying === 'dull' ? 'is-paying-dull' : paying === 'discard' ? 'is-paying-discard' : '',
+  ].filter(Boolean).join(' ')
   const label = cardAccessibleName(props)
 
   // A stable id per rendered card, so `aria-describedby` points at this card's own text and not another's.
@@ -216,6 +230,7 @@ export function Card(props: CardProps): JSX.Element {
               ))}
             </span>
           )}
+          {paying && <span className="card__paying" aria-hidden="true">{paying === 'dull' ? 'Dulls' : 'Discard'}</span>}
           {remaining !== null && damage > 0 && <span className="card__damage" />}
         </span>
         <span className="card__plate">
@@ -246,9 +261,12 @@ export function Card(props: CardProps): JSX.Element {
     </span>
   )
 
-  // A selectable card is a real button: keyboard activation, pressed state and disabled semantics
-  // all come from the element rather than from hand-rolled key handling.
-  if (selectable) {
+  // Every face-up card is a real button (rung I1): its press opens the card's sheet, so keyboard activation,
+  // pressed state and disabled semantics all come from the element rather than from hand-rolled key
+  // handling. A face-down card — nothing to read, nothing to do — stays an image, and so does a card an
+  // ancestor has taken over (the sheet's own large card: its heading and text already announce it, and a
+  // button named after it would offer a press that goes nowhere).
+  if (!faceDown && !presentational) {
     return (
       <>
         <button

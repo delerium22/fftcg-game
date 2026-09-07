@@ -27,16 +27,16 @@ const isAbility = (c: Choice): boolean => c.command.type === 'chooseMode' || c.c
  * it is and what the game is waiting for. Every command with no card subject (pass, mulligan, concede, the
  * no-block option) is a button here, plus whatever the currently selected card can do.
  */
-export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying, onPay }: {
+export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, paying }: {
   view: PlayerView
   choices: ChoiceSet
   shown: Choice[]
   aiThinking: boolean
   onChoose: (c: Choice) => void
-  /** The move whose other payments are on show, or `null` for the ordinary strip (rung E11). */
-  paying?: Choice | null
-  /** Open that move's payments, or close them with `null`. */
-  onPay?: (c: Choice | null) => void
+  /** The payment tray (rung I2), which REPLACES the buttons while a payment is being built. */
+  tray?: JSX.Element | null
+  /** What the tray is asking, for the live region: "Paying for Ramuh — 1 of 2 CP paid". */
+  paying?: string | null
 }): JSX.Element {
   const yours = !view.result && (view.pending?.player ?? view.priority) === HUMAN
   const phase = `Turn ${view.turn} · ${PHASE_LABEL[view.phase] ?? view.phase}`
@@ -61,10 +61,10 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
   const text = view.result ? 'Game over'
     : aiThinking ? 'The AI is thinking'
     : !yours ? 'Waiting for the AI'
-    // Choosing a payment REPLACES the strip, so the standing instruction is no longer true of it: it said
-    // "Main Phase 1 — cast, attack, or pass" while Pass was not on screen. This is also what makes the change
-    // audible — the prompt is the live region, so saying what is now being asked is the announcement.
-    : paying ? `Choose how to pay for: ${paying.label}`
+    // Building a payment REPLACES the strip, so the standing instruction is no longer true of it: it said
+    // "Main Phase 1 — cast, attack, or pass" while Pass was not on screen. This is also what makes every
+    // crystal that lights audible — the prompt is the live region, so the running total is the announcement.
+    : paying ? paying
     // "·", not the em-dash the rest of the strip uses: rung C2 spends the dash on the trigger's CAUSE ("The
     // AI's Luso was broken — Lightning: choose 1 Forward…"), and a second one would read as a third clause of
     // the same sentence rather than as the standing instruction it is.
@@ -104,7 +104,7 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
   // later click concedes. The offer is kept as a second key because it also moves within a single `choices`
   // (selecting a card widens the strip), and `yours` because the seat changing is a position change too.
   const offered = shown.map((c) => `${c.command.type}:${c.label}`).join('|')
-  useEffect(() => { setArmed(false) }, [choices, offered, yours])
+  useEffect(() => { setArmed(false) }, [choices, offered, yours, tray])
 
   const actions = useRef<HTMLDivElement>(null)
   const hadFocus = useRef(false)
@@ -154,17 +154,8 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
         {aiThinking && <span className="thinking" aria-hidden="true"><span /><span /><span /></span>}
       </span>
       <div className="prompt__actions" style={ACTIONS_WRAP} ref={actions}>
-        {/*
-          FIRST, not last. One action in the measured trace had thirty exact payments, and rendering the way
-          out after them meant cancelling required tabbing past every one. The player was never trapped —
-          clicking another card also escapes — but "escape is thirty tabs away" is not keyboard support.
-        */}
-        {yours && paying && (
-          <button data-command="payBack" className="btn btn--ghost" onClick={() => onPay?.(null)}>
-            Back
-          </button>
-        )}
-        {yours && !concedeOnly && shown.map((c, i) => (
+        {yours && tray}
+        {yours && !tray && !concedeOnly && shown.map((c, i) => (
           <Fragment key={`${c.command.type}:${c.label}:${i}`}>
           <button
             data-command={c.command.type}
@@ -186,33 +177,10 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
           >
             {c.command.type === 'concede' && armed ? 'Concede game' : c.label}
           </button>
-          {/*
-            Rung E11: the way to spend different cards. It sits immediately after the move it belongs to —
-            put at the end of the strip it lands behind Pass and Concede, reading as a fourth unrelated
-            action rather than as something about the cast above it. It names how many other ways there are,
-            so pressing it is not a guess, and it REPLACES the strip rather than lengthening it: one action
-            reached thirty exact payments in a twelve-seed trace, and listing those beside everything else
-            would rebuild the interface spec B6 collapsed them to avoid.
-          */}
-          {!paying && (c.alternatives?.length ?? 0) > 0 && (
-            <button
-              data-command="payDifferently"
-              className="btn btn--ghost"
-              // The design permits one disclosure per shown move, so two can be on screen at once — Geomancer
-              // can be cast AND use its hand ability, and both may hide the same number of payments. Visible
-              // text stays short; the accessible name says which move it belongs to, because adjacency is not
-              // part of an accessible name and is lost outright to a button list, to voice control, and to a
-              // flex row that wraps.
-              aria-label={`Pay differently for: ${c.label}`}
-              onClick={() => onPay?.(c)}
-            >
-              {`Pay differently (${c.alternatives?.length ?? 0} other ${(c.alternatives?.length ?? 0) === 1 ? 'way' : 'ways'})`}
-            </button>
-          )}
           </Fragment>
         ))}
 
-        {yours && armed && (
+        {yours && !tray && armed && (
           <button className="btn btn--ghost" data-command="cancel-concede" onClick={() => { setArmed(false) }}>
             Keep playing
           </button>

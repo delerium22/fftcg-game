@@ -60,14 +60,29 @@ describe('Card', () => {
     // it has to be recoverable from the element.
     const princess = html({ code: '19-052C', name: 'Undead Princess', cost: 1, elements: ['earth'], type: 'forward', power: 2000 })
     expect(princess).toContain('title="Undead Princess, cost 1, earth, forward, power 2000 of 2000"')
-    expect(html({ ...cloud, selectable: true })).toContain('title="Cloud, cost 3, earth, forward, power 7000 of 7000"')
+    expect(html({ ...cloud, actionable: true })).toContain('title="Cloud, cost 3, earth, forward, power 7000 of 7000"')
   })
 
-  it('is a button only when selectable, and reports its selection', () => {
-    expect(html({ ...cloud, selectable: true, selected: true })).toContain('<button type="button"')
-    expect(html({ ...cloud, selectable: true, selected: true })).toContain('aria-pressed="true"')
-    expect(html(cloud)).toContain('role="img"')
-    expect(html(cloud)).not.toContain('<button')
+  it('is a button unless face down (rung I1), and reports its selection', () => {
+    expect(html({ ...cloud, actionable: true, selected: true })).toContain('<button type="button"')
+    expect(html({ ...cloud, actionable: true, selected: true })).toContain('aria-pressed="true"')
+    // Not actionable is still pressable: the press opens the card's sheet. Only the glow is withheld.
+    expect(html(cloud)).toContain('<button')
+    expect(html(cloud)).not.toContain('is-selectable')
+    expect(html({ ...cloud, actionable: true })).toContain('is-selectable')
+    expect(html({ ...cloud, faceDown: true })).toContain('role="img"')
+    expect(html({ ...cloud, faceDown: true })).not.toContain('<button')
+  })
+
+  it('shows a payment source as it will be, and says so (rung I2)', () => {
+    const dulls = html({ ...cloud, paying: 'dull' })
+    expect(dulls).toContain('is-dull')
+    expect(dulls).toContain('is-paying-dull')
+    expect(dulls).toContain('will be dulled to pay')
+    const discards = html({ ...cloud, paying: 'discard' })
+    expect(discards).not.toContain('is-dull')
+    expect(discards).toContain('is-paying-discard')
+    expect(discards).toContain('will be discarded to pay')
   })
 
   it('shows nothing about a face-down card', () => {

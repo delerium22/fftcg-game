@@ -358,7 +358,11 @@ describe('a deck search (E10-A2/A3/A4)', () => {
           chosen.length = 0
           const button = document.querySelector<HTMLElement>(`[data-card-id="${id}"] button`)
           expect(button, `candidate ${id} is rendered but cannot be pressed`).not.toBe(null)
+          // Rung I1: the press opens the candidate's sheet; the pick is the sheet's button.
           act(() => { button!.click() })
+          const pick = document.querySelector<HTMLElement>('dialog[data-card-sheet] [data-command="chooseFromDeck"]')
+          expect(pick, `pressing ${id} opened no sheet offering the pick`).not.toBe(null)
+          act(() => { pick!.click() })
           expect(chosen.length, `clicking ${id} submitted nothing`).toBe(1)
           const command = chosen[0]!.command
           expect(command.type).toBe('chooseFromDeck')

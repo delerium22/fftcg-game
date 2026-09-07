@@ -765,3 +765,204 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================ the card sheet (rung I1) ============================
+ * A card at reading size in the centre, its text beside it, its actions under the text. A native modal
+ * dialog on the same contract as `.howto`: the board behind is inert, Escape returns to it.
+ */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: min(60rem, calc(100vw - 2 * var(--s5)));
+  max-height: calc(100vh - 2 * var(--s5));
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 30px 80px -20px rgb(0 0 0 / 80%);
+  overflow: auto;
+}
+
+.sheet::backdrop {
+  background: rgb(6 9 12 / 78%);
+  backdrop-filter: blur(3px);
+}
+
+.sheet__body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s6);
+  padding: var(--s5) var(--s6);
+  align-items: start;
+}
+
+/* The card rises into place: the enlarge the user asked for is a motion from the board to the centre. */
+.sheet__card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: sheet-rise 220ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@keyframes sheet-rise {
+  from { transform: scale(0.6) translateY(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.sheet__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.sheet__name {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--t-xl);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+}
+
+.sheet__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: 0;
+  color: var(--ink-3);
+  font-family: var(--font-condensed);
+  font-size: var(--t-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sheet__printed {
+  margin: 0;
+  font-size: var(--t-md);
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.sheet__caveat {
+  margin: 0;
+  color: var(--gold);
+  font-size: var(--t-sm);
+}
+
+.sheet__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s4);
+  align-items: flex-start;
+}
+
+.sheet__action {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-weight: 500;
+  max-width: 28rem;
+  white-space: normal;
+  text-align: left;
+}
+
+.sheet__blocked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.sheet__why {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+/* ============================ the payment tray (rung I2) ============================ */
+
+.tray {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3) var(--s4);
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.tray__title {
+  font-family: var(--font-condensed);
+  font-size: var(--t-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.tray__crystals {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* The faceted gem `Card.css` draws for missing art, at tray size. Greyed until paid; lighting is a fill and a
+ * glow, and the crystal's element is named in its title and in the row's spoken total, never in colour alone. */
+.crystal {
+  --c: var(--ink-3);
+  display: inline-block;
+  width: 18px;
+  height: 25px;
+  clip-path: polygon(50% 0%, 100% 34%, 72% 100%, 28% 100%, 0% 34%);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--c) 35%, #0b1216), #0b1216);
+  opacity: 0.55;
+  transition: opacity 180ms ease, filter 180ms ease, transform 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.crystal--fire { --c: var(--el-fire); }
+.crystal--ice { --c: var(--el-ice); }
+.crystal--wind { --c: var(--el-wind); }
+.crystal--earth { --c: var(--el-earth); }
+.crystal--lightning { --c: var(--el-lightning); }
+.crystal--water { --c: var(--el-water); }
+.crystal--light { --c: var(--el-light); }
+.crystal--dark { --c: var(--el-dark); }
+.crystal--any { --c: var(--ink-2); }
+
+.crystal.is-lit {
+  opacity: 1;
+  background: linear-gradient(155deg, color-mix(in srgb, var(--c) 100%, white 10%), var(--c) 55%, color-mix(in srgb, var(--c) 60%, #0b1216));
+  filter: drop-shadow(0 0 6px var(--c));
+  transform: scale(1.12);
+  animation: crystal-light 260ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@keyframes crystal-light {
+  0% { transform: scale(0.9); filter: drop-shadow(0 0 0 transparent); }
+  60% { transform: scale(1.25); }
+  100% { transform: scale(1.12); }
+}
+
+.tray__paid {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.tray__ask {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.tray__ask-label {
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+.tray__buttons {
+  display: inline-flex;
+  gap: var(--s2);
+}
