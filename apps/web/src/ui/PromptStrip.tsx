@@ -47,7 +47,17 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
   // the strip is not empty — but every actual target still has to be clicked on the board, and saying so is the
   // only thing that tells the player the highlighted Forwards are the point (spec B-A4).
   const picking = yours && view.pending?.kind === 'chooseTargets'
-  const cardOnly = yours && choices.byCard.size > 0 && (picking || !shown.some((c) => c.command.type !== 'concede'))
+  const answersOnCards = yours && choices.byCard.size > 0
+  // MVP0-SIMPLIFICATION (rung G6, CR §2.1 — a player may concede at any time): when every answer is on a card
+  // the strip would hold exactly one button, Concede — the only tab stop, two Enters from game over, at 345 of
+  // 2,288 human decisions (15.1 %) in the spec's corpus. So at those decisions the strip offers NOTHING, and the
+  // player cannot concede until the next strip, which is one decision away. A strip whose sole affordance ends
+  // the game is the worse restriction; `hotseat.test.ts` made the same call for the terminal ("offered LAST,
+  // never as option 0"). Concede's ordering and arming are untouched everywhere else.
+  const concedeOnly = answersOnCards && !shown.some((c) => c.command.type !== 'concede')
+  // `chooseTargets` keeps its "no targets" button, so it is NOT concede-only — but the targets themselves are
+  // still on the board, and the prompt has to say so. Same wording as before; only the buttons changed.
+  const cardOnly = concedeOnly || (answersOnCards && picking)
   const text = view.result ? 'Game over'
     : aiThinking ? 'The AI is thinking'
     : !yours ? 'Waiting for the AI'
@@ -154,7 +164,7 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, paying
             Back
           </button>
         )}
-        {yours && shown.map((c, i) => (
+        {yours && !concedeOnly && shown.map((c, i) => (
           <Fragment key={`${c.command.type}:${c.label}:${i}`}>
           <button
             data-command={c.command.type}

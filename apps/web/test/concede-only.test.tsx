@@ -26,6 +26,9 @@ import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/ty
  * The before-figure is read off the CHOICES, which the fix does not touch, so it holds before and after and
  * proves the corpus visited the hazard. The after-figure is read off the RENDERED strip, which is the thing
  * the player meets. Counting the predicate instead of the buttons is how F6 first under-counted by 108.
+ *
+ * Mutations (2026-09-08): before the fix, A1 reported 345 of 2,288. Gating the buttons on `cardOnly` instead
+ * of `concedeOnly` silenced 14 `chooseTargets` strips ("Choose no targets" vanished) and A2 caught it.
  */
 
 Element.prototype.scrollIntoView = function scrollIntoView() {}
