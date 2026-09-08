@@ -258,6 +258,56 @@ function chooseModeCandidates(state: GameState, player: PlayerId, pending: Extra
   return picks.map((modes) => ({ type: 'chooseMode', player, modes: [...modes].sort((a, b) => a - b) }))
 }
 
+type Split = ReturnType<typeof legalPartyDamageAssignments>[number]
+
+/**
+ * Rung K1: the defender's split of the blocker's damage over a party, pruned to the shapes worth searching.
+ *
+ * Every legal split went to the search before, and at the browser's budget nine children at ~15 visits each
+ * are a coin toss — the AI put 8000 on a Forward that could not be broken while a 7000 one stood beside it.
+ * The value of a split is static (K1-D1): what it BREAKS (damage so far + assigned ≥ effective power, and not
+ * `cannotBeBroken` — the test §12.4.5 runs), less what it WASTES (damage past a break, or onto a Forward that
+ * cannot break). The candidates (K1-D2) are the best split by that order plus every concentration — the whole
+ * amount on one attacker, the shape a follow-up "deal it 3000 damage" or Luso's break-on-damage can finish.
+ * `legalCommands` still lists every split and `isLegal` accepts any; only the policy narrows.
+ */
+function partyDamageCandidates(state: GameState): Split[] {
+  const all = legalPartyDamageAssignments(state, PARTY_SPLIT_SCAN_CAP)
+  if (all.length <= 1) return all
+  const worth = (split: Split): { broken: number; wasted: number } => {
+    let broken = 0, wasted = 0
+    for (const { target, amount } of split) {
+      const loc = findFieldCard(state, target)
+      if (!loc || loc.zone !== 'forwards') { wasted += amount; continue }
+      const power = powerOf(state, loc.card)
+      if (flagsOf(state, loc.card).has('cannotBeBroken') || power < 1000) { wasted += amount; continue }
+      const needed = Math.max(0, power - loc.card.damage)
+      if (amount >= needed) { broken += cardValue(defOf(state, target)); wasted += amount - needed }
+    }
+    return { broken, wasted }
+  }
+  const scored = all.map((split, i) => ({ split, i, ...worth(split) }))
+  scored.sort((a, b) => b.broken - a.broken || a.wasted - b.wasted || a.i - b.i)
+  const out: Split[] = []
+  const seen = new Set<string>()
+  const add = (split: Split) => {
+    const key = split.map((a) => `${a.target}@${a.amount}`).join(',')
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(split)
+  }
+  const best = scored[0]!
+  add(best.split)
+  // A concentration that breaks nothing while another split does is not an alternative worth a visit: at
+  // 64 iterations the search still took it 2 times in 10 (the rollouts price a broken 7000 Forward at only
+  // 0.02–0.07 of reward). Offered only when it breaks as much as the best does, or when nothing breaks at all.
+  for (const entry of scored) if (entry.split.length === 1 && (entry.broken >= best.broken || best.broken === 0)) add(entry.split)
+  return out
+}
+
+/** Splits are C(total/1000 + n − 1, n − 1) over an n-party; scan a bounded prefix, as the engine's own cap does. */
+const PARTY_SPLIT_SCAN_CAP = 256
+
 export function candidateCommands(state: GameState, player: PlayerId): Command[] {
   if (state.result || actingPlayer(state) !== player) return []
   const out: Command[] = []
@@ -276,7 +326,7 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
         return [{ type: 'breakExcessBackups', player, cards: byValue.slice(0, pending.count) }]
       }
       case 'declareBlock': return [{ type: 'declareBlock', player, blocker: null }, ...legalBlockers(state, player).map((blocker) => ({ type: 'declareBlock' as const, player, blocker }))]
-      case 'assignPartyDamage': return legalPartyDamageAssignments(state).map((assignments) => ({ type: 'assignPartyDamage' as const, player, assignments }))
+      case 'assignPartyDamage': return partyDamageCandidates(state).map((assignments) => ({ type: 'assignPartyDamage' as const, player, assignments }))
       case 'chooseTargets': return chooseTargetsCandidates(state, player, pending)
       case 'chooseMode': return chooseModeCandidates(state, player, pending)
       // Indices, so the candidate list is world-independent and needs no card reasoning at all — the whole

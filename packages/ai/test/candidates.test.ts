@@ -352,3 +352,30 @@ describe('candidateCommands: the C2 shapes', () => {
     expect(stale).toBeGreaterThan(0)
   })
 })
+
+describe('candidateCommands: the party-damage assignment (rung K1)', () => {
+  /** A 7000 blocker over a 7000 party member that cannot be broken and a 7000 one that can. */
+  function blockedParty(): { s: GameState; safe: CardId; soft: CardId } {
+    let s = endPhase(makeGame())
+    let safe: CardId, soft: CardId, blocker: CardId
+    ;[s, safe] = withField(s, 0, 'forwards', 'V-F5', { flags: ['cannotBeBroken'] })
+    ;[s, soft] = withField(s, 0, 'forwards', 'V-F5')
+    ;[s, blocker] = withField(s, 1, 'forwards', 'V-F3')
+    const pass = (st: GameState, p: PlayerId): GameState => apply(st, { type: 'pass', player: p }).state
+    s = apply(s, { type: 'declareAttack', player: 0, attackers: [safe, soft] }).state
+    s = pass(pass(s, 0), 1)
+    s = apply(s, { type: 'declareBlock', player: 1, blocker }).state
+    s = pass(pass(s, 0), 1)
+    expect(s.pending).toEqual({ kind: 'assignPartyDamage', player: 1 })
+    return { s, safe, soft }
+  }
+  it('K1-A1: offers the breaking split alone — never a split or concentration that breaks nothing when one breaks', () => {
+    const { s, soft } = blockedParty()
+    expect(legalCommands(s, 1).filter((c) => c.type === 'assignPartyDamage'), 'the engine still lists every split').toHaveLength(8)
+    const cands = candidateCommands(s, 1).filter((c) => c.type === 'assignPartyDamage')
+    const shapes = cands.map((c) => (c.type === 'assignPartyDamage' ? c.assignments.map((a) => `${a.target === soft ? 'soft' : 'safe'}@${a.amount}`).join('+') : ''))
+    expect(shapes[0], 'the break comes first').toBe('soft@7000')
+    expect(shapes).toEqual(['soft@7000'])
+    for (const c of cands) expect(legalCommands(s, 1)).toContainEqual(c)
+  })
+})
