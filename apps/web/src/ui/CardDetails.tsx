@@ -41,6 +41,9 @@ export function CardDetails({ def, action }: { def: CardDef | undefined; action?
         <span>{def.cost} CP</span>
         {def.power !== null && <span>{def.power}</span>}
       </p>
+      {(def.job || def.categories?.length) && (
+        <p className="details__meta details__meta--job">{[def.job, ...(def.categories ?? [])].filter(Boolean).join(' · ')}</p>
+      )}
       {/* `def.text` — everything the card PRINTS. Not the implemented clauses joined together: for Cloud
           those happen to reconstruct the printed text exactly, so joining them looks right and silently
           drops whatever this build has not implemented, which is the one thing this panel exists to show. */}

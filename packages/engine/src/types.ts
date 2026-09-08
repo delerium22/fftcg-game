@@ -11,6 +11,14 @@ export interface CardDef {
   power: number | null; keywords: Keyword[]; generic: boolean; exBurst: boolean
   text: string; hasAbilities: boolean
   /**
+   * The printed Job ("Standard Unit", "Dragoon") and Categories ("VII", "XIV" — a card may print two), from
+   * the SE data's `job_en` / `category_1` / `category_2` (rung J5). OPTIONAL: the Starter Vol. 2 exclusives
+   * are absent from the endpoint and their values are not invented; a filter on job/category never matches a
+   * card whose value is unknown, and the cards package's pool test names the cards that lack them.
+   */
+  job?: string
+  categories?: readonly string[]
+  /**
    * The implemented clauses, as data (spec C1-1/C1-2). Lives here and not in an injected registry because
    * `defs` is the one card-definition channel `viewFor` and `determinise` both already carry — see abilities.ts.
    */

@@ -38,6 +38,9 @@ function assertCardDef(c: unknown, where: string): CardDef {
   if (d.type === 'forward' ? !(Number.isInteger(d.power) && (d.power as number) >= 0) : d.power !== null) bad(`${d.code}: bad power ${d.power}`)
   for (const k of ['generic', 'exBurst', 'hasAbilities'] as const) if (typeof d[k] !== 'boolean') bad(`${d.code}: ${k} must be boolean`)
   if (!Array.isArray(d.keywords) || typeof d.text !== 'string') bad(`${d.code}: bad keywords/text`)
+  // Rung J5: optional, because the patched exclusives have no known values — but present means well-formed.
+  if (d.job !== undefined && (typeof d.job !== 'string' || !d.job)) bad(`${d.code}: bad job ${JSON.stringify(d.job)}`)
+  if (d.categories !== undefined && (!Array.isArray(d.categories) || !d.categories.every((c) => typeof c === 'string' && c))) bad(`${d.code}: bad categories`)
   return d
 }
 

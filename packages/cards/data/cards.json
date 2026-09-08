@@ -12,7 +12,11 @@
     "generic": true,
     "exBurst": false,
     "text": "[Lightning][Dull]: Choose 1 Forward. It gains Haste until the end of the turn.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Standard Unit",
+    "categories": [
+      "III"
+    ]
   },
   {
     "code": "9-074C",
@@ -27,7 +31,11 @@
     "generic": false,
     "exBurst": false,
     "text": "If Class Tenth Moogle is on the field, Class Tenth Moogle can produce Lightning CP.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Moogle",
+    "categories": [
+      "TYPE-0"
+    ]
   },
   {
     "code": "12-120C",
@@ -43,7 +51,12 @@
     "generic": false,
     "exBurst": false,
     "text": "When Shantotto enters the field, select 1 of the 2 following actions.\n\"Choose 1 Forward other than Shantotto. It gains Haste until the end of the turn.\"\n\"Choose 1 Forward you control. It gains ‘This Forward cannot be broken’ until the end of the turn.\"",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Mage",
+    "categories": [
+      "DFF",
+      "XI"
+    ]
   },
   {
     "code": "13-072R",
@@ -58,7 +71,10 @@
     "generic": false,
     "exBurst": true,
     "text": "If you have received 5 points of damage or more, the cost required to cast Odin is reduced by 3.\nEX BURST Choose 1 Forward of cost 5 or less. Break it.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "categories": [
+      "FFEX"
+    ]
   },
   {
     "code": "16-092C",
@@ -73,7 +89,11 @@
     "generic": false,
     "exBurst": true,
     "text": "EX BURST When Noel enters the field, choose up to 2 Forwards opponent controls. Dull them.\n[Dull], put Noel into the Break Zone: Dull all the Forwards opponent controls.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Commando",
+    "categories": [
+      "XIII"
+    ]
   },
   {
     "code": "18-064C",
@@ -88,7 +108,11 @@
     "generic": true,
     "exBurst": false,
     "text": "[Earth], discard Geomancer: Draw 1 card. You can only use this ability if Geomancer is in your hand.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Standard Unit",
+    "categories": [
+      "XI"
+    ]
   },
   {
     "code": "18-069C",
@@ -103,7 +127,11 @@
     "generic": true,
     "exBurst": false,
     "text": "[Lightning], discard Red Mage: Draw 1 card. You can only use this ability if Red Mage is in your hand.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Standard Unit",
+    "categories": [
+      "XI"
+    ]
   },
   {
     "code": "18-124C",
@@ -119,7 +147,11 @@
     "generic": false,
     "exBurst": false,
     "text": "When Billy Bob enters the field, choose 1 Forward other than Card Name Billy Bob in your Break Zone. Add it to your hand.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "AVALANCHE Operative",
+    "categories": [
+      "VII"
+    ]
   },
   {
     "code": "19-052C",
@@ -134,7 +166,11 @@
     "generic": false,
     "exBurst": false,
     "text": "Put Undead Princess into the Break Zone: Choose 1 Forward. It gains +4000 power until the end of the turn.\nRemove Undead Princess in the Break Zone from the game: Choose 1 Earth Forward. It gains +2000 power until the end of the turn. You can only use this ability during your Main Phase and if Undead Princess is in the Break Zone.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Undead",
+    "categories": [
+      "FFCC"
+    ]
   },
   {
     "code": "20-074C",
@@ -149,7 +185,11 @@
     "generic": true,
     "exBurst": false,
     "text": "When Miner enters the field, reveal the top 5 cards of your deck. Add 1 Backup among them to your hand and return the other cards to the bottom of your deck in any order.\n[2][Dull], put Miner into the Break Zone: Draw 1 card.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Standard Unit",
+    "categories": [
+      "XIV"
+    ]
   },
   {
     "code": "20-103H",
@@ -164,7 +204,10 @@
     "generic": false,
     "exBurst": false,
     "text": "Select up to 2 of the 3 following actions.\n\"Choose 1 Forward. Dull it.\"\n\"Choose 1 Forward. Deal it 5000 damage.\"\n\"Choose 1 Forward. It gains Haste until the end of the turn.\"",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "categories": [
+      "FFTA"
+    ]
   },
   {
     "code": "20-105C",
@@ -179,7 +222,11 @@
     "generic": false,
     "exBurst": true,
     "text": "EX BURST When Reeve enters the field, look at the top 3 cards of your deck. Add 1 card among them to your hand and return the other cards to the bottom of your deck in any order.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Shinra Executive",
+    "categories": [
+      "VII"
+    ]
   },
   {
     "code": "22-068R",
@@ -194,7 +241,12 @@
     "generic": false,
     "exBurst": false,
     "text": "When Prishe is chosen by a Summon or an ability, Prishe gains +2000 power until the end of the turn.\nWhen Prishe deals damage to your opponent, choose 1 Character in your Break Zone. Add it to your hand.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Monk",
+    "categories": [
+      "THEATRHYTHM",
+      "XI"
+    ]
   },
   {
     "code": "24-063H",
@@ -209,7 +261,11 @@
     "generic": false,
     "exBurst": false,
     "text": "When Hugh Yurg enters the field, you may search for 1 Earth Forward of cost 1 and play it onto the field.\nWhen a Forward of cost 1 enters your field, choose 1 Forward. Until the end of the turn, it gains +2000 power and Brave.",
-    "hasAbilities": true
+    "hasAbilities": true,
+    "job": "Warrior",
+    "categories": [
+      "FFCC"
+    ]
   },
   {
     "code": "27-124S",

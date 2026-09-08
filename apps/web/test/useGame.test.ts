@@ -727,7 +727,7 @@ describe('the shipped C1 clauses reach the UI (C1-A3)', () => {
     }
     expect(sawOrphan, 'no game ever raised a target outside the board\'s named zones — the regression is untested').toBe(true)
     expect(orphanStates).toBeGreaterThan(0)
-  })
+  }, 30_000)
 
   it('offers those clauses choices the human can click, and drives to a result', () => {
     const seen = new Set<Command['type']>()

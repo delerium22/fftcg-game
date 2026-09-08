@@ -222,3 +222,22 @@ describe('I1-A5 — what a card announces', () => {
     for (const b of strip) expect(loose.has(b.dataset['command'] ?? '')).toBe(true)
   })
 })
+
+describe('J5-A5 — the sheet shows the printed Job and Category under the name', () => {
+  it('Geomancer reads "Standard Unit · XI"', () => {
+    // The first seed that deals the human a Geomancer; every face-up card is a button from the first render (rung I1).
+    let s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+    let geo: CardId | undefined
+    for (let seed = 1; seed < 40 && geo === undefined; seed++) {
+      s = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
+      // Hands are dealt once the first player is chosen; the sheet is reachable from the mulligan on.
+      if (s.pending?.kind === 'chooseFirst') s = apply(s, { type: 'chooseFirst', player: s.pending.player, goFirst: true }).state
+      geo = s.players[HUMAN].hand.find((id) => s.cards[id]?.code === '18-064C')
+    }
+    expect(geo, 'no seed under 40 deals the human a Geomancer').toBeDefined()
+    mount(s)
+    press(cardButton(geo!))
+    expect(sheet()).not.toBeNull()
+    expect(sheet()!.querySelector('.sheet__meta--job')?.textContent).toBe('Standard Unit · XI')
+  })
+})

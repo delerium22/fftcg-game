@@ -77,6 +77,9 @@ export function CardSheet({ face, def, actions, castBlocked, onCommit, onPay, on
               {def.power !== null && <span>{def.power}</span>}
             </p>
           )}
+          {def && (def.job || def.categories?.length) && (
+            <p className="sheet__meta sheet__meta--job">{[def.job, ...(def.categories ?? [])].filter(Boolean).join(' · ')}</p>
+          )}
           <p id={textId} className="sheet__printed">{def?.text || 'No printed text.'}</p>
           {missing > 0 && (
             <p className="sheet__caveat">

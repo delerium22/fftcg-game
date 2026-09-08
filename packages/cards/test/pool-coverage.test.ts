@@ -45,6 +45,19 @@ describe('the card pool', () => {
     expect(loadCards().filter((d) => d.exBurst).length, 'no card in the pool prints EX BURST').toBeGreaterThan(0)
   })
 
+  it('carries a job and at least one category for every fetched card (rung J5-A1)', () => {
+    // The four Starter Vol. 2 exclusives are absent from the SE endpoint and live in a hand-written patch; their
+    // job and category are NOT invented, so they are the only cards allowed to lack the fields. A filter on job
+    // or category never matches them — this list is what says so.
+    const UNKNOWN = new Set(['27-124S', '27-125S', '27-126S', '27-127S'])
+    // Summons print a category but no Job (a Job is a Character's); everything else prints both.
+    const lacking = loadCards().filter((d) => !UNKNOWN.has(d.code) && ((d.type !== 'summon' && !d.job) || !d.categories?.length)).map((d) => d.code)
+    expect(lacking, 'a fetched card lost its job or category — re-run `pnpm --filter @fftcg/cards fetch`').toEqual([])
+    const known = loadCards().filter((d) => d.job && d.categories?.length)
+    expect(known.length, 'no card carries the fields at all, so the axis has nothing to read').toBeGreaterThan(10)
+    expect(known.find((d) => d.code === '18-064C'), 'Geomancer').toMatchObject({ job: 'Standard Unit', categories: ['XI'] })
+  })
+
   it('has cards to check in the first place', () => {
     // Without this, deleting the pool would make the invariant above pass over an empty list. An invariant
     // that holds vacuously is the same defect as a negative test that does not contain the thing it excludes.

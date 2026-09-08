@@ -26,7 +26,7 @@ import { readFileSync } from 'node:fs'
 const DECK = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 const DEFS = loadCards()
 /** Each of these plays twenty to forty complete games; the 5 s default is nowhere near enough. */
-const CORPUS_TIMEOUT = 120_000
+const CORPUS_TIMEOUT = 400_000   // rung J1 roughly tripled a game's command count; the 40-game corpus takes ~3 min alone
 const EX_CODES = new Set(DEFS.filter((d) => d.exBurst).map((d) => d.code))
 
 interface Tally {

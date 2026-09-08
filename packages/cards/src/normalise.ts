@@ -10,6 +10,10 @@ export interface SeCard {
   multicard: string
   ex_burst: string
   text_en: string
+  /** Rung J5: the printed Job and the one or two Categories. */
+  job_en?: string | null
+  category_1?: string | null
+  category_2?: string | null
 }
 
 const ELEMENT_BY_KANJI: Record<string, Element> = {
@@ -74,5 +78,10 @@ export function normaliseSeCard(se: SeCard): CardDef {
     exBurst: se.ex_burst === '1',
     text: cleanText(se.text_en),
     hasAbilities: nonKeywordLines.length > 0,
+    // Rung J5. Categories print as "VII" or, for a few cards, "XIV &middot; VII" — the separator is kept as
+    // the SE data has it; a filter names one category and `matchesDefFilter` asks `includes`, so the list is
+    // split on the middle dot too.
+    ...(se.job_en ? { job: se.job_en.trim() } : {}),
+    categories: [...new Set([se.category_1, se.category_2].flatMap((c) => (c ? c.split(/\s*(?:&middot;|·)\s*/) : [])).map((c) => c.trim()).filter((c) => c.length > 0))],
   }
 }

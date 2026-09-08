@@ -43,6 +43,35 @@ export interface TargetFilter {
    * in `matchesDefFilter`, which is definition-only and is what the search's decoder may ask of a view.
    */
   readonly putIntoBreakZoneFromFieldThisTurn?: boolean
+  // --- rung J5: the printed selectors the next sets use as often as cost and element ---
+  /** "Job Dragoon" — the printed Job, exactly. Never matches a card whose job is unknown (`CardDef.job` absent). */
+  readonly job?: string
+  /** "Category VII" — any of the card's printed categories. Never matches a card whose categories are unknown. */
+  readonly category?: string
+  /** "Card Name Cloud" — the printed name, exactly. */
+  readonly name?: string
+  /** A PRINTED keyword ("a Forward with Haste" read from the card). For granted-or-printed, `grantedKeyword`. */
+  readonly keyword?: Keyword
+  /** Inclusive power bounds on EFFECTIVE power where the card is on the field (bonuses count), printed power elsewhere. */
+  readonly minPower?: number
+  readonly maxPower?: number
+  /** "dull Forward" / "active Forward" — the instance's status; matches nothing off the field. */
+  readonly status?: 'active' | 'dull'
+  /** A keyword the instance HAS: printed or granted this turn; off the field, printed only. */
+  readonly grantedKeyword?: Keyword
+}
+
+/**
+ * Where each axis is answered (rung J5-D3): `def` axes read the printing alone (`matchesDefFilter`, which the
+ * ISMCTS decoder may ask of a view); `instance` axes need the state (`matchesFilter`). Typed over EVERY key
+ * of `TargetFilter`, so an axis added without a home fails to compile; `target-filters.test.ts` exercises
+ * each by name, so an axis added without a test fails there.
+ */
+export const FILTER_AXES: Record<keyof TargetFilter, 'def' | 'instance'> = {
+  type: 'def', types: 'def', element: 'def', maxCost: 'def', cost: 'def',
+  job: 'def', category: 'def', name: 'def', keyword: 'def',
+  excludeSource: 'instance', excludeSourceName: 'instance', putIntoBreakZoneFromFieldThisTurn: 'instance',
+  minPower: 'instance', maxPower: 'instance', status: 'instance', grantedKeyword: 'instance',
 }
 
 export interface TargetSpec {

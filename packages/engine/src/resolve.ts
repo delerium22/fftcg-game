@@ -5,7 +5,7 @@ import { drawCards } from './draw.js'
 import { shuffle } from './rng.js'
 import { EMPTY_RESOLUTION, MAX_RESOLUTION_STEPS, effectAtPath, hasResolutionWork, unimplementedClauseCount } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending, StackItem } from './state.js'
-import { defOf, findFieldCard, forget, learn, updatePlayer } from './state.js'
+import { defOf, findFieldCard, forget, learn, updatePlayer, powerOf, keywordsOf } from './state.js'
 import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event, StackRef } from './events.js'
@@ -127,6 +127,42 @@ export function matchesDefFilter(def: CardDef, filter: TargetFilter | undefined)
   if (filter.maxCost !== undefined && def.cost > filter.maxCost) return false
   // EXACT, not a ceiling: a cost-3 Forward must not satisfy Hugh Yurg's "of cost 1" (spec C8-3).
   if (filter.cost !== undefined && def.cost !== filter.cost) return false
+  // Rung J5. An unknown job or category (the patched exclusives) matches nothing: `undefined !== 'Dragoon'`.
+  if (filter.job !== undefined && def.job !== filter.job) return false
+  if (filter.category !== undefined && !(def.categories ?? []).includes(filter.category)) return false
+  if (filter.name !== undefined && def.name !== filter.name) return false
+  if (filter.keyword !== undefined && !def.keywords.includes(filter.keyword)) return false
+  // The power bounds are INSTANCE axes (`matchesFilter` reads the field); off the field the printing is all
+  // there is, and a Summon or Backup (no power) satisfies no bound.
+  if (filter.minPower !== undefined && (def.power === null || def.power < filter.minPower)) return false
+  if (filter.maxPower !== undefined && (def.power === null || def.power > filter.maxPower)) return false
+  if (filter.grantedKeyword !== undefined && !def.keywords.includes(filter.grantedKeyword)) return false
+  // `status` is a fact about a FieldCard: off the field there is none, so it matches nothing.
+  if (filter.status !== undefined) return false
+  return true
+}
+
+/** The instance half of the power/status/keyword axes (rung J5): read from the FieldCard when the card is on a field. */
+function matchesInstanceFilter(state: GameState, id: CardId, filter: TargetFilter): boolean {
+  const loc = findFieldCard(state, id)
+  if (!loc) {
+    // Not on a field (Break Zone, deck): the def answers, except `status`, which is undefined there.
+    const def = defFor(state, id)
+    if (!def) return false
+    if (filter.status !== undefined) return false
+    if (filter.minPower !== undefined && (def.power === null || def.power < filter.minPower)) return false
+    if (filter.maxPower !== undefined && (def.power === null || def.power > filter.maxPower)) return false
+    if (filter.grantedKeyword !== undefined && !def.keywords.includes(filter.grantedKeyword)) return false
+    return true
+  }
+  const fc = loc.card
+  const def = defOf(state, id)
+  if (filter.status !== undefined && fc.status !== filter.status) return false
+  const isForward = def.type === 'forward'
+  const power = isForward ? powerOf(state, fc) : null
+  if (filter.minPower !== undefined && (power === null || power < filter.minPower)) return false
+  if (filter.maxPower !== undefined && (power === null || power > filter.maxPower)) return false
+  if (filter.grantedKeyword !== undefined && !keywordsOf(state, fc).has(filter.grantedKeyword)) return false
   return true
 }
 
@@ -134,7 +170,15 @@ function matchesFilter(state: GameState, source: CardId, id: CardId, filter: Tar
   if (!filter) return true
   const def = defFor(state, id)
   if (!def) return false
-  if (!matchesDefFilter(def, filter)) return false
+  // The def axes; the instance axes (power, status, granted keyword) are re-asked of the field below, so the
+  // def half must not veto them: strip them before asking (rung J5).
+  const defAxes: TargetFilter = { ...filter }
+  delete (defAxes as { minPower?: number }).minPower
+  delete (defAxes as { maxPower?: number }).maxPower
+  delete (defAxes as { status?: string }).status
+  delete (defAxes as { grantedKeyword?: string }).grantedKeyword
+  if (!matchesDefFilter(def, defAxes)) return false
+  if (!matchesInstanceFilter(state, id, filter)) return false
   // A fact about the INSTANCE and the state, which is why it lives here and not in `matchesDefFilter`
   // (spec C10-2). Sphene's "put in your Break Zone from the field during this turn".
   if (filter.putIntoBreakZoneFromFieldThisTurn) {
