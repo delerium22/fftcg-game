@@ -332,13 +332,17 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
       // and every later trigger in the batch reads the NEXT frame's cause. Where two queued frames share a
       // watcher card and clause the identity check passes on the wrong one, so the line does not lose its
       // cause, it gains someone else's: the exact failure this pairing exists to prevent (spec C2-A3).
-      const framed = triggerOf(v, e.card, e.abilityId)?.kind !== 'observesChosen'
-      const frame = framed ? queued[started++] : undefined
-      // The identity check is the guard on the FIFO assumption: mismatch means the queue is not what this
-      // trigger came from, so fall through to reconstruction rather than narrate another clause's subject.
-      cause = frame && frame.source === e.card && frame.abilityId === e.abilityId
-        ? frame.triggerEvent
-        : causeOf(v, e, hits, playerHits, zoneHits, enterHits)
+      // Rung J1-D13: the event carries its cause. The placement order is no longer the trigger order (the
+      // turn player's clauses go on first, last-triggered first), so the queue-position pairing below cannot
+      // be trusted; it stays only for an event from a producer that did not carry one.
+      if (e.cause !== undefined) cause = e.cause
+      else {
+        const framed = triggerOf(v, e.card, e.abilityId)?.kind !== 'observesChosen'
+        const frame = framed ? queued[started++] : undefined
+        cause = frame && frame.source === e.card && frame.abilityId === e.abilityId
+          ? frame.triggerEvent
+          : causeOf(v, e, hits, playerHits, zoneHits, enterHits)
+      }
     }
     const line = describeEvent(v, e, cause)
     if (line) lines.push(line)

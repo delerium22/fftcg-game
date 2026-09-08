@@ -177,13 +177,16 @@ describe('dealPlayerDamage', () => {
     const withTrigger: GameState = { ...damaged, resolution: { ...damaged.resolution, queue: [decoy] } }
     expect(withTrigger.pending?.kind, 'the fixture never raised an offer').toBe('chooseExBurst')
 
+    // Rung J1-D11: the burst is the ACTIVE frame at once — never queued, never placed on the stack — so the
+    // attacker's trigger (still in the triggered list) cannot be placed before it has finished.
     const [used] = applyChooseExBurst(withTrigger, 1, true)
-    expect(used.resolution.queue.map((f) => f.abilityId),
-      'the burst was queued behind the attacker’s trigger').toEqual(['V-EX:etb', 'V-OTHER:dealt'])
-    expect(used.resolution.queue[0]?.origin, 'the burst frame is not marked as one').toBe('exBurst')
+    expect(used.resolution.active?.abilityId, 'the burst is not the frame running').toBe('V-EX:etb')
+    expect(used.resolution.active?.origin, 'the burst frame is not marked as one').toBe('exBurst')
+    expect(used.resolution.queue.map((f) => f.abilityId), 'the attacker’s trigger was disturbed').toEqual(['V-OTHER:dealt'])
 
-    // And declining queues nothing at all — the decoy is left exactly as it was.
+    // And declining runs nothing at all — the decoy is left exactly as it was.
     const [declined] = applyChooseExBurst(withTrigger, 1, false)
+    expect(declined.resolution.active).toBeNull()
     expect(declined.resolution.queue.map((f) => f.abilityId)).toEqual(['V-OTHER:dealt'])
     expect(declined.pending, 'declining left the offer on the table').toBeNull()
     void id

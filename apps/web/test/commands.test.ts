@@ -246,7 +246,7 @@ function suspendedView(ability: Ability, sourceCode: string): PlayerView {
   v.defs[sourceCode] = { ...(v.defs[sourceCode] as CardDef), abilities: [ability] }
   v.resolution = {
     active: { abilityId: ability.id, source, controller: HUMAN, path: [], chosen: [], modes: [], triggerEvent: null },
-    queue: [], continuation: null, steps: 1,
+    queue: [], placing: null, resolvingFrame: null, steps: 1,
   }
   return v
 }
@@ -612,7 +612,7 @@ describe('a prompt raised by an observer trigger names its cause (spec C2-5)', (
 describe('wording degrades gracefully when the clause cannot be read', () => {
   it('falls back to neutral wording with no agenda frame behind the pending', () => {
     const v = upTo2()
-    v.resolution = { active: null, queue: [], continuation: null, steps: 0 }
+    v.resolution = { active: null, queue: [], placing: null, resolvingFrame: null, steps: 0 }
     expect(promptFor(v, [])).toBe('Choose up to 2 Forwards the AI controls')
     expect(describeChoice(v, targets([901]))).toBe('Target Cloud')
   })

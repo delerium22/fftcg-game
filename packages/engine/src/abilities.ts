@@ -1,5 +1,5 @@
 import type { CardDef, CardType, Element, Keyword, PlayerId } from './types.js'
-import type { CardId } from './state.js'
+import type { CardId, StackItem } from './state.js'
 
 /**
  * The ability AST (spec C1-1/C1-2). Abilities are DATA, hand-written per clause and hung off `CardDef`,
@@ -294,6 +294,8 @@ export type TriggerEvent =
   | { readonly kind: 'zoneChange'; readonly card: CardId; readonly from: 'field'; readonly to: 'breakZone'; readonly controller: PlayerId; readonly owner: PlayerId; readonly reason: ZoneTransitionReason }
   /** A card arrived on a field (spec C8-1). `controller` is whose field it entered. */
   | { readonly kind: 'enteredField'; readonly card: CardId; readonly controller: PlayerId }
+  /** A card was CHOSEN by a Summon or ability as its choice was declared (rung J1-D7, spec C11). */
+  | { readonly kind: 'chosen'; readonly card: CardId; readonly by: CardId; readonly byController: PlayerId }
 
 export interface Ability {
   /**
@@ -364,6 +366,8 @@ export interface Frame {
   readonly stage?: 'declare' | 'resolve'
   /** Targets declared at placement, by the path of the `chooseTargets` node they answer; re-validated at resolution (§11.11.2). */
   readonly declared?: readonly { readonly path: readonly number[]; readonly targets: readonly CardId[] }[]
+  /** True once `modes` was declared at placement (it may legitimately be empty: "up to 2" can choose none). */
+  readonly modesDeclared?: boolean
 }
 
 /**
@@ -371,15 +375,21 @@ export interface Frame {
  * currently owes — and is cleared before the agenda resumes; this is the queue behind it.
  */
 export interface Resolution {
-  /** The frame currently executing, if any. Corresponds 1:1 with a non-null ability `pending`. */
+  /** The frame currently executing — declaring as it is put on the stack, or resolving — if any. Corresponds 1:1 with a non-null ability `pending`. */
   readonly active: Frame | null
-  /** Triggered clauses waiting their turn, in trigger order. */
+  /**
+   * Rung J1-D2: clauses that have TRIGGERED and are not yet placed on the stack, in trigger order. They do
+   * nothing until a player would gain priority (§11.8.7), when `settle` places them — the turn player's
+   * first — declaring each one's choices as it goes.
+   */
   readonly queue: readonly Frame[]
   /**
-   * A system continuation to run once the queue drains — e.g. finishing a phase transition that a
-   * trigger interrupted. C1 has none; C2's Cloud Attack-Phase clause is the first.
+   * The stack item being built while its frames declare (rung J1-D3): the item goes onto the stack when the
+   * last of them finishes declaring. `frameIndex` is which of `item`'s frames `active` is.
    */
-  readonly continuation: 'enterAttackDeclaration' | null
+  readonly placing: { readonly item: StackItem; readonly frameIndex: number } | null
+  /** Which frame of the TOP stack item is resolving (rung J1-D9), or null when nothing on the stack is. */
+  readonly resolvingFrame: number | null
   /**
    * Total effect steps spent, across the WHOLE agenda and PERSISTING across player choices (spec C1-5).
    * A call-depth cap would not catch a trigger cycle that launders itself through a `chooseTargets`
@@ -390,15 +400,16 @@ export interface Resolution {
 
 export const MAX_RESOLUTION_STEPS = 512
 
-export const EMPTY_RESOLUTION: Resolution = { active: null, queue: [], continuation: null, steps: 0 }
+export const EMPTY_RESOLUTION: Resolution = { active: null, queue: [], placing: null, resolvingFrame: null, steps: 0 }
 
 /**
- * Does the agenda still owe the engine anything? A `continuation` counts: it is work only `drainResolution`
- * consumes, so settlement, `checkInvariants` and the AI's diagnostics that looked at `active`/`queue` alone
- * would call a state with nothing but a continuation "settled" and strand it there permanently.
+ * Does the agenda still owe the engine anything WITHOUT a player forfeiting priority? An active frame, a
+ * triggered clause not yet placed, an item mid-placement, or a stack item mid-resolution. What is on the
+ * stack and waiting is NOT counted: that resolves only when both players pass (§11.1.7), and a settlement
+ * that stopped there is complete. `hasStackWork` on the state is the other question.
  */
 export function hasResolutionWork(r: Resolution): boolean {
-  return r.active !== null || r.queue.length > 0 || r.continuation !== null
+  return r.active !== null || r.queue.length > 0 || r.placing !== null || r.resolvingFrame !== null
 }
 
 /**

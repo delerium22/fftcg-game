@@ -10,22 +10,27 @@ import { expect, test } from '@playwright/test'
  * this repo once before.
  *
  * ROUTES PINNED, with the exact suffixes the spec predeclared rather than a regex that accepts any number:
- *   seed 21 — turn 1, six pressable hand cards under "cast, attack, or pass". Where the defect was found by
- *             playing: not one of them said what pressing it did.
+ *   seed 1  — turn 1, six pressable hand cards under "cast, use an ability, or pass" (seed 21 until rung J1
+ *             moved the AI's opening choice). Where the defect was found by playing: not one of them said
+ *             what pressing it did.
  *   seed 11 — Class Tenth Moogle, funded exactly three ways, so the count is a specific number and not a shape.
  * Both reach their position with one click, and the human moves first, so no AI timing enters either route.
  */
 
-test('seed 21: every hand card names what pressing it does', async ({ page }) => {
-  await page.goto('/?seed=21')
+test('seed 1: every hand card names what pressing it does', async ({ page }) => {
+  // Seed 1, not 21: under rung J1 the AI at seed 21 now chooses to go first, and the route no longer opens
+  // on the human's Main Phase 1. At seed 1 the HUMAN chooses first; the AI's mulligan is the one AI decision
+  // on the way, hence the longer wait.
+  await page.goto('/?seed=1')
+  await page.getByRole('button', { name: 'Take the first turn', exact: true }).click()
   await page.getByRole('button', { name: /Keep hand/ }).click()
   await expect(page.locator('.prompt__text'), 'the pinned route no longer reaches Main Phase 1')
-    .toHaveText(/Main Phase 1/)
+    .toHaveText(/Main Phase 1/, { timeout: 20_000 })
 
   // EVERY hand card must end in one of the two forms (rung I1: a sole choice's headline, or a count).
   // Before F6 they ended at "power 9000 of 9000".
   const all = page.locator('.hand [data-card-id] button')
-  await expect(all, 'seed 21 turn 1 should offer six pressable hand cards').toHaveCount(6)
+  await expect(all, 'seed 1 turn 1 should offer six pressable hand cards').toHaveCount(6)
   await expect(
     page.getByRole('button', { name: /, (\d+ options|Cast [^,]+)$/ }),
     'a hand card says nothing about what pressing it does',

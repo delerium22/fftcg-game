@@ -8,7 +8,7 @@ import type { CardId, GameState, PlayerState } from '../src/state.js'
 import type { Command } from '../src/commands.js'
 import type { Event } from '../src/events.js'
 import { findFieldCard } from '../src/state.js'
-import { apply } from '../src/apply.js'
+import { applyNow as apply } from './helpers.js'
 import { checkInvariants } from '../src/invariants.js'
 import { targetCandidates } from '../src/resolve.js'
 import { viewFor } from '../src/view.js'
@@ -137,7 +137,7 @@ describe('C2-A6: a Luso in an unblocked PARTY triggers wherever it sits in field
       const { r, luso, mate } = partyOf(lusoFirst)
       expect(r.state.attack?.attackers ?? []).toEqual([])                             // the attack is over
       expect(triggers(r.events, BURN_AND_RETRIEVE))
-        .toEqual([{ type: 'abilityTriggered', player: 0, card: luso, abilityId: BURN_AND_RETRIEVE }])
+        .toEqual([expect.objectContaining({ type: 'abilityTriggered', player: 0, card: luso, abilityId: BURN_AND_RETRIEVE })])
       expect(r.state.pending?.kind).toBe('chooseMode')
       // The frame names Luso as the source even though the party as a whole dealt the damage…
       expect(r.state.resolution.active?.triggerEvent)
@@ -155,8 +155,9 @@ describe('C2-A6: a Luso in an unblocked PARTY triggers wherever it sits in field
     ;[s, a] = withField(s, 0, 'forwards', '27-125S')
     ;[s, b] = withField(s, 0, 'forwards', '27-125S')
     const r = attackUnblocked(s, [a, b])
-    expect(r.state.resolution.active?.source).toBe(a)
-    expect(r.state.resolution.queue.map((f) => [f.abilityId, f.source])).toEqual([[BURN_AND_RETRIEVE, b]])
+    // Rung J1-D4: the LAST-triggered (b) is placed first — so it declares first — and a ends on top.
+    expect(r.state.resolution.active?.source).toBe(b)
+    expect(r.state.resolution.queue.map((f) => [f.abilityId, f.source])).toEqual([[BURN_AND_RETRIEVE, a]])
     expect(r.state.players[1].damageZone).toHaveLength(1)
     ok(r.state)
   })
@@ -257,20 +258,25 @@ describe('C2-A8: Luso player-damage → modal 3000 → Luso’s own break trigge
     events.push(...r.events); steps.push(r.state.resolution.steps)
     expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [luso, lightning, victim] })
 
-    // 3. 3000 onto the 3000-power Forward. The frame is atomic, so nothing breaks yet…
+    // 3. The victim is DECLARED as mode 1's target (rung J1-D3): nothing has happened to it yet, and mode 2's
+    //    prompt is the SAME frame's second declaration, with the Summon filtered out.
     r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })
     events.push(...r.events); steps.push(r.state.resolution.steps)
-    expect(fc(r.state, victim)?.damage, 'no rule process may run mid-frame').toBe(3000)
-    expect(r.state.resolution.queue.map((f) => f.abilityId), 'Luso’s own c1 queues behind the frame that fed it').toEqual([BREAK_IT])
-    // …and mode 2's prompt is the SAME frame's second choice, with the Summon filtered out.
+    expect(fc(r.state, victim)?.damage, 'a declared target is not yet damaged').toBe(0)
     expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [backup] })
     ok(r.state)
 
-    // 4. Retrieve the Backup. Frame over ⇒ §12.4.5 runs, breaks the victim, and Lightning sees the transition.
+    // 4. Retrieve the Backup — the last declaration. The clause is placed and resolves (both modes, one frame:
+    //    3000 damage, then the retrieval); Luso's own c1 triggers on the damage; §12.4.5 breaks the victim
+    //    between frames and Lightning sees the transition. Both triggers are then PLACED: Lightning's, the
+    //    later-triggered, first (J1-D4), and its declaration is the prompt on the table.
     r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [backup] })
     events.push(...r.events); steps.push(r.state.resolution.steps)
+    expect(fc(r.state, victim), 'the rule process broke the victim between frames').toBeUndefined()
     expect(r.state.players[0].hand).toContain(backup)
     expect(r.state.players[0].breakZone).toEqual([summon])
+    expect(r.state.resolution.active?.abilityId).toBe(HASTE)
+    expect(r.state.resolution.queue.map((f) => f.abilityId), 'Luso’s own c1 waits to be placed on top').toEqual([BREAK_IT])
     expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [luso, lightning] })
     ok(r.state)
 
@@ -284,9 +290,9 @@ describe('C2-A8: Luso player-damage → modal 3000 → Luso’s own break trigge
     expect(r.state.resolution.steps, 'settle resets the budget only once everything is quiet').toBe(0)
     ok(r.state)
 
-    // Narration, in order: the four clause resolutions and the §12.4.5 break between the second and the third.
+    // Narration, in order: the three placements, and the §12.4.5 break before either of the last two.
     expect(events.filter((e) => e.type === 'abilityTriggered').map((e) => e.abilityId))
-      .toEqual([BURN_AND_RETRIEVE, BREAK_IT, HASTE])
+      .toEqual([BURN_AND_RETRIEVE, HASTE, BREAK_IT])
     expect(at(events, (e) => e.type === 'playerDamaged'))
       .toBeLessThan(at(events, (e) => e.type === 'abilityTriggered' && e.abilityId === BURN_AND_RETRIEVE))
     expect(at(events, (e) => e.type === 'broken' && e.card === victim))

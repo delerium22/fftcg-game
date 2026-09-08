@@ -49,7 +49,16 @@ describe('hotseat', () => {
       },
     }
 
-    await hotseat({ seed: 7, decks: [deck, deck], defs }, io)
+    // Rung J1's priority windows moved every game, and seed 7's no longer reveals an EX Burst. The burst
+    // assertions below want ONE whole scripted game in which the rule fires, so the first seed that reveals
+    // one is played to the end; every other assertion is about that same game.
+    let seed = 7
+    for (;;) {
+      lines.length = 0; asked.length = 0; clears.length = 0; askCount = 0; usedInvalid = false; rng = seedRng(seed)
+      await hotseat({ seed, decks: [deck, deck], defs }, io)
+      if (lines.join('\n').includes('EX Burst revealed on ') || seed >= 20) break
+      seed++
+    }
 
     const text = lines.join('\n')
     const turns = lines.filter((l) => /^=== Turn/.test(l)).length

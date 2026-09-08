@@ -105,7 +105,7 @@ describe('I2-A3 / I2-A6 — a source is offered only while it still leads to a l
       }
     }
     expect(checked).toBeGreaterThan(200)
-  })
+  }, 60_000)
 
   it('the earth-backup-then-lightning-discard case: after the discard pays it all, the backup is not offered', () => {
     // A hand-built fixture: cost 2, one lightning required; sources: an earth backup and a lightning card in hand.

@@ -122,6 +122,10 @@ const within = (b: Budget | undefined): boolean => !b || b.used < b.cap
  * OTHER kind is forced exactly while the agenda still owes something. Setup choices (`mulligan`, `chooseFirst`)
  * are unaffected — nothing is ever queued during setup — so they stay the agent's own move to score.
  */
+/** Items on the stack, nothing else owed: the next pass resolves the top (rung J1-D9). */
+const stackWaiting = (state: GameState): boolean =>
+  state.pending === null && !hasResolutionWork(state.resolution) && state.stack.length > 0
+
 const isForcedDecision = (state: GameState): boolean => {
   const kind = state.pending?.kind
   if (kind === undefined) return false
@@ -190,12 +194,16 @@ export function resolveForcedDecisions(state: GameState, weights: Weights, aggre
   const prof = budget?.profile
   if (prof) prof.depth++
   try {
-    while (!s.result && (isForcedDecision(s) || forcedPass(s) !== null)) {
+    while (!s.result && (isForcedDecision(s) || forcedPass(s) !== null || stackWaiting(s))) {
       // Rung J1-D14: a pass-only response window is not a decision. It is applied outright — no scoring, no
       // budget — so a rollout's depth is spent on moves, and the trajectories recorded before the stack
       // existed (the frozen-score corpus) are reproduced apply for apply.
       const forced = forcedPass(s)
       if (forced) { s = apply(s, forced).state; continue }
+      // And a stack with items waiting is settled by passing priority: the policy does not respond in a
+      // window (a Summon in answer to a Summon is a J1 follow-up), so `evaluate` must never price a board
+      // whose stack has not done its work — the same defect class R4 named for a half-resolved attack.
+      if (stackWaiting(s)) { s = apply(s, { type: 'pass', player: actingPlayer(s) as PlayerId }).state; continue }
       const p = actingPlayer(s)
       if (p === null) break
       const localAggression = p === perspective ? aggression : 1 - aggression
@@ -318,7 +326,7 @@ export interface CandidateScore {
 /** Work the agenda still owes: the active frame, the queue, and a system continuation (which only
  *  `drainResolution` consumes, so a state carrying nothing but one is NOT settled). Zero on a settled state. */
 const agendaSize = (s: GameState): number =>
-  (s.resolution.active ? 1 : 0) + s.resolution.queue.length + (s.resolution.continuation ? 1 : 0)
+  (s.resolution.active ? 1 : 0) + s.resolution.queue.length + (s.resolution.placing ? 1 : 0) + s.stack.length
 
 /**
  * Score every top-level candidate independently (C1): each gets its own fresh `Budget` sized

@@ -1,6 +1,9 @@
 import type { PlayerId, Element, CardType, Keyword } from './types.js'
 import type { Phase, AttackStep, GameResult, CardId } from './state.js'
-import type { FieldFlag } from './abilities.js'
+import type { FieldFlag, TriggerEvent } from './abilities.js'
+
+/** How an event names a stack item: the Summon card, or the ability's source and clause. */
+export type StackRef = { kind: 'summon'; card: CardId } | { kind: 'ability'; source: CardId; abilityId: string }
 
 export type Event =
   | { type: 'firstPlayerChosen'; player: PlayerId }
@@ -43,6 +46,15 @@ export type Event =
   | { type: 'paidToBreakZone'; player: PlayerId; card: CardId }
   | { type: 'summonResolvedNoEffect'; card: CardId }
   /**
+   * Rung J1-D13, the stack's lifecycle. `item` is what went on (a Summon card, or an ability by source and
+   * clause); `controller` who put it there. `stackResolved` fires when the item has finished — prompts
+   * included — and `stackCancelled` when it was removed unresolved (no legal target at placement, §11.8.4;
+   * every declared target gone at resolution, §11.11.2).
+   */
+  | { type: 'stackPushed'; item: StackRef; controller: PlayerId }
+  | { type: 'stackResolved'; item: StackRef }
+  | { type: 'stackCancelled'; item: StackRef; reason: 'noTargetAtPlacement' | 'targetsGone' }
+  /**
    * Coverage is per CLAUSE (spec C1-9). `clauses` counts the printed clauses still unimplemented; it is OMITTED
    * when nothing on the card is implemented, which keeps the shape of the vanilla-pool log line unchanged.
    */
@@ -65,7 +77,8 @@ export type Event =
   | { type: 'broken'; card: CardId }                                   // §12.4.5 damage ≥ power
   | { type: 'putIntoBreakZone'; card: CardId; reason: 'zeroPower' }     // §12.4.4
   // --- ability resolution (spec C1-3) ---
-  | { type: 'abilityTriggered'; player: PlayerId; card: CardId; abilityId: string }
+  /** Emitted when a triggered clause is PLACED (rung J1-D13). `cause` is the frame's own trigger event, so the log never has to reconstruct it from event order. */
+  | { type: 'abilityTriggered'; player: PlayerId; card: CardId; abilityId: string; cause?: TriggerEvent | null }
   /** The clause had no legal target, so it did nothing. Never an error — half the pool can find itself here. */
   /** `controller` is whose ability found nothing — an agent must not price the OPPONENT's wasted ability as
    *  its own loss, and a narrator that says "your ability" needs the same answer (Codex MAJOR). */

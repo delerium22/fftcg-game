@@ -35,6 +35,8 @@ interface Tally {
   ownClauseRan: number
   /** Board effects only these clauses produce here: Noel dulls, Lightning and Odin break. */
   broken: number; dulled: number
+  /** Board effects that happened while a used burst's own frame was running (rung J1). */
+  inBurst: number
 }
 
 /**
@@ -46,7 +48,7 @@ interface Tally {
  * the agent so each arm is a clean policy: always use, or always decline.
  */
 function play(games: number, answer: boolean): Tally {
-  const t: Tally = { reveals: 0, offered: 0, used: 0, declined: 0, lethalSuppressed: 0, ownClauseRan: 0, broken: 0, dulled: 0 }
+  const t: Tally = { reveals: 0, offered: 0, used: 0, declined: 0, lethalSuppressed: 0, ownClauseRan: 0, broken: 0, dulled: 0, inBurst: 0 }
   for (let seed = 1; seed <= games; seed++) {
     let s: GameState = createGame({ seed, decks: [DECK, DECK], defs: DEFS })
     const agent = new GreedyAgent({ seed, decks: [DECK, DECK], depth: 1 })
@@ -61,6 +63,9 @@ function play(games: number, answer: boolean): Tally {
       if (!command) break
       const r = apply(s, command)
       for (const e of r.events) tallyEvent(t, e)
+      // Effects while the burst itself runs: the apply that used it, and any answer to a prompt it raised.
+      const burstRunning = (command.type === 'chooseExBurst' && command.use) || s.resolution.active?.origin === 'exBurst'
+      if (burstRunning) t.inBurst += r.events.filter((e) => e.type === 'dulled' || e.type === 'brokenByAbility' || e.type === 'abilityDamage').length
       // Routing proven BY ID, on the frame itself. There is no `abilityResolved` event, and `abilityTriggered`
       // is deliberately suppressed for an `exBurst` frame — narrating a burst as an ordinary trigger is the
       // thing G3 set out not to do — so the frame the clause suspends on is what names the clause that ran.
@@ -141,8 +146,12 @@ describe('G3-A1 — every revealed EX Burst is accounted for exactly once', () =
     // a code review pointed out; a used burst that never ran its clause is the whole defect this guards.
     expect(used.ownClauseRan, 'a burst was used whose own marked clause never ran')
       .toBe(used.used)
-    expect(used.broken + used.dulled, 'using every burst did nothing to any board')
-      .toBeGreaterThan(declined.broken + declined.dulled)
+    // BY EFFECT: the bursts' own resolutions changed boards. Counted INSIDE the burst — the events of the
+    // apply that used it and of the answers to its prompts, while its frame is the one running — rather than
+    // as a difference between two whole corpora: rung J1's forfeit windows moved every trajectory, and two
+    // corpora of different games can no longer be compared by their totals.
+    expect(used.inBurst, 'using every burst did nothing to any board').toBeGreaterThan(0)
+    expect(declined.inBurst, 'a declined burst changed a board').toBe(0)
   }, CORPUS_TIMEOUT)
 })
 
@@ -160,7 +169,7 @@ describe('G3-A8 — at most one EX Burst can ever be pending', () => {
     for (let seed = 1; seed <= 20; seed++) {
       let s: GameState = createGame({ seed, decks: [DECK, DECK], defs: DEFS })
       const agent = new GreedyAgent({ seed, decks: [DECK, DECK], depth: 1 })
-      for (let i = 0; i < 4000 && !s.result; i++) {
+      for (let i = 0; i < 6000 && !s.result; i++) {
         const p = actingPlayer(s)
         if (p === null) break
         const legal = legalCommands(s, p)
@@ -179,7 +188,7 @@ describe('G3-A8 — at most one EX Burst can ever be pending', () => {
     expect(worst, 'a single apply dealt more than one point to one player — CR §6.5.2.1 batching is now reachable')
       .toBeLessThanOrEqual(1)
     expect(worst, 'no player damage occurred at all, so this proves nothing').toBe(1)
-  })
+  }, CORPUS_TIMEOUT)
 })
 
 describe('G3-A4 — an opted-in burst with no legal target settles instead of stranding', () => {

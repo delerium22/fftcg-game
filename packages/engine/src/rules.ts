@@ -7,7 +7,7 @@ import type { CardId, FieldCard, GameState } from './state.js'
 import { DAMAGE_TO_LOSE, defOf, powerOf, updatePlayer } from './state.js'
 import type { Event } from './events.js'
 import type { DamageOccurrence } from './resolve.js'
-import { enqueueDamageTriggers, enqueueZoneChangeTriggers } from './resolve.js'
+import { enqueueDamageTriggers, enqueueZoneChangeTriggers, registerRuleProcesses } from './resolve.js'
 
 /**
  * The clause the printed EX BURST tag prefixes, or null. Read off the ability list rather than off `text`, so
@@ -160,3 +160,6 @@ export function runRuleProcesses(state: GameState): [GameState, Event[]] {
   else if (dead.length === 1) s = { ...s, result: { winner: opponentOf(dead[0] as PlayerId), cause: 'damage', reason: `player ${dead[0]} has 7 damage (§12.4.1)` } }
   return [stopped(s), events]
 }
+
+// The late binding `drainResolution` uses to run rule processes between frames without a runtime import cycle.
+registerRuleProcesses(runRuleProcesses)

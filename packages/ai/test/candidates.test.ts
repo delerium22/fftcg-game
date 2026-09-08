@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_RESOLUTION, apply, attackCheck, defOf, drainResolution, enqueueTrigger, legalCommands, type Ability, type CardDef, type CardId, type Command, type Effect, type GameState, type PlayerId } from '@fftcg/engine'
+import { EMPTY_RESOLUTION, attackCheck, defOf, drainResolution, enqueueTrigger, legalCommands, type Ability, type CardDef, type CardId, type Command, type Effect, type GameState, type PlayerId } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
+import { applyNow as apply } from '../../engine/test/helpers.js'
 import { cardValue } from '../src/cardValue.js'
 import { endPhase, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 

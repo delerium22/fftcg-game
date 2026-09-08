@@ -149,7 +149,7 @@ describe('render — the terminal says WHY it is asking', () => {
     const v = viewFor(s, 0)
     const src = 900
     v.cards[src] = { id: src, code, owner: 0 }
-    v.resolution = { active: { abilityId, source: src, controller: 0, path: [], chosen: [], modes: [], triggerEvent: null }, queue: [], continuation: null, steps: 1 }
+    v.resolution = { active: { abilityId, source: src, controller: 0, path: [], chosen: [], modes: [], triggerEvent: null }, queue: [], placing: null, resolvingFrame: null, steps: 1 }
     return v
   }
 

@@ -3,12 +3,12 @@ import type { Ability, AbilityTrigger, Effect, Frame, TargetFilter, TargetSpec, 
 import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
 import { shuffle } from './rng.js'
-import { MAX_RESOLUTION_STEPS, effectAtPath, unimplementedClauseCount } from './abilities.js'
-import type { CardId, FieldCard, GameState, Pending } from './state.js'
+import { EMPTY_RESOLUTION, MAX_RESOLUTION_STEPS, effectAtPath, hasResolutionWork, unimplementedClauseCount } from './abilities.js'
+import type { CardId, FieldCard, GameState, Pending, StackItem } from './state.js'
 import { defOf, findFieldCard, forget, learn, updatePlayer } from './state.js'
 import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
-import type { Event } from './events.js'
+import type { Event, StackRef } from './events.js'
 import { IllegalCommandError } from './errors.js'
 
 /**
@@ -220,7 +220,18 @@ interface Ctx {
   resume: readonly number[]
   suspend: Pending | null
   steps: number
+  /** Rung J1-D3. Declaring (choices only, as the item goes on the stack) or resolving. */
+  stage: 'declare' | 'resolve'
+  /** Targets declared at placement, by node path; read at resolution and re-validated (§11.11.2). */
+  declared: { path: number[]; targets: CardId[] }[]
+  modesDeclared: boolean
+  /** Declaration met a choice with no legal answer (§11.8.4), or resolution found every declared target gone (§11.11.2). */
+  cancelled: boolean
+  /** Declaration reached its first real effect — the item is fully declared. */
+  done: boolean
 }
+
+const samePath = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && a.every((x, i) => x === b[i])
 
 /**
  * Spec C1-5: every effect step is counted, the count lives on `GameState` and therefore PERSISTS across player
@@ -248,7 +259,7 @@ function runEffects(ctx: Ctx, effects: readonly Effect[], depth: number, onSpine
     // descend into its children rather than raising the same prompt again.
     const answered = onSpine && i === start && depth + 1 < ctx.resume.length
     runEffect(ctx, eff, depth, answered)
-    if (ctx.suspend) return
+    if (ctx.suspend || ctx.done) return
   }
 }
 
@@ -289,23 +300,53 @@ function settleLook(ctx: Ctx, eff: Extract<Effect, { kind: 'lookAtDeck' }>, expo
 }
 
 function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): void {
+  // Rung J1-D3: the declare stage walks CHOICE nodes only. The first effect that is not one ends declaration —
+  // the item is fully declared and goes on the stack; everything from here runs when it resolves.
+  if (ctx.stage === 'declare' && eff.kind !== 'chooseTargets' && eff.kind !== 'chooseModes') { ctx.done = true; return }
   step(ctx)
   switch (eff.kind) {
     case 'chooseTargets': {
-      if (answered) { runEffects(ctx, eff.then, depth + 1, true); return }
+      if (answered) {
+        // A prompt at THIS node was just answered. Declaring: record it and go on declaring inside `then`.
+        if (ctx.stage === 'declare') ctx.declared.push({ path: [...ctx.path], targets: [...ctx.chosen] })
+        runEffects(ctx, eff.then, depth + 1, true)
+        return
+      }
+      // Resolving a node that was declared at placement: no prompt. Its targets are re-validated against the
+      // candidates NOW (§11.11.2) — the ones that left, or stopped matching the filter, are dropped, and a
+      // node with none left is skipped. (Whether the WHOLE item is cancelled was decided in `runFrame`.)
+      const pre = ctx.stage === 'resolve' ? ctx.declared.find((d) => samePath(d.path, ctx.path)) : undefined
+      if (pre) {
+        const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)
+        const valid = pre.targets.filter((t) => candidates.includes(t))
+        if (valid.length === 0) return
+        ctx.chosen = valid
+        runEffects(ctx, eff.then, depth + 1, false)
+        return
+      }
       const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)
-      if (candidates.length === 0 || eff.min > candidates.length) { noLegalTarget(ctx); return }
+      if (candidates.length === 0 || eff.min > candidates.length) {
+        // §11.8.4: an auto-ability that cannot choose still triggers, and is removed as it is placed.
+        if (ctx.stage === 'declare') ctx.cancelled = true
+        noLegalTarget(ctx)
+        return
+      }
       ctx.suspend = { kind: 'chooseTargets', player: ctx.controller, min: eff.min, max: Math.min(eff.max, candidates.length), candidates }
       return
     }
     case 'chooseModes': {
-      if (answered) {
-        const from = ctx.resume[depth + 1] ?? 0
+      // Declared at placement (rung J1-D3), or answered by a prompt just now: run the chosen modes in order.
+      const declaredHere = !answered && ctx.stage === 'resolve' && ctx.modesDeclared
+      if (answered || declaredHere) {
+        if (answered && ctx.stage === 'declare') ctx.modesDeclared = true
+        const from = answered ? (ctx.resume[depth + 1] ?? 0) : 0
         for (let k = from; k < ctx.modes.length; k++) {
           ctx.path = [...ctx.path.slice(0, depth + 1), k]
           const mode = eff.modes[ctx.modes[k] ?? -1]
-          if (mode) runEffects(ctx, mode.effects, depth + 2, k === from)
+          if (mode) runEffects(ctx, mode.effects, depth + 2, answered && k === from)
           if (ctx.suspend) return
+          // A mode's declaration ending (its first real effect) does not end the OTHER modes' declarations.
+          if (ctx.stage === 'declare') ctx.done = false
         }
         return
       }
@@ -470,22 +511,44 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
   }
 }
 
-interface FrameResult { state: GameState; events: Event[]; pending: Pending | null; frame: Frame; steps: number }
+interface FrameResult { state: GameState; events: Event[]; pending: Pending | null; frame: Frame; steps: number; cancelled: boolean }
 
 function runFrame(state: GameState, frame: Frame): FrameResult {
   const ability = abilityOf(state, frame)
-  const base: FrameResult = { state, events: [], pending: null, frame, steps: state.resolution.steps }
+  const stage = frame.stage ?? 'resolve'
+  const base: FrameResult = { state, events: [], pending: null, frame, steps: state.resolution.steps, cancelled: false }
   if (!ability) return base   // the clause vanished with its def; drop the frame rather than throw
   const ctx: Ctx = {
     state, events: [], source: frame.source, controller: frame.controller, abilityId: frame.abilityId,
-    path: [...frame.path], chosen: [...frame.chosen], modes: [...frame.modes], picks: [...(frame.picks ?? [])],
+    path: [...frame.path],
+    // An `observesChosen` clause runs with the CHOSEN card bound, as C11's inline execution bound it: "Prishe
+    // gains +2000 power" is an `addPower` over the binding, and the binding is Prishe herself.
+    chosen: frame.chosen.length ? [...frame.chosen] : frame.triggerEvent?.kind === 'chosen' ? [frame.triggerEvent.card] : [],
+    modes: [...frame.modes], picks: [...(frame.picks ?? [])],
     triggerEvent: frame.triggerEvent,
     resume: frame.path, suspend: null, steps: state.resolution.steps,
+    stage, declared: (frame.declared ?? []).map((d) => ({ path: [...d.path], targets: [...d.targets] })),
+    modesDeclared: frame.modesDeclared ?? false, cancelled: false, done: false,
+  }
+  // §11.11.2: an item that chose targets, every one of which has since become illegal, is cancelled whole.
+  // With at least one still legal it applies to those (per node, in `runEffect`). Checked only when the frame
+  // STARTS resolving — a frame resuming from a prompt has already begun.
+  if (stage === 'resolve' && frame.path.length === 0 && ctx.declared.length > 0) {
+    const anyValid = ctx.declared.some((d) => {
+      const node = effectAtPath(ability.effects, d.path, ctx.modes)
+      if (node?.kind !== 'chooseTargets') return false
+      const candidates = targetCandidates(state, frame.source, frame.controller, node.from)
+      return d.targets.some((t) => candidates.includes(t))
+    })
+    if (!anyValid) {
+      noLegalTarget(ctx)
+      return { ...base, events: ctx.events, cancelled: true, frame: { ...frame, stage } }
+    }
   }
   runEffects(ctx, ability.effects, 0, frame.path.length > 0)
   return {
-    state: ctx.state, events: ctx.events, pending: ctx.suspend, steps: ctx.steps,
-    frame: { ...frame, path: ctx.path, chosen: ctx.chosen, modes: ctx.modes },
+    state: ctx.state, events: ctx.events, pending: ctx.suspend, steps: ctx.steps, cancelled: ctx.cancelled,
+    frame: { ...frame, path: ctx.path, chosen: ctx.chosen, modes: ctx.modes, stage, declared: ctx.declared, modesDeclared: ctx.modesDeclared },
   }
 }
 
@@ -529,59 +592,192 @@ export function enqueueAttackPhaseTriggers(state: GameState, player: PlayerId): 
   return s
 }
 
+const stackRefOf = (item: StackItem): StackRef =>
+  (item.kind === 'summon' ? { kind: 'summon', card: item.card } : { kind: 'ability', source: item.frame.source, abilityId: item.frame.abilityId })
+
 /**
- * Advance the agenda by exactly ONE frame: resume the active one, or start the next queued one, and run it until
- * it finishes or a player must choose (the choice becomes `state.pending` and the frame stays `active`). Then
- * YIELD — spec C2-6. `settle` in apply.ts owns the loop and runs §12.3 rule processes before the next frame
- * starts, which is what puts §12.4.5's break ahead of the trigger that same damage queued. Draining the whole
- * queue here instead would resolve Luso before the Forward it killed was broken.
+ * Which triggered clause is placed NEXT (rung J1-D4, CR §11.8.7): the turn player's clauses go on first —
+ * so the non-turn player's end up on top and resolve first — and within one controller the LAST-triggered
+ * is placed first, so the first-triggered ends on top and resolves first, which is the FIFO order the agenda
+ * had before the stack existed.
+ */
+export function nextTriggeredToPlace(state: GameState): Frame | null {
+  const q = state.resolution.queue
+  if (!q.length) return null
+  const ap = state.turnPlayer
+  const mine = q.filter((f) => f.controller === ap)
+  const pool = mine.length ? mine : q
+  return pool[pool.length - 1] ?? null
+}
+
+/** Put `frame` (a triggered clause) into its declare stage as the item it will become (rung J1-D3). */
+function beginPlacing(state: GameState, frame: Frame, events: Event[]): GameState {
+  const steps = state.resolution.steps + 1   // starting a frame is a step too, so a cycle of empty clauses is still capped
+  if (steps > MAX_RESOLUTION_STEPS) throw new Error(`resolution exceeded ${MAX_RESOLUTION_STEPS} steps (spec C1-5) — trigger cycle?`)
+  const queue = state.resolution.queue.filter((f) => f !== frame)
+  const declaring: Frame = { ...frame, stage: 'declare', path: [], chosen: [], declared: [], modesDeclared: false }
+  // An ACTIVATED ability announced itself with `abilityActivated` when the player paid for it (spec C3-A7),
+  // and a burst with `exBurstUsed`; saying "triggers" as well would report a deliberate move back as
+  // something that merely happened.
+  if (frame.origin !== 'activated' && frame.origin !== 'exBurst') {
+    events.push({ type: 'abilityTriggered', player: frame.controller, card: frame.source, abilityId: frame.abilityId, cause: frame.triggerEvent })
+  }
+  const item: StackItem = { kind: 'ability', frame: declaring }
+  return { ...state, resolution: { ...state.resolution, queue, active: declaring, placing: { item, frameIndex: 0 }, steps } }
+}
+
+/** Start resolving the TOP of the stack (rung J1-D9): its first frame runs, or an empty Summon completes at once. */
+export function startResolvingTop(state: GameState): GameState {
+  const top = state.stack[state.stack.length - 1]
+  if (!top) return state
+  const frames = top.kind === 'summon' ? top.frames : [top.frame]
+  const first = frames[0]
+  const active: Frame | null = first ? { ...first, stage: 'resolve', path: [], chosen: [] } : null
+  return { ...state, resolution: { ...state.resolution, active, resolvingFrame: 0 } }
+}
+
+/** A Summon that has resolved (or been cancelled) leaves the stack for its owner's Break Zone (§11.11.10). */
+function summonToBreakZone(state: GameState, card: CardId): GameState {
+  const owner = state.cards[card]?.owner ?? 0
+  return updatePlayer(state, owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, card] }))
+}
+
+/** The top item is finished: pop it, and hand priority back to the turn player (§11.1.5). */
+function finishTopItem(state: GameState, cancelled: boolean, events: Event[]): GameState {
+  const top = state.stack[state.stack.length - 1]
+  if (!top) return { ...state, resolution: { ...state.resolution, active: null, resolvingFrame: null } }
+  let s: GameState = { ...state, stack: state.stack.slice(0, -1), resolution: { ...state.resolution, active: null, resolvingFrame: null }, priority: state.turnPlayer, passes: 0 }
+  if (top.kind === 'summon') s = summonToBreakZone(s, top.card)
+  events.push(cancelled ? { type: 'stackCancelled', item: stackRefOf(top), reason: 'targetsGone' } : { type: 'stackResolved', item: stackRefOf(top) })
+  return s
+}
+
+/**
+ * What a frame's completion means (rung J1-D3/D9):
+ *  - a DECLARE-stage frame is one of a placing item's: record it; declare the next, or push the item;
+ *  - an EX Burst's declare stage flows straight into its resolve stage — no stack, no window (§11.10.2);
+ *  - a RESOLVE-stage frame is the top item's: run its next frame, or pop the item.
+ */
+function completeActive(state: GameState, r: FrameResult, events: Event[]): GameState {
+  const frame = r.frame
+  let s: GameState = { ...state, resolution: { ...state.resolution, active: null, steps: r.steps } }
+  const stage = frame.stage ?? 'resolve'
+  if (frame.origin === 'exBurst') {
+    if (stage === 'declare' && !r.cancelled) {
+      return { ...s, resolution: { ...s.resolution, active: { ...frame, stage: 'resolve', path: [], chosen: [] } } }
+    }
+    return s
+  }
+  if (stage === 'declare') {
+    const placing = s.resolution.placing
+    if (!placing) return s
+    const done: Frame = { ...frame, stage: 'resolve', path: [], chosen: [] }
+    if (r.cancelled) {
+      // §11.8.4: removed as it is placed. A Summon whose declaration fails goes to the Break Zone unresolved.
+      events.push({ type: 'stackCancelled', item: stackRefOf(placing.item), reason: 'noTargetAtPlacement' })
+      s = { ...s, resolution: { ...s.resolution, placing: null } }
+      return placing.item.kind === 'summon' ? summonToBreakZone(s, placing.item.card) : s
+    }
+    const item: StackItem = placing.item.kind === 'summon'
+      ? { ...placing.item, frames: placing.item.frames.map((f, i) => (i === placing.frameIndex ? done : f)) }
+      : { kind: 'ability', frame: done }
+    const nextIndex = placing.frameIndex + 1
+    const frames = item.kind === 'summon' ? item.frames : [item.frame]
+    const next = frames[nextIndex]
+    if (next) {
+      const declaring: Frame = { ...next, stage: 'declare', path: [], chosen: [], declared: [], modesDeclared: false }
+      return { ...s, resolution: { ...s.resolution, active: declaring, placing: { item, frameIndex: nextIndex } } }
+    }
+    events.push({ type: 'stackPushed', item: stackRefOf(item), controller: item.kind === 'summon' ? item.controller : item.frame.controller })
+    return { ...s, stack: [...s.stack, item], resolution: { ...s.resolution, placing: null } }
+  }
+  // Resolve stage: the top item's frame `resolvingFrame`.
+  const idx = s.resolution.resolvingFrame
+  const top = s.stack[s.stack.length - 1]
+  if (idx === null || !top) return s
+  if (r.cancelled) return finishTopItem(s, true, events)
+  const frames = top.kind === 'summon' ? top.frames : [top.frame]
+  const next = frames[idx + 1]
+  if (next) return { ...s, resolution: { ...s.resolution, active: { ...next, stage: 'resolve', path: [], chosen: [] }, resolvingFrame: idx + 1 } }
+  return finishTopItem(s, false, events)
+}
+
+/**
+ * Advance the agenda by exactly ONE frame (rung J1-D2): resume the active frame, or start declaring the next
+ * triggered clause, or start the next frame of the item resolving on top of the stack — and then YIELD, so
+ * `settle` in apply.ts can run §12.3 rule processes between frames (spec C2-6). It never starts resolving a
+ * stack item by itself: that takes both players forfeiting (§11.1.7), which is `applyPass`'s call.
  *
- * With the queue and the active frame both empty, the system continuation — if any — runs. Never touches an
- * existing `pending`: the decision already on the table always comes first.
- *
- * `resolution.steps` is NOT reset here: `settle` in apply.ts resets it once the whole settlement is quiet, so a
- * rule-process ⇄ trigger cycle keeps accumulating and hits the cap instead of restarting the count every pass.
+ * Never touches an existing `pending`: the decision already on the table always comes first.
+ */
+export function advanceAgenda(state: GameState): [GameState, Event[]] {
+  const events: Event[] = []
+  let s = state
+  if (s.result || s.pending) return [s, events]
+  if (!s.resolution.active) {
+    if (s.resolution.placing) {
+      // Between frames of a multi-frame item (a Summon with several clauses): declare the next one.
+      const { item, frameIndex } = s.resolution.placing
+      const frames = item.kind === 'summon' ? item.frames : [item.frame]
+      const next = frames[frameIndex]
+      if (!next) return [{ ...s, resolution: { ...s.resolution, placing: null } }, events]
+      s = { ...s, resolution: { ...s.resolution, active: { ...next, stage: 'declare', path: [], chosen: [], declared: [], modesDeclared: false } } }
+    } else if (s.resolution.resolvingFrame !== null) {
+      // An item on top with no frame running: a vanilla Summon, or one whose frames are all done.
+      const top = s.stack[s.stack.length - 1]
+      const frames = top ? (top.kind === 'summon' ? top.frames : [top.frame]) : []
+      const next = frames[s.resolution.resolvingFrame]
+      if (!next) return [finishTopItem(s, false, events), events]
+      s = { ...s, resolution: { ...s.resolution, active: { ...next, stage: 'resolve', path: [], chosen: [] } } }
+    } else {
+      const next = nextTriggeredToPlace(s)
+      if (!next) return [s, events]
+      s = beginPlacing(s, next, events)
+    }
+  }
+  const frame = s.resolution.active as Frame
+  const r = runFrame(s, frame)
+  s = r.state
+  events.push(...r.events)
+  if (r.pending) return [{ ...s, pending: r.pending, resolution: { ...s.resolution, active: r.frame, steps: r.steps } }, events]
+  return [completeActive(s, r, events), events]
+}
+
+/**
+ * Resolve EVERYTHING now, with no priority windows: place every triggered clause, and resolve the stack top
+ * to bottom, until a player must choose or nothing is left. This is what "immediate resolution" was before
+ * rung J1, kept for the tests written in that world and for anything that must not stop at a window.
  */
 export function drainResolution(state: GameState): [GameState, Event[]] {
   const events: Event[] = []
   let s = state
-  if (s.result || s.pending) return [s, events]
-  let frame = s.resolution.active
-  if (!frame) {
-    const [next, ...rest] = s.resolution.queue
-    if (next) {
-      frame = next
-      const steps = s.resolution.steps + 1   // starting a frame is a step too, so a cycle of empty clauses is still capped
-      if (steps > MAX_RESOLUTION_STEPS) throw new Error(`resolution exceeded ${MAX_RESOLUTION_STEPS} steps (spec C1-5) — trigger cycle?`)
-      s = { ...s, resolution: { ...s.resolution, active: frame, queue: rest, steps } }
-      // An ACTIVATED ability already announced itself with `abilityActivated` when the player paid for it
-      // (spec C3-A7). Saying "triggers" here as well would report their own deliberate move back to them as
-      // something that merely happened.
-      // G3 adds  for the same reason: the player was just asked whether to use it and said yes, and
-      // `exBurstUsed` already said so. A burst does not use the stack, so calling it a trigger would be wrong
-      // as well as repetitive.
-      if (frame.origin !== 'activated' && frame.origin !== 'exBurst') {
-        events.push({ type: 'abilityTriggered', player: frame.controller, card: frame.source, abilityId: frame.abilityId })
-      }
+  for (let guard = 0; guard < MAX_RESOLUTION_STEPS * 4; guard++) {
+    if (s.result || s.pending) break
+    if (!s.resolution.active) {
+      // Rule processes between frames, exactly as `settle` runs them (spec C2-6).
+      const [ruled, ruleEvents] = runRuleProcessesRef(s)
+      s = ruled; events.push(...ruleEvents)
+      if (s.result) break
     }
-  }
-  if (frame) {
-    const r = runFrame(s, frame)
-    s = r.state
-    events.push(...r.events)
-    s = r.pending
-      ? { ...s, pending: r.pending, resolution: { ...s.resolution, active: r.frame, steps: r.steps } }
-      : { ...s, resolution: { ...s.resolution, active: null, steps: r.steps } }
-    return [s, events]   // one frame per call; `settle` comes back with rule processes run
-  }
-  const continuation = s.resolution.continuation
-  if (continuation === 'enterAttackDeclaration') {
-    s = { ...s, resolution: { ...s.resolution, continuation: null } }
-    const [t, e] = enterAttackDeclaration(s, s.turnPlayer)
+    if (!hasResolutionWork(s.resolution)) {
+      if (!s.stack.length) break
+      s = startResolvingTop(s)
+    }
+    const [t, e] = advanceAgenda(s)
     s = t; events.push(...e)
   }
+  // `steps` is deliberately NOT reset here: a caller driving a cycle through this sees it accumulate and hit
+  // the cap (spec C1-5), exactly as `settle` would. `settle` is the one place the epoch ends (J1-D12).
+  if (s.result) s = { ...s, resolution: EMPTY_RESOLUTION }
   return [s, events]
 }
+
+/**
+ * `runRuleProcesses` lives in rules.ts, which imports this module — so it is reached through a late binding
+ * that rules.ts installs at load, rather than an import that would be a runtime cycle.
+ */
+let runRuleProcessesRef: (state: GameState) => [GameState, Event[]] = () => { throw new Error('rules.ts has not registered runRuleProcesses') }
+export function registerRuleProcesses(fn: (state: GameState) => [GameState, Event[]]): void { runRuleProcessesRef = fn }
 
 // ---------------------------------------------------------------------------
 // Answering a suspended choice
@@ -620,58 +816,15 @@ function suspendedNode(state: GameState): { frame: Frame; node: Effect } {
  * decides what happens — hand-writing the power change here would bypass `addPower`, the engine's single
  * power-modifying authority, and let the card's text and the code drift apart.
  */
-/** The effect kinds that can raise a `Pending`. A shape containing any of them cannot be applied inline. */
-const SUSPENDING_EFFECTS: ReadonlySet<Effect['kind']> = new Set(['chooseTargets', 'chooseModes', 'lookAtDeck'])
-
-/**
- * Reject an `observesChosen` clause whose effects could suspend — by SHAPE, before running anything.
- *
- * Checking `ctx.suspend` afterwards is not the same test and was the first version of this guard: a
- * `chooseTargets` with no legal candidates does not suspend, it reports `abilityNoLegalTarget` and returns.
- * So a mis-authored clause passed on an empty board and threw later, mid-effect, the first time a candidate
- * existed — with earlier effects in the same clause already applied. Validity is a property of the AST, not
- * of today's board, so it is decided from the AST.
- */
-function assertCannotSuspend(ability: Ability): void {
-  const walk = (effects: readonly Effect[]): void => {
-    for (const e of effects) {
-      if (SUSPENDING_EFFECTS.has(e.kind)) {
-        throw new Error(`ability ${ability.id}: an observesChosen clause must not contain ${e.kind} — it is applied inline and has nowhere to suspend to (spec C11)`)
-      }
-      if (e.kind === 'chooseTargets') walk(e.then)
-      else if (e.kind === 'forEach') walk(e.do)
-      else if (e.kind === 'onSubject') walk(e.do)
-      else if (e.kind === 'chooseModes') for (const m of e.modes) walk(m.effects)
-    }
-  }
-  walk(ability.effects)
-}
-
-export function dispatchChosenTriggers(state: GameState, chosen: readonly CardId[], events: Event[]): GameState {
+export function dispatchChosenTriggers(state: GameState, chosen: readonly CardId[], by: CardId, byController: PlayerId): GameState {
   let s = state
   for (const id of chosen) {
     const loc = findFieldCard(s, id)
     if (!loc) continue   // only a card ON THE FIELD can be pumped; a Break Zone target has no FieldCard
     for (const ability of defOf(s, id).abilities ?? []) {
       if (ability.trigger.kind !== 'observesChosen') continue
-      assertCannotSuspend(ability)
-      // The controller is whoever's field the chosen card is on — NOT whoever did the choosing. An
-      // opponent's Summon targeting Prishe still pumps Prishe, controlled by the player whose field she is
-      // on (CR §11.8.5). `findFieldCard`'s `owner` is that field HOLDER, i.e. the controller; it coincides
-      // with `CardInstance.owner` throughout this pool because nothing here changes control.
-      events.push({ type: 'abilityTriggered', player: loc.owner, card: id, abilityId: ability.id })
-      const ctx: Ctx = {
-        state: s, events, source: id, controller: loc.owner, abilityId: ability.id,
-        path: [], chosen: [id], modes: [], picks: [], triggerEvent: null,
-        resume: [], suspend: null, steps: s.resolution.steps,
-      }
-      runEffects(ctx, ability.effects, 0, false)
-      if (ctx.suspend) {
-        // Unreachable given the shape check above; kept as the belt to that braces, because a new suspending
-        // effect kind added to the executor and not to `SUSPENDING_EFFECTS` would otherwise resume here.
-        throw new Error(`ability ${ability.id}: an observesChosen clause suspended despite passing the shape check (spec C11)`)
-      }
-      s = { ...ctx.state, resolution: { ...ctx.state.resolution, steps: ctx.steps } }
+      // The controller is whoever's field the chosen card is on — NOT whoever did the choosing (CR §11.8.5).
+      s = enqueueTrigger(s, id, loc.owner, ability, { kind: 'chosen', card: id, by, byController })
     }
   }
   return s
@@ -688,10 +841,9 @@ export function applyChooseTargets(state: GameState, player: PlayerId, targets: 
   for (const id of targets) if (!candidates.includes(id)) throw new IllegalCommandError(`${id} is not a legal target`)
   // Extending the path by one level says "the choice at this node is made" — resume runs `then`, not the prompt.
   const active: Frame = { ...frame, chosen: [...targets], path: [...frame.path, 0] }
-  // "When <this> is chosen" fires HERE, before the choosing ability resumes (spec C11).
-  const events: Event[] = []
-  const after = dispatchChosenTriggers(state, targets, events)
-  return [{ ...after, pending: null, resolution: { ...after.resolution, active } }, events]
+  // "When <this> is chosen" triggers HERE (spec C11, rung J1-D7) and is placed above the choosing item.
+  const after = dispatchChosenTriggers(state, targets, frame.source, frame.controller)
+  return [{ ...after, pending: null, resolution: { ...after.resolution, active } }, []]
 }
 
 /**

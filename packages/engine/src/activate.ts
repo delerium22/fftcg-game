@@ -279,17 +279,23 @@ export function applyActivateAbility(
   // `[0, 0]` is exactly the path `applyChooseTargets` leaves behind when a human answers a prompt: index 0 at
   // the top level, then "resume at index 0 inside that node's `then`". One entry short and the frame re-raises
   // the choice it was handed; `runEffects` treats a node as answered only when the path records a DEEPER index.
+  // Rung J1-D6: the frame goes on the stack DECLARED — its head `chooseTargets` answered by the command's
+  // targets, recorded in `declared` at path `[0]` so resolution re-validates them (§11.11.2) instead of
+  // trusting a target that may have left the field while the ability waited.
   const declares = declarationNode(ability) !== undefined
   const frame: Frame = {
     abilityId: ability.id, source, controller: player,
-    path: declares ? [0, 0] : [], chosen: declares ? [...targets] : [], modes: [], triggerEvent: null,
-    origin: 'activated',
+    path: [], chosen: [], modes: [], triggerEvent: null,
+    origin: 'activated', stage: 'resolve',
+    declared: declares ? [{ path: [0], targets: [...targets] }] : [],
   }
-  // The OTHER place a target becomes fixed (spec C11). An activated ability declares its targets with the
-  // command and never passes through the prompt path, so a hook only in `applyChooseTargets` would leave
-  // Prishe pumped by a Summon and silently not pumped by an activated ability.
-  s = dispatchChosenTriggers(s, declares ? targets : [], events)
-  s = { ...s, resolution: { ...s.resolution, queue: [...s.resolution.queue, frame] } }
+  // The OTHER place a target becomes fixed (spec C11, rung J1-D7). An activated ability declares its targets
+  // with the command and never passes through the prompt path, so a hook only in `applyChooseTargets` would
+  // leave Prishe pumped by a Summon and silently not pumped by an activated ability.
+  s = dispatchChosenTriggers(s, declares ? targets : [], source, player)
+  // §11.6.4: onto the top of the stack; the activating player regains priority (§11.6.11).
+  s = { ...s, stack: [...s.stack, { kind: 'ability', frame }], priority: player, passes: 0 }
+  events.push({ type: 'stackPushed', item: { kind: 'ability', source, abilityId: ability.id }, controller: player })
   // Spent, whatever the frame goes on to do — the allowance is consumed by USING the ability, not by it
   // resolving successfully, so a clause that finds no legal target still costs the turn's use (§11.6.5).
   if (ability.trigger.oncePerTurn) s = markAbilityUsed(s, source, abilityId)

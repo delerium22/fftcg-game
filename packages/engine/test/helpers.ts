@@ -2,7 +2,10 @@ import type { CardDef, PlayerId } from '../src/types.js'
 import type { CardId, FieldCard, GameState } from '../src/state.js'
 import { applyChooseFirst, applyMulligan, createGame } from '../src/setup.js'
 import { apply } from '../src/apply.js'
-import { actingPlayer, forcedPass } from '../src/legal.js'
+import { actingPlayer, forcedPass, isResponseWindow } from '../src/legal.js'
+import { drainResolution } from '../src/resolve.js'
+import { hasResolutionWork } from '../src/abilities.js'
+import type { Command } from '../src/commands.js'
 import type { Event } from '../src/events.js'
 
 export function makeDef(over: Partial<CardDef> & { code: string }): CardDef {
@@ -94,7 +97,30 @@ export function passBoth(state: GameState): { state: GameState; events: Event[] 
   const second = apply(first.state, { type: 'pass', player: q })
   return { state: second.state, events: [...first.events, ...second.events] }
 }
-export const endPhase = (state: GameState): GameState => passBoth(state).state
+/**
+ * End the current phase or step the way a single pass did before the stack: both forfeit, and if that lands in
+ * a WINDOW with nothing on the stack (Attack Preparation, §10.1.1.2), both forfeit again to reach the next
+ * decision point (declaration).
+ */
+export function endPhase(state: GameState): GameState {
+  let s = passBoth(state).state
+  for (let i = 0; i < 4 && !s.pending && !s.result && isResponseWindow(s) && s.stack.length === 0 && s.phase === 'attack'; i++) s = passBoth(s).state
+  return s
+}
+
+/**
+ * `apply`, then resolve everything the command triggered or put on the stack — with no priority windows
+ * (rung J1). The tests written before the stack asserted a clause's EFFECTS the moment its cause happened;
+ * that is still what they test, and the window between placement and resolution is slice 3's own tests' job.
+ */
+export function applyNow(state: GameState, command: Command): { state: GameState; events: Event[] } {
+  const r = apply(state, command)
+  if (r.state.result) return r
+  const [t, more] = drainResolution(r.state)
+  // The settlement is over: end the step epoch as `settle` would have (spec J1-D12).
+  const s = !t.result && !t.pending && !hasResolutionWork(t.resolution) && t.stack.length === 0 ? { ...t, resolution: { ...t.resolution, steps: 0 } } : t
+  return { state: s, events: [...r.events, ...more] }
+}
 
 /**
  * Apply every pass-only response window (rung J1): the non-turn player holding priority with nothing to do.

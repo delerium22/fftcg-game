@@ -521,6 +521,8 @@ function triggerDigest(view: PlayerView, e: TriggerEvent | null): string {
       return `zc.${r(e.card)}.${e.from}.${e.to}.${e.controller}.${e.owner}`
     case 'enteredField':
       return `ef.${r(e.card)}.${e.controller}`
+    case 'chosen':
+      return `ch.${r(e.card)}.${r(e.by)}.${e.byController}`
     default: { const _exhaustive: never = e; return _exhaustive }
   }
 }
@@ -533,7 +535,7 @@ function frameDigest(view: PlayerView, f: Frame | null): string {
   // `stage` and `declared` (rung J1) are part of the frame's program state: a frame still declaring and one
   // resolving with those targets are different positions.
   const declared = (f.declared ?? []).map((d) => `${d.path.join('.')}=${joinRefs(d.targets.map(r))}`).join('|')
-  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.'), f.stage ?? 'resolve', declared].join('/')
+  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.'), f.stage ?? 'resolve', declared, f.modesDeclared ? 'md' : '-'].join('/')
 }
 
 /** The stack, top last (rung J1): each item's kind, its card ref, and its frames — a different stack is a different position. */
@@ -545,9 +547,11 @@ function stackDigest(view: PlayerView, stack: readonly StackItem[]): string {
 }
 
 function resolutionDigest(view: PlayerView, res: Resolution): string {
+  const r = (id: CardId): CardRef => cardRef(view, id, view.me)
   // `steps` is real, observable resource state (it is what `MAX_RESOLUTION_STEPS` bounds), so two positions
   // that differ only in how much agenda budget is left are genuinely different positions.
-  return `${frameDigest(view, res.active)}~[${res.queue.map((f) => frameDigest(view, f)).join(',')}]~${res.continuation ?? '-'}~${res.steps}`
+  const placing = res.placing === null ? '-' : `${res.placing.frameIndex}:${res.placing.item.kind === 'summon' ? r(res.placing.item.card) : frameDigest(view, res.placing.item.frame)}`
+  return `${frameDigest(view, res.active)}~[${res.queue.map((f) => frameDigest(view, f)).join(',')}]~p${placing}~rf${res.resolvingFrame ?? '-'}~${res.steps}`
 }
 
 function pendingDigest(view: PlayerView, pending: Pending | null): string {

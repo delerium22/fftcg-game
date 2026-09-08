@@ -499,6 +499,11 @@ describe('GreedyAgent', () => {
         t = apply(t.state, c)
         events.push(...t.events)
       }
+      // Rung J1: the choices above DECLARED the break; it lands when the item resolves, which in the game takes
+      // both players' forfeits — here, the no-windows drain, whose events are the watcher's fizzle.
+      const [resolved, more] = drainResolution(t.state)
+      t = { state: resolved, events: more }
+      events.push(...more)
       expect(t.state.players[1].forwards, 'the break did not happen').toHaveLength(0)
       const stranded = events.filter((e) => e.type === 'abilityNoLegalTarget' && e.abilityId === WATCHER.id)
       expect(stranded, 'the watcher was never stranded, so the fixture proves nothing').toHaveLength(1)

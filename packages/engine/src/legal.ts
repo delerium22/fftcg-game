@@ -45,9 +45,11 @@ export function actionMenu(state: GameState, player: PlayerId): ActionMenu {
         abilities: true, attack: false, pass: true,
       }
     case 'attack':
-      // Only the declaration step is a decision here until slice 5 opens the windows (spec J1-D10).
-      if (state.attack?.step !== 'declaration') return NOTHING
-      return { castable: [], abilities: false, attack: true, pass: true }
+      // Declaration is the turn player's decision; preparation is a window (§10.1.1.2). The other windows
+      // arrive with slice 5 (spec J1-D10).
+      if (state.attack?.step === 'declaration') return { castable: [], abilities: false, attack: true, pass: true }
+      if (state.attack?.step === 'preparation') return { castable: [], abilities: false, attack: false, pass: true }
+      return NOTHING
     default:
       return NOTHING   // setup/active/draw/end never wait for a non-pending command
   }

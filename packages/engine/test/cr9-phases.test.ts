@@ -131,9 +131,12 @@ describe('§11.1.6–7 priority passes before a phase ends (rung J1-A1)', () => 
     expect(s.passes).toBe(1)
     expect(() => applyPass(s, 0)).toThrow(IllegalCommandError)   // player 0 no longer holds priority
     s = pass(s, 1)
-    expect(s.phase).toBe('attack'); expect(s.attack?.step).toBe('declaration')
+    // §10.1.1.2: the Attack Preparation Step is itself a window; both forfeit again to reach declaration.
+    expect(s.phase).toBe('attack'); expect(s.attack?.step).toBe('preparation')
     expect(s.priority, 'the turn player regains priority when the step changes').toBe(0)
     expect(s.passes).toBe(0)
+    s = pass(pass(s, 0), 1)
+    expect(s.attack?.step).toBe('declaration'); expect(s.priority).toBe(0); expect(s.passes).toBe(0)
   })
   it('the non-turn player holding priority in a Main Phase may only pass (until instant speed lands in slice 4)', async () => {
     const { legalCommands } = await import('../src/legal.js')
@@ -146,7 +149,8 @@ describe('§11.1.6–7 priority passes before a phase ends (rung J1-A1)', () => 
   it('an action by the priority holder resets the forfeit count: Main Phase 2 is reached only by two consecutive passes', () => {
     let s = withHandSize(makeGame(), 0, 5)
     s = pass(s, 0)               // 0 forfeits, 1 holds priority
-    s = pass(s, 1)               // both: attack phase
+    s = pass(s, 1)               // both: attack phase, preparation window
+    s = pass(pass(s, 0), 1)      // both again: declaration
     s = pass(s, 0)               // declaration step: the turn player passes straight to Main Phase 2 (§10.1.4.6)
     expect(s.phase).toBe('main2'); expect(s.priority).toBe(0); expect(s.passes).toBe(0)
     s = pass(s, 0)

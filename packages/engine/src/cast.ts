@@ -83,7 +83,7 @@ export function applyCastCharacter(state: GameState, player: PlayerId, card: Car
   const def = defOf(state, card)
   if (def.type === 'summon') throw new IllegalCommandError('use castSummon for summons')
   const [paid, events] = checkedPay(state, player, card, payment)
-  const fromHand = updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) }))
+  const fromHand: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) })), passes: 0 }
   events.push({ type: 'cast', player, card, cardType: def.type })
   // Placement, the coverage warning and both trigger dispatches are `putOntoField`'s, not this function's:
   // C9's Hugh Yurg search puts a Character onto the field without casting it and shares every one of them.
@@ -98,7 +98,7 @@ export function applyCastSummon(state: GameState, player: PlayerId, card: CardId
   const [paid, events] = checkedPay(state, player, card, payment)
   // MVP0-SIMPLIFICATION: no stack (§7.10.1) — the summon goes straight to the break zone and its effect, if
   // implemented, resolves immediately from there. `Frame.source` is allowed to be a card that has left the field.
-  let s = updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card), breakZone: [...ps.breakZone, card] }))
+  let s: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card), breakZone: [...ps.breakZone, card] })), passes: 0 }
   events.push({ type: 'cast', player, card, cardType: 'summon' })
   warnUnimplemented(def, card, events)
   const resolves = (def.abilities ?? []).some((a) => a.trigger.kind === 'summonResolve')

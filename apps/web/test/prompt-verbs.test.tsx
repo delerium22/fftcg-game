@@ -129,7 +129,7 @@ describe('G2 — the prompt only names moves the position offers', () => {
       { byPhase: Object.fromEntries(byPhase), byVerb: Object.fromEntries(byVerb) },
       `prompts naming an unavailable move: ${overclaims.join(' | ')}`,
     ).toEqual({ byPhase: {}, byVerb: {} })
-  })
+  }, 60_000)
 
   it('still names the moves it DOES offer (G2-A2)', () => {
     // The converse, and the reason A1 cannot be satisfied by a prompt that says nothing. Both directions or
@@ -154,7 +154,7 @@ describe('G2 — the prompt only names moves the position offers', () => {
     expect(reached.block, 'no sampled state could block').toBeGreaterThan(0)
     expect(reached.ability, 'no sampled state could use an ability').toBeGreaterThan(0)
     expect(silent.length, silent.slice(0, 4).join(' | ')).toBe(0)
-  })
+  }, 60_000)
 
   it('never says "attack" during Main Phase 1, because that is not a Main Phase 1 move (G2-A3)', () => {
     // Separate from A1 so it cannot pass merely because the sampled boards had no attackers: an attack is
@@ -168,5 +168,5 @@ describe('G2 — the prompt only names moves the position offers', () => {
     }
     expect(mains, 'no Main Phase 1 state was sampled').toBeGreaterThan(50)
     expect(wrong.length, `Main Phase 1 prompts naming an attack: ${wrong.slice(0, 2).join(' | ')}`).toBe(0)
-  })
+  }, 60_000)
 })

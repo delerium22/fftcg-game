@@ -425,7 +425,7 @@ function richView(): { view: PlayerView; ids: Record<string, CardId> } {
     resolution: {
       active: { abilityId: 'X-SRC:etb', source: b1, controller: 0, path: [0, 1], chosen: [a1, d1], modes: [1], triggerEvent: { kind: 'damage', source: a2, sourceController: 0, target: d1, victim: null, amount: 3000 } },
       queue: [{ abilityId: 'Y-SRC:etb', source: a1, controller: 1, path: [], chosen: [], modes: [], triggerEvent: { kind: 'zoneChange', card: z1, from: 'field', to: 'breakZone', controller: 1, owner: 1 , reason: 'ability'} }],
-      continuation: 'enterAttackDeclaration',
+      placing: null, resolvingFrame: 1,
       steps: 7,
     },
   }
@@ -611,7 +611,7 @@ describe('observationKey (contract 6)', () => {
     differs({ ...view, pending: { kind: 'chooseTargets', player: 0, min: 2, max: 2, candidates: [ids.d1!, ids.a1!] } }, 'the prompt bounds')
     differs({ ...view, pending: { kind: 'chooseTargets', player: 1, min: 1, max: 2, candidates: [ids.d1!, ids.a1!] } }, 'who owes the prompt')
     differs({ ...view, resolution: { ...view.resolution, steps: 8 } }, 'agenda budget spent')
-    differs({ ...view, resolution: { ...view.resolution, continuation: null } }, 'a queued continuation')
+    differs({ ...view, resolution: { ...view.resolution, resolvingFrame: null } }, 'which stack frame is resolving')
     differs({ ...view, resolution: { ...view.resolution, queue: [] } }, 'a queued frame')
     differs({ ...view, result: { winner: 0, cause: 'damage', reason: 'test' } }, 'the game being over')
     // Two endings with the SAME winner, differing only in how the game ended. "Over" is not enough: a

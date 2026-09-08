@@ -221,11 +221,13 @@ export function applyChooseExBurst(state: GameState, player: PlayerId, use: bool
   }]
   let s: GameState = { ...state, pending: null }
   if (use) {
+    // Rung J1-D11: the burst runs NOW as the active frame — declare, then resolve — never on the stack and
+    // never behind a window (§11.10.2). `settle` runs it before anything else is placed.
     const frame: Frame = {
       abilityId: pending.abilityId, source: pending.card, controller: player,
-      path: [], chosen: [], modes: [], triggerEvent: null, origin: 'exBurst',
+      path: [], chosen: [], modes: [], triggerEvent: null, origin: 'exBurst', stage: 'declare', declared: [], modesDeclared: false,
     }
-    s = { ...s, resolution: { ...s.resolution, queue: [frame, ...s.resolution.queue] } }
+    s = { ...s, resolution: { ...s.resolution, active: frame } }
   }
   return [finishDamageStep(s), events]
 }

@@ -8,7 +8,7 @@ import type { CardId, GameState } from '../src/state.js'
 import type { Command } from '../src/commands.js'
 import type { Event } from '../src/events.js'
 import { findFieldCard } from '../src/state.js'
-import { apply } from '../src/apply.js'
+import { applyNow as apply } from './helpers.js'
 import { checkInvariants } from '../src/invariants.js'
 import { viewFor } from '../src/view.js'
 import { determinise } from '../src/determinise.js'
@@ -124,7 +124,7 @@ describe('C2-A2: Lightning triggers when it is broken in the SAME batch as its v
     const { r, lightning, ally, victim } = sameBatch()
     expect(r.state.players[0].breakZone).toContain(lightning)
     expect(r.state.players[1].breakZone).toContain(victim)
-    expect(ids(r.events, HASTE)).toEqual([{ type: 'abilityTriggered', player: 0, card: lightning, abilityId: HASTE }])
+    expect(ids(r.events, HASTE)).toEqual([expect.objectContaining({ type: 'abilityTriggered', player: 0, card: lightning, abilityId: HASTE })])
     // Both breaks are in one batch: the trigger comes after BOTH `broken` events, never between them.
     expect(at(r.events, (e) => e.type === 'abilityTriggered' && e.abilityId === HASTE))
       .toBeGreaterThan(at(r.events, (e) => e.type === 'broken' && e.card === lightning))
@@ -179,11 +179,12 @@ describe('C2-A3: one Lightning watching TWO simultaneous breaks triggers TWICE (
 
   it('each frame carries the transition it fired on, not the batch', () => {
     const { r, a, b } = twoVictims()
+    // Rung J1-D4: the LAST-triggered occurrence (b's) is placed — declares — first; a's follows and ends on top.
     const subjects = [r.state.resolution.active, ...r.state.resolution.queue].map((f) => f?.triggerEvent)
     expect(subjects).toEqual([
       // `reason` rides on the event from C3 so narration can tell a break from a cost payment.
-      { kind: 'zoneChange', card: a, from: 'field', to: 'breakZone', controller: 1, owner: 1, reason: 'damage' },
       { kind: 'zoneChange', card: b, from: 'field', to: 'breakZone', controller: 1, owner: 1, reason: 'damage' },
+      { kind: 'zoneChange', card: a, from: 'field', to: 'breakZone', controller: 1, owner: 1, reason: 'damage' },
     ])
   })
 })
@@ -202,7 +203,7 @@ describe('“opponent controls” resolves against the watcher’s controller, n
     ;[s, cast] = withHand(s, 0, 'T-QUAKE')
     const r = castQuake(s, cast)
     expect(r.state.players[0].breakZone).toContain(victim)
-    expect(ids(r.events, HASTE)).toEqual([{ type: 'abilityTriggered', player: 1, card: theirs, abilityId: HASTE }])
+    expect(ids(r.events, HASTE)).toEqual([expect.objectContaining({ type: 'abilityTriggered', player: 1, card: theirs, abilityId: HASTE })])
     expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 1, min: 1, max: 1, candidates: [theirs] })
     const t = apply(r.state, { type: 'chooseTargets', player: 1, targets: [theirs] }).state
     expect(fc(t, theirs)?.granted).toEqual(['haste'])
@@ -318,7 +319,12 @@ describe('C2-A9: queued triggers and rule processes never preempt an ACTIVE fram
   }
   const TWO_CLAUSE = makeDef({ code: 'T-TWO', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 2, abilities: [A, B], text: 'synthetic: two clauses' })
 
-  it('holds the second frame and the rule process until the first frame has answered both prompts', () => {
+  it('places B below A (rung J1-D4), declares A through both prompts, and resolves A, the rule process, then B', () => {
+    // Rung J1 re-drew this test's contract. Both clauses trigger together; the turn player's LAST-triggered
+    // (B) is placed first and the first-triggered (A) on top, so A resolves first — the FIFO order the agenda
+    // had before the stack. A's choices are DECLARED as it is placed (both prompts, nothing happening yet);
+    // A then resolves (5000 damage, Haste), §12.4.5 breaks the victim between frames, and only then B pumps
+    // what is left standing.
     let s = makeGame({ defs: [...VANILLA_POOL, TWO_CLAUSE, VICTIM_3000] })
     let victim: CardId, bystander: CardId, cast: CardId
     ;[s, victim] = withField(s, 1, 'forwards', 'V-F2')        // 5000 power — 5000 damage is exactly lethal
@@ -326,29 +332,26 @@ describe('C2-A9: queued triggers and rule processes never preempt an ACTIVE fram
     ;[s, cast] = withHand(s, 0, 'T-TWO')
 
     let r = apply(s, { type: 'castCharacter', player: 0, card: cast, payment: { dullBackups: [], discards: [] } })
-    expect(r.state.resolution.active?.abilityId).toBe('T-TWO:a')
-    expect(r.state.resolution.queue.map((f) => f.abilityId), 'clause B waits its turn').toEqual(['T-TWO:b'])
+    expect(r.state.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : '?')), 'B is placed first, below A').toEqual(['T-TWO:b'])
+    expect(r.state.resolution.active?.abilityId, 'A is declaring').toBe('T-TWO:a')
+    expect(r.state.resolution.active?.stage).toBe('declare')
 
     r = apply(r.state, { type: 'chooseMode', player: 0, modes: [0, 1] })
-    expect(r.state.resolution.queue.map((f) => f.abilityId)).toEqual(['T-TWO:b'])
-
-    r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })   // now carrying lethal damage
-    expect(r.state.pending?.kind, 'the second prompt of the SAME frame').toBe('chooseTargets')
-    expect(r.state.pending?.kind === 'chooseTargets' && r.state.pending.candidates, 'a frame owns its targets until it finishes').toContain(victim)
-    expect(fc(r.state, victim), 'no rule process may run mid-frame').toBeDefined()
-    expect(r.state.resolution.queue.map((f) => f.abilityId), 'and no queued frame may cut in').toEqual(['T-TWO:b'])
+    r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })
+    expect(r.state.pending?.kind, 'the second declaration of the SAME frame').toBe('chooseTargets')
+    expect(fc(r.state, victim), 'nothing resolves while declaring').toBeDefined()
+    expect(fc(r.state, victim)?.damage, 'nothing resolves while declaring').toBe(0)
     ok(r.state)
 
     const last = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })
     expect(last.events).toContainEqual({ type: 'keywordGranted', card: victim, keyword: 'haste' })
-    // Only once frame A is done: §12.4.5, and only THEN clause B.
+    // A resolves first (its damage AND its Haste, in one frame), the rule process breaks the victim between
+    // frames, and only then B — which therefore pumps the bystander alone.
     expect(at(last.events, (e) => e.type === 'broken' && e.card === victim))
-      .toBeLessThan(at(last.events, (e) => e.type === 'abilityTriggered' && e.abilityId === 'T-TWO:b'))
-    // The read-out: B saw the post-rule-process field. Drain the whole queue without yielding and the dead
-    // Forward is still standing here, and gets pumped too.
+      .toBeLessThan(at(last.events, (e) => e.type === 'stackResolved' && e.item.kind === 'ability' && e.item.abilityId === 'T-TWO:b'))
     expect(last.events.filter((e) => e.type === 'powerModified')).toEqual([{ type: 'powerModified', card: bystander, amount: 1000 }])
     expect(last.state.pending).toBeNull()
-    expect(last.state.resolution.queue).toEqual([])
+    expect(last.state.stack).toEqual([])
     ok(last.state)
   })
 })
@@ -383,8 +386,10 @@ describe('a live state and its DETERMINISATION resolve a zone-change trigger ide
     const before = JSON.stringify(det)
 
     const answer: Command = { type: 'chooseTargets', player: 0, targets: [lightning] }
-    const live = apply(s, answer)
-    const sim = apply(det, answer)
+    // Rung J1: the first answer declares one occurrence; the second occurrence then declares (its own prompt)
+    // and only then do both resolve. Same two answers, live and simulated.
+    const live = apply(apply(s, answer).state, answer)
+    const sim = apply(apply(det, answer).state, answer)
 
     expect(fc(live.state, lightning)?.granted).toEqual(['haste'])
     expect(fc(sim.state, lightning)?.granted).toEqual(['haste'])

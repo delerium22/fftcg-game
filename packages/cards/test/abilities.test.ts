@@ -2,8 +2,8 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { CardDef, CardId, Event, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { actingPlayer, apply, applyChooseFirst, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
+import type { CardDef, CardId, Command, Event, FieldCard, GameState, PlayerId } from '@fftcg/engine'
+import { actingPlayer, apply as engineApply, applyChooseFirst, drainResolution, hasResolutionWork, isResponseWindow, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, INERT_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -92,7 +92,20 @@ function passBoth(state: GameState): { state: GameState; events: Event[] } {
   const second = apply(first.state, { type: 'pass', player: q })
   return { state: second.state, events: [...first.events, ...second.events] }
 }
-const endPhase = (state: GameState): GameState => passBoth(state).state
+function endPhase(state: GameState): GameState {
+  let s = passBoth(state).state
+  for (let i = 0; i < 4 && !s.pending && !s.result && isResponseWindow(s) && s.stack.length === 0 && s.phase === 'attack'; i++) s = passBoth(s).state
+  return s
+}
+/** `apply`, then resolve everything it triggered or stacked, with no windows (rung J1) — what "immediate resolution" was. */
+function applyNow(state: GameState, command: Command): { state: GameState; events: Event[] } {
+  const r = engineApply(state, command)
+  if (r.state.result) return r
+  const [t, more] = drainResolution(r.state)
+  const s = !t.result && !t.pending && !hasResolutionWork(t.resolution) && t.stack.length === 0 ? { ...t, resolution: { ...t.resolution, steps: 0 } } : t
+  return { state: s, events: [...r.events, ...more] }
+}
+const apply = applyNow
 const fc = (s: GameState, id: CardId): FieldCard | undefined => findFieldCard(s, id)?.card
 const ok = (s: GameState) => expect(checkInvariants(s)).toEqual([])
 const powerOfId = (s: GameState, id: CardId) => powerOf(s, fc(s, id) as FieldCard)
@@ -306,7 +319,7 @@ describe('20-103H Ramuh — "Select up to 2 of the 3 following actions." (the on
     const { r, ramuh } = ramuhCast()
     expect(r.state.players[0].breakZone).toContain(ramuh)
     expect(r.events.some((e) => e.type === 'summonResolvedNoEffect')).toBe(false)
-    expect(r.events).toContainEqual({ type: 'abilityTriggered', player: 0, card: ramuh, abilityId: '20-103H:summon' })
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'abilityTriggered', player: 0, card: ramuh, abilityId: '20-103H:summon' }))
     expect(r.state.pending).toEqual({
       kind: 'chooseMode', player: 0, min: 0, max: 2,
       labels: ['Choose 1 Forward. Dull it.', 'Choose 1 Forward. Deal it 5000 damage.', 'Choose 1 Forward. It gains Haste until the end of the turn.'],
@@ -321,9 +334,11 @@ describe('20-103H Ramuh — "Select up to 2 of the 3 following actions." (the on
     // so both players' Forwards are candidates, player 0's first.
     expect(t.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [mine, theirs] })
     t = apply(t, { type: 'chooseTargets', player: 0, targets: [theirs] }).state
-    expect(fc(t, theirs)?.status).toBe('dull')
+    // Rung J1-D3: the choices are DECLARED as the Summon is cast; nothing happens until it resolves.
+    expect(fc(t, theirs)?.status).toBe('active')
     expect(t.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [mine, theirs] })
     t = apply(t, { type: 'chooseTargets', player: 0, targets: [mine] }).state
+    expect(fc(t, theirs)?.status).toBe('dull')
     expect(fc(t, mine)?.granted).toEqual(['haste'])
     expect(fc(t, mine)?.status).toBe('active')          // mode 1 was never selected
     expect(fc(t, theirs)?.damage).toBe(0)
@@ -379,7 +394,7 @@ describe('22-068R Prishe — "When Prishe deals damage to your opponent, choose 
 
   it('"1 Character" offers Forwards and Backups from your own Break Zone, never a Summon', () => {
     const { r, prishe, forward, summon, backup, theirs } = prisheHits()
-    expect(r.events).toContainEqual({ type: 'abilityTriggered', player: 0, card: prishe, abilityId: '22-068R:damages-opponent' })
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'abilityTriggered', player: 0, card: prishe, abilityId: '22-068R:damages-opponent' }))
     expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [forward, backup] })
     const candidates = r.state.pending?.kind === 'chooseTargets' ? r.state.pending.candidates : []
     expect(candidates.includes(summon), 'a Summon is not a Character').toBe(false)
@@ -432,7 +447,7 @@ describe('27-125S Luso — "When Luso deals damage to a Forward, break it." and 
 
   it('c2 raises "select up to 2 of the 2 following actions" with the printed wordings as its labels', () => {
     const { r, luso } = lusoHits()
-    expect(r.events).toContainEqual({ type: 'abilityTriggered', player: 0, card: luso, abilityId: '27-125S:damages-opponent' })
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'abilityTriggered', player: 0, card: luso, abilityId: '27-125S:damages-opponent' }))
     expect(r.state.pending).toEqual({
       kind: 'chooseMode', player: 0, min: 0, max: 2,
       labels: ['Choose 1 Forward. Deal it 3000 damage.', 'Choose 1 Character in your Break Zone. Add it to your hand.'],
@@ -447,15 +462,17 @@ describe('27-125S Luso — "When Luso deals damage to a Forward, break it." and 
     expect(t.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [luso, theirs] })
 
     t = apply(t.state, { type: 'chooseTargets', player: 0, targets: [theirs] })
-    expect(t.events).toContainEqual({ type: 'abilityDamage', source: luso, target: theirs, amount: 3000 })
+    // Rung J1-D3: the target is DECLARED; the damage lands when the clause resolves, after mode 2 declares.
+    expect(t.events).not.toContainEqual({ type: 'abilityDamage', source: luso, target: theirs, amount: 3000 })
     // Mode 2's prompt belongs to the SAME frame, and only the Backup is a Character.
     expect(t.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [backup] })
 
     t = apply(t.state, { type: 'chooseTargets', player: 0, targets: [backup] })
+    expect(t.events).toContainEqual({ type: 'abilityDamage', source: luso, target: theirs, amount: 3000 })
     expect(t.state.players[0].hand).toContain(backup)
     expect(t.state.players[0].breakZone).toEqual([summon])
     // Only once the frame finished: c1 resolves and breaks the Forward 3000 damage did not kill.
-    expect(t.events).toContainEqual({ type: 'abilityTriggered', player: 0, card: luso, abilityId: '27-125S:damages-forward' })
+    expect(t.events).toContainEqual(expect.objectContaining({ type: 'abilityTriggered', player: 0, card: luso, abilityId: '27-125S:damages-forward' }))
     expect(t.events).toContainEqual({ type: 'brokenByAbility', card: theirs, source: luso })
     expect(t.state.players[1].breakZone).toContain(theirs)
     expect(t.state.pending).toBeNull()
@@ -845,11 +862,13 @@ describe('27-124S Cloud — "At the beginning of the Attack Phase during each of
   // Rung J1: ending Main Phase 1 takes both players' forfeits; `passBoth` sends them and joins the events.
   const pass = (state: GameState, _player: PlayerId) => passBoth(state)
 
-  it('reaches declaration in one pass when nothing triggers, emitting each phase event once (C5-A2)', () => {
+  it('reaches preparation when both forfeit, and declaration when both forfeit again, emitting each phase event once (C5-A2, rung J1)', () => {
     const r = pass(makeGame(), 0)
     expect(r.state.phase).toBe('attack')
-    expect(r.state.attack?.step).toBe('declaration')
-    const steps = r.events.filter((e) => e.type === 'phaseStarted' && e.phase === 'attack')
+    expect(r.state.attack?.step).toBe('preparation')   // §10.1.1.2: a window of its own
+    const r2 = pass(r.state, 0)
+    expect(r2.state.attack?.step).toBe('declaration')
+    const steps = [...r.events, ...r2.events].filter((e) => e.type === 'phaseStarted' && e.phase === 'attack')
       .map((e) => (e as { step?: string }).step)
     expect(steps).toEqual(['preparation', 'declaration'])
   })
@@ -869,8 +888,12 @@ describe('27-124S Cloud — "At the beginning of the Attack Phase during each of
     expect(candidates).toEqual([cloud, ally].sort())   // "1 Forward you control" — Cloud may choose itself
 
     const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [ally] })
-    expect(done.state.attack?.step).toBe('declaration')
+    // The answer DECLARES the clause; it is placed and (through `applyNow`) resolved. Declaration is still a
+    // window's exit away (§10.1.1.2).
+    expect(done.state.attack?.step).toBe('preparation')
     expect(done.state.pending).toBeNull()
+    expect(fc(done.state, ally)?.flags).toContain('cannotBeBroken')
+    expect(endPhase(done.state).attack?.step).toBe('declaration')
     ok(done.state)
   })
 
@@ -1869,7 +1892,7 @@ describe('22-068R Prishe — "When Prishe is chosen by a Summon or an ability, P
     const done = apply(s, use!)
     expect(powerOfId(done.state, prishe), 'a declared target the actor does not own was skipped').toBe(7000)
     // The pump belongs to the CHOSEN card's owner, not the chooser's.
-    expect(done.events).toContainEqual({ type: 'abilityTriggered', player: 1, card: prishe, abilityId: '22-068R:chosen' })
+    expect(done.events).toContainEqual(expect.objectContaining({ type: 'abilityTriggered', player: 1, card: prishe, abilityId: '22-068R:chosen' }))
   })
 
   it('C11-A3 does NOT fire when nobody chose her', () => {

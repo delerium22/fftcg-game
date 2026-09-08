@@ -11,7 +11,7 @@ import { applyDiscardToHandSize, applyPass } from './phases.js'
 import { applyCastCharacter, applyCastSummon } from './cast.js'
 import { applyAssignPartyDamage, applyChooseExBurst, applyDeclareAttack, applyDeclareBlock } from './attack.js'
 import { runRuleProcesses } from './rules.js'
-import { applyChooseFromDeck, applyChooseMode, applyChooseTargets, drainResolution } from './resolve.js'
+import { advanceAgenda, applyChooseFromDeck, applyChooseMode, applyChooseTargets } from './resolve.js'
 
 export interface ApplyResult { state: GameState; events: Event[] }
 
@@ -38,10 +38,9 @@ function settle(state: GameState): [GameState, Event[]] {
   //    pick damage and Haste for the same Forward, and the Haste would silently skip a target the damage had
   //    just killed. A frame must be atomic across the commands that answer its prompts.
   //
-  // Spec C2-6 REFINES that without disturbing any of the three: `drainResolution` now completes ONE frame and
-  // returns, so this loop gets a rule-process pass BETWEEN frames as well as before the first one. `active` is
-  // still the guard, so a suspended frame is still never interrupted — the fourth wrong ordering would be to
-  // resolve Luso's "break it" before §12.4.5 had broken the Forward Luso's own damage killed.
+  // Rung J1-D2/D4: what the loop advances is PLACEMENT (a triggered clause declaring its choices as it goes
+  // onto the stack, §11.8.7) and the frames of the item RESOLVING on top (started by `applyPass` when both
+  // players forfeit). It never resolves a waiting stack item itself: that is a response window's exit.
   for (;;) {
     if (!s.resolution.active) {
       const [ruled, ruleEvents] = runRuleProcesses(s)
@@ -49,12 +48,14 @@ function settle(state: GameState): [GameState, Event[]] {
       if (s.result) break
       if (!hasResolutionWork(s.resolution)) break   // settled, and rule processes have run
     }
-    const [drained, drainEvents] = drainResolution(s)
-    s = drained; events.push(...drainEvents)
+    const [advanced, advanceEvents] = advanceAgenda(s)
+    s = advanced; events.push(...advanceEvents)
     if (s.result || s.pending) break
   }
   if (s.result) s = { ...s, resolution: EMPTY_RESOLUTION }   // nothing may stay queued after game over
-  else if (!s.pending && !hasResolutionWork(s.resolution)) s = { ...s, resolution: { ...s.resolution, steps: 0 } }
+  // Rung J1-D12: the step budget spans one whole settlement, stack items included — reset only when nothing
+  // is running, placing, triggered or waiting, and no choice is owed.
+  else if (!s.pending && !hasResolutionWork(s.resolution) && s.stack.length === 0) s = { ...s, resolution: { ...s.resolution, steps: 0 } }
   return [s, events]
 }
 

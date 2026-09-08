@@ -74,7 +74,9 @@ export function checkInvariants(state: GameState): string[] {
   const r = state.resolution
   if (!Number.isInteger(r.steps) || r.steps < 0) problems.push(`resolution.steps is ${r.steps}`)
   if (r.steps > MAX_RESOLUTION_STEPS) problems.push(`resolution.steps ${r.steps} exceeds the ${MAX_RESOLUTION_STEPS} budget`)
-  if (state.result && (r.active || r.queue.length || r.continuation)) problems.push('resolution work queued after game over')
+  if (state.result && (r.active || r.queue.length || r.placing || r.resolvingFrame !== null)) problems.push('resolution work queued after game over')
+  if (r.placing) { const it = r.placing.item; for (const f of it.kind === 'summon' ? it.frames : [it.frame]) checkFrame(problems, 'placing', f, state) }
+  if (r.resolvingFrame !== null && state.stack.length === 0) problems.push('a stack frame is resolving but the stack is empty')
   if (r.active) checkFrame(problems, 'active', r.active, state)
   for (const f of r.queue) checkFrame(problems, 'queued', f, state)
   // --- the stack (rung J1) ---

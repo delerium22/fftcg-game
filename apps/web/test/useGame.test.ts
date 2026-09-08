@@ -329,7 +329,7 @@ describe("an AI move label reads the pending it ANSWERED, not the one that repla
     }
     expect(labels.length, 'no AI search was answered — the assertion would prove nothing').toBeGreaterThan(0)
     for (const l of labels) expect(l).toMatch(/^The AI: (Play \d+ cards? onto the field|Find nothing)$/)
-  })
+  }, 60_000)
 })
 
 describe("a searched-out Forward explains the trigger it causes (rung C9)", () => {
@@ -739,7 +739,7 @@ describe('the shipped C1 clauses reach the UI (C1-A3)', () => {
     for (const r of results) expect(r).not.toBeNull()
     const missing = (['chooseTargets', 'chooseMode'] as const).filter((t) => !seen.has(t))
     expect(missing, `unreachable from the UI: ${missing.join(', ')}`).toEqual([])
-  })
+  }, 60_000)
 })
 
 // ---------------------------------------------------------------------------

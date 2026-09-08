@@ -288,6 +288,8 @@ export type TriggerCause =
   | { readonly kind: 'zoneChange'; readonly card: CardId; readonly controller: PlayerId; readonly reason?: ZoneTransitionReason }
   /** A card arrived on a field (spec C8). `controller` is whose field, which is what the wording turns on. */
   | { readonly kind: 'enteredField'; readonly card: CardId; readonly controller: PlayerId }
+  /** A card was chosen by a Summon or ability (rung J1-D7). */
+  | { readonly kind: 'chosen'; readonly card: CardId; readonly by: CardId; readonly byController: PlayerId }
 
 const possessive = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'your' : "the AI's")
 
@@ -304,6 +306,7 @@ export function describeTriggerCause(v: PlayerView, ev: TriggerCause): string {
   // it also reads as though their own card had been destroyed by the opponent.
   // `bareName` here and below: the possessive is already in the sentence, and `name` would double it.
   if (ev.kind === 'enteredField') return `${ownedCard(v, ev.controller, ev.card)} entered the field`
+  if (ev.kind === 'chosen') return `${qualifiedName(v, ev.card)} was chosen by ${qualifiedName(v, ev.by)}`
   if (ev.kind === 'zoneChange') {
     const how = ev.reason === 'cost' ? 'was put into the Break Zone' : 'was broken'
     return `${ownedCard(v, ev.controller, ev.card)} ${how}`

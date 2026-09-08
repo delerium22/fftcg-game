@@ -5,7 +5,7 @@ import { HAND_SIZE_LIMIT, updatePlayer } from './state.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { runRuleProcesses } from './rules.js'
-import { enqueueAttackPhaseTriggers, enterAttackPreparation } from './resolve.js'
+import { enqueueAttackPhaseTriggers, enterAttackDeclaration, enterAttackPreparation, startResolvingTop } from './resolve.js'
 // Re-exported so every existing importer of `drawCards` from this module keeps working (spec C3-9).
 export { drawCards } from './draw.js'
 import { drawCards } from './draw.js'
@@ -60,29 +60,31 @@ export function applyPass(state: GameState, player: PlayerId): [GameState, Event
   if (state.result) throw new IllegalCommandError('game is over')
   if (state.pending) throw new IllegalCommandError('a decision is pending')
   if (state.priority !== player) throw new IllegalCommandError('you do not hold priority')
-  if (state.phase === 'attack' && state.attack?.step !== 'declaration') throw new IllegalCommandError('cannot pass during this attack step')
-  const isWindow = state.phase === 'main1' || state.phase === 'main2'
+  const step = state.attack?.step
+  // The windows so far: the Main Phases and the Attack Preparation Step (§10.1.1.2). Slice 5 adds the rest.
+  const isWindow = state.phase === 'main1' || state.phase === 'main2' || (state.phase === 'attack' && step === 'preparation')
+  if (state.phase === 'attack' && step !== 'declaration' && step !== 'preparation') throw new IllegalCommandError('cannot pass during this attack step')
   if (isWindow && state.passes === 0) {
     return [{ ...state, passes: 1, priority: opponentOf(player) }, []]
   }
   // Both players have forfeited consecutively (§11.1.7) — or this step is not a window at all.
   const turn = state.turnPlayer
+  if (isWindow && state.stack.length > 0) {
+    // The top of the stack resolves (rung J1-D9); `settle` runs it, and priority returns to the turn player
+    // once it has finished (§11.1.5).
+    return [startResolvingTop({ ...state, passes: 0 }), []]
+  }
   switch (state.phase) {
-    case 'main1':
-      // §10.1.1 Attack Preparation Step, then §10.1.2 Declaration — the two-step transition C2 left the seam
-      // for (spec C5-1). Enter preparation, queue the beginning-of-phase clauses, and hand the move into
-      // declaration to the agenda's continuation. With nothing queued the continuation runs immediately, so a
-      // board with no such clause still reaches declaration in the same `pass`.
-      //
-      // Doing it in one hop, as this used to, would resolve any such trigger while the state still said Main
-      // Phase 1: the clause would fire at a moment its own printed text says it does not.
-      {
-        const [prepared, events] = enterAttackPreparation({ ...state, passes: 0 }, turn)
-        const queued = enqueueAttackPhaseTriggers(prepared, turn)
-        return [{ ...queued, resolution: { ...queued.resolution, continuation: 'enterAttackDeclaration' } }, events]
-      }
-    case 'attack':   // declaration step, checked above; §10.1.4.6
-      return [{ ...state, phase: 'main2', attack: null, priority: turn, passes: 0 }, [{ type: 'phaseStarted', phase: 'main2' }]]
+    case 'main1': {
+      // §10.1.1 Attack Preparation Step: enter it, queue the beginning-of-phase clauses, and STOP there — the
+      // clauses are placed and a window opens (§10.1.1.2); its double pass moves into declaration (spec C5-1,
+      // now with the window the CR describes rather than a continuation).
+      const [prepared, events] = enterAttackPreparation({ ...state, passes: 0 }, turn)
+      return [enqueueAttackPhaseTriggers(prepared, turn), events]
+    }
+    case 'attack':
+      if (step === 'preparation') return enterAttackDeclaration({ ...state, passes: 0 }, turn)
+      return [{ ...state, phase: 'main2', attack: null, priority: turn, passes: 0 }, [{ type: 'phaseStarted', phase: 'main2' }]]   // §10.1.4.6
     case 'main2':
       return beginEndPhase({ ...state, passes: 0, priority: turn })
     default:
