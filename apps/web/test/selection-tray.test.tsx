@@ -137,3 +137,30 @@ describe('J7-A4 / A5 — "up to N" targets and a discard of exactly `count`', ()
     expect(chosen[0]!.command).toEqual({ type: 'discardToHandSize', player: HUMAN, cards: [hand[0], hand[1]] })
   })
 })
+
+describe('J7 — a card whose only answers are several-member sets', () => {
+  it('"choose 2" targets: the sheet offers one enabled "Choose several…" and no whole-set buttons; two presses and Confirm submit', async () => {
+    const { makeDef, withHand } = await import('../../../packages/engine/test/helpers.js')
+    const { apply } = await import('@fftcg/engine')
+    const PICK2 = {
+      id: 'T-PICK2:etb', trigger: { kind: 'enterField' as const }, text: 'choose 2 Forwards, dull them',
+      effects: [{ kind: 'chooseTargets' as const, min: 2, max: 2, from: { zone: 'forwards' as const, controller: 'opponent' as const }, then: [{ kind: 'dull' as const }] }],
+    }
+    let s = makeGame({ defs: [...VANILLA_POOL, makeDef({ code: 'T-PICK2', cost: 0, hasAbilities: true, abilityClauses: 1, abilities: [PICK2] })] })
+    const theirs: CardId[] = []
+    for (let i = 0; i < 3; i++) { let id: CardId; [s, id] = withField(s, 1, 'forwards', 'V-F1'); theirs.push(id) }
+    const [withCard, card] = withHand(s, 0, 'T-PICK2')
+    s = apply(withCard, { type: 'castCharacter', player: 0, card, payment: { dullBackups: [], discards: [] } }).state
+    const { chosen } = mount(s)
+    press(cardButton(theirs[0]!))
+    const buttons = sheetButtons().filter((b) => b.getAttribute('data-command') !== 'sheetBack')
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(['Choose several…'])
+    expect(buttons[0]!.disabled).toBe(false)
+    press(buttons[0]!)
+    expect(command('selectConfirm')!.disabled).toBe(true)
+    press(cardButton(theirs[1]!))
+    expect(command('selectConfirm')!.disabled).toBe(false)
+    press(command('selectConfirm'))
+    expect(chosen[0]!.command).toEqual({ type: 'chooseTargets', player: HUMAN, targets: [theirs[0]!, theirs[1]!].sort((a, b) => a - b) })
+  })
+})

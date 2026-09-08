@@ -332,6 +332,12 @@ export function Board({ game, onHelp }: {
    * While a payment is being built (I2) the board's actions are the tray's, not the game's: a candidate
    * source says what picking it spends.
    */
+  /** Rung J7-D2: when the list is a sample, every candidate of the set decision glows and offers the picker. */
+  const sampledCandidate = (id: CardId): boolean => {
+    if (!choices.capped) return false
+    const k = setKindFor(view)
+    return k !== null && candidatesFor(view, k).includes(id)
+  }
   const actionFor = (id: CardId): string | undefined => {
     if (paying) return sourceAction(id)
     if (selecting) {
@@ -339,7 +345,7 @@ export function Board({ game, onHelp }: {
       return extendableWith(view, selecting, id) ? 'Press to add' : undefined
     }
     const forCard = choices.byCard.get(id) ?? []
-    if (forCard.length === 0) return undefined
+    if (forCard.length === 0) return sampledCandidate(id) ? 'Choose several…' : undefined
     if (forCard.length === 1) return headline(view, forCard[0] as Choice)
     return `${forCard.length} options`
   }
@@ -490,7 +496,7 @@ export function Board({ game, onHelp }: {
   const glows = (id: CardId): boolean =>
     paying ? sourceState(id).offered
       : selecting ? selecting.chosen.includes(id) || extendableWith(view, selecting, id)
-      : (choices.byCard.get(id) ?? []).length > 0
+      : (choices.byCard.get(id) ?? []).length > 0 || sampledCandidate(id)
   const chosenNow = (id: CardId): boolean => selecting !== null && selecting.chosen.includes(id)
   const payingRole = (id: CardId): 'dull' | 'discard' | undefined => sourceState(id).role ?? undefined
 

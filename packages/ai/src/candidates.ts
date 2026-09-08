@@ -326,7 +326,8 @@ function activationCandidates(state: GameState, player: PlayerId): Command[] {
       if (!payment) continue
       // One command per declared TARGET SET — the target choice is part of the action now, not a decision the
       // search reaches a ply later, so collapsing them would hide the choice from the agent entirely.
-      for (const targets of activationTargetSets(state, player, source, ability)) {
+      // Bounded like every other set the policy enumerates (rung J7-D2): the first sixteen declarations.
+      for (const targets of activationTargetSets(state, player, source, ability, 16)) {
         if (activationCheck(state, player, source, ability.id, targets) !== null) continue
         out.push({ type: 'activateAbility', player, source, abilityId: ability.id, payment, targets })
       }

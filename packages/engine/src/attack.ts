@@ -145,11 +145,12 @@ function beginDamageResolution(state: GameState): [GameState, Event[]] {
   return [s, [...events, ...more]]
 }
 
-/** All ways to split `total` over `targets` in multiples of 1000, each part ≥ 1000 (targets that receive nothing are omitted). */
-function splits(total: number, targets: CardId[]): Assignment[][] {
+/** All ways to split `total` over `targets` in multiples of 1000, each part ≥ 1000 (targets that receive nothing are omitted), at most `cap` of them. */
+function splits(total: number, targets: CardId[], cap = Number.POSITIVE_INFINITY): Assignment[][] {
   if (total <= 0) return [[]]
   const out: Assignment[][] = []
   const rec = (i: number, left: number, acc: Assignment[]) => {
+    if (out.length >= cap) return
     if (i === targets.length) { if (left === 0) out.push(acc); return }
     rec(i + 1, left, acc)
     for (let a = 1000; a <= left; a += 1000) rec(i + 1, left - a, [...acc, { target: targets[i] as CardId, amount: a }])
@@ -158,15 +159,19 @@ function splits(total: number, targets: CardId[]): Assignment[][] {
   return out
 }
 
-export function legalPartyDamageAssignments(state: GameState): Assignment[][] {
+export function legalPartyDamageAssignments(state: GameState, cap = Number.POSITIVE_INFINITY): Assignment[][] {
   const at = state.attack
   if (state.pending?.kind !== 'assignPartyDamage' || !at || at.blocker === null) return []
   const blocker = findFieldCard(state, at.blocker)
   if (!blocker) return [[]]   // blocker left the field (§10.1.3.3) — nothing to assign
-  const result = splits(powerOf(state, blocker.card), at.attackers)
+  const total = powerOf(state, blocker.card)
   // the blocker's power cannot be split into ≥1000 multiples across the party — it deals no battle damage
-  return result.length === 0 ? [[]] : result
+  if (!splittable(total)) return [[]]
+  return splits(total, at.attackers, cap)
 }
+
+/** Can `total` be dealt as parts of ≥1000 in multiples of 1000 (§10.1.4.2.1)? Exactly when it is one such part itself. */
+const splittable = (total: number): boolean => total >= 1000 && total % 1000 === 0
 
 /** Why a party-damage split would be refused, or null (rung J7-D1): the exact test `applyAssignPartyDamage` runs. */
 export function partyDamageCheck(state: GameState, player: PlayerId, assignments: readonly Assignment[]): string | null {
@@ -176,7 +181,7 @@ export function partyDamageCheck(state: GameState, player: PlayerId, assignments
   if (!at) return 'no attack'
   const blocker = at.blocker === null ? null : findFieldCard(state, at.blocker)
   const total = blocker ? powerOf(state, blocker.card) : 0
-  const noValidSplit = blocker !== null && splits(total, at.attackers).length === 0
+  const noValidSplit = blocker !== null && !splittable(total)   // arithmetic, never an enumeration (J7)
   if (assignments.length === 0 && noValidSplit) return null
   const sum = assignments.reduce((n, a) => n + a.amount, 0)
   if (sum !== total) return `assignments must total the blocker's power ${total} (§10.1.4.2.1)`

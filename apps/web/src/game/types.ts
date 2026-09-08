@@ -41,6 +41,8 @@ export interface ChoiceSet {
   loose: Choice[]
   /** One-line statement of what the game is waiting for, e.g. "Choose a blocker". */
   prompt: string
+  /** Rung J7-D2: the list `all` was built from is a SAMPLE of the legal sets, so `byCard` may miss a candidate; the picker's `candidatesFor` is then the board's guide. */
+  capped: boolean
 }
 
 /** A line in the game log. `kind` drives styling; `text` is already human-readable. */

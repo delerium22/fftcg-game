@@ -176,7 +176,6 @@ function* subsetsOf<T>(items: readonly T[], k: number, start = 0, acc: T[] = [])
     acc.pop()
   }
 }
-const choose = (n: number, k: number): number => { let r = 1; for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i; return r }
 
 /**
  * The legal subsets of `items` of sizes `min..max`, bounded by `cap` (J7-D2). `ok` says whether a set is
@@ -187,28 +186,35 @@ function boundedSubsets<T extends number>(
   items: readonly T[], min: number, max: number, cap: number, ok: (set: T[]) => boolean, largest: () => T[][],
 ): { sets: T[][]; capped: boolean } {
   const hi = Math.min(max, items.length)
-  let total = 0
-  for (let k = min; k <= hi; k++) total += choose(items.length, k)
+  const key = (set: readonly T[]): string => [...set].sort((a, b) => a - b).join(',')
+  // The largest legal sets are RESERVED: they ride whatever the sample holds, and the sample fills the room
+  // that is left, so the list never exceeds `cap` (Codex MEDIUM). Listed after the sample so a small,
+  // complete list keeps its size order; the reserved ones are then duplicates the dedupe drops.
+  const big = largest().filter(ok)
+  const bigKeys = new Set(big.map(key))
+  const room = Math.max(0, cap - bigKeys.size)
   const sets: T[][] = []
   const seen = new Set<string>()
-  const add = (set: T[]): boolean => {
-    const key = [...set].sort((a, b) => a - b).join(',')
-    if (seen.has(key)) return false
-    seen.add(key); sets.push(set); return true
-  }
-  if (total <= cap) {
-    for (let k = min; k <= hi; k++) for (const set of subsetsOf(items, k)) if (ok(set)) add(set)
-    return { sets, capped: false }
-  }
+  let capped = false
+  // Legal sets are COUNTED as they are generated, not estimated from raw combinations: an attack over eight
+  // Forwards of two elements has 255 subsets and a few dozen legal parties, and a complete list is not a
+  // sample. The scan itself is bounded too — past `SCAN_LIMIT` subsets the list is a sample whatever it holds.
+  let scanned = 0
   outer: for (let k = min; k <= hi; k++) {
     for (const set of subsetsOf(items, k)) {
-      if (sets.length >= cap) break outer
-      if (ok(set)) add(set)
+      if (++scanned > SCAN_LIMIT) { capped = true; break outer }
+      if (!ok(set)) continue
+      const kk = key(set)
+      if (seen.has(kk)) continue
+      if (sets.length >= room && !bigKeys.has(kk)) { capped = true; break outer }
+      seen.add(kk); sets.push(set)
     }
   }
-  for (const set of largest()) if (ok(set)) add(set)
-  return { sets, capped: true }
+  for (const set of big) { const kk = key(set); if (!seen.has(kk)) { seen.add(kk); sets.push(set) } }
+  return { sets, capped }
 }
+/** How many subsets one enumeration may examine before the list is declared a sample regardless (2ⁿ over a wide field). */
+const SCAN_LIMIT = 4096
 
 export function legalCommands(state: GameState, player: PlayerId): Command[] {
   return legalCommandsWithMeta(state, player).commands
@@ -241,9 +247,12 @@ export function legalCommandsWithMeta(state: GameState, player: PlayerId, setCap
         out.push({ type: 'declareBlock', player, blocker: null })
         for (const blocker of legalBlockers(state, player)) out.push({ type: 'declareBlock', player, blocker })
         break
-      case 'assignPartyDamage':
-        for (const assignments of legalPartyDamageAssignments(state)) out.push({ type: 'assignPartyDamage', player, assignments })
+      case 'assignPartyDamage': {
+        const all = legalPartyDamageAssignments(state, setCap + 1)
+        if (all.length > setCap) capped = true
+        for (const assignments of all.slice(0, setCap)) out.push({ type: 'assignPartyDamage', player, assignments })
         break
+      }
       case 'chooseTargets': {
         // Σ C(N, k) for k in min..max, bounded (J7-D2): the singletons, the pairs, then larger sets up to the
         // cap, plus the first `max` candidates as one full set. Every subset within the size range is legal.
@@ -330,7 +339,7 @@ function activationsWithMeta(state: GameState, player: PlayerId, setCap: number)
       // Payment x declared target set. Both are part of the command now, because an activation declares its
       // choices before it pays (spec C3-1) — so both have to be enumerated for the choice to be offered. The
       // target sets are bounded like every other set (J7-D2); the payments are the minimal ones and few.
-      const all = activationTargetSets(state, player, source, ability)
+      const all = activationTargetSets(state, player, source, ability, setCap + 1)   // one more than the cap: enough to know it bit
       let targetSets = all
       if (all.length > setCap) { targetSets = all.slice(0, setCap); capped = true }
       for (const payment of enumeratePaymentsFor(state, player, req)) {

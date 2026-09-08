@@ -40,7 +40,7 @@ const seat = (v: PlayerView, p: 0 | 1): PlayerView => ({ ...v, pending: null, pr
 const choice = (label: string, type: 'pass' | 'concede' | 'castCharacter'): Choice =>
   ({ label, card: null, command: { type, player: HUMAN, ...(type === 'castCharacter' ? { card: 1, payment: { dullBackups: [], discards: [] } } : {}) } as Choice['command'] })
 
-const emptySet = (): ChoiceSet => ({ all: [], byCard: new Map(), loose: [], prompt: 'Main Phase 1 — cast, attack, or pass' })
+const emptySet = (): ChoiceSet => ({ all: [], byCard: new Map(), loose: [], prompt: 'Main Phase 1 — cast, attack, or pass', capped: false })
 
 /** Every choice the strip actually submitted, so a click that must NOT act can be asserted on. */
 let chosen: Choice[] = []

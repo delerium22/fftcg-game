@@ -1,8 +1,9 @@
 # Rung J7 — target sets picked card by card, and a cap on what `legalCommands` enumerates
 
-> **STATUS: BUILT (slices 1–3), 2026-09-08; the Codex plan review is still owed** (the CLI hit its usage limit
-> until 19:06) and its findings will be adjudicated into a revision 2 with follow-up commits. The audit's
-> pressure point 3 (ladder J7): "pre-enumeration
+> **STATUS: BUILT, revision 2, 2026-09-08.** Slices 1–3 landed first; the Codex plan review ran against the
+> code as built ([the review](../plans/2026-09-08-rung-j7-target-set-selection.codex-review.md)) and every
+> finding is adjudicated at the end; the accepted ones landed as follow-up commits. The audit's pressure
+> point 3 (ladder J7): "pre-enumeration
 > in `legalCommands`" — needed before the pool grows past ~40 cards. Bounded in the engine, a new picker in
 > the browser (the shape of I2's payment tray). The user was away; the design calls are mine, recorded here.
 
@@ -81,3 +82,27 @@ checks membership) and the legal-apply property test.
   "Choose several…", not N party buttons.
 - **J7-A7** The ISMCTS decoder accepts a key exactly when `isLegal` accepts the decoded command (property).
 - **Gates** typecheck, lint, unit, browser; the frozen corpus replays; the 29017ab timing script within 10 %.
+
+## Plan review outcome (as built → revision 2)
+
+**Accepted (CRITICAL, 2):** the browser's AI handler still checked the worker's command against the list —
+now `isLegal`, with the refusal in the warning; `isLegal` for activations (and casts) consulted the list for
+the payment — now `paymentCheck` generates the CP and asks `canPay`, exactly as `apply` does (§11.2.2.3).
+
+**Accepted (HIGH, 5 of 6):** activation target sets are generated lazily and stopped at the cap
+(`activationTargetSets(…, cap)`; the AI takes sixteen); the cast fallback is the same `paymentCheck`; the
+party-damage split has an arithmetic existence test (`splittable`) and its enumeration is bounded; `capped`
+reaches the browser (`ChoiceSet.capped`) and every set candidate glows and offers "Choose several…" when the
+list is a sample; A7 is now a property over candidates AND probes (decoder-legality.test.ts), and the browser
+validates the AI's decoded command with `isLegal` before applying it. **Deferred (HIGH, 1):** an activation
+with several targets has no picker kind — no pool card prints one; `SetKind` grows an `activation` variant
+(source, ability, payment, bounds) when one does, and the sheet still lists such commands whole until then.
+
+**Accepted (MEDIUM, 5):** the cap reserves room for the largest sets (never more than 64); legal sets are
+counted as generated, not estimated from raw subsets (a complete list is never marked capped; the scan itself
+stops at 4,096 subsets); `aria-pressed` reflects the chosen state and Confirm is described by the refusal;
+only-multi-member sheets ("choose 2", discard of two) and A4/A5 are Board tests.
+
+**Accepted (LOW, 1):** `extendableWith` offers nothing when the candidates cannot reach `min`, with tests.
+**Deferred (LOW, 1):** a deterministic Playwright flow for the party picker — the jsdom Board tests cover the
+flow; the whole-game driver deliberately takes the plain action and confirms as soon as the set is legal.

@@ -923,7 +923,7 @@ export function paymentAlternatives(legal: Command[]): Map<string, Command[]> {
  * `alternatives` is the map from `paymentAlternatives`, built from the RAW legal commands; omit it and every
  * choice comes back exactly as it did before rung E11.
  */
-export function buildChoiceSet(v: PlayerView, legal: Command[], alternatives?: Map<string, Command[]>): ChoiceSet {
+export function buildChoiceSet(v: PlayerView, legal: Command[], alternatives?: Map<string, Command[]>, capped = false): ChoiceSet {
   const all: Choice[] = []
   const byCard = new Map<CardId, Choice[]>()
   const loose: Choice[] = []
@@ -942,7 +942,7 @@ export function buildChoiceSet(v: PlayerView, legal: Command[], alternatives?: M
     if (!subjects.length) { loose.push(choice); continue }
     for (const id of subjects) byCard.set(id, [...(byCard.get(id) ?? []), choice])
   }
-  return { all, byCard, loose, prompt: promptFor(v, legal) }
+  return { all, byCard, loose, prompt: promptFor(v, legal), capped }
 }
 
 /**

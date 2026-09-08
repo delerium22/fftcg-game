@@ -173,8 +173,12 @@ export function hasAnyActivation(state: GameState, player: PlayerId): boolean {
   return false
 }
 
-/** Every legal declaration of an activation's targets — the sets `legalCommands` must offer. */
-export function activationTargetSets(state: GameState, player: PlayerId, source: CardId, ability: Ability): readonly CardId[][] {
+/**
+ * The legal declarations of an activation's targets — the sets `legalCommands` offers — generated lazily
+ * in size order and stopped at `cap` (rung J7-D2): a clause printing "up to 3" over a wide field never
+ * materialises every subset before a caller takes the first sixty-four.
+ */
+export function activationTargetSets(state: GameState, player: PlayerId, source: CardId, ability: Ability, cap = Number.POSITIVE_INFINITY): readonly CardId[][] {
   if (ability.trigger.kind !== 'activated') return []
   const node = declarationNode(ability)
   if (!node) return [[]]
@@ -183,20 +187,22 @@ export function activationTargetSets(state: GameState, player: PlayerId, source:
   const max = Math.min(node.max, candidates.length)
   if (node.min > max) return []
   const out: CardId[][] = []
-  for (let k = node.min; k <= max; k++) out.push(...combinations(candidates, k))
+  for (let k = node.min; k <= max; k++) {
+    for (const set of subsetsOf(candidates, k)) { if (out.length >= cap) return out; out.push(set) }
+  }
   return out
 }
 
-function combinations(items: readonly CardId[], k: number): CardId[][] {
-  if (k === 0) return [[]]
-  const out: CardId[][] = []
-  const walk = (start: number, acc: CardId[]): void => {
-    if (acc.length === k) { out.push([...acc]); return }
-    for (let i = start; i < items.length; i++) { acc.push(items[i] as CardId); walk(i + 1, acc); acc.pop() }
+/** Lazily every k-subset of `items`, in lexicographic order of positions. */
+function* subsetsOf(items: readonly CardId[], k: number, start = 0, acc: CardId[] = []): Generator<CardId[]> {
+  if (acc.length === k) { yield [...acc]; return }
+  for (let i = start; i <= items.length - (k - acc.length); i++) {
+    acc.push(items[i] as CardId)
+    yield* subsetsOf(items, k, i + 1, acc)
+    acc.pop()
   }
-  walk(0, [])
-  return out
 }
+
 
 /**
  * Apply every non-CP cost, plus (when `validate`) the CP payment. Returns the new state, its events, and any

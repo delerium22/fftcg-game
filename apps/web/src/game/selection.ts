@@ -74,8 +74,11 @@ export function commandFor(v: PlayerView, sel: Selection): Command {
  */
 export function extendableWith(v: PlayerView, sel: Selection, id: CardId): boolean {
   if (sel.chosen.includes(id)) return false
-  if (!candidatesFor(v, sel.kind).includes(id)) return false
-  if (sel.chosen.length >= boundsFor(v, sel.kind).max) return false
+  const candidates = candidatesFor(v, sel.kind)
+  if (!candidates.includes(id)) return false
+  const { min, max } = boundsFor(v, sel.kind)
+  if (candidates.length < min) return false   // no completion exists at all (Codex LOW)
+  if (sel.chosen.length >= max) return false
   if (sel.kind === 'attackers') return attackCheck(stateShim(v), v.me, [...sel.chosen, id]) === null
   return true
 }

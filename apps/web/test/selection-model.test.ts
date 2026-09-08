@@ -93,3 +93,28 @@ describe('discard to hand size', () => {
     expect(setKindFor(viewFor(s, HUMAN))).toBeNull()
   })
 })
+
+describe('"choose 2" (min 2) targets — the only way through is the picker', () => {
+  const PICK2: Ability = {
+    id: 'T-PICK2:etb', trigger: { kind: 'enterField' }, text: 'choose 2 Forwards, dull them',
+    effects: [{ kind: 'chooseTargets', min: 2, max: 2, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }],
+  }
+  it('one chosen is refused, the second is offered, two are the answer; with a single candidate nothing is offered', () => {
+    let s = makeGame({ defs: [...VANILLA_POOL, makeDef({ code: 'T-PICK2', cost: 0, hasAbilities: true, abilityClauses: 1, abilities: [PICK2] })] })
+    const theirs: CardId[] = []
+    for (let i = 0; i < 3; i++) { let id: CardId; [s, id] = withField(s, 1, 'forwards', 'V-F1'); theirs.push(id) }
+    const [withCard, card] = withHand(s, 0, 'T-PICK2')
+    s = apply(withCard, { type: 'castCharacter', player: 0, card, payment: { dullBackups: [], discards: [] } }).state
+    const v = viewFor(s, HUMAN)
+    expect(boundsFor(v, 'targets')).toEqual({ min: 2, max: 2 })
+    let p = sel('targets', [theirs[0]!])
+    expect(refusal(v, p)).toMatch(/choose 1 more/)
+    expect(extendableWith(v, p, theirs[1]!)).toBe(true)
+    p = toggled(p, theirs[1]!)
+    expect(refusal(v, p)).toBeNull()
+    expect(extendableWith(v, p, theirs[2]!), 'a third').toBe(false)
+    // Fewer candidates than min: no completion exists, so nothing is offered.
+    const starved: typeof v = { ...v, pending: { ...(v.pending as Extract<NonNullable<typeof v.pending>, { kind: 'chooseTargets' }>), candidates: [theirs[0]!] } }
+    expect(extendableWith(starved, sel('targets', []), theirs[0]!)).toBe(false)
+  })
+})

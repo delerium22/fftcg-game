@@ -27,11 +27,12 @@ export function SelectionTray({ chosen, name, refusal, onClear, onCancel, onConf
           </button>
         ))}
       </span>
-      {refusal !== null && chosen.length > 0 && <span className="tray__paid">{refusal}</span>}
+      {/* Always rendered so Confirm's description exists whether or not it is disabled (Codex MEDIUM). */}
+      <span id="selection-refusal" className="tray__paid">{refusal ?? 'Ready to confirm'}</span>
       <span className="tray__buttons">
         <button type="button" className="btn btn--ghost" data-command="selectClear" onClick={onClear}>Clear</button>
         <button type="button" className="btn btn--ghost" data-command="selectCancel" onClick={onCancel}>Cancel</button>
-        <button type="button" className="btn btn--primary" data-command="selectConfirm" disabled={refusal !== null} onClick={onConfirm}>Confirm</button>
+        <button type="button" className="btn btn--primary" data-command="selectConfirm" disabled={refusal !== null} aria-describedby="selection-refusal" onClick={onConfirm}>Confirm</button>
       </span>
     </div>
   )

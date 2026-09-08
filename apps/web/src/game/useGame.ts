@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, apply, createGame, forcedPass, legalCommands, viewFor,
-  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal } from '@fftcg/engine'
+  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { ATTACK_STEP_LABEL, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
+import { ATTACK_STEP_LABEL, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
@@ -473,15 +473,18 @@ export interface AiSink {
 export function aiHandlers(sink: AiSink): SearchRequestHandlers {
   return {
     onCommand: (command, forState) => {
-      const legal = legalCommands(forState, AI)
-      // `false` is load-bearing beyond skipping the commit: it is what stops the per-position seed advancing,
-      // so the next search of this same board asks the identical question (D2-3). Refuse rather than throw —
-      // this runs from a timer, where an uncaught throw would take the page down instead of the move.
-      if (!legal.some((c) => sameCommand(c, command))) {
-        sink.log({ kind: 'warning', text: `The AI chose ${command.type}, which is not legal in this position — the move was discarded` })
+      // Rung J7-D1: the predicate, not the (possibly capped) list. `false` is load-bearing beyond skipping the
+      // commit: it is what stops the per-position seed advancing, so the next search of this same board asks
+      // the identical question (D2-3). Refuse rather than throw — this runs from a timer, where an uncaught
+      // throw would take the page down instead of the move.
+      // The seat first: a concede is legal for EITHER player at any time (§2.1), so `isLegal` alone would let
+      // the worker concede on the human's behalf — the B-A4 harness sends exactly that.
+      const refused = command.player !== AI ? 'not the AI\'s command' : isLegal(forState, command)
+      if (refused !== null) {
+        sink.log({ kind: 'warning', text: `The AI chose ${command.type}, which is not legal in this position (${refused}) — the move was discarded` })
         return false
       }
-      const stepped = narrateApply(forState, legal, command)
+      const stepped = narrateApply(forState, legalCommands(forState, AI), command)
       sink.commit(stepped.state, stepped.lines)
       return true
     },
@@ -566,8 +569,8 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
   // The RAW legal commands go to `paymentAlternatives` and the COLLAPSED ones to `buildChoiceSet`: the strip
   // shows one action per move, and the other ways to fund that move ride along on it (rung E11).
   const choices = useMemo(() => {
-    const legal = legalCommands(state, HUMAN)
-    return buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
+    const { commands: legal, capped } = legalCommandsWithMeta(state, HUMAN)
+    return buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal), capped)
   }, [state, view])
 
   const choose = useCallback((choice: Choice): void => {

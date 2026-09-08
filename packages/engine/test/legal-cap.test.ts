@@ -41,7 +41,7 @@ describe('J7-A2 — the cap', () => {
     const r = legalCommandsWithMeta(s, 0)
     expect(r.capped).toBe(true)
     const sets = r.commands.filter((c) => c.type === 'chooseTargets')
-    expect(sets.length).toBeLessThanOrEqual(DEFAULT_SET_CAP + 1)   // the largest set may ride above the cap
+    expect(sets.length).toBeLessThanOrEqual(DEFAULT_SET_CAP)   // the largest set is reserved inside the cap
     for (const c of sets) expect(isLegal(s, c), JSON.stringify(c)).toBeNull()
     const pending = s.pending as Extract<NonNullable<GameState['pending']>, { kind: 'chooseTargets' }>
     for (const id of pending.candidates) expect(sets.some((c) => c.type === 'chooseTargets' && c.targets.length === 1 && c.targets[0] === id)).toBe(true)
@@ -52,18 +52,29 @@ describe('J7-A2 — the cap', () => {
     expect(isLegal(s, omitted)).toBeNull()
   })
 
-  it('attacks: eight ready Forwards are 255 parties; bounded, the singles, the pairs and each element’s full party', () => {
+  it('attacks: eight ready Forwards of two elements are 255 subsets but only ~45 legal parties — complete, not capped', () => {
+    let s = endPhase(makeGame({ defs: DEFS }))
+    for (const code of ['V-F1', 'V-F2', 'V-F5', 'V-F7', 'V-F3', 'V-F6', 'V-F8', 'V-F4']) [s] = withField(s, 0, 'forwards', code)
+    const r = legalCommandsWithMeta(s, 0)
+    expect(r.capped, 'legal sets are counted, not raw subsets (Codex MEDIUM)').toBe(false)
+    const attacks = r.commands.filter((c) => c.type === 'declareAttack')
+    expect(attacks.length).toBeGreaterThan(40)
+    expect(attacks.length).toBeLessThanOrEqual(DEFAULT_SET_CAP)
+    for (const c of attacks) expect(isLegal(s, c)).toBeNull()
+  })
+
+  it('attacks: eleven earth Forwards are 2047 parties; bounded to the cap with the singles, the pairs and the full party', () => {
     let s = endPhase(makeGame({ defs: DEFS }))
     const ids: CardId[] = []
-    for (const code of ['V-F1', 'V-F2', 'V-F5', 'V-F7', 'V-F3', 'V-F6', 'V-F8', 'V-F4']) { let id: CardId; [s, id] = withField(s, 0, 'forwards', code); ids.push(id) }
+    for (const code of ['V-F1', 'V-F2', 'V-F5', 'V-F7', 'V-F4', 'V-F1', 'V-F2', 'V-F5', 'V-F7', 'V-F4', 'V-F1']) { let id: CardId; [s, id] = withField(s, 0, 'forwards', code); ids.push(id) }
     const r = legalCommandsWithMeta(s, 0)
     expect(r.capped).toBe(true)
     const attacks = r.commands.filter((c) => c.type === 'declareAttack')
+    expect(attacks.length).toBeLessThanOrEqual(DEFAULT_SET_CAP)
     for (const c of attacks) expect(isLegal(s, c)).toBeNull()
     for (const id of ids) expect(attacks.some((c) => c.type === 'declareAttack' && c.attackers.length === 1 && c.attackers[0] === id)).toBe(true)
-    // The earth party (V-F1, V-F2, V-F5, V-F7, V-F4) and the lightning party (V-F3, V-F6, V-F8, V-F4) are listed whole.
-    expect(attacks.some((c) => c.type === 'declareAttack' && c.attackers.length === 5)).toBe(true)
-    expect(attacks.some((c) => c.type === 'declareAttack' && c.attackers.length === 4)).toBe(true)
+    // The whole earth party (all eleven) is listed even though the sample stops well before size 11.
+    expect(attacks.some((c) => c.type === 'declareAttack' && c.attackers.length === 11)).toBe(true)
     expect(legalCommands(s, 0).length).toBe(r.commands.length)
   })
 

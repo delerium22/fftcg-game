@@ -277,7 +277,7 @@ export function Card(props: CardProps): JSX.Element {
           type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label}
           {...(described ? { 'aria-describedby': descId } : {})}
           {...(tabIndex === undefined ? {} : { tabIndex })}
-          aria-pressed={selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}
+          aria-pressed={chosen || selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}
         >
           <span className="card__face">{face}</span>
         </button>
