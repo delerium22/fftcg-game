@@ -663,6 +663,18 @@ describe('activated abilities on the board (C3-A7)', () => {
     expect(label, 'the source is on the effect side of the colon again').not.toMatch(/: Geomancer\b/)
   })
 
+  it('with its targets named, says what it does TO them the way the target buttons do', () => {
+    // Found by playing Undead Princess from the Break Zone: the button read "Undead Princess's remove from
+    // the game: Choose 1 Earth Forward. It gains +2000 power until the end of the turn on Prishe" — the
+    // printed clause with the name appended, when the name is already the answer to its "Choose".
+    const v = viewFor(dealtGame(1), HUMAN)
+    const princess = instance(v, 930, '19-052C')
+    const prishe = instance(v, 931, '22-068R')
+    const label = describeChoice(v, act(princess, '19-052C:remove', { dullBackups: [], discards: [] }, [prishe]), { payment: false })
+    expect(label).toBe("Undead Princess's remove from the game: Give +2000 power to Prishe")
+    expect(label).not.toContain('Choose 1')
+  })
+
   it('every activated ability in the POOL gets a label shaped card / cost / effect', () => {
     // STRUCTURE only. What the effect text should SAY is pinned by a hand-written table in
     // `packages/cards/test/abilities.test.ts`, checked against the printed cards by eye — because the first

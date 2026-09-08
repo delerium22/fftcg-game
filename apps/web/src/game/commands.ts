@@ -395,6 +395,20 @@ function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTarg
   let node: Extract<Effect, { kind: 'chooseTargets' }> | null = exact?.kind === 'chooseTargets' ? exact : null
   if (!node) { walk(active.ability.effects); node = found.length === 1 ? found[0] ?? null : null }
   if (!node) return null
+  return nodeVerb(node)
+}
+
+/**
+ * The verb of an activated clause whose targets are already named — the clause's ONE top-level `chooseTargets`
+ * node. An activation carries its targets in the command, so the button can say what it does to them the way
+ * the target buttons do; a clause with several choosers keeps its printed wording, as `targetVerb` does.
+ */
+function clauseTargetVerb(clause: Ability): { imperative: string; purpose: string } | null {
+  const nodes = clause.effects.filter((e): e is Extract<Effect, { kind: 'chooseTargets' }> => e.kind === 'chooseTargets')
+  return nodes.length === 1 ? nodeVerb(nodes[0]!) : null
+}
+
+function nodeVerb(node: Extract<Effect, { kind: 'chooseTargets' }>): { imperative: string; purpose: string } | null {
   // EVERY effect the choice applies, not just the first. Hugh Yurg's clause is "+2000 power AND Brave", and
   // naming only the power made the prompt understate what the player was deciding — Brave is the half that
   // changes whether the Forward dulls to attack, so a player picking purely on power is picking blind.
@@ -579,8 +593,14 @@ export function describeChoice(v: PlayerView, c: Command, opts: { payment?: bool
       // Naming the targets is not decoration. `legalCommands` lists one activation per legal target, so
       // without them every target of one ability reads identically — and since `payableKey` now keeps them
       // apart, the player would face four buttons with the same words on them.
+      const paying = withPayment && pay.length ? ` — paying ${pay.join(', ')}` : ''
+      // With targets named, the effect is said the way the target buttons say it — "Give +2000 power to
+      // Prishe" — not the printed clause with the names appended, which read "Choose 1 Earth Forward. It
+      // gains +2000 power until the end of the turn on Prishe" (found by playing Undead Princess).
+      const verb = c.targets.length && clause ? clauseTargetVerb(clause) : null
+      if (verb) return `${choiceName(v, c.source)}'s ${cost}: ${verb.imperative} ${listNames(v, c.targets)}${paying}`
       const on = c.targets.length ? ` on ${listNames(v, c.targets)}` : ''
-      return `${choiceName(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${on}${withPayment && pay.length ? ` — paying ${pay.join(', ')}` : ''}`
+      return `${choiceName(v, c.source)}'s ${cost}${does ? `: ${does}` : ' ability'}${on}${paying}`
     }
     case 'declareAttack': return `Attack with ${c.attackers.map((id) => choiceName(v, id)).join(' + ')}`
     case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${choiceName(v, c.blocker)}`
