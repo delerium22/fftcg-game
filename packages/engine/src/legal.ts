@@ -4,8 +4,9 @@ import { defOf } from './state.js'
 import { discardCheck } from './phases.js'
 import { excessBackupsCheck } from './rules.js'
 import type { Command, Payment } from './commands.js'
-import { enumeratePayments, enumeratePaymentsFor } from './cp.js'
-import { abilityCpRequirement, activationCheck, activationTargetSets, hasAnyActivation } from './activate.js'
+import { canPay, castRequirement, enumeratePayments, enumeratePaymentsFor, generateCp, type CpRequirement } from './cp.js'
+import { IllegalCommandError } from './errors.js'
+import { abilityCpRequirement, activatedAbility, activationCheck, activationTargetSets, hasAnyActivation } from './activate.js'
 import { castCheck, instantSpeedAllowed } from './cast.js'
 import { deckPickCandidates, chooseTargetsCheck } from './resolve.js'
 import { attackCheck, legalBlockers, legalPartyDamageAssignments, partyDamageCheck } from './attack.js'
@@ -113,19 +114,50 @@ export function isLegal(state: GameState, command: Command): string | null {
     case 'activateAbility': {
       const why = activationCheck(state, command.player, command.source, command.abilityId, command.targets)
       if (why) return why
-      // The payment is validated by `apply` (`pay`); the listed payments are the minimal ones, and a
-      // non-minimal one is legal too (§11.2.2.3) — accept any payment that lists for this activation.
-      return legalCommands(state, command.player).some((c) => c.type === 'activateAbility' && c.source === command.source && c.abilityId === command.abilityId
-        && sameSet(c.targets, command.targets) && samePayment(c.payment, command.payment)) ? null : 'no such payment for this activation'
+      // The payment as `apply` validates it: the CP the sources generate covers the requirement. Any
+      // payment, not only a minimal listed one (§11.2.2.3), and a non-listed set of sources too.
+      const ability = activatedAbility(state, command.source, command.abilityId)
+      if (!ability || ability.trigger.kind !== 'activated') return `${command.abilityId} is not an activated ability`
+      return paymentCheck(state, command.player, command.payment, abilityCpRequirement(command.source, ability.trigger.cost))
     }
-    default:
-      return legalCommands(state, command.player).some((c) => JSON.stringify(c) === JSON.stringify(command)) ? null : `${command.type} is not legal here`
+    case 'castCharacter':
+    case 'castSummon': {
+      const why = castCheck(state, command.player, command.card)
+      if (why) return why
+      return paymentCheck(state, command.player, command.payment, castRequirement(state, command.card, command.player))
+    }
+    default: {
+      // The small-answer commands (setup, block, modes, deck picks, the burst, pass): listed by `legalCommands`,
+      // compared structurally so an answer's set order never matters.
+      const same = (a: Command, b: Command): boolean => {
+        if (a.type !== b.type || a.player !== b.player) return false
+        switch (a.type) {
+          case 'chooseFirst': return a.goFirst === (b as typeof a).goFirst
+          case 'mulligan': return a.redraw === (b as typeof a).redraw
+          case 'declareBlock': return a.blocker === (b as typeof a).blocker
+          case 'chooseExBurst': return a.use === (b as typeof a).use
+          case 'chooseMode': return sameSet(a.modes, (b as typeof a).modes)
+          case 'chooseFromDeck': return sameSet(a.picks, (b as typeof a).picks)
+          case 'pass': case 'concede': return true
+          default: return JSON.stringify(a) === JSON.stringify(b)
+        }
+      }
+      return legalCommands(state, command.player).some((c) => same(c, command)) ? null : `${command.type} is not legal here`
+    }
   }
 }
 const sameSet = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && [...a].sort((x, y) => x - y).every((v, i) => v === [...b].sort((x, y) => x - y)[i])
-const samePayment = (a: Payment, b: Payment): boolean =>
-  sameSet(a.dullBackups, b.dullBackups) && a.discards.length === b.discards.length
-  && a.discards.every((d) => b.discards.some((e) => e.card === d.card && e.element === d.element))
+
+/** Does `payment` cover `req`, drawing on sources the player may spend? The engine's own generator decides; an illegal source is its refusal. */
+function paymentCheck(state: GameState, player: PlayerId, payment: Payment, req: CpRequirement): string | null {
+  try {
+    const cp = generateCp(state, player, payment, req.excluded)
+    return canPay(req.amount, req.requiredElements, cp) ? null : `payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}`
+  } catch (e) {
+    if (e instanceof IllegalCommandError) return e.message
+    throw e
+  }
+}
 
 /**
  * Rung J7-D2: the most set-shaped commands one enumeration lists. Below it every legal set is listed as

@@ -92,3 +92,48 @@ describe('J7-A3 — a party built by pressing', () => {
     expect(document.querySelector('.prompt__text')?.textContent).toMatch(/Attack Phase/)
   })
 })
+
+describe('J7-A4 / A5 — "up to N" targets and a discard of exactly `count`', () => {
+  it('"choose up to 2": one press then Confirm submits one target; the strip keeps its "no targets" button', async () => {
+    const { makeDef, withHand } = await import('../../../packages/engine/test/helpers.js')
+    const { apply } = await import('@fftcg/engine')
+    const UP_TO_2 = {
+      id: 'T-UP2:etb', trigger: { kind: 'enterField' as const }, text: 'choose up to 2 Forwards, dull them',
+      effects: [{ kind: 'chooseTargets' as const, min: 0, max: 2, from: { zone: 'forwards' as const, controller: 'opponent' as const }, then: [{ kind: 'dull' as const }] }],
+    }
+    let s = makeGame({ defs: [...VANILLA_POOL, makeDef({ code: 'T-UP2', cost: 0, hasAbilities: true, abilityClauses: 1, abilities: [UP_TO_2] })] })
+    const theirs: CardId[] = []
+    for (let i = 0; i < 3; i++) { let id: CardId; [s, id] = withField(s, 1, 'forwards', 'V-F1'); theirs.push(id) }
+    const [withCard, card] = withHand(s, 0, 'T-UP2')
+    s = apply(withCard, { type: 'castCharacter', player: 0, card, payment: { dullBackups: [], discards: [] } }).state
+    expect(s.pending?.kind).toBe('chooseTargets')
+    const { chosen } = mount(s)
+    // The singleton is a plain commit on the sheet; "Choose several…" starts the picker.
+    press(cardButton(theirs[0]!))
+    const labels = sheetButtons().map((b) => b.textContent?.trim())
+    expect(labels).toContain('Choose several…')
+    press(sheet()!.querySelector('[data-sheet-action="select"]'))
+    expect(command('selectConfirm')!.disabled, 'one target is a legal answer to "up to 2"').toBe(false)
+    press(command('selectConfirm'))
+    expect(chosen[0]!.command).toEqual({ type: 'chooseTargets', player: HUMAN, targets: [theirs[0]] })
+  })
+
+  it('discard to hand size with 7 cards: Confirm waits for exactly `count`, and a third is not offered', async () => {
+    const { withHand, withHandSize } = await import('../../../packages/engine/test/helpers.js')
+    let s = withHandSize(makeGame({ defs: VANILLA_POOL }), 0, 0)
+    const hand: CardId[] = []
+    for (let i = 0; i < 7; i++) { let id: CardId; [s, id] = withHand(s, 0, 'V-F1'); hand.push(id) }
+    s = { ...s, phase: 'end', pending: { kind: 'discardToHandSize', player: 0, count: 2 } }
+    const { chosen } = mount(s)
+    press(cardButton(hand[0]!))
+    expect(sheetButtons().map((b) => b.textContent?.trim())).toContain('Discard several…')
+    press(sheet()!.querySelector('[data-sheet-action="select"]'))
+    expect(command('selectConfirm')!.disabled, 'one of two is not enough').toBe(true)
+    expect(document.querySelector('.prompt__text')?.textContent).toMatch(/1 of 2 chosen/)
+    press(cardButton(hand[1]!))
+    expect(command('selectConfirm')!.disabled).toBe(false)
+    expect(cardButton(hand[2]!)!.getAttribute('aria-label'), 'a third is not offered').not.toMatch(/Press to add/)
+    press(command('selectConfirm'))
+    expect(chosen[0]!.command).toEqual({ type: 'discardToHandSize', player: HUMAN, cards: [hand[0], hand[1]] })
+  })
+})
