@@ -270,6 +270,11 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
         const byValue = [...state.players[player].hand].sort((a, b) => cardValue(defOf(state, a)) - cardValue(defOf(state, b)))
         return [{ type: 'discardToHandSize', player, cards: byValue.slice(0, pending.count) }]
       }
+      // §12.4.8 (rung J4): the same shape as the hand discard — the lowest-valued Backups go.
+      case 'breakExcessBackups': {
+        const byValue = state.players[player].backups.map((c) => c.id).sort((a, b) => cardValue(defOf(state, a)) - cardValue(defOf(state, b)))
+        return [{ type: 'breakExcessBackups', player, cards: byValue.slice(0, pending.count) }]
+      }
       case 'declareBlock': return [{ type: 'declareBlock', player, blocker: null }, ...legalBlockers(state, player).map((blocker) => ({ type: 'declareBlock' as const, player, blocker }))]
       case 'assignPartyDamage': return legalPartyDamageAssignments(state).map((assignments) => ({ type: 'assignPartyDamage' as const, player, assignments }))
       case 'chooseTargets': return chooseTargetsCandidates(state, player, pending)

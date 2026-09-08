@@ -75,7 +75,7 @@ export type Event =
   | { type: 'exBurstUsed'; player: PlayerId; card: CardId; abilityId: string }
   | { type: 'exBurstDeclined'; player: PlayerId; card: CardId; abilityId: string }
   | { type: 'broken'; card: CardId }                                   // §12.4.5 damage ≥ power
-  | { type: 'putIntoBreakZone'; card: CardId; reason: 'zeroPower' }     // §12.4.4
+  | { type: 'putIntoBreakZone'; card: CardId; reason: 'zeroPower' | 'sameName' | 'lightDark' | 'backupLimit' }     // §12.4.4, §12.4.6–8 (rung J4)
   // --- ability resolution (spec C1-3) ---
   /** Emitted when a triggered clause is PLACED (rung J1-D13). `cause` is the frame's own trigger event, so the log never has to reconstruct it from event order. */
   | { type: 'abilityTriggered'; player: PlayerId; card: CardId; abilityId: string; cause?: TriggerEvent | null }

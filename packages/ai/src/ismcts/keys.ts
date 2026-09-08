@@ -242,6 +242,7 @@ export function actionKey(view: PlayerView, command: Command): ActionKey {
     case 'assignPartyDamage':
       return `${head}${FIELD}${joinTagged(command.assignments.map((a) => [r(a.target), String(a.amount)] as const))}`
     case 'discardToHandSize':
+    case 'breakExcessBackups':
       return `${head}${FIELD}${joinRefs(command.cards.map(r))}`
     case 'chooseTargets':
       return `${head}${FIELD}${joinRefs(command.targets.map(r))}`
@@ -392,6 +393,12 @@ const DECODERS: Record<Command['type'], Decoder> = {
     const cards = ids(args[0])
     if (!pending || !cards || cards.length !== pending.count || !distinct(cards)) return null
     return { type: 'discardToHandSize', player, cards }
+  },
+  breakExcessBackups: ({ player, args, ids, pendingIs }) => {
+    const pending = pendingIs('breakExcessBackups')
+    const cards = ids(args[0])
+    if (!pending || !cards || cards.length !== pending.count || !distinct(cards)) return null
+    return { type: 'breakExcessBackups', player, cards }
   },
   chooseTargets: ({ player, args, ids, pendingIs }) => {
     const pending = pendingIs('chooseTargets')
@@ -572,6 +579,7 @@ function pendingDigest(view: PlayerView, pending: Pending | null): string {
     case 'chooseExBurst':
       return `${head}/${r(pending.card)}/${pending.abilityId}`
     case 'discardToHandSize':
+    case 'breakExcessBackups':
       return `${head}/${pending.count}`
     case 'chooseTargets':
       return `${head}/${pending.min}-${pending.max}/${joinRefs(pending.candidates.map(r))}`

@@ -119,6 +119,7 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'declareBlock': return c.blocker === null ? 'No block' : `Block with ${cardName(v, c.blocker)}`
     case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${cardName(v, a.target)}`).join(', ')}`
     case 'discardToHandSize': return `Discard ${c.cards.map((id) => cardName(v, id)).join(', ')}`
+    case 'breakExcessBackups': return `Put ${c.cards.map((id) => cardName(v, id)).join(', ')} into the Break Zone`
     case 'activateAbility': {
       const pay = [...c.payment.dullBackups.map((id) => `dull ${cardName(v, id)}`), ...c.payment.discards.map((d) => `discard ${cardName(v, d.card)} as ${d.element}`)]
       const cost = abilityCostOf(v, c.source, c.abilityId)

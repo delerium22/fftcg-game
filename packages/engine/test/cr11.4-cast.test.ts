@@ -5,7 +5,7 @@ import { drainResolution } from '../src/resolve.js'
 import { makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 import type { GameState } from '../src/state.js'
 
-const NAMED = [...VANILLA_POOL, makeDef({ code: 'V-N1', name: 'Cloud', cost: 1, power: 3000 }), makeDef({ code: 'V-N2', name: 'Cloud', cost: 1, power: 3000 }), makeDef({ code: 'V-G1', name: 'Red Mage', generic: true, cost: 1, power: 3000 })]
+const NAMED = [...VANILLA_POOL, makeDef({ code: 'V-N1', name: 'Cloud', generic: false, cost: 1, power: 3000 }), makeDef({ code: 'V-N2', name: 'Cloud', generic: false, cost: 1, power: 3000 }), makeDef({ code: 'V-G1', name: 'Red Mage', generic: true, cost: 1, power: 3000 })]
 
 function ready() {
   let s = makeGame({ defs: NAMED })
@@ -126,7 +126,10 @@ describe('castBlocker — the structured reason a cast is refused (rung I1)', ()
     ;[s, b] = withHand(s, 0, 'V-B3')
     const five = { ...s, players: [{ ...s.players[0], backups: [...s.players[0].backups, ...s.players[0].backups, ...s.players[0].backups] }, s.players[1]] as GameState['players'] }
     expect(castBlocker(five, 0, b)).toBe('backupsFull')
+    // The vanilla pool is generic (rung J4), so the same-name guard is shown on a NAMED pair: a non-generic
+    // twin of a card already on the field.
     let twin: number
+    ;[s] = withField({ ...s, defs: { ...s.defs, 'V-B1': { ...s.defs['V-B1']!, generic: false } } }, 0, 'backups', 'V-B1')
     ;[s, twin] = withHand(s, 0, 'V-B1')
     expect(castBlocker(s, 0, twin)).toBe('sameName')
   })

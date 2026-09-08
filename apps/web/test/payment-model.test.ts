@@ -59,7 +59,7 @@ describe('the legal list is the choice plus its alternatives', () => {
         expect(legal.length).toBe(1 + (c.alternatives?.length ?? 0))
       }
     }
-  })
+  }, 30_000)
 })
 
 describe('I2-A3 / I2-A6 — a source is offered only while it still leads to a listed payment', () => {

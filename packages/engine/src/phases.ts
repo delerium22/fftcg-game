@@ -134,6 +134,7 @@ export function finishEndPhase(state: GameState): [GameState, Event[]] {
   }
   const [ruled, events] = runRuleProcesses(s)   // §9.5.1.4
   if (ruled.result) return [ruled, events]
+  if (ruled.pending) return [ruled, events]   // §12.4.8 owes a choice (rung J4): the next turn starts once it is answered (`apply`)
   const [next, more] = startTurn(ruled, ruled.turn + 1, opponentOf(ruled.turnPlayer))   // §9.5.1.5
   return [next, [...events, ...more]]
 }

@@ -389,7 +389,7 @@ function commandCardIds(c: Command): CardId[] {
     case 'declareAttack': return c.attackers
     case 'declareBlock': return c.blocker === null ? [] : [c.blocker]
     case 'assignPartyDamage': return c.assignments.map((a) => a.target)
-    case 'discardToHandSize': return c.cards
+    case 'discardToHandSize': case 'breakExcessBackups': return c.cards
     // C1: ability targets are card ids like any other. `chooseMode` answers are indices into the pending's
     // printed labels, not ids, so it has none to check.
     case 'chooseTargets': return [...c.targets]

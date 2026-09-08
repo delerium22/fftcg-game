@@ -579,6 +579,7 @@ export function describeChoice(v: PlayerView, c: Command, opts: { payment?: bool
     case 'declareBlock': return c.blocker === null ? "Don't block" : `Block with ${choiceName(v, c.blocker)}`
     case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${choiceName(v, a.target)}`).join(', ')}`
     case 'discardToHandSize': return `Discard ${c.cards.map((id) => choiceName(v, id)).join(', ')}`
+    case 'breakExcessBackups': return `Put ${c.cards.map((id) => choiceName(v, id)).join(', ')} into the Break Zone`
     case 'pass': return 'Pass'
     case 'concede': return 'Concede'
   }
@@ -659,6 +660,7 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   monster: 'Monsters are not supported in this build',
   backupsFull: 'You already have five Backups',
   sameName: 'You already control a card with this name',
+  lightDark: 'You already control a Light or Dark card',
 }
 export function castBlockerText(v: PlayerView, card: CardId, castable: boolean): string | null {
   if (castable || !v.hand.includes(card)) return null
@@ -731,6 +733,7 @@ export function promptFor(v: PlayerView, legal: readonly Command[]): string {
       case 'chooseFirst': return 'Choose who goes first'
       case 'mulligan': return 'Keep your hand or mulligan'
       case 'discardToHandSize': return `Discard down to ${HAND_SIZE_LIMIT} cards`
+      case 'breakExcessBackups': return `Put ${v.pending.count} Backup${v.pending.count === 1 ? '' : 's'} into the Break Zone — five at most`
       case 'declareBlock': return blockPrompt(v)
       case 'assignPartyDamage': return 'Assign combat damage'
       // Both ability prompts name the card that is asking and what the choice is FOR — "choose 2 targets" tells
@@ -852,7 +855,7 @@ function subjectsOf(c: Command): CardId[] {
     case 'declareAttack': return c.attackers
     case 'declareBlock': return c.blocker === null ? [] : [c.blocker]
     case 'assignPartyDamage': return c.assignments.map((a) => a.target)
-    case 'discardToHandSize': return c.cards
+    case 'discardToHandSize': case 'breakExcessBackups': return c.cards
     // Spec B-A4 + C1-6: the subjects of a target answer are exactly its targets, so the board lights up the
     // legal candidates and nothing else — clicking one is how the set gets picked.
     case 'chooseTargets': return [...c.targets]
@@ -989,7 +992,7 @@ export function sameCommand(a: Command, b: Command): boolean {
       const other = (b as typeof a).assignments.map(key).sort()
       return a.assignments.length === other.length && a.assignments.map(key).sort().every((k, i) => k === other[i])
     }
-    case 'discardToHandSize': return sameIds(a.cards, (b as typeof a).cards)
+    case 'discardToHandSize': case 'breakExcessBackups': return sameIds(a.cards, (b as typeof a).cards)
     case 'chooseTargets': return sameIds([...a.targets], [...(b as typeof a).targets])
     case 'chooseMode': return sameIds([...a.modes], [...(b as typeof a).modes])
     case 'chooseFromDeck': return sameIds([...a.picks], [...(b as typeof a).picks])

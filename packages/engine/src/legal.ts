@@ -97,6 +97,9 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
       case 'discardToHandSize':
         for (const cards of combinations(state.players[player].hand, pending.count)) out.push({ type: 'discardToHandSize', player, cards })
         break
+      case 'breakExcessBackups':   // §12.4.8 (rung J4)
+        for (const cards of combinations(state.players[player].backups.map((c) => c.id), pending.count)) out.push({ type: 'breakExcessBackups', player, cards })
+        break
       case 'declareBlock':
         out.push({ type: 'declareBlock', player, blocker: null })
         for (const blocker of legalBlockers(state, player)) out.push({ type: 'declareBlock', player, blocker })

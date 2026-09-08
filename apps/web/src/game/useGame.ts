@@ -126,7 +126,7 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'battleDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
     case 'playerDamaged': return { kind: 'event', text: `${who(v, e.player)} take${e.player === v.me ? '' : 's'} 1 damage` }
     case 'broken': return { kind: 'event', text: `${qualifiedName(v, e.card)} is broken` }
-    case 'putIntoBreakZone': return { kind: 'event', text: `${qualifiedName(v, e.card)} is put into the Break Zone (0 power)` }
+    case 'putIntoBreakZone': return { kind: 'event', text: `${qualifiedName(v, e.card)} is put into the Break Zone (${BREAK_ZONE_WHY[e.reason]})` }
     // --- ability resolution (rung C1). The choice itself is already a move line — the human's from `choose`,
     // the AI's from `stepAi` — so these narrate what triggered and what it DID, closing the loop between the
     // printed text box and the board state the player is looking at.
@@ -409,6 +409,11 @@ function narrateApply(
  * the AI chose to go second — but read as one voice they contradict each other, and the outcome line names the
  * beneficiary rather than the chooser, so nothing on screen said who had decided.
  */
+/** Why a rule process put a card into the Break Zone (§12.4.4, §12.4.6–8), in the player's words. */
+const BREAK_ZONE_WHY: Record<'zeroPower' | 'sameName' | 'lightDark' | 'backupLimit', string> = {
+  zeroPower: '0 power', sameName: 'two of the same name', lightDark: 'a second Light or Dark card', backupLimit: 'more than five Backups',
+}
+
 export const moveLine = (actor: PlayerId, label: string): LogLine =>
   ({ kind: actor === HUMAN ? 'human' : 'ai', text: `${actor === HUMAN ? 'You' : 'The AI'}: ${label}` })
 

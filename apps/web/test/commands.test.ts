@@ -62,6 +62,9 @@ describe('describeChoice', () => {
     const mine = view.hand[0] as CardId
     const label = describeChoice(view, { type: 'discardToHandSize', player: HUMAN, cards: [mine] })
     expect(label).toBe(`Discard ${view.defs[view.cards[mine]!.code]!.name}`)
+    // §12.4.8 (rung J4): unreachable by play in this pool, so its label is pinned here rather than by B-A2.
+    expect(describeChoice(view, { type: 'breakExcessBackups', player: HUMAN, cards: [mine] }))
+      .toBe(`Put ${view.defs[view.cards[mine]!.code]!.name} into the Break Zone`)
     expect(describeChoice(view, { type: 'declareAttack', player: HUMAN, attackers: [99_999] })).toBe('Attack with #99999')
   })
 })

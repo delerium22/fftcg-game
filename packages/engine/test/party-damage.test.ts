@@ -74,6 +74,12 @@ const LIGHTNING_OPPONENT_BROKEN: Ability = {
 }
 
 const LUSO: CardDef = { ...printed('27-125S'), abilityClauses: 2, abilities: [LUSO_DAMAGES_FORWARD, LUSO_DAMAGES_OPPONENT] }
+/**
+ * Two Lusos on ONE field: since rung J4 the §12.4.6 rule process puts two non-generic same-name Characters
+ * into the Break Zone the moment anything settles, so the fixtures that need a pair use this GENERIC printing
+ * of the same card — the attribution mechanism under test does not read the generic icon.
+ */
+const LUSO_GENERIC: CardDef = { ...LUSO, generic: true }
 const PRISHE: CardDef = { ...printed('22-068R'), abilityClauses: 2, abilities: [PRISHE_DAMAGES_OPPONENT] }
 const LIGHTNING: CardDef = { ...printed('27-127S'), abilityClauses: 2, abilities: [LIGHTNING_ETB, LIGHTNING_OPPONENT_BROKEN] }
 /** A Monster, so "1 Character" is tested against all three Character types and not just two (spec C2-9). */
@@ -149,7 +155,7 @@ describe('C2-A6: a Luso in an unblocked PARTY triggers wherever it sits in field
   }
 
   it('two Lusos in one party are two separate occurrences, one frame each', () => {
-    let s = makeGame({ defs: [...VANILLA_POOL, LUSO] })
+    let s = makeGame({ defs: [...VANILLA_POOL, LUSO_GENERIC] })
     let a: CardId, b: CardId
     ;[s, a] = withField(s, 0, 'forwards', '27-125S')
     ;[s, b] = withField(s, 0, 'forwards', '27-125S')
@@ -324,7 +330,7 @@ describe('a live state and its DETERMINISATION resolve a player-damage trigger i
   it('same states, events, pending and resolution queue', () => {
     // `observer-triggers.test.ts` pins the zone-change half; C2-A12 asks for both. This is the half that rides on
     // `at.attackers` — hit order comes from the party, and `determinise` has to reproduce it exactly.
-    let s = makeGame({ defs: [...VANILLA_POOL, LUSO] })
+    let s = makeGame({ defs: [...VANILLA_POOL, LUSO_GENERIC] })
     let a: CardId, b: CardId, theirs: CardId
     ;[s, a] = withField(s, 0, 'forwards', '27-125S')
     ;[s, b] = withField(s, 0, 'forwards', '27-125S')

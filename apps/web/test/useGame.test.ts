@@ -488,6 +488,8 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
       // G3. Added because a code review noticed it was missing: the set is what makes this test a claim about
       // EVERY command, and a new command type that is not in it is a command the UI is never checked to reach.
       'chooseExBurst',
+      // NOT `breakExcessBackups` (§12.4.8, rung J4): no effect in this pool can put a sixth Backup onto the
+      // field, so the pending is unreachable by play; its UI is pinned by commands.test.ts instead.
     ])
     // The seed range has to be generous: abilities roughly HALVE game length (the greedy-vs-random gate went
     // from 23.7 average turns to 12.5), so a short game reaches the discard limit and an affordable Summon far

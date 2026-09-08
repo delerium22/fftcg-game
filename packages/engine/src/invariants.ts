@@ -60,7 +60,8 @@ export function checkInvariants(state: GameState): string[] {
         if (!inst || !state.defs[inst.code]) problems.push(`field card ${c.id} has no definition`)
       }
     }
-    if (ps.backups.length > MAX_BACKUPS) problems.push(`P${p} controls ${ps.backups.length} backups`)
+    // Rung J4: a sixth Backup is legal exactly while §12.4.8's choice is owed by its controller.
+    if (ps.backups.length > MAX_BACKUPS && !(state.pending?.kind === 'breakExcessBackups' && state.pending.player === p)) problems.push(`P${p} controls ${ps.backups.length} backups`)
   }
   // The stack is a zone (§7.12, rung J1): a Summon on it is in exactly one place, here — and a Summon still
   // declaring its choices on the way there (`resolution.placing`) is already off the hand and counts too.

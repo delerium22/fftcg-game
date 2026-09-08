@@ -243,7 +243,7 @@ export type StaticCondition =
 export type ActivationSourceZone = 'field' | 'hand' | 'breakZone'
 
 /** Mirrors `ZoneTransition.reason` (rules.ts); declared here so the trigger event can carry it without a cycle. */
-export type ZoneTransitionReason = 'zeroPower' | 'damage' | 'ability' | 'cost'
+export type ZoneTransitionReason = 'zeroPower' | 'damage' | 'ability' | 'cost' | 'sameName' | 'lightDark' | 'backupLimit'
 
 /**
  * What activating costs. Every part is paid at once or the activation is not legal at all (§11.6.10) — there

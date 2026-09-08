@@ -9,8 +9,13 @@ import { hasResolutionWork } from '../src/abilities.js'
 import type { Command } from '../src/commands.js'
 import type { Event } from '../src/events.js'
 
+/**
+ * GENERIC by default (rung J4): fixtures put several copies of one vanilla code on a field, and §12.4.6 would
+ * put two non-generic same-name cards straight into the Break Zone. A test about the name rules says
+ * `generic: false` itself.
+ */
 export function makeDef(over: Partial<CardDef> & { code: string }): CardDef {
-  return { name: over.code, type: 'forward', elements: ['earth'], cost: 2, power: 5000, keywords: [], generic: false, exBurst: false, text: '', hasAbilities: false, ...over }
+  return { name: over.code, type: 'forward', elements: ['earth'], cost: 2, power: 5000, keywords: [], generic: true, exBurst: false, text: '', hasAbilities: false, ...over }
 }
 
 /** 18 distinct codes so deckOf() can build a legal 50-card deck (≤3 copies each needs ≥17 codes). */

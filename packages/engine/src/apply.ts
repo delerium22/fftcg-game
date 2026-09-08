@@ -7,10 +7,10 @@ import { IllegalCommandError } from './errors.js'
 import { applyActivateAbility } from './activate.js'
 import { actingPlayer } from './legal.js'
 import { applyChooseFirst, applyMulligan } from './setup.js'
-import { applyDiscardToHandSize, applyPass } from './phases.js'
+import { applyDiscardToHandSize, applyPass, finishEndPhase } from './phases.js'
 import { applyCastCharacter, applyCastSummon } from './cast.js'
 import { applyAssignPartyDamage, applyChooseExBurst, applyDeclareAttack, applyDeclareBlock } from './attack.js'
-import { runRuleProcesses } from './rules.js'
+import { applyBreakExcessBackups, runRuleProcesses } from './rules.js'
 import { advanceAgenda, applyChooseFromDeck, applyChooseMode, applyChooseTargets, clearStackAtGameOver } from './resolve.js'
 
 export interface ApplyResult { state: GameState; events: Event[] }
@@ -45,7 +45,7 @@ function settle(state: GameState): [GameState, Event[]] {
     if (!s.resolution.active) {
       const [ruled, ruleEvents] = runRuleProcesses(s)
       s = ruled; events.push(...ruleEvents)
-      if (s.result) break
+      if (s.result || s.pending) break   // over, or a rule process owes a choice (§12.4.8, rung J4)
       if (!hasResolutionWork(s.resolution)) break   // settled, and rule processes have run
     }
     const [advanced, advanceEvents] = advanceAgenda(s)
@@ -74,6 +74,12 @@ export function apply(state: GameState, command: Command): ApplyResult {
       case 'declareBlock': [s, events] = applyDeclareBlock(state, command.player, command.blocker); break
       case 'assignPartyDamage': [s, events] = applyAssignPartyDamage(state, command.player, command.assignments); break
       case 'discardToHandSize': [s, events] = applyDiscardToHandSize(state, command.player, command.cards); break
+      case 'breakExcessBackups': {
+        [s, events] = applyBreakExcessBackups(state, command.player, command.cards)
+        // §12.4.8 interrupted the End Phase's own rule-process pass (§9.5.1.4): resume it now that the field is legal.
+        if (s.phase === 'end' && !s.pending) { const [t, more] = finishEndPhase(s); s = t; events = [...events, ...more] }
+        break
+      }
       case 'chooseTargets': [s, events] = applyChooseTargets(state, command.player, command.targets); break
       case 'chooseExBurst': [s, events] = applyChooseExBurst(state, command.player, command.use); break
       case 'chooseMode': [s, events] = applyChooseMode(state, command.player, command.modes); break

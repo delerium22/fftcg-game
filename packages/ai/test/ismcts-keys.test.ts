@@ -203,6 +203,7 @@ describe('totality and normalisation (contract 4)', () => {
       { type: 'declareBlock', player: 0, blocker: null },
       { type: 'assignPartyDamage', player: 0, assignments: [{ target: f, amount: 2000 }] },
       { type: 'discardToHandSize', player: 0, cards: [h] },
+      { type: 'breakExcessBackups', player: 0, cards: [b] },   // §12.4.8 (rung J4)
       { type: 'chooseTargets', player: 0, targets: [f] },
       { type: 'chooseMode', player: 0, modes: [0] },
       { type: 'pass', player: 0 },

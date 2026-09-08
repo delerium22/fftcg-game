@@ -73,6 +73,8 @@ export type Pending =
   | { kind: 'chooseFirst'; player: PlayerId }
   | { kind: 'mulligan'; player: PlayerId }
   | { kind: 'discardToHandSize'; player: PlayerId; count: number }
+  /** §12.4.8 (rung J4): this player controls more than five Backups and must put `count` of them into the Break Zone. */
+  | { kind: 'breakExcessBackups'; player: PlayerId; count: number }
   | { kind: 'declareBlock'; player: PlayerId }          // §10.1.3.1
   | { kind: 'assignPartyDamage'; player: PlayerId }     // §10.1.4.2.1
   /**

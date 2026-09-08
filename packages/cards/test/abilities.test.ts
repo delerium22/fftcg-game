@@ -1470,12 +1470,10 @@ describe('24-063H Hugh Yurg — "you may search for 1 Earth Forward of cost 1 an
     ok(done.state)
   })
 
-  it('can find a second copy of a name already on the field — a PINNED deviation, not an accident', () => {
-    // MVP0-SIMPLIFICATION (§7.7.3/§12.4.6): casting a second non-generic same-name Character is illegal here,
-    // but entry by ABILITY is not checked, so the search places it. The CR agrees the entry happens — §7.7.3
-    // prohibits simultaneous deployment, and §12.4.6 then breaks ALL copies of that name — so the deviation is
-    // the missing rule process, not the placement. This pins the current behaviour so the day §12.4.6 lands,
-    // this test fails and says exactly what has to change.
+  it('finding a second copy of a name already on the field puts BOTH into the Break Zone (§7.7.3, §12.4.6 — rung J4)', () => {
+    // The search is allowed to place the second copy — §7.7.3 prohibits the ACTION that would deploy a
+    // duplicate, not an effect doing so — and the §12.4.6 rule process then puts every copy of that name into
+    // the Break Zone. Before rung J4 this test pinned the missing process (the second copy simply stayed).
     let s = makeGame()
     ;[s] = withCp(s, 0, Array<string>(4).fill(EARTH_BACKUP))
     let standing: CardId
@@ -1496,8 +1494,10 @@ describe('24-063H Hugh Yurg — "you may search for 1 Earth Forward of cost 1 an
     const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [0] })
 
     const names = done.state.players[0].forwards.map((c) => defOf(done.state, c.id).name)
-    expect(names.filter((n) => n === defOf(done.state, standing).name)).toHaveLength(2)
-    expect(done.state.players[0].forwards.map((c) => c.id)).toContain(found[0])
+    expect(names.filter((n) => n === defOf(done.state, standing).name), 'no copy of the name may stay').toHaveLength(0)
+    expect(done.state.players[0].breakZone).toContain(found[0])
+    expect(done.state.players[0].breakZone).toContain(standing)
+    expect(done.events).toContainEqual({ type: 'putIntoBreakZone', card: found[0], reason: 'sameName' })
     ok(done.state)
   })
 
@@ -1609,7 +1609,10 @@ describe('27-126S Sphene — "[0]: Choose 1 Forward other than Sphene put in you
         ;[s, victim] = withField(s, 1, 'forwards', '27-124S')
         let caster: CardId
         ;[s, caster] = withHand(s, 0, '27-127S')
-        ;[s] = withCp(s, 0, Array<string>(defOf(s, caster).cost).fill(LIGHTNING_BACKUP))
+        // Five Backups at most (§7.7.4 — rung J4 makes a sixth a rule-process choice); the rest of Lightning's
+        // cost is paid by discarding from the dealt hand, which `legalCommands` enumerates.
+        ;[s] = withCp(s, 0, Array<string>(Math.min(5, defOf(s, caster).cost)).fill(LIGHTNING_BACKUP))
+        ;[s] = withHand(s, 0, LIGHTNING_BACKUP)   // the discard that pays the rest (2 CP)
         const cast = legalCommands(s, 0).find((c) => c.type === 'castCharacter' && c.card === caster)
         expect(cast, 'the ability-break fixture could not cast').toBeDefined()
         let r = apply(s, cast!)
@@ -1681,9 +1684,12 @@ describe('27-126S Sphene — "[0]: Choose 1 Forward other than Sphene put in you
     // limits the ability once per PLAYER per turn, which is not what "this ability" means.
     //
     // The board below is not reachable by legal play — §7.7.3 forbids deploying a second non-generic
-    // same-name Character, and no card in this pool both has a `oncePerTurn` ability and is generic. The
-    // MECHANISM is still what is under test, and building the state directly is the only way to see it.
+    // same-name Character, and since rung J4 the §12.4.6 rule process would put both Spheres into the Break
+    // Zone the moment anything settled. No card in this pool both has a `oncePerTurn` ability and is generic,
+    // so for THIS test Sphene's printing is made generic: the MECHANISM (a per-instance allowance) is what is
+    // under test, and the generic icon changes nothing about it.
     let s = makeGame(); let one: CardId; let two: CardId; let victim: CardId
+    s = { ...s, defs: { ...s.defs, '27-126S': { ...s.defs['27-126S']!, generic: true } } }
     ;[s, one] = withField(s, 0, 'forwards', '27-126S')
     ;[s, two] = withField(s, 0, 'forwards', '27-126S')
     ;[s, victim] = withField(s, 0, 'forwards', '27-124S')

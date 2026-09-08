@@ -11,6 +11,8 @@ export type Command =
   | { type: 'declareBlock'; player: PlayerId; blocker: CardId | null }
   | { type: 'assignPartyDamage'; player: PlayerId; assignments: { target: CardId; amount: number }[] }
   | { type: 'discardToHandSize'; player: PlayerId; cards: CardId[] }
+  /** Answers a `breakExcessBackups` pending (§12.4.8, rung J4): exactly `count` of the player's own Backups. */
+  | { type: 'breakExcessBackups'; player: PlayerId; cards: CardId[] }
   /**
    * Answers a `chooseExBurst` pending (rung G3, §11.10): use the burst, or decline it.
    *

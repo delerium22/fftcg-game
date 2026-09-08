@@ -27,7 +27,7 @@ function commandCardIds(c: Command): readonly CardId[] {
     case 'declareAttack': return c.attackers
     case 'declareBlock': return c.blocker === null ? [] : [c.blocker]
     case 'assignPartyDamage': return c.assignments.map((a) => a.target)
-    case 'discardToHandSize': return c.cards
+    case 'discardToHandSize': case 'breakExcessBackups': return c.cards
     case 'chooseTargets': return c.targets
     case 'activateAbility': return [c.source, ...c.payment.dullBackups, ...c.payment.discards.map((d) => d.card)]
     // `chooseFromDeck` answers with INDICES, so like `chooseMode` it carries no card id to check.

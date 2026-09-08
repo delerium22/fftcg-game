@@ -6,6 +6,7 @@ import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { canPay, castRequirement, generateCp, pay } from './cp.js'
+import { controlsLightOrDark } from './rules.js'
 import { putOntoField, targetCandidates, warnUnimplemented } from './resolve.js'
 
 /**
@@ -14,7 +15,7 @@ import { putOntoField, targetCandidates, warnUnimplemented } from './resolve.js'
  * same decision, and is derived from this so the two cannot disagree. Neither says anything about CP: a
  * `null` here with no legal payment means "cannot afford it", which is the caller's to phrase.
  */
-export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'noTarget'
+export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'lightDark' | 'noTarget'
 
 /** The Attack Phase steps in which priority is held — where a Summon or an action ability may be used (§9.3.1.6–7, J1-D10). */
 export const ATTACK_WINDOWS: readonly AttackStep[] = ['preparation', 'declared', 'blocked', 'damage']
@@ -71,15 +72,14 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
   if (state.pending) return 'pending'
   if (state.stack.length > 0) return 'stackNotEmpty'
   if (def.type === 'monster') return 'monster'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
-  // MVP0-SIMPLIFICATION: §7.7.4 is normally a rule process (§12.4.8) that keeps a 6th Backup off the field; here casting one is simply illegal.
+  // §7.7.3–5: an ACTION that would exceed a field limit is prohibited — the cast is refused. An EFFECT that
+  // exceeds one is allowed and the §12.4.6–8 rule processes repair the field (rung J4, rules.ts).
   if (def.type === 'backup' && ps.backups.length >= MAX_BACKUPS) return 'backupsFull'
   if (!def.generic) {
-    // MVP0-SIMPLIFICATION: §7.7.3 only prohibits *simultaneous* deployment; casting a second non-generic
-    // same-name Character is legal and §12.4.6 then puts ALL copies into the Break Zone as a rule process.
-    // Here the cast is simply illegal. §12.4.6/§12.4.7 are MVP3 work.
     const clash = [...ps.forwards, ...ps.backups].some((c) => { const d = defOf(state, c.id); return !d.generic && d.name === def.name })
     if (clash) return 'sameName'
   }
+  if (def.elements.some((e) => e === 'light' || e === 'dark') && controlsLightOrDark(state, player)) return 'lightDark'
   return null
 }
 
@@ -94,6 +94,7 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   monster: 'monsters unsupported in MVP0',
   backupsFull: `you already control ${MAX_BACKUPS} backups (§7.7.4)`,
   sameName: 'you already control a non-generic character with the same name (§7.7.3)',
+  lightDark: 'you already control a Light or Dark card (§7.7.5)',
   noTarget: 'this Summon has no legal target to choose (§11.3.3)',
 }
 
