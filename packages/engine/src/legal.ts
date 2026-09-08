@@ -89,6 +89,29 @@ export function forcedPass(state: GameState): Command | null {
   return { type: 'pass', player }
 }
 
+/**
+ * The one command a position with NO decision in it admits, or null when the holder has a real choice (rung
+ * K2). `forcedPass` covers the pass-only response windows; this adds the two Attack Phase steps that are the
+ * holder's own decision in name only, found by playing: the block declaration when no Forward of theirs is
+ * active (the strip read "Choose a blocker" over a single "Don't block"), and the attack declaration when no
+ * Forward can attack (a single "Pass"). The browser settles these in the same step as the move that reached
+ * them; the AI's rollouts keep asking `forcedPass` — a combat step is a ply they price themselves.
+ */
+export function forcedDecision(state: GameState): Command | null {
+  const forced = forcedPass(state)
+  if (forced) return forced
+  const player = actingPlayer(state)
+  if (player === null) return null
+  if (state.pending?.kind === 'declareBlock' && state.pending.player === player) {
+    return legalBlockers(state, player).length === 0 ? { type: 'declareBlock', player, blocker: null } : null
+  }
+  if (!state.pending && state.phase === 'attack' && state.attack?.step === 'declaration' && state.priority === player) {
+    const canAttack = state.players[player].forwards.some((c) => attackCheck(state, player, [c.id]) === null)
+    return canAttack ? null : { type: 'pass', player }
+  }
+  return null
+}
+
 
 function combinations<T>(items: T[], k: number): T[][] {
   if (k === 0) return [[]]

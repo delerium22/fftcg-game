@@ -4,7 +4,7 @@ import type { CardDef } from '../src/types.js'
 import type { CardId, GameState } from '../src/state.js'
 import { findFieldCard } from '../src/state.js'
 import { apply } from '../src/apply.js'
-import { actingPlayer, forcedPass, isResponseWindow, legalCommands } from '../src/legal.js'
+import { actingPlayer, forcedDecision, forcedPass, isResponseWindow, legalCommands } from '../src/legal.js'
 import { checkInvariants } from '../src/invariants.js'
 import { endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand, withHandSize } from './helpers.js'
 
@@ -279,5 +279,24 @@ describe('J1-A8 — EX Burst resolves in full before the damage window (§11.10.
     expect(isResponseWindow(declined)).toBe(true)
     ok(declined)
     expect(passBoth(declined).attack?.step).toBe('declaration')
+  })
+})
+
+describe('K2-A1 — a decision with one answer is what `forcedDecision` reports', () => {
+  it('the block declaration with every Forward of the defender dull, and the attack declaration with none able to attack', () => {
+    const { s, attackers, blocker } = board()
+    const dulled = { ...s, players: [s.players[0], { ...s.players[1], forwards: s.players[1].forwards.map((c) => (c.id === blocker ? { ...c, status: 'dull' as const } : c)) }] as GameState['players'] }
+    const owed = passBoth(declare(dulled, attackers).state)
+    expect(owed.pending).toEqual({ kind: 'declareBlock', player: 1 })
+    expect(forcedDecision(owed), 'no active Forward: the only answer is no block').toEqual({ type: 'declareBlock', player: 1, blocker: null })
+    const owedWithBlocker = passBoth(declare(s, attackers).state)
+    expect(forcedDecision(owedWithBlocker), 'an active Forward: a real decision').toBeNull()
+    // Declaration: the attackers already attacked this turn (dull), so nothing can be declared.
+    const spent = { ...s, players: [{ ...s.players[0], forwards: s.players[0].forwards.map((c) => ({ ...c, status: 'dull' as const })) }, s.players[1]] as GameState['players'] }
+    expect(spent.attack?.step).toBe('declaration')
+    expect(forcedDecision(spent), 'no Forward can attack: the only answer is pass').toEqual({ type: 'pass', player: 0 })
+    expect(forcedDecision(s), 'a ready Forward: a real decision').toBeNull()
+    // A pass-only response window is still reported through the same door.
+    expect(forcedDecision(declare(withHandSize(withHandSize(s, 0, 0), 1, 0), attackers).state)?.type).toBe('pass')
   })
 })

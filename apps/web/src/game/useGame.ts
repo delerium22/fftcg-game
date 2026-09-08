@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  actingPlayer, apply, createGame, forcedPass, legalCommands, viewFor,
+  actingPlayer, apply, createGame, forcedDecision, legalCommands, viewFor,
   type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
@@ -436,20 +436,22 @@ export function stepAi(state: GameState, agent: Agent): { state: GameState; line
 }
 
 /**
- * Apply every pass-only response window, for EITHER seat, silently (rung J1-D14/D15).
+ * Apply every decision with one answer, for EITHER seat, silently (rung J1-D14/D15, widened by K2).
  *
  * A window whose only answer is `pass` is not a decision: the human is never shown it (it would be a strip
  * with one button that does nothing), and the AI does not search it (a 600 ms "thinking" pause to pass is a
- * game that feels broken). It is applied in the same step as the command that opened it, so no render ever
- * sees the window, and no line is written for the passes themselves — the move that matters is the one
- * before. What the passes CAUSE is returned: a window's exit deals the damage of a combat or ends a phase
- * (rung J1-D10), and a game can end there, so the caller narrates these with the move.
+ * game that feels broken). Rung K2 adds the block declaration with no active Forward and the attack
+ * declaration with no Forward able to attack — the same strip with one button, found by playing. Each is
+ * applied in the same step as the command that reached it, so no render ever sees it, and no line is written
+ * for the forced answers themselves — the move that matters is the one before. What they CAUSE is returned:
+ * a window's exit deals the damage of a combat or ends a phase (rung J1-D10), and a game can end there, so
+ * the caller narrates these with the move.
  */
 export function settleForcedWindows(state: GameState): { state: GameState; events: Event[] } {
   let s = state
   const events: Event[] = []
   for (let i = 0; i < 16; i++) {
-    const c = forcedPass(s)
+    const c = forcedDecision(s)
     if (!c) break
     const r = apply(s, c)
     s = r.state; events.push(...r.events)

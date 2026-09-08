@@ -1,7 +1,8 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
-import { actingPlayer, apply, createGame, forcedPass, isResponseWindow, legalCommands, type GameState } from '@fftcg/engine'
+import { actingPlayer, apply, createGame, forcedDecision, forcedPass, isResponseWindow, legalCommands, type CardId, type GameState } from '@fftcg/engine'
+import { endPhase, makeGame, withField, withHandSize } from '../../../packages/engine/test/helpers.js'
 import { GreedyAgent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { settleForcedWindows, stepAi, useGame } from '../src/game/useGame.js'
@@ -104,5 +105,25 @@ describe('a pass-only window is closed in the same step (J1-A12)', () => {
     }
     act(() => { root.unmount() })
     host.remove()
+  })
+})
+
+describe('a decision with one answer is closed in the same step (K2-A2)', () => {
+  it('settleForcedWindows applies the forced no-block and stops at the next real decision, with no move line for it', () => {
+    // The AI attacks into a human whose only Forward is dull: the block is owed and has one answer.
+    let s = endPhase(makeGame())
+    s = { ...s, turnPlayer: AI, priority: AI, firstPlayer: AI }
+    let attacker: CardId, dull: CardId
+    ;[s, attacker] = withField(s, AI, 'forwards', 'V-F2')
+    ;[s, dull] = withField(s, HUMAN, 'forwards', 'V-F3', { status: 'dull' })
+    s = withHandSize(withHandSize(s, HUMAN, 0), AI, 0)
+    const declared = apply(s, { type: 'declareAttack', player: AI, attackers: [attacker] }).state
+    const settled = settleForcedWindows(declared)
+    expect(settled.state.pending, 'the block was answered for the human').toBeNull()
+    expect(settled.state.attack?.step === 'block').toBe(false)
+    expect(settled.state.players[HUMAN].damageZone, 'the unblocked attack dealt its point').toHaveLength(1)
+    expect(settled.events.some((e) => e.type === 'phaseStarted'), 'what the forced answers caused is returned').toBe(true)
+    expect(forcedDecision(settled.state), 'stopped at a real decision').toBeNull()
+    expect(dull).toBeGreaterThan(0)
   })
 })

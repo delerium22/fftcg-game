@@ -38,6 +38,21 @@ function playToTheEnd(seed: number): { state: GameState; log: LogLine[] } {
   return { state: s, log }
 }
 
+/**
+ * A game the AI wins by damage — FOUND, not assumed. It was `playToAiWin()` everywhere, and seed 3 stopped
+ * being an AI win the moment the AI's candidate policy changed (rung K1): the fixture is about the dialog,
+ * not about that seed. Memoised: nine tests read it and a full greedy game is a second each.
+ */
+let aiWin: { state: GameState; log: LogLine[] } | null = null
+function playToAiWin(): { state: GameState; log: LogLine[] } {
+  if (aiWin) return aiWin
+  for (let seed = 1; seed <= 40; seed++) {
+    const game = playToTheEnd(seed)
+    if (game.state.result?.winner === AI && game.state.result.cause === 'damage') return (aiWin = game)
+  }
+  throw new Error('no seed under 40 is a game the AI wins by damage')
+}
+
 function mountFinished(s: GameState, log: LogLine[], choices?: ChoiceSet, onRestart?: () => void): void {
   const v = viewFor(s, HUMAN)
   const api: GameApi = {
@@ -92,7 +107,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
   }
 
   it('is a native dialog with the alertdialog contract', () => {
-    const { state, log } = playToTheEnd(3)
+    const { state, log } = playToAiWin()
     mountFinished(state, log)
     const d = dialog()
     expect(d.tagName).toBe('DIALOG')
@@ -105,7 +120,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     // banner's only accessible name was `aria-label="Game over"`, so a screen reader announced that and
     // stopped: the player learned the game had ended, not who won. Both relationships are resolved to their
     // text here, so neither can be removed or mispointed without this failing.
-    const { state, log } = playToTheEnd(3)
+    const { state, log } = playToAiWin()
     mountFinished(state, log)
     const d = dialog()
     expect(d.getAttribute('aria-label'), 'a bare aria-label would override the heading it is meant to use').toBe(null)
@@ -116,7 +131,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
   it('puts focus on the HEADING, not the dialog and not the button', () => {
     // Focusing the container announces the dialog's own name and stops. Focusing the button announces the
     // action before the outcome. The heading is what carries "The AI wins", with the reason after it.
-    const { state, log } = playToTheEnd(3)
+    const { state, log } = playToAiWin()
     mountFinished(state, log)
     const heading = dialog().querySelector<HTMLElement>('h2')!
     expect(heading.getAttribute('tabindex'), 'the heading cannot take focus').toBe('-1')
@@ -135,7 +150,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     const original = proto === undefined ? undefined : Object.getOwnPropertyDescriptor(proto, 'showModal')
     if (proto) proto.showModal = function spy() { calls.push('showModal') }
     try {
-      const { state, log } = playToTheEnd(3)
+      const { state, log } = playToAiWin()
       mountFinished(state, log)
       expect(calls, 'the dialog was rendered but never opened modally').toEqual(['showModal'])
     } finally {
@@ -151,7 +166,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     // `document.body` — measured in a browser, not assumed. From there a keyboard player tabs in from the
     // top of the document to make the first decision of a brand new game, which is the very state this rung
     // exists to prevent at the end of one.
-    const { state, log } = playToTheEnd(3)
+    const { state, log } = playToAiWin()
     let restarted = false
     mountFinished(state, log, undefined, () => { restarted = true })
     act(() => { dialog().querySelector('button')!.click() })
@@ -184,7 +199,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
   it('refuses to be dismissed — there is nothing to dismiss to', () => {
     // `defaultPrevented` read AFTER dispatch. Reading it inside a listener on the target is the mistake the
     // card grid taught: events bubble target-first, so such a listener runs before the handler under test.
-    const { state, log } = playToTheEnd(3)
+    const { state, log } = playToAiWin()
     mountFinished(state, log)
     const ev = new Event('cancel', { bubbles: false, cancelable: true })
     act(() => { dialog().dispatchEvent(ev) })
@@ -197,7 +212,7 @@ describe('a finished game in a real Board', () => {
     // The whole document, not just `.banner`. `describeEvent` renders the game-over line into the event log
     // independently of the banner, and `Board` keeps the log mounted behind the overlay — so fixing only the
     // banner would have left the identical leak a few pixels lower, in a DOM a screen reader still walks.
-    const { state, log } = playToTheEnd(3)
+    const { state, log } = playToAiWin()
     expect(state.result, 'no game finished, so this test asserts nothing').not.toBe(null)
     mountFinished(state, log)
 
@@ -210,7 +225,7 @@ describe('a finished game in a real Board', () => {
   })
 
   it('still offers a way to play again', () => {
-    const { state, log } = playToTheEnd(3)
+    const { state, log } = playToAiWin()
     mountFinished(state, log)
     expect(document.querySelector('.banner button')?.textContent).toBe('Play again')
   })
@@ -219,7 +234,7 @@ describe('a finished game in a real Board', () => {
     // The first version of this asserted "no choice buttons" against a fixture built with `buildChoiceSet(v,
     // [])` — an empty choice set asserting it was empty. It could not fail. Hand the finished board a
     // DELIBERATELY non-empty set, so the assertion is about the board's behaviour rather than the fixture's.
-    const { state, log } = playToTheEnd(3)
+    const { state, log } = playToAiWin()
     const v = viewFor(state, HUMAN)
     const stale = buildChoiceSet(v, [{ type: 'concede', player: HUMAN }])
     expect(stale.all.length, 'the stale set is empty, so this proves nothing again').toBeGreaterThan(0)
