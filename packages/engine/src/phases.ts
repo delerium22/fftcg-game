@@ -6,6 +6,8 @@ import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { runRuleProcesses } from './rules.js'
 import { enqueueAttackPhaseTriggers, enterAttackDeclaration, enterAttackPreparation, startResolvingTop } from './resolve.js'
+import { ATTACK_WINDOWS } from './cast.js'
+import { exitAttackWindow } from './attack.js'
 // Re-exported so every existing importer of `drawCards` from this module keeps working (spec C3-9).
 export { drawCards } from './draw.js'
 import { drawCards } from './draw.js'
@@ -53,17 +55,16 @@ export function startTurn(state: GameState, turn: number, player: PlayerId): [Ga
  * `passes = 0`, §11.3.8/§11.6.11).
  *
  * The Attack Phase's declaration step is NOT a window (§10.1.2.1, §10.1.4.6): it is the turn player's own
- * decision to attack or not, so a pass there goes straight to Main Phase 2. Slice 5 makes the other steps
- * windows.
+ * decision to attack or not, so a pass there goes straight to Main Phase 2. Its four windows (J1-D10) end
+ * on the double pass through `exitAttackWindow`.
  */
 export function applyPass(state: GameState, player: PlayerId): [GameState, Event[]] {
   if (state.result) throw new IllegalCommandError('game is over')
   if (state.pending) throw new IllegalCommandError('a decision is pending')
   if (state.priority !== player) throw new IllegalCommandError('you do not hold priority')
   const step = state.attack?.step
-  // The windows so far: the Main Phases and the Attack Preparation Step (§10.1.1.2). Slice 5 adds the rest.
-  const isWindow = state.phase === 'main1' || state.phase === 'main2' || (state.phase === 'attack' && step === 'preparation')
-  if (state.phase === 'attack' && step !== 'declaration' && step !== 'preparation') throw new IllegalCommandError('cannot pass during this attack step')
+  const isWindow = state.phase === 'main1' || state.phase === 'main2' || (state.phase === 'attack' && step !== undefined && ATTACK_WINDOWS.includes(step))
+  if (state.phase === 'attack' && step !== 'declaration' && !isWindow) throw new IllegalCommandError('cannot pass during this attack step')
   if (isWindow && state.passes === 0) {
     return [{ ...state, passes: 1, priority: opponentOf(player) }, []]
   }
@@ -84,6 +85,7 @@ export function applyPass(state: GameState, player: PlayerId): [GameState, Event
     }
     case 'attack':
       if (step === 'preparation') return enterAttackDeclaration({ ...state, passes: 0 }, turn)
+      if (isWindow) return exitAttackWindow({ ...state, passes: 0 })
       return [{ ...state, phase: 'main2', attack: null, priority: turn, passes: 0 }, [{ type: 'phaseStarted', phase: 'main2' }]]   // §10.1.4.6
     case 'main2':
       return beginEndPhase({ ...state, passes: 0, priority: turn })

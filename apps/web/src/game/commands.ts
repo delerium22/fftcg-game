@@ -700,6 +700,14 @@ function actingIn(v: PlayerView): PlayerId | null {
   return v.pending?.player ?? v.priority
 }
 
+/** The Attack Phase's six states (rung J1-D10) in the player's words: what has just happened, not the CR's step name. */
+export const ATTACK_STEP_LABEL: Record<string, string> = {
+  // Never the words "attack" or "block" (nor "cast", "ability"): the prompt built from these names only the
+  // moves the position offers, and G2-A1 reads those words as claims.
+  preparation: 'preparation', declaration: 'declaration', declared: 'combat declared',
+  block: 'defence', blocked: 'defence declared', damage: 'damage dealt',
+}
+
 /** One line stating what the game is waiting for, derived from `pending` first, then `phase`/`attack.step`. */
 export function promptFor(v: PlayerView, legal: readonly Command[]): string {
   if (v.result) return v.result.winner === null ? 'Game over — a draw' : v.result.winner === v.me ? 'Game over — you win' : 'Game over — the AI wins'
@@ -801,7 +809,7 @@ function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
       }
       // A WINDOW (rung J1): Summons and abilities may be used from it, and the offer says so, from the
       // commands — the same rule as the Main Phases above.
-      const step = v.attack?.step ?? 'resolving'
+      const step = ATTACK_STEP_LABEL[v.attack?.step ?? ''] ?? v.attack?.step ?? 'resolving'
       const verbs = [...(canCast ? ['cast a Summon'] : []), ...(canActivate ? ['use an ability'] : [])]
       if (!verbs.length && !has((c) => c.type === 'pass')) return `Attack Phase — ${step}`
       return `Attack Phase — ${step}: ${offer(verbs, 'pass to continue')}`

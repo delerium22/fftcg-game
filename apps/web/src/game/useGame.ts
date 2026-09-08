@@ -5,7 +5,7 @@ import {
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
+import { ATTACK_STEP_LABEL, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
@@ -95,7 +95,7 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'firstPlayerChosen': return { kind: 'phase', text: `${who(v, e.player)} take${e.player === v.me ? '' : 's'} the first turn` }
     case 'mulligan': return { kind: 'event', text: `${who(v, e.player)} ${whoDoes(v, e.player, e.redraw ? 'mulligan' : 'keep your hand', e.redraw ? 'mulligans' : 'keeps its hand')}` }
     case 'turnStarted': return { kind: 'phase', text: `Turn ${e.turn} — ${whoDoes(v, e.player, 'your turn', "the AI's turn")}` }
-    case 'phaseStarted': return { kind: 'phase', text: `${PHASE_LABEL[e.phase] ?? e.phase}${e.step ? ` — ${e.step}` : ''}` }
+    case 'phaseStarted': return { kind: 'phase', text: `${PHASE_LABEL[e.phase] ?? e.phase}${e.step ? ` — ${ATTACK_STEP_LABEL[e.step] ?? e.step}` : ''}` }
     case 'drew': return { kind: 'event', text: `${who(v, e.player)} draw${e.player === v.me ? '' : 's'} ${e.count} card${e.count === 1 ? '' : 's'}` }
     // A CP discard is already implied by the cast line, and a COST discard by the "activates" line — neither
     // needs its own entry. Only the hand-limit discard is a thing the player did not otherwise see.
@@ -371,8 +371,10 @@ function narrateApply(
   if (!legal.some((c) => sameCommand(c, command))) throw new Error(`agent chose an illegal command: ${command.type}`)
   const before = viewFor(state, HUMAN)
   const applied = apply(state, command)
-  // Rung J1: the windows the command opened are closed here, before anyone renders them.
-  const result = { state: settleForcedWindows(applied.state), events: applied.events }
+  // Rung J1: the windows the command opened are closed here, before anyone renders them — and what closing
+  // them did (the damage a block leads to, a game that ends there) is narrated with the move that caused it.
+  const settled = settleForcedWindows(applied.state)
+  const result = { state: settled.state, events: [...applied.events, ...settled.events] }
   // The move label and the events that follow it are narrated from the SAME view, and it is the human's.
   //
   // It used to be the ACTOR's, so "a card only it can see still reads sensibly" — which is exactly the leak
@@ -415,13 +417,16 @@ export const moveLine = (actor: PlayerId, label: string): LogLine =>
  * with the lines it produced. Pure and React-free so the whole driver is testable headlessly (spec B-A7).
  */
 export function stepAi(state: GameState, agent: Agent): { state: GameState; lines: LogLine[] } {
-  const settled = settleForcedWindows(state)
+  const closed = settleForcedWindows(state)
+  const settled = closed.state
+  const opening = closed.events.length ? eventLines(viewFor(settled, HUMAN), closed.events, state.resolution.queue) : []
   const p = actingPlayer(settled)
   // Closing a window may hand the decision to the OTHER seat; that seat's move is not this agent's to make.
-  if (p === null || (settled !== state && p !== actingPlayer(state))) return { state: settled, lines: [] }
+  if (p === null || (settled !== state && p !== actingPlayer(state))) return { state: settled, lines: opening }
   const actorView = viewFor(settled, p)
   const legal = legalCommands(settled, p)
-  return narrateApply(settled, legal, agent.decide(actorView, legal))
+  const r = narrateApply(settled, legal, agent.decide(actorView, legal))
+  return { state: r.state, lines: [...opening, ...r.lines] }
 }
 
 /**
@@ -430,16 +435,20 @@ export function stepAi(state: GameState, agent: Agent): { state: GameState; line
  * A window whose only answer is `pass` is not a decision: the human is never shown it (it would be a strip
  * with one button that does nothing), and the AI does not search it (a 600 ms "thinking" pause to pass is a
  * game that feels broken). It is applied in the same step as the command that opened it, so no render ever
- * sees the window, and no log line is written for it — the move that matters is the one before.
+ * sees the window, and no line is written for the passes themselves — the move that matters is the one
+ * before. What the passes CAUSE is returned: a window's exit deals the damage of a combat or ends a phase
+ * (rung J1-D10), and a game can end there, so the caller narrates these with the move.
  */
-export function settleForcedWindows(state: GameState): GameState {
+export function settleForcedWindows(state: GameState): { state: GameState; events: Event[] } {
   let s = state
+  const events: Event[] = []
   for (let i = 0; i < 16; i++) {
     const c = forcedPass(s)
-    if (!c) return s
-    s = apply(s, c).state
+    if (!c) break
+    const r = apply(s, c)
+    s = r.state; events.push(...r.events)
   }
-  return s
+  return { state: s, events }
 }
 
 // --- the browser's opponent: SO-ISMCTS in a worker (spec D2) -----------------------------------------------
@@ -573,7 +582,8 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
     const applied = apply(current, choice.command)
     // Rung J1: close the pass-only windows the move opened — the AI's forced pass and the human's own — in
     // this same commit, so no render ever shows a strip whose one button does nothing.
-    const result = { state: settleForcedWindows(applied.state), events: applied.events }
+    const settled = settleForcedWindows(applied.state)
+    const result = { state: settled.state, events: [...applied.events, ...settled.events] }
     const lines = eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, current.resolution.queue)
     commit(result.state, [moveLine(HUMAN, describeChoice(before, choice.command)), ...lines])
   }, [commit])

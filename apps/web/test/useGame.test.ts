@@ -118,7 +118,8 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
   const leaks: string[] = []
   const deckLabels: { text: string; allPublic: boolean }[] = []
   let deckChoices = 0
-  for (let step = 0; step < 4000 && !state.result; step++) {
+  // 12000, not 4000: rung J1's windows (four per attack, two per phase) roughly triple the command count.
+  for (let step = 0; step < 12000 && !state.result; step++) {
     const view = viewFor(state, HUMAN)
     assertNoAiHandLeak(state, view)
     if (actingPlayer(state) === AI) {
@@ -434,7 +435,10 @@ describe('a look and a reveal in the log (rung C9)', () => {
 })
 
 describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
-  const played = playFullGame(1)
+  // Rung J1 moved every game; the burst assertion below needs one that offers an EX Burst, so the first seed
+  // from 1 whose first-choice game does is the one kept.
+  const SEED = (() => { for (let s = 1; s < 20; s++) if (playFullGame(s).log.some((l) => /has EX Burst/.test(l.text))) return s; return 1 })()
+  const played = playFullGame(SEED)
 
   it('terminates with a result', () => {
     expect(played.state.result).not.toBeNull()
@@ -469,7 +473,7 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
   })
 
   it('is deterministic for a fixed seed', () => {
-    expect(playFullGame(1).log.map((l) => l.text)).toEqual(played.log.map((l) => l.text))
+    expect(playFullGame(SEED).log.map((l) => l.text)).toEqual(played.log.map((l) => l.text))
   })
 
   it('B-A2: EVERY command type the engine can ask for is reachable from the choice set alone', () => {

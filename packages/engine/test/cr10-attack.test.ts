@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyAssignPartyDamage, applyDeclareAttack, applyDeclareBlock, attackCheck, legalAttackSets, legalBlockers, legalPartyDamageAssignments } from '../src/attack.js'
 import { IllegalCommandError } from '../src/errors.js'
-import { endPhase, makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
+import { attackInto, blockWith, endPhase, exitWindowNow, makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
 
 /**
  * Turn 1, player 0 in the attack declaration step.
@@ -55,25 +55,36 @@ describe('§10.1.2 attack declaration', () => {
     const A = t.players[0].forwards.find((c) => c.id === a)!, B = t.players[0].forwards.find((c) => c.id === b)!
     expect(A.status).toBe('dull'); expect(B.status).toBe('active')
     expect(A.attackedThisTurn && B.attackedThisTurn).toBe(true)
-    expect(t.attack).toEqual({ step: 'block', attackers: [a, b], blocker: null })
-    expect(t.pending).toEqual({ kind: 'declareBlock', player: 1 })
+    // Rung J1-D10: the declaration opens a window first (§10.1.2.6); the block is owed once both forfeit.
+    expect(t.attack).toEqual({ step: 'declared', attackers: [a, b], blocker: null })
+    expect(t.pending).toBeNull()
     expect(t.priority).toBe(0)
     expect(events).toContainEqual({ type: 'attackDeclared', player: 0, attackers: [a, b] })
-    expect(events).toContainEqual({ type: 'phaseStarted', phase: 'attack', step: 'block' })
+    expect(events).toContainEqual({ type: 'phaseStarted', phase: 'attack', step: 'declared' })
+    const owed = attackInto(s, [a, b]).state
+    expect(owed.attack).toEqual({ step: 'block', attackers: [a, b], blocker: null })
+    expect(owed.pending).toEqual({ kind: 'declareBlock', player: 1 })
   })
 })
 
 describe('§10.1.3–10.1.4 block and damage', () => {
+  /**
+   * Rung J1-D10: the attack opens the `declared` window, the block the `blocked` one, and the damage a third
+   * (§10.1.4.4). `attackInto` and `blockWith` walk them with both players forfeiting; `exitWindowNow` leaves
+   * the last, back to declaration. The step-by-step windows are cr10-attack-windows' subject.
+   */
   function attacking(power = 'V-F2') {
     let s = inAttack(); let a: number
     ;[s, a] = withField(s, 0, 'forwards', power)
-    ;[s] = applyDeclareAttack(s, 0, [a])
+    s = attackInto(s, [a]).state
     return { s, a }
   }
   it('only the defender may block, and only with active forwards', () => {
-    let { s } = attacking(); let act: number, dull: number
+    let s = inAttack(); let a: number, act: number, dull: number
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
     ;[s, act] = withField(s, 1, 'forwards', 'V-F2')
     ;[s, dull] = withField(s, 1, 'forwards', 'V-F2', { status: 'dull' })
+    s = attackInto(s, [a]).state
     expect(legalBlockers(s, 1)).toEqual([act])
     expect(legalBlockers(s, 0)).toEqual([])
     expect(() => applyDeclareBlock(s, 1, dull)).toThrow(/active/i)
@@ -82,18 +93,21 @@ describe('§10.1.3–10.1.4 block and damage', () => {
   })
   it('§10.1.4.1: unblocked → 1 damage to the defender, then back to declaration with nothing pending', () => {
     const { s } = attacking()
-    const [t, events] = applyDeclareBlock(s, 1, null)
-    expect(events[0]).toEqual({ type: 'blockDeclared', player: 1, blocker: null })
-    expect(events[1]).toEqual({ type: 'phaseStarted', phase: 'attack', step: 'damage' })
-    expect(t.players[1].damageZone).toHaveLength(1)
-    expect(events).toContainEqual(expect.objectContaining({ type: 'playerDamaged', player: 1 }))
+    const r = blockWith(s, null)
+    expect(r.events[0]).toEqual({ type: 'blockDeclared', player: 1, blocker: null })
+    expect(r.events[1]).toEqual({ type: 'phaseStarted', phase: 'attack', step: 'blocked' })
+    expect(r.events).toContainEqual({ type: 'phaseStarted', phase: 'attack', step: 'damage' })
+    expect(r.state.players[1].damageZone).toHaveLength(1)
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'playerDamaged', player: 1 }))
+    expect(r.state.attack?.step, 'the post-damage window (§10.1.4.4)').toBe('damage')
+    const t = exitWindowNow(r).state
     expect(t.attack).toEqual(IDLE)
     expect(t.pending).toBeNull(); expect(t.priority).toBe(0); expect(t.phase).toBe('attack')
   })
   it('§10.1.4.2: blocked → both deal power as damage; the weaker one breaks (§12.4.5)', () => {
     let { s, a } = attacking('V-F2'); let b: number          // 5000 vs 7000
     ;[s, b] = withField(s, 1, 'forwards', 'V-F3')
-    const [t, events] = applyDeclareBlock(s, 1, b)
+    const { state: t, events } = blockWith(s, b)
     expect(events).toContainEqual({ type: 'blockDeclared', player: 1, blocker: b })
     expect(events).toContainEqual({ type: 'battleDamage', source: a, target: b, amount: 5000 })
     expect(events).toContainEqual({ type: 'battleDamage', source: b, target: a, amount: 7000 })
@@ -107,8 +121,8 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     ;[s, a1] = withField(s, 0, 'forwards', 'V-F1')   // 3000
     ;[s, a2] = withField(s, 0, 'forwards', 'V-F2')   // 5000
     ;[s, b] = withField(s, 1, 'forwards', 'V-F3')    // 7000
-    ;[s] = applyDeclareAttack(s, 0, [a1, a2])
-    ;[s] = applyDeclareBlock(s, 1, b)
+    s = attackInto(s, [a1, a2]).state
+    s = blockWith(s, b).state
     expect(s.attack).toEqual({ step: 'damage', attackers: [a1, a2], blocker: b })
     expect(s.pending).toEqual({ kind: 'assignPartyDamage', player: 1 })
     const options = legalPartyDamageAssignments(s)
@@ -121,13 +135,14 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     expect(t.players[0].breakZone).toContain(a1)                                       // 3000 ≥ 3000
     expect(t.players[0].forwards.find((c) => c.id === a2)?.damage).toBe(4000)
     expect(t.players[1].breakZone).toContain(b)                                        // 8000 ≥ 7000
-    expect(t.attack).toEqual(IDLE); expect(t.pending).toBeNull(); expect(t.priority).toBe(0)
+    expect(t.attack?.step).toBe('damage'); expect(t.pending).toBeNull(); expect(t.priority).toBe(0)
+    expect(exitWindowNow({ state: t, events: [] }).state.attack).toEqual(IDLE)
   })
   it('an unblocked party still deals only 1 damage (§10.1.3.4, §10.1.4.1)', () => {
     let s = inAttack(); let a1: number, a2: number
     ;[s, a1] = withField(s, 0, 'forwards', 'V-F1'); [s, a2] = withField(s, 0, 'forwards', 'V-F2')
-    ;[s] = applyDeclareAttack(s, 0, [a1, a2])
-    const [t] = applyDeclareBlock(s, 1, null)
+    s = attackInto(s, [a1, a2]).state
+    const t = blockWith(s, null).state
     expect(t.players[1].damageZone).toHaveLength(1)
   })
   it('a blocker whose power is not a sum of ≥1000 multiples deals no battle damage (party damage dead end)', () => {
@@ -135,14 +150,13 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     // breaks normally via §12.4.5 once damage lands — isolating the party-damage-split dead end from the
     // separate (pre-existing, documented) "power < 1000 never breaks by damage" behavior in rules.ts.
     const defs = [...VANILLA_POOL, makeDef({ code: 'V-W5', power: 2500 })]
-    // Through `apply`, for the same reason `inAttack` does: entering the Attack Phase is two steps since C5.
     let s = endPhase(makeGame({ defs }))
     let a1: number, a2: number, b: number
     ;[s, a1] = withField(s, 0, 'forwards', 'V-F1')   // 3000
     ;[s, a2] = withField(s, 0, 'forwards', 'V-F2')   // 5000
     ;[s, b] = withField(s, 1, 'forwards', 'V-W5')    // 2500 — not a sum of ≥1000 multiples
-    ;[s] = applyDeclareAttack(s, 0, [a1, a2])
-    ;[s] = applyDeclareBlock(s, 1, b)
+    s = attackInto(s, [a1, a2]).state
+    s = blockWith(s, b).state
     expect(legalPartyDamageAssignments(s)).toEqual([[]])
     const [t, events] = applyAssignPartyDamage(s, 1, [])
     expect(events).toContainEqual({ type: 'battleDamage', source: a1, target: b, amount: 3000 })
@@ -152,13 +166,13 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     expect(t.players[1].breakZone).toContain(b)
     expect(t.players[0].forwards.find((c) => c.id === a1)?.damage).toBe(0)
     expect(t.players[0].forwards.find((c) => c.id === a2)?.damage).toBe(0)
-    expect(t.attack).toEqual(IDLE)
+    expect(t.attack?.step).toBe('damage')
     expect(t.pending).toBeNull()
   })
   it('the 7th damage ends the game', () => {
     let { s } = attacking()
     s = { ...s, players: [s.players[0], { ...s.players[1], damageZone: s.players[1].deck.slice(0, 6), deck: s.players[1].deck.slice(6) }] }
-    const [t, events] = applyDeclareBlock(s, 1, null)
+    const { state: t, events } = blockWith(s, null)
     expect(t.result?.winner).toBe(0)
     expect(events.at(-1)).toEqual({ type: 'gameOver', result: t.result })
   })

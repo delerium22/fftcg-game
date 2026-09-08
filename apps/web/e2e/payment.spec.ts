@@ -8,18 +8,20 @@ import { expect, test } from '@playwright/test'
  * board card is a control a person can press while the tray is open — the accessibility tree is derived by
  * the browser, not written by us.
  *
- * ROUTE PINNED, NOT PLAYED. `?seed=202` reaches Main Phase 1 in one click ("Keep hand"), where Class Tenth
- * Moogle can be cast four ways: discarding Miner, Cloud, Billy Bob (all cost 3) or Hugh Yurg (4). The game
- * used to discard one for you and never mention the others; E11 listed them as buttons; I2 lets you click
- * Cloud and watch the crystal light. If the route stops arriving, this fails saying so. (Seed 11 was the route
- * until rung J1: the AI takes the first turn there, and its Main Phase 1 now stops for the human's response
- * window — Red Mage's hand ability is instant speed — so "one click" no longer reaches the human's own turn.)
+ * ROUTE PINNED, NOT PLAYED. `?seed=50` reaches Main Phase 1 in two clicks ("Take the first turn", "Keep
+ * hand"), where Class Tenth Moogle can be cast four ways: discarding Undead Princess (cost 1), Prishe (2),
+ * Shantotto (2) or Cloud (3). The game used to discard one for you and never mention the others; E11 listed
+ * them as buttons; I2 lets you click Cloud and watch the crystal light. If the route stops arriving, this
+ * fails saying so. The seed is one where the HUMAN decides who goes first: a seed where the AI decides (11,
+ * then 202) drifted every time the AI's opening search changed, since the hand it reaches Main Phase 1 with
+ * depends on whether it drew for a second turn.
  */
 
-const SEED = 202
+const SEED = 50
 
 test('a cast is paid by pressing the cards you spend, and Confirm casts it', async ({ page }) => {
   await page.goto(`/?seed=${SEED}`)
+  await page.getByRole('button', { name: /Take the first turn/ }).click()
   await page.getByRole('button', { name: /Keep hand/ }).click()
 
   // The card's press opens its sheet — a modal dialog named after the card — and the sheet offers the cast
@@ -52,7 +54,7 @@ test('a cast is paid by pressing the cards you spend, and Confirm casts it', asy
   await expect(tray.getByRole('img', { name: '2 of 2 CP paid' })).toHaveCount(1)
   await expect(page.getByRole('button', { name: /^Cloud, cost 3.*will be discarded to pay/ })).toHaveCount(1)
   // A source that would now over-pay is no longer offered.
-  await expect(page.getByRole('button', { name: /^Billy Bob, cost 3.*, Discard for 2 earth CP$/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Prishe, cost 2.*, Discard for 2 earth CP$/ })).toHaveCount(0)
 
   const confirm = tray.getByRole('button', { name: 'Confirm' })
   await expect(confirm).toBeEnabled()

@@ -1,7 +1,6 @@
 import {
   actingPlayer, apply, deckSlotsFor, determinise, knows, nextInt, seedRng, visibleKnownBy,
-  type CardId, type CardInstance, type Command, type FieldView, type GameState, type PlayerId, type PlayerView, type Rng,
-} from '@fftcg/engine'
+  type CardId, type CardInstance, type Command, type FieldView, type GameState, type PlayerId, type PlayerView, type Rng, forcedPass } from '@fftcg/engine'
 import { candidateCommands } from '../candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, resolveWeights, type Weights } from '../evaluate.js'
 import { greedyStep, newRolloutProfile, resolveForcedDecisions, type Budget, type RolloutProfile } from '../greedy.js'
@@ -268,6 +267,18 @@ export interface Counters {
   maxCommandDepth: number
 }
 
+/** Apply every pass-only response window from here (either seat), counting the applies as tree work. */
+function settleForcedPasses(state: GameState, counters: Counters): GameState {
+  let s = state
+  for (let i = 0; i < 16 && !s.result; i++) {
+    const forced = forcedPass(s)
+    if (!forced) break
+    s = apply(s, forced).state
+    counters.treeApplies++
+  }
+  return s
+}
+
 const newCounters = (): Counters => ({ determinisations: 0, treeApplies: 0, rolloutApplies: 0, evaluations: 0, nodes: 0, maxCommandDepth: 0 })
 
 /**
@@ -329,6 +340,9 @@ export function rolloutToCap(
   let s = state
   let commands = 0
   while (!s.result && commands < cap) {
+    // A pass-only window is applied outright: not a command, not budget (rung J1-D14).
+    const forced = forcedPass(s)
+    if (forced) { s = apply(s, forced).state; continue }
     const p = actingPlayer(s)
     if (p === null) break
     const c = greedyStep(s, p, weights, ROLLOUT_AGGRESSION, budget)
@@ -523,6 +537,10 @@ export function searchTree(input: SearchInput, now: SearchClock = () => globalTh
       state = apply(state, command).state
       counters.treeApplies++
       commands++
+      // Rung J1-D14: a pass-only response window is not a decision, so it is not a ply. Applied here, the
+      // block that follows an attack stays the attack edge's own child, as it was before the stack existed;
+      // a window with a real answer (a Summon in hand) is a genuine ply and stays one.
+      state = settleForcedPasses(state, counters)
       view = searchView(state, root)
 
       if (state.result) break

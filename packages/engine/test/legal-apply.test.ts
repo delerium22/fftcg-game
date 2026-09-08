@@ -5,7 +5,7 @@ import { actingPlayer, legalCommands } from '../src/legal.js'
 import { checkInvariants } from '../src/invariants.js'
 import { IllegalCommandError } from '../src/errors.js'
 import { nextInt, seedRng } from '../src/rng.js'
-import { endPhase, DEFAULT_DECK, VANILLA_POOL, makeGame, withField, withHand, withHandSize } from './helpers.js'
+import { attackInto, endPhase, DEFAULT_DECK, VANILLA_POOL, makeGame, withField, withHand, withHandSize } from './helpers.js'
 
 describe('legalCommands', () => {
   it('during setup only the chooser may act; concede is legal for both', () => {
@@ -29,7 +29,7 @@ describe('legalCommands', () => {
     let s = makeGame(); let a: number, d: number
     ;[s, a] = withField(s, 0, 'forwards', 'V-F2'); [s, d] = withField(s, 1, 'forwards', 'V-F2')
     s = endPhase(s)
-    s = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
+    s = attackInto(s, [a]).state   // through the `declared` window (rung J1-D10)
     expect(actingPlayer(s)).toBe(1)
     expect(legalCommands(s, 0)).toEqual([{ type: 'concede', player: 0 }])
     expect(legalCommands(s, 1).map((c) => c.type).sort()).toEqual(['concede', 'declareBlock', 'declareBlock'])

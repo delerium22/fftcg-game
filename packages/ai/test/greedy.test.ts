@@ -3,7 +3,7 @@ import { SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainR
 import { GreedyAgent, greedyStep, pruneCandidates, resolveForcedDecisions, scoreCandidates } from '../src/greedy.js'
 import { candidateCommands } from '../src/candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from '../src/evaluate.js'
-import { DEFAULT_DECK, VANILLA_POOL, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, attackInto, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 /** withField/withHand MINT extra card instances, so deck lists must be derived from the state under test, not DEFAULT_DECK. */
 const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
@@ -62,7 +62,7 @@ describe('GreedyAgent', () => {
     ;[s, a] = withField(s, 0, 'forwards', 'V-F1')   // attacker 3000
     ;[s, b] = withField(s, 1, 'forwards', 'V-F3')   // blocker 7000
     s = toAttackDeclaration(hurt(s, 1, 6))
-    s = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
+    s = attackInto(s, [a]).state   // through the `declared` window (rung J1-D10)
     expect(agent(s).decide(viewFor(s, 1), legalCommands(s, 1))).toEqual({ type: 'declareBlock', player: 1, blocker: b })
   })
   it('returns a legal command on turn 1 and reports its simulation count', () => {
@@ -221,7 +221,7 @@ describe('GreedyAgent', () => {
       ;[s, attacker] = withField(s, 0, 'forwards', 'V-F1')   // 3000 power, earth
       ;[s, blocker] = withField(s, 1, 'forwards', 'V-F1')    // 3000 power — mutual kill if blocked
       s = toAttackDeclaration(s)
-      s = apply(s, { type: 'declareAttack', player: 0, attackers: [attacker] }).state
+      s = attackInto(s, [attacker]).state
       expect(s.pending).toEqual({ kind: 'declareBlock', player: 1 })
       const result = resolveForcedDecisions(s, W, 0, 1)   // aggression 0 from the defender's (player 1) own perspective
       expect(result.players[1].forwards.some((c) => c.id === blocker)).toBe(true)   // did NOT block — kept its own forward
@@ -232,7 +232,7 @@ describe('GreedyAgent', () => {
       ;[s, a] = withField(s, 0, 'forwards', 'V-F1')
       ;[s] = withField(s, 1, 'forwards', 'V-F3')
       s = toAttackDeclaration(s)
-      s = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
+      s = attackInto(s, [a]).state
       expect(s.pending?.kind).toBe('declareBlock')
       const result = resolveForcedDecisions(s, DEFAULT_WEIGHTS, 0.5, 1, { used: 999, cap: 1 })   // already exhausted
       expect(result.pending).toBeNull()
@@ -268,7 +268,7 @@ describe('GreedyAgent', () => {
       ;[s, weak] = withField(s, 1, 'forwards', 'V-WEAK')   // added first: earlier in legalBlockers order, but the WRONG choice
       ;[s, strong] = withField(s, 1, 'forwards', 'V-F8')   // 9000 power — survives 3000+3000 and can kill both in the split
       s = toAttackDeclaration(s)
-      s = apply(s, { type: 'declareAttack', player: 0, attackers: [a1, a2] }).state
+      s = attackInto(s, [a1, a2]).state
       expect(s.pending?.kind).toBe('declareBlock')
       const result = resolveForcedDecisions(s, DEFAULT_WEIGHTS, 0.5, 1)
       expect(result.pending).toBeNull()
@@ -708,7 +708,7 @@ describe('C2: observer triggers reach the agent', () => {
     s = endPhase(s)                                                              // player 1's main1 → declaration
     expect(s.turnPlayer).toBe(1)
     ;[s, fresh] = withField(s, 1, 'forwards', 'V-F8', { enteredTurn: s.turn })   // entered THIS turn: Haste unlocks it
-    s = apply(s, { type: 'declareAttack', player: 1, attackers: [attacker] }).state
+    s = attackInto(s, [attacker]).state
     expect(s.pending?.kind).toBe('declareBlock')
     const traded = resolveForcedDecisions(apply(s, { type: 'declareBlock', player: 0, blocker: mine }).state, DEFAULT_WEIGHTS, 0.5, 0)
     expect(traded.players[0].breakZone).toContain(mine)                          // the trade happened…

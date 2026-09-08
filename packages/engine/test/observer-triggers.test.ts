@@ -13,7 +13,7 @@ import { checkInvariants } from '../src/invariants.js'
 import { viewFor } from '../src/view.js'
 import { determinise } from '../src/determinise.js'
 import { seedRng } from '../src/rng.js'
-import { endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
+import { attackInto, blockWith, endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
 /**
  * Rung C2 stage 1: the observer-trigger machinery (spec C2-3/C2-4/C2-6/C2-7/C2-10/C2-11) and the three clauses
@@ -249,8 +249,8 @@ describe('C2-A4: Luso breaks what it damages, in combat and by ability alike (sp
     ;[s, luso] = withField(s, 0, 'forwards', '27-125S')      // 3000 power
     ;[s, blocker] = withField(s, 1, 'forwards', 'V-F8')      // 9000 power — survives 3000, deals 9000 back
     s = endPhase(s)          // §10.1.1–2 into the declaration step (both forfeit, rung J1)
-    s = apply(s, { type: 'declareAttack', player: 0, attackers: [luso] }).state
-    const r = apply(s, { type: 'declareBlock', player: 1, blocker })
+    s = attackInto(s, [luso]).state   // through the `declared` window (rung J1-D10)
+    const r = blockWith(s, blocker)   // and the `blocked` one: the damage lands on the exit
 
     expect(r.events).toContainEqual({ type: 'battleDamage', source: luso, target: blocker, amount: 3000 })
     expect(r.events).toContainEqual({ type: 'broken', card: luso })                                  // §12.4.5 took Luso
@@ -427,8 +427,8 @@ describe('an ability-caused break is watched exactly as a rule-process break is'
     ;[s, luso] = withField(s, 0, 'forwards', '27-125S')      // 3000
     ;[s, blocker] = withField(s, 1, 'forwards', 'V-F8')      // 9000 — survives 3000, so ONLY the ability breaks it
     s = endPhase(s)
-    s = apply(s, { type: 'declareAttack', player: 0, attackers: [luso] }).state
-    const r = apply(s, { type: 'declareBlock', player: 1, blocker })
+    s = attackInto(s, [luso]).state   // through the `declared` window (rung J1-D10)
+    const r = blockWith(s, blocker)   // and the `blocked` one: the damage lands on the exit
 
     // 3000 into 9000 is not lethal, so §12.4.5 does nothing to the blocker: `brokenByAbility` is the only
     // route it left the field by, which is what makes this the ability-break path end to end.

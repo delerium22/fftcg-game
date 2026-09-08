@@ -70,6 +70,9 @@ export function checkInvariants(state: GameState): string[] {
   if (seen.size !== all.length) problems.push(`${all.length} card instances but ${seen.size} placed in zones`)
   for (const id of all) if (!seen.has(id)) problems.push(`card ${id} is in no zone`)
   if ((state.attack !== null) !== (state.phase === 'attack')) problems.push(`attack state ${state.attack ? 'present' : 'absent'} in phase ${state.phase}`)
+  // Rung J1-D10: `block` is the defender's decision and nothing else; the declaration step carries no combatants.
+  if (state.attack?.step === 'block' && !state.result && state.pending?.kind !== 'declareBlock') problems.push('the block step owes no declareBlock')
+  if (state.attack?.step === 'declaration' && (state.attack.attackers.length || state.attack.blocker !== null)) problems.push('combatants outside a combat')
   if (state.result && state.pending) problems.push('pending decision after game over')
 
   // --- the resolution agenda (spec C1-A7) ---

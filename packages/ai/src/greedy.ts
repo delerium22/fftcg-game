@@ -126,6 +126,17 @@ const within = (b: Budget | undefined): boolean => !b || b.used < b.cap
 const stackWaiting = (state: GameState): boolean =>
   state.pending === null && !hasResolutionWork(state.resolution) && state.stack.length > 0
 
+/**
+ * A combat window — `declared`, `blocked` or the post-damage `damage` step (rung J1-D10) — with nothing owed
+ * and nothing on the stack. The policy never responds INSIDE a combat during a rollout: the window is passed
+ * through, so `evaluate` never prices a half-fought attack (R4: attackers dull, no damage dealt). Whether to
+ * respond in a window at the top level is `decide`'s own scored choice, unaffected.
+ */
+const combatWindow = (state: GameState): boolean =>
+  state.pending === null && !hasResolutionWork(state.resolution) && state.stack.length === 0
+  && state.phase === 'attack' && state.attack !== null
+  && (state.attack.step === 'declared' || state.attack.step === 'blocked' || state.attack.step === 'damage')
+
 const isForcedDecision = (state: GameState): boolean => {
   const kind = state.pending?.kind
   if (kind === undefined) return false
@@ -194,7 +205,7 @@ export function resolveForcedDecisions(state: GameState, weights: Weights, aggre
   const prof = budget?.profile
   if (prof) prof.depth++
   try {
-    while (!s.result && (isForcedDecision(s) || forcedPass(s) !== null || stackWaiting(s))) {
+    while (!s.result && (isForcedDecision(s) || forcedPass(s) !== null || stackWaiting(s) || combatWindow(s))) {
       // Rung J1-D14: a pass-only response window is not a decision. It is applied outright — no scoring, no
       // budget — so a rollout's depth is spent on moves, and the trajectories recorded before the stack
       // existed (the frozen-score corpus) are reproduced apply for apply.
@@ -203,7 +214,7 @@ export function resolveForcedDecisions(state: GameState, weights: Weights, aggre
       // And a stack with items waiting is settled by passing priority: the policy does not respond in a
       // window (a Summon in answer to a Summon is a J1 follow-up), so `evaluate` must never price a board
       // whose stack has not done its work — the same defect class R4 named for a half-resolved attack.
-      if (stackWaiting(s)) { s = apply(s, { type: 'pass', player: actingPlayer(s) as PlayerId }).state; continue }
+      if (stackWaiting(s) || combatWindow(s)) { s = apply(s, { type: 'pass', player: actingPlayer(s) as PlayerId }).state; continue }
       const p = actingPlayer(s)
       if (p === null) break
       const localAggression = p === perspective ? aggression : 1 - aggression

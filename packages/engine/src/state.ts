@@ -60,7 +60,13 @@ export type StackItem =
   | { readonly kind: 'ability'; readonly frame: Frame }
 
 export type Phase = 'setup' | 'active' | 'draw' | 'main1' | 'attack' | 'main2' | 'end'
-export type AttackStep = 'preparation' | 'declaration' | 'block' | 'damage'
+/**
+ * The Attack Phase as six states (rung J1-D10, CR §10.1). Four are WINDOWS in which priority is held —
+ * `preparation` (§10.1.1.2), `declared` (§10.1.2.6), `blocked` (§10.1.3.6) and `damage` (§10.1.4.4, after the
+ * damage is dealt) — and two are decisions: `declaration` (the turn player attacks or passes to Main Phase 2)
+ * and `block` (the defender owes `declareBlock`).
+ */
+export type AttackStep = 'preparation' | 'declaration' | 'declared' | 'block' | 'blocked' | 'damage'
 export interface AttackState { step: AttackStep; attackers: CardId[]; blocker: CardId | null }
 /** Decisions owed by a specific player that are NOT priority actions (§11.1): setup choices, the defender's step actions in the Attack Phase, and the choices an ability suspends on (spec C1-6). */
 export type Pending =

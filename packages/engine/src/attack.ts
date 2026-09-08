@@ -61,8 +61,10 @@ export function applyDeclareAttack(state: GameState, player: PlayerId, attackers
       ? { ...c, attackedThisTurn: true, status: keywordsOf(state, c).has('brave') ? c.status : 'dull' }   // §10.1.2.2, §15.2.1
       : c),
   }))
-  s = { ...s, attack: { step: 'block', attackers: ordered, blocker: null }, pending: { kind: 'declareBlock', player: opponentOf(player) } }   // §10.1.3.1
-  return [s, [{ type: 'attackDeclared', player, attackers: ordered }, { type: 'phaseStarted', phase: 'attack', step: 'block' }]]
+  // Rung J1-D10: the attack is declared; a WINDOW opens for the turn player (§10.1.2.6), and the block is
+  // owed only once both players forfeit (`exitAttackWindow`).
+  s = { ...s, attack: { step: 'declared', attackers: ordered, blocker: null }, pending: null, priority: player, passes: 0 }
+  return [s, [{ type: 'attackDeclared', player, attackers: ordered }, { type: 'phaseStarted', phase: 'attack', step: 'declared' }]]
 }
 
 function blockCheck(state: GameState, player: PlayerId): string | null {
@@ -85,14 +87,61 @@ export function applyDeclareBlock(state: GameState, player: PlayerId, blocker: C
     if (!fc) throw new IllegalCommandError(`${blocker} is not a forward you control`)
     if (fc.status !== 'active') throw new IllegalCommandError('the blocking forward must be active (§10.1.3.1.1)')
   }
-  const events: Event[] = [{ type: 'blockDeclared', player, blocker }, { type: 'phaseStarted', phase: 'attack', step: 'damage' }]
-  const attack: AttackState = { ...state.attack!, step: 'damage', blocker }
-  if (blocker !== null && attack.attackers.length > 1) {
-    // §10.1.4.2.1 — the blocking player must split the blocker's damage among the party
-    return [{ ...state, attack, pending: { kind: 'assignPartyDamage', player } }, events]
+  // Rung J1-D10: the block is declared; a WINDOW opens, priority to the turn player (§10.1.3.6). Damage is
+  // dealt only once both players forfeit (`exitAttackWindow` → `beginDamageResolution`).
+  const attack: AttackState = { ...state.attack!, step: 'blocked', blocker }
+  const s: GameState = { ...state, attack, pending: null, priority: state.turnPlayer, passes: 0 }
+  return [s, [{ type: 'blockDeclared', player, blocker }, { type: 'phaseStarted', phase: 'attack', step: 'blocked' }]]
+}
+
+/**
+ * The combatants as the field has them NOW (rung J1-D10): an attacker that left the field is no longer
+ * attacking (§10.1.2.6 — a window may have broken it), and a blocker that left leaves the attack unblocked
+ * (§10.1.3.3). Recomputed at every window exit, never inside one.
+ */
+function survivors(state: GameState): AttackState {
+  const at = state.attack
+  if (!at) throw new Error('no attack')
+  const attackers = at.attackers.filter((id) => findFieldCard(state, id) !== null)
+  const blocker = at.blocker !== null && findFieldCard(state, at.blocker) !== null ? at.blocker : null
+  return { ...at, attackers, blocker }
+}
+
+/**
+ * Both players forfeited in an Attack Phase window with nothing on the stack (§11.1.7): move to the next
+ * state. `preparation` is handled by the caller (`applyPass` → `enterAttackDeclaration`).
+ */
+export function exitAttackWindow(state: GameState): [GameState, Event[]] {
+  const at = state.attack
+  if (!at) throw new Error('no attack')
+  const turn = state.turnPlayer
+  switch (at.step) {
+    case 'declared': {
+      const attack = survivors(state)
+      if (attack.attackers.length === 0) return [finishDamageStep(state), [{ type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]   // nothing left to block
+      const step: AttackState = { ...attack, step: 'block' }
+      return [{ ...state, attack: step, pending: { kind: 'declareBlock', player: opponentOf(turn) }, passes: 0 }, [{ type: 'phaseStarted', phase: 'attack', step: 'block' }]]   // §10.1.3.1
+    }
+    case 'blocked': {
+      const attack = survivors(state)
+      if (attack.attackers.length === 0) return [finishDamageStep(state), [{ type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]
+      return beginDamageResolution({ ...state, attack: { ...attack, step: 'damage' }, passes: 0 })
+    }
+    case 'damage':
+      return [finishDamageStep(state), [{ type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]   // §10.1.4.5–6
+    default:
+      throw new IllegalCommandError(`the ${at.step} step is not a window`)
   }
-  // MVP0-SIMPLIFICATION: the Damage Resolution Step auto-advances (no priority window, §10.1.4.4)
-  const [s, more] = resolveDamage({ ...state, attack, pending: null }, [])
+}
+
+/** §10.1.4: the party split is owed (§10.1.4.2.1), or the damage is dealt at once. */
+function beginDamageResolution(state: GameState): [GameState, Event[]] {
+  const at = state.attack!
+  const events: Event[] = [{ type: 'phaseStarted', phase: 'attack', step: 'damage' }]
+  if (at.blocker !== null && at.attackers.length > 1) {
+    return [{ ...state, pending: { kind: 'assignPartyDamage', player: opponentOf(state.turnPlayer) } }, events]
+  }
+  const [s, more] = resolveDamage({ ...state, pending: null }, [])
   return [s, [...events, ...more]]
 }
 
@@ -190,9 +239,16 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
   // here means no offer is outstanding, and leaving combat mid-step after game over is what `checkInvariants`
   // forbids.
   if (!s.result && s.pending?.kind === 'chooseExBurst') return [s, events]
-  s = finishDamageStep(s)
+  // Rung J1-D10: the damage is dealt; the §10.1.4.4 WINDOW opens with priority to the turn player, and the
+  // combat ends when both forfeit (`exitAttackWindow`). A game that ended finishes the step outright.
+  s = s.result ? finishDamageStep(s) : openDamageWindow(s)
   if (s.result) events.push({ type: 'gameOver', result: s.result })
   return [s, events]
+}
+
+/** The §10.1.4.4 window: damage dealt, priority to the turn player, nothing owed. */
+function openDamageWindow(s: GameState): GameState {
+  return { ...s, pending: null, priority: s.turnPlayer, passes: 0 }
 }
 
 /**
@@ -222,14 +278,16 @@ export function applyChooseExBurst(state: GameState, player: PlayerId, use: bool
   let s: GameState = { ...state, pending: null }
   if (use) {
     // Rung J1-D11: the burst runs NOW as the active frame — declare, then resolve — never on the stack and
-    // never behind a window (§11.10.2). `settle` runs it before anything else is placed.
+    // never behind a window (§11.10.2). `settle` runs it (prompts included) and places whatever it triggers
+    // BEFORE either player can act in the §10.1.4.4 window opened below: the attack is held in `damage`
+    // until the frame is done, because a frame in flight is what `actingPlayer` answers first.
     const frame: Frame = {
       abilityId: pending.abilityId, source: pending.card, controller: player,
       path: [], chosen: [], modes: [], triggerEvent: null, origin: 'exBurst', stage: 'declare', declared: [], modesDeclared: false,
     }
     s = { ...s, resolution: { ...s.resolution, active: frame } }
   }
-  return [finishDamageStep(s), events]
+  return [openDamageWindow(s), events]
 }
 
 /**

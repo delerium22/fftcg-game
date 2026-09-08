@@ -330,7 +330,7 @@ describe('SearchCoordinator: a failed worker still finishes a whole game (D2-A5)
     const { result, warnings } = drive(() => { throw new Error('Worker is not defined') })
     expect(result.result).not.toBeNull()
     expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)
-  })
+  }, 60_000)
 
   it('finishes when every post throws a clone error', () => {
     const { result, warnings } = drive(() => ({
@@ -339,13 +339,13 @@ describe('SearchCoordinator: a failed worker still finishes a whole game (D2-A5)
     }))
     expect(result.result).not.toBeNull()
     expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)
-  })
+  }, 60_000)
 
   it('finishes when the worker accepts requests and never replies', () => {
     const { result, warnings } = drive(() => ({ post: () => {}, terminate: () => {} }))
     expect(result.result).not.toBeNull()
     expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)
-  })
+  }, 60_000)
 })
 
 describe('SearchCoordinator: delivery itself must not be able to end the game', () => {

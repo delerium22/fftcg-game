@@ -378,9 +378,27 @@ describe('20-103H Ramuh — "Select up to 2 of the 3 following actions." (the on
 
 /** P0 attacks with `attackers`; P1 declines to block, so §10.1.4.1 puts one point of damage on P1. */
 function attackUnblocked(state: GameState, attackers: CardId[]) {
-  let s = endPhase(state)          // §10.1.1–2 into the declaration step (both forfeit, rung J1)
-  s = apply(s, { type: 'declareAttack', player: 0, attackers }).state
-  return apply(s, { type: 'declareBlock', player: 1, blocker: null })
+  const s = endPhase(state)          // §10.1.1–2 into the declaration step (both forfeit, rung J1)
+  return blockWith(attackInto(s, attackers).state, null)   // through the `declared` and `blocked` windows (J1-D10)
+}
+/** Declare `attackers` and forfeit through the `declared` window (rung J1-D10): the block decision. */
+function attackInto(state: GameState, attackers: CardId[]): { state: GameState; events: Event[] } {
+  const r = engineApply(state, { type: 'declareAttack', player: state.turnPlayer, attackers })
+  const p = passBoth(r.state)
+  return { state: p.state, events: [...r.events, ...p.events] }
+}
+/** Answer the block and forfeit through the `blocked` window: damage dealt and its triggers drained, unless a prompt is owed. */
+function blockWith(state: GameState, blocker: CardId | null): { state: GameState; events: Event[] } {
+  const r = applyNow(state, { type: 'declareBlock', player: (1 - state.turnPlayer) as PlayerId, blocker })
+  if (r.state.pending || r.state.result) return r
+  const p = passBoth(r.state)
+  let s = p.state
+  let events = [...r.events, ...p.events]
+  if (!s.result && !s.pending && (hasResolutionWork(s.resolution) || s.stack.length)) {
+    const [t, more] = drainResolution(s)
+    s = t; events = [...events, ...more]
+  }
+  return { state: s, events }
 }
 
 describe('22-068R Prishe — "When Prishe deals damage to your opponent, choose 1 Character in your Break Zone. Add it to your hand."', () => {
@@ -430,8 +448,8 @@ describe('27-125S Luso — "When Luso deals damage to a Forward, break it." and 
     ;[s, luso] = withField(s, 0, 'forwards', '27-125S')      // 3000 power
     ;[s, blocker] = withField(s, 1, 'forwards', '24-063H')   // Hugh Yurg 8000 — survives 3000, kills Luso back
     s = endPhase(s)
-    s = apply(s, { type: 'declareAttack', player: 0, attackers: [luso] }).state
-    const r = apply(s, { type: 'declareBlock', player: 1, blocker })
+    s = attackInto(s, [luso]).state
+    const r = blockWith(s, blocker)
     expect(r.events).toContainEqual({ type: 'brokenByAbility', card: blocker, source: luso })
     expect(r.state.players[1].breakZone).toContain(blocker)
     expect(r.state.pending, '"break it" names its subject — never a choice (spec C2-5)').toBeNull()

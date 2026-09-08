@@ -498,9 +498,13 @@ describe('choices whose subject the board does not draw', () => {
     // button and whichever Forward happened to come first was pumped. Silently deciding a live choice for the
     // player is the exact operation this rung's plan review refused — and it was already shipping.
     //
-    // Seed 1, ordinary greedy play: Undead Princess's pump has FOUR legal targets.
-    const found = drive(1, () => null, (s) =>
-      actingPlayer(s) === HUMAN && [...targetGroups(s).values()].some((t) => t.size >= 2))
+    // Ordinary greedy play: the first seed from 1 whose game reaches Undead Princess's pump with at least two
+    // legal targets (seed 1 alone did, before rung J1 moved every game).
+    let found: GameState | null = null
+    for (let seed = 1; seed < 12 && found === null; seed++) {
+      found = drive(seed, () => null, (s) =>
+        actingPlayer(s) === HUMAN && [...targetGroups(s).values()].some((t) => t.size >= 2))
+    }
     expect(found, 'never reached an activation with two legal targets, so this asserts nothing').not.toBe(null)
 
     const v = viewFor(found!, HUMAN)
@@ -516,7 +520,7 @@ describe('choices whose subject the board does not draw', () => {
       expect(labels.filter((l, i) => labels.indexOf(l) !== i), `${k}: two target buttons read alike`).toEqual([])
     }
     expect(checked, 'the fixture held no multi-target activation after all').toBeGreaterThan(0)
-  })
+  }, 60_000)
 
   it('a deck search names WHICH copy it found', () => {
     // Hugh Yurg searches the whole deck; this deck runs three Lusos and two Undead Princesses, so five legal

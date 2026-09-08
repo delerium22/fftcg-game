@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { actingPlayer, apply, legalCommands, viewFor, type CardId, type GameState } from '@fftcg/engine'
+import { actingPlayer, apply, legalCommands, viewFor, type CardId, type Command, type GameState } from '@fftcg/engine'
 import { newRolloutProfile, profiledApplies, GreedyAgent } from '../src/greedy.js'
 import { rolloutToCap, searchIsmcts, DEFAULT_ROLLOUT_COMMAND_CAP } from '../src/ismcts/search.js'
 import { DEFAULT_WEIGHTS } from '../src/evaluate.js'
-import { settleWindows, endPhase, DEFAULT_DECK, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
+import { attackInto, settleWindows, endPhase, DEFAULT_DECK, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
 
 /**
  * Rung D7 — the attribution has to be trustworthy before anything is decided from it.
@@ -94,10 +94,10 @@ describe('rollout apply attribution (rung D7)', () => {
     ;[s, atk] = withField(s, 0, 'forwards', 'V-F5')
     ;[s] = withField(s, 1, 'forwards', 'V-F3')
     s = endPhase(s)
-    const attack = legalCommands(s, 0).find((c) => c.type === 'declareAttack' && c.attackers.includes(atk))
+    const attack = legalCommands(s, 0).find((c): c is Extract<Command, { type: 'declareAttack' }> => c.type === 'declareAttack' && c.attackers.includes(atk))
     expect(attack, 'the fixture cannot declare the attack it needs').toBeDefined()
     const before = s          // at the DECLARATION: one command later there is a block outstanding
-    s = apply(s, attack!).state
+    s = attackInto(s, attack!.attackers).state   // through the `declared` window (rung J1-D10)
     expect(s.pending?.kind, 'the fixture does not start on a forced pending').toBe('declareBlock')
 
     // cap 1: the loop answers the block as its single command. That is a FORCED decision done by the loop.

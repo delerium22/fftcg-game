@@ -81,6 +81,13 @@ describe('the AI never walks past a win (greedy, 60 seeded games)', () => {
 })
 
 describe('declining a block into a loss is deliberate, not a miss', () => {
+  /** The block applied and its `blocked` window passed through by both (rung J1-D10): where the damage lands. */
+  function outcomeOf(s: GameState, block: Command): GameState {
+    let t = apply(s, block).state
+    for (let i = 0; i < 4 && !t.result && !t.pending && t.attack?.step === 'blocked'; i++) t = apply(t, { type: 'pass', player: actingPlayer(t)! }).state
+    return t
+  }
+
   it('only ever declines a fatal block when every block loses too (see the rejected G5 note)', () => {
     // The counterpart, and it exists to pin the REASON rather than the behaviour. The AI regularly declines a
     // block and dies — 32 games in 120 — and that is correct: both answers score exactly -terminal because the
@@ -103,9 +110,9 @@ describe('declining a block into a loss is deliberate, not a miss', () => {
         const chosen = agent.decide(viewFor(s, p), legal) as Command
 
         if (s.pending?.kind === 'declareBlock' && chosen.type === 'declareBlock' && chosen.blocker === null) {
-          const lost = apply(s, chosen).state.result
+          const lost = outcomeOf(s, chosen).result
           if (lost && lost.winner !== null && lost.winner !== p) {
-            const saver = legal.find((c) => c.type === 'declareBlock' && c.blocker !== null && !apply(s, c).state.result)
+            const saver = legal.find((c) => c.type === 'declareBlock' && c.blocker !== null && !outcomeOf(s, c).result)
             if (saver) {
               fatalDeclines++
               const declineScore = agent.lastScores.find((x) => (x.command as Command).type === 'declareBlock'

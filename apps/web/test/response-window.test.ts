@@ -51,7 +51,7 @@ describe('a pass-only window is closed in the same step (J1-A12)', () => {
     const passed = apply(s, { type: 'pass', player: HUMAN }).state
     expect(isResponseWindow(passed), 'the human’s pass should open the AI’s window').toBe(true)
     expect(forcedPass(passed)?.type).toBe('pass')
-    const settled = settleForcedWindows(passed)
+    const settled = settleForcedWindows(passed).state
     // The Attack Phase's preparation window IS a response window (slice 4: the human may cast a Summon from
     // it), so what is asserted is that the settling stopped at a REAL decision, not at a window as such.
     expect(forcedPass(settled)).toBeNull()
@@ -65,7 +65,9 @@ describe('a pass-only window is closed in the same step (J1-A12)', () => {
     const agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
     const passed = apply(s, { type: 'pass', player: HUMAN }).state
     const stepped = stepAi(passed, agent)
-    expect(stepped.lines, 'a forced pass was narrated').toEqual([])
+    // No MOVE line for the pass itself; what the passes caused (the phase the window's exit began) is narrated.
+    expect(stepped.lines.filter((l) => l.kind === 'ai' || l.kind === 'human'), 'a forced pass was narrated as a move').toEqual([])
+    expect(stepped.lines.every((l) => l.kind === 'phase' || l.kind === 'event'), 'only what the exit caused is narrated').toBe(true)
     expect(actingPlayer(stepped.state)).toBe(HUMAN)
     expect(stepped.state.phase).toBe('attack')
   })

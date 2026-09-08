@@ -1,4 +1,5 @@
 import type { CardDef, PlayerId } from '../src/types.js'
+import { opponentOf } from '../src/types.js'
 import type { CardId, FieldCard, GameState } from '../src/state.js'
 import { applyChooseFirst, applyMulligan, createGame } from '../src/setup.js'
 import { apply } from '../src/apply.js'
@@ -135,4 +136,38 @@ export function settleWindows(state: GameState): GameState {
     s = apply(s, c).state
   }
   return s
+}
+
+/**
+ * Declare `attackers` and forfeit through the `declared` window (rung J1-D10, §10.1.2.6): the state is at the
+ * defender's block decision — or back at declaration if nothing survived the window.
+ */
+export function attackInto(state: GameState, attackers: CardId[]): { state: GameState; events: Event[] } {
+  const r = apply(state, { type: 'declareAttack', player: state.turnPlayer, attackers })
+  const p = passBoth(r.state)
+  return { state: p.state, events: [...r.events, ...p.events] }
+}
+
+/**
+ * Answer the block and forfeit through the `blocked` window (§10.1.3.6): the damage is dealt and everything
+ * it triggered is drained (`applyNow` semantics), unless a prompt or the party split is owed first. The state
+ * is then in the post-damage window (§10.1.4.4); `exitWindowNow` leaves it.
+ */
+export function blockWith(state: GameState, blocker: CardId | null): { state: GameState; events: Event[] } {
+  const r = applyNow(state, { type: 'declareBlock', player: opponentOf(state.turnPlayer), blocker })
+  return exitWindowNow(r)
+}
+
+/** Both forfeit the current window and drain what the exit triggered — unless a prompt is owed or the game ended. */
+export function exitWindowNow(r: { state: GameState; events: Event[] }): { state: GameState; events: Event[] } {
+  if (r.state.pending || r.state.result) return r
+  const p = passBoth(r.state)
+  let s = p.state
+  let events = [...r.events, ...p.events]
+  if (!s.result && !s.pending && (hasResolutionWork(s.resolution) || s.stack.length)) {
+    const [t, more] = drainResolution(s)
+    s = t; events = [...events, ...more]
+  }
+  if (!s.result && !s.pending && !hasResolutionWork(s.resolution) && s.stack.length === 0) s = { ...s, resolution: { ...s.resolution, steps: 0 } }
+  return { state: s, events }
 }

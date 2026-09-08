@@ -125,6 +125,15 @@ At every window exit the COMBATANTS are recomputed from the field: attackers tha
 needs no split. Declaration and block have no trigger vocabulary in the pool ("when attacks/blocks"); the
 windows exist without them and the vocabulary is deferred. `finishDamageStep` clears combat exactly as now.
 
+Slice 5 notes (built 2026-09-08): `AttackState.attackers`/`blocker` are recomputed only at a window's EXIT
+(`survivors`), so a trick cast inside the window still reads the declared combatants; the six-state
+`phaseStarted` events name `declared`/`blocked`, and the browser labels them "combat declared" / "defence
+declared" (never the words attack/block, which the prompt reserves for moves it offers). Greedy rollouts pass
+through every combat window (`combatWindow` in greedy.ts) so `evaluate` never prices a half-fought attack; the
+ISMCTS tree and rollouts collapse pass-only windows (`settleForcedPasses`), so the block stays the attack
+edge's child. The browser narrates what an auto-passed window CAUSED (`settleForcedWindows` returns events):
+without that, a game ending on a blocked window's exit logged no result line — found by B-A6.
+
 **J1-D11 — EX Burst.** An offered burst that is used runs as `resolution.active` immediately, declare then
 resolve, with the attack held in `damage` until it (and any prompt it raises, and anything it triggers being
 placed) completes; only then does the §10.1.4.4 window open. Declining opens the window at once. A burst that
@@ -192,7 +201,7 @@ characteristics at resolution, so this is unobservable today; a `MVP0-SIMPLIFICA
   it applies to the survivor; a target still present but no longer matching the filter is dropped.
 - **J1-A8 (§11.10.2)** Used burst: resolves (prompts included) before the §10.1.4.4 window, and its own
   triggers are placed before the window; declined: the window opens at once; a burst that deals lethal damage
-  ends the game with the stack as it stood.
+  ends the game (the stack is emptied at game over, D1).
 - **J1-A9 (D1)** `viewFor`/`searchView` carry stack and passes; `determinise` round-trips a stacked Summon
   without dealing its code twice (conservation asserted); `observationKey` differs when `passes` differs and
   when the stack differs, and is equal for equal stacks.

@@ -14,7 +14,7 @@ import { targetCandidates } from '../src/resolve.js'
 import { viewFor } from '../src/view.js'
 import { determinise } from '../src/determinise.js'
 import { seedRng } from '../src/rng.js'
-import { endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
+import { attackInto, blockWith, endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
 /**
  * Rung C2 stage 2: player-damage attribution across a party (spec C2-8), `TargetFilter.types` (spec C2-9) and the
@@ -104,9 +104,8 @@ function withBreak(state: GameState, p: PlayerId, code: string): [GameState, Car
 
 /** P0 attacks with `attackers` and P1 declines to block, so §10.1.4.1 player damage lands. */
 function attackUnblocked(state: GameState, attackers: CardId[]) {
-  let s = endPhase(state)          // §10.1.1–2 into the declaration step (both forfeit, rung J1)
-  s = apply(s, { type: 'declareAttack', player: 0, attackers }).state
-  return apply(s, { type: 'declareBlock', player: 1, blocker: null })
+  const s = endPhase(state)          // §10.1.1–2 into the declaration step (both forfeit, rung J1)
+  return blockWith(attackInto(s, attackers).state, null)   // through the `declared` and `blocked` windows (J1-D10)
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +134,7 @@ describe('C2-A6: a Luso in an unblocked PARTY triggers wherever it sits in field
   for (const lusoFirst of [true, false]) {
     it(`triggers with Luso ${lusoFirst ? 'first' : 'second'} in the attacker array`, () => {
       const { r, luso, mate } = partyOf(lusoFirst)
-      expect(r.state.attack?.attackers ?? []).toEqual([])                             // the attack is over
+      expect(r.state.attack?.step).toBe('damage')   // the damage is dealt; combat ends when its window exits (rung J1-D10)
       expect(triggers(r.events, BURN_AND_RETRIEVE))
         .toEqual([expect.objectContaining({ type: 'abilityTriggered', player: 0, card: luso, abilityId: BURN_AND_RETRIEVE })])
       expect(r.state.pending?.kind).toBe('chooseMode')

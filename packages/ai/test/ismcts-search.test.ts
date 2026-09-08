@@ -12,7 +12,7 @@ import {
   type SearchEdge, type SearchNode, type SearchTree,
 } from '../src/ismcts/search.js'
 import { IsmctsAgent } from '../src/ismcts/agent.js'
-import { DEFAULT_DECK, VANILLA_POOL, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, attackInto, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -439,7 +439,7 @@ describe('every Pending is a tree ply, whoever owns it (D-3)', () => {
    *  command after it. */
   it('returns a BLOCK when a declareBlock is pending, not the move after it', () => {
     let s = suicideAttackPosition()
-    s = apply(s, { type: 'declareAttack', player: 0, attackers: [s.players[0].forwards[0]!.id] }).state
+    s = attackInto(s, [s.players[0].forwards[0]!.id]).state   // through the `declared` window (rung J1-D10)
     expect(s.pending).toEqual({ kind: 'declareBlock', player: 1 })
 
     const { root, result } = search(s, 1, { iterations: 200, cap: 6 })
@@ -470,7 +470,7 @@ describe('rollouts are hard-bounded by a COMMAND cap (D-6)', () => {
    *  loss. The forced-decision tail is budget-exempt for exactly this reason. */
   it('settles the combat it started before scoring, even at cap 0', () => {
     let s = partyAttackPosition()
-    s = apply(s, { type: 'declareAttack', player: 0, attackers: s.players[0].forwards.map((c) => c.id) }).state
+    s = attackInto(s, s.players[0].forwards.map((c) => c.id)).state
     expect(s.pending?.kind).toBe('declareBlock')
     const r = rolloutToCap(s, 0, 0)
     expect(r.commands).toBe(0)
@@ -487,7 +487,7 @@ describe('rollouts are hard-bounded by a COMMAND cap (D-6)', () => {
    */
   it('bounds WORK with a separate apply cap, and still returns a fully settled leaf', () => {
     let s = partyAttackPosition()
-    s = apply(s, { type: 'declareAttack', player: 0, attackers: s.players[0].forwards.map((c) => c.id) }).state
+    s = attackInto(s, s.players[0].forwards.map((c) => c.id)).state
     const generous = rolloutToCap(s, 0, 12)
     const tight = rolloutToCap(s, 0, 12, undefined, undefined, 4)
 
@@ -676,7 +676,7 @@ describe('searchIsmcts', () => {
     ;[s] = withField(s, 0, 'backups', 'V-B1')
     ;[s] = withField(s, 0, 'backups', 'V-B3')
     s = withHandSize(s, 1, 0)
-    s = apply(toAttackDeclaration(s), { type: 'declareAttack', player: 0, attackers: [s.players[0].forwards[0]!.id] }).state
+    s = attackInto(toAttackDeclaration(s), [s.players[0].forwards[0]!.id]).state
     const { root } = search(s, 1, { iterations: 900, cap: 4 })
 
     const edges = walk(root).flatMap((v) => [...v.node.edges.values()])
