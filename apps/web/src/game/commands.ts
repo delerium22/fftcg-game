@@ -25,7 +25,7 @@ function defFor(v: PlayerView, id: CardId): CardDef | undefined {
 }
 
 /** Card names only — the board already shows the art and the id, so the CLI's `Name (CODE)` is noise in a GUI. */
-function bareName(v: PlayerView, id: CardId): string {
+export function bareName(v: PlayerView, id: CardId): string {
   return defFor(v, id)?.name ?? v.cards[id]?.code ?? `#${id}`
 }
 

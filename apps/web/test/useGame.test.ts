@@ -21,6 +21,7 @@ import {
   AI_STEP_MS, aiHandlers, aiIsThinking, createAiSearch, describeEvent, eventLines, moveLine, narrator, stepAi, useGame,
   type AiSearch, type AiSink,
 } from '../src/game/useGame.js'
+import { withField } from '../../../packages/engine/test/helpers.js'
 
 const newGame = (seed: number, defs: CardDef[] = CARD_DEFS): GameState => createGame({ seed, decks: DECKS, defs })
 
@@ -419,6 +420,16 @@ describe('a look and a reveal in the log (rung C9)', () => {
     expect(describeEvent(withCard, { type: 'playedFromDeck', player: AI, card: onField })?.text)
       .toBe(`The AI plays ${nameOf(withCard, onField)} onto the field from its deck`)
     void v
+  })
+
+  it('names the played card BARE even with a twin on the other side — the sentence already says whose it is', () => {
+    // Found by playing: "The AI plays the AI's Luso onto the field from its deck".
+    const onField = base.players[AI].deck[0]!
+    const [twinned] = withField(learn(base, [HUMAN, AI], [onField]), HUMAN, 'forwards', base.cards[onField]!.code)
+    const v = viewFor(twinned, HUMAN)
+    const text = describeEvent(v, { type: 'playedFromDeck', player: AI, card: onField })?.text
+    expect(text).toBe(`The AI plays ${v.defs[base.cards[onField]!.code]!.name} onto the field from its deck`)
+    expect(text).not.toContain("the AI's")
   })
 
   it('says what was added to a hand — by name for the human, unnamed for the AI', () => {

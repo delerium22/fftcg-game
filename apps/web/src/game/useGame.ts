@@ -4,7 +4,7 @@ import {
   type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
-import { ATTACK_STEP_LABEL, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
+import { ATTACK_STEP_LABEL, bareName, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
 
@@ -168,7 +168,9 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // The card a search found is public the moment it lands, so this one always names it — unlike
     // `addedToHand`, whose card may be one this seat never saw.
     case 'playedFromDeck':
-      return { kind: 'event', text: `${who(v, e.player)} play${e.player === v.me ? '' : 's'} ${qualifiedName(v, e.card)} onto the field from ${whoDoes(v, e.player, 'your', 'its')} deck` }
+      // Bare: the sentence already says whose it is twice ("The AI plays … from its deck"), and with a twin on
+      // the other side `qualifiedName` made it "The AI plays the AI's Luso onto the field" (found by playing).
+      return { kind: 'event', text: `${who(v, e.player)} play${e.player === v.me ? '' : 's'} ${bareName(v, e.card)} onto the field from ${whoDoes(v, e.player, 'your', 'its')} deck` }
     // The other half: without this a revealed card is added to a hand with nothing in the log saying so, and
     // for the no-eligible path there is no board change at all to infer it from.
     case 'addedToHand': {
