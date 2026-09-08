@@ -1,6 +1,9 @@
 # Rung J1 — the stack, priority that passes, and choices declared when a thing is put on it
 
-> **STATUS: revision 2, 2026-09-08, cleared to build in slices.** Revision 1 went to a Codex plan review
+> **STATUS: BUILT, 2026-09-08 — slices 1–7 landed** (929b01f, 2185d98, 57010a0, 338981c, 3dcead4, and the
+> slice 6/7 commit that follows). The strength gate (A11's `mirror --pairs 30 --seed 1 --a ismcts:200 --b greedy
+> --fast`) is recorded under "Slice 6 gate" at the end of this file once the run finishes.
+> Revision 2 was the design cleared to build; revision 1 went to a Codex plan review
 > ([the review](../plans/2026-09-08-rung-j1-the-stack.codex-review.md)); every finding was checked against
 > the code and the adjudication is at the end. The root deviation in the
 > [rules-conformance audit](2026-09-08-rules-conformance-audit.md): CR 3.3 §7.12, §11.1, §11.3, §11.6,

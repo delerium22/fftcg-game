@@ -20,8 +20,10 @@ import { IllegalCommandError } from './errors.js'
  * removal). Interleaving resolution with rule processes is therefore the outer reducer's job: `settle` in
  * `apply.ts` alternates `runRuleProcesses` and `drainResolution` until both are quiet.
  *
- * MVP0-SIMPLIFICATION (spec C1-4): there is no stack and no response window. A triggered clause resolves
- * immediately, in trigger order, and the opponent cannot answer it.
+ * Rung J1 retired C1-4's "no stack" marker: a triggered clause is DECLARED as it is placed on the stack
+ * (§11.8.7) and resolves only when both players have forfeited priority (§11.1.7); Summons and activations
+ * are stack items too (§11.3, §11.6). What remains simplified is marked below (§11.8.7 within-player order,
+ * §11.11.4 last-known information).
  *
  * C1's atomicity rule is REFINED by spec C2-6, not replaced: a frame is atomic WITHIN itself, across every
  * prompt it raises; rule processes run BETWEEN frames. `drainResolution` therefore completes exactly one frame
@@ -811,25 +813,17 @@ function suspendedNode(state: GameState): { frame: Frame; node: Effect } {
 }
 
 /**
- * Fire every `observesChosen` clause on the cards a choice just fixed (spec C11) — Prishe's "when Prishe is
- * chosen by a Summon or an ability, Prishe gains +2000 power until the end of the turn".
+ * Queue every `observesChosen` clause on the cards a choice just fixed (spec C11, rung J1-D7) — Prishe's
+ * "when Prishe is chosen by a Summon or an ability, Prishe gains +2000 power until the end of the turn".
  *
- * INLINE, not through the agenda. The clause has to land BEFORE the choosing ability continues — that is
- * the whole card: a Summon choosing a 5000 Prishe and dealing 5000 kills her unless the +2000 arrives
- * first — and the agenda cannot preempt a frame that is already executing (spec C2-13). An effect that
- * cannot suspend needs no preemption, so it runs here instead.
+ * A TRIGGER, placed ABOVE the choosing item. The clause lands before the choosing ability resolves — that is
+ * the whole card: a Summon choosing a 5000 Prishe and dealing 5000 kills her unless the +2000 arrives first
+ * — and with declaration at placement (J1-D3) the choice is fixed while the chooser is still on the stack, so
+ * the pump goes on top and resolves first (§11.8.7). That is the CR ordering; C11's inline marker is retired.
  *
- * MVP0-SIMPLIFICATION (spec C11): this is NOT the CR ordering in every case, and the case is in this deck.
- * Ramuh can deal lethal damage in one selected mode and raise a second target prompt in the SAME frame, and
- * the engine leaves the lethally damaged Forward on the field until that frame finishes. Choose Prishe with
- * that second prompt and this gives `pump → Ramuh continues → break`, where a preempting frame would give
- * `break → Ramuh continues` — so `powerModified` and `broken` come out in the opposite order, and anything
- * watching that break sees a different agenda. It ships because the engine has no stack at all: every
- * ability already resolves immediately, which is a larger deviation of exactly this class.
- *
- * The effects are run through the REAL executor with the chosen card bound as `chosen`, so the AST is what
- * decides what happens — hand-writing the power change here would bypass `addPower`, the engine's single
- * power-modifying authority, and let the card's text and the code drift apart.
+ * The effects run through the REAL executor with the chosen card bound as `chosen` (the `chosen` trigger
+ * event), so the AST decides what happens — hand-writing the power change would bypass `addPower`, the
+ * engine's single power-modifying authority, and let the card's text and the code drift apart.
  */
 export function dispatchChosenTriggers(state: GameState, chosen: readonly CardId[], by: CardId, byController: PlayerId): GameState {
   let s = state
@@ -957,9 +951,10 @@ function watches(state: GameState, trigger: AbilityTrigger, watcher: PlayerId, t
  * already names exactly one card; it is in the key so the key is total by inspection. Watchers are read from the
  * FIELD ARRAYS only, never `state.cards`, because `determinise` preserves array order and not object-key order.
  *
- * MVP0-SIMPLIFICATION: fixed AP-first FIFO. CR §11.8.7 lets each controller order their OWN simultaneous
- * triggers, with the non-turn player's placed on top of the turn player's. None of this pool's clauses has an
- * outcome-sensitive AP/NAP conflict, so the deviation is unobservable — but it is a deviation.
+ * MVP0-SIMPLIFICATION (narrowed by rung J1-D4): the non-turn player's triggers ARE placed on top of the turn
+ * player's now (§11.8.7); what stays fixed is the order WITHIN one controller's simultaneous triggers — this
+ * key, rather than a choice the controller makes. None of this pool's clauses has an outcome-sensitive
+ * same-controller conflict, so it is unobservable — but it is a deviation.
  */
 function collectWatchers(state: GameState, transitions: readonly ZoneTransition[]): WatcherOccurrence[] {
   const out: WatcherOccurrence[] = []
@@ -996,7 +991,7 @@ function enqueueZoneTriggers(state: GameState, occurrences: readonly WatcherOccu
   }
   return s
 }
-/** Queue every implemented clause with this trigger kind, in printed order (spec C1-4: no stack, they drain immediately). */
+/** Queue every implemented clause with this trigger kind, in printed order — to the triggered list, placed on the stack at the next priority grant (rung J1-D2). */
 export function dispatchTrigger(state: GameState, def: CardDef, card: CardId, controller: PlayerId, kind: AbilityTrigger['kind']): GameState {
   let s = state
   for (const ability of def.abilities ?? []) if (ability.trigger.kind === kind) s = enqueueTrigger(s, card, controller, ability)

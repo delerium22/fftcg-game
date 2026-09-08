@@ -317,21 +317,25 @@ Known deviations from the full CR, each marked in the source with a comment. Fin
 grep -rn MVP0-SIMPLIFICATION packages apps --include='*.ts' --include='*.tsx' --exclude-dir=dist
 ```
 
-The big one, from which most of the others follow, is that **there is no stack and no priority passing**:
-priority is always the turn player, every ability resolves the moment it is put on the agenda, and there is no
-response window. That in turn is why a Summon cannot be cast during the Attack Phase (§9.3.1.6) and why the
-Damage Resolution Step auto-advances (§10.1.4.4). Smaller ones: First Strike is not implemented (§15.2.3 — no
-card in the shipping deck prints it), simultaneous triggers use a fixed attacking-player-first FIFO rather than
-letting each controller order their own (§11.8.7), the mulligan keeps hand order rather than letting you choose
-it, Monster-type cards are out of scope entirely (the pool has none), and at a prompt whose every answer is a
-card click — choose targets, choose from deck, discard to hand size — the browser's prompt strip offers no
-buttons at all rather than Concede alone, so for that one decision you cannot concede (§2.1; rung G6, measured
-at 345 of 2,288 decisions before the change).
+**The stack and priority are real** (rung J1, CR §7.12, §11.1): a pass forfeits priority, both players must
+forfeit for a phase to end or the top of the stack to resolve, triggered abilities are declared as they are
+placed and resolve after both pass, Summons and action abilities go on the stack and can be used in any
+priority window — including the Attack Phase's four (§10.1.1.2, §10.1.2.6, §10.1.3.6, §10.1.4.4) — and an EX
+Burst resolves in full before the damage window opens (§11.10.2). The browser closes a window whose only
+answer is Pass in the same step, so you are asked only when you can actually do something.
 
-Two entries that used to be in this list are **no longer true**, and were left here stale for a while:
-Summons resolve their effects (rung C4 — Odin and Ramuh both work), and **EX Burst resolves on damage** (rung
-G3, §11.10): a card printing EX BURST that is dealt as damage offers its owner the marked clause, and the
-`selfplay` report counts every offer, use and decline.
+What is still simplified: within ONE controller's simultaneous triggers the order is fixed rather than the
+controller's choice (§11.8.7 — the non-turn player's do go on top); a frame carries no "last-known
+information" about a source that left (§11.11.4); the End Phase has no priority window (§9.5.1.4 — no
+end-of-turn trigger exists in the pool); First Strike is not implemented (§15.2.3 — no card in the shipping
+deck prints it); the mulligan keeps hand order rather than letting you choose it; Monster-type cards are out of
+scope entirely (the pool has none); and at a prompt whose every answer is a card click — choose targets,
+choose from deck, discard to hand size — the browser's prompt strip offers no buttons at all rather than
+Concede alone, so for that one decision you cannot concede (§2.1; rung G6, measured at 345 of 2,288 decisions
+before the change).
+
+Entries that used to be in this list and are **no longer true**: Summons resolve their effects (rung C4), EX
+Burst resolves on damage (rung G3, §11.10), and — the big one — there is a stack (rung J1).
 
 ## Repo layout
 

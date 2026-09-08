@@ -330,6 +330,11 @@ export interface Ability {
  * frame can resume inside `then`/`modes`/`do` after a player answers. `chosen` is the target binding the
  * innermost `chooseTargets`/`forEach` established.
  */
+/**
+ * MVP0-SIMPLIFICATION (§11.11.4, rung J1-D16): a frame carries no snapshot of its source. A source that leaves
+ * the field before its item resolves reads nothing of its former self ("last-known information"). No pool
+ * clause reads its source's characteristics at resolution, so this is unobservable today.
+ */
 export interface Frame {
   readonly abilityId: string
   /** The card whose ability this is — resolves `excludeSource`, and it may already have left the field. */

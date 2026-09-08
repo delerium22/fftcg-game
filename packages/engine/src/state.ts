@@ -153,10 +153,7 @@ export interface GameState {
   firstPlayer: PlayerId
   phase: Phase
   attack: AttackState | null   // non-null only while phase === 'attack'
-  /**
-   * CR §11.1 priority holder (rung J1). Until slice 2 of J1 lands this is still always the turn player — the
-   * MVP0-SIMPLIFICATION marker moves to `applyPass`, which is where the forfeit semantics go.
-   */
+  /** CR §11.1 priority holder (rung J1): either player, handed over by a forfeit (`applyPass`) or an action. */
   priority: PlayerId
   /** Consecutive forfeits of priority (§11.1.7): 0, or 1 after one player has passed and the other now holds it. */
   passes: 0 | 1

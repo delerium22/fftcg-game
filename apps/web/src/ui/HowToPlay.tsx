@@ -81,8 +81,9 @@ export function HowToPlay({ onClose }: { onClose: () => void }): JSX.Element {
             each has a power, and takes damage until the end of the turn. A Forward with damage equal to its
             power is broken. Attack with one Forward at a time, or with several of one element as a party. The
             defender may <strong>block</strong> with one Forward; the two deal damage to each other. An
-            unblocked attack deals 1 damage to the player. <em>Haste</em> lets a Forward attack the turn it
-            arrives; <em>Brave</em> means it does not dull when it attacks.
+            unblocked attack deals 1 damage to the player. Between declaring, blocking and the damage both
+            players get a chance to respond. <em>Haste</em> lets a Forward attack the turn it arrives;{' '}
+            <em>Brave</em> means it does not dull when it attacks.
           </p>
         </section>
 
@@ -90,8 +91,12 @@ export function HowToPlay({ onClose }: { onClose: () => void }): JSX.Element {
           <h3>Summons, abilities, EX Burst</h3>
           <p>
             <strong>Summons</strong> are one-shot effects. Cards with abilities show them as choices on the
-            card, labelled with their cost; in this build you use them only in your own Main Phases. When a
-            damage card has <strong>EX Burst</strong>, its effect fires for free as it is dealt.
+            card, labelled with their cost. Both go on <strong>the stack</strong>: nothing happens until both
+            players pass, and while something waits there you may answer it with a Summon or an ability of
+            your own — in either player's Main Phase or during an attack. The strip shows the stack when it
+            holds anything, and <em>Pass</em> then means "let it resolve". When you have nothing you could do,
+            the game passes for you. When a damage card has <strong>EX Burst</strong>, its effect fires for free
+            as it is dealt.
           </p>
         </section>
 

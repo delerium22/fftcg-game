@@ -3,6 +3,7 @@ import type { CSSProperties, JSX } from 'react'
 import type { PlayerView } from '@fftcg/engine'
 import type { Choice, ChoiceSet } from '../game/types.js'
 import { HUMAN } from '../game/types.js'
+import { stackItemLabel } from '../game/commands.js'
 
 const PHASE_LABEL: Record<string, string> = {
   setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase', main1: 'Main Phase 1',
@@ -142,6 +143,18 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, 
         * This element must NOT be keyed or conditionally rendered: a live region has to exist before the
         * content it announces, and one replaced on every change announces nothing at all.
         */}
+      {/* Rung J1-D15: the stack is public (§7.12.2). Shown whenever it holds anything, bottom to top, with
+        * the top marked — a pass with this row on the table is "let it resolve", and the row is what says so.
+        * A pass-only window never renders (the hook closes it), so the row is only ever seen with a real answer. */}
+      {view.stack.length > 0 && (
+        <ol className="stack-row" data-stack-row aria-label="The stack">
+          {view.stack.map((item, i) => (
+            <li key={i} className={i === view.stack.length - 1 ? 'stack-row__item stack-row__item--top' : 'stack-row__item'}>
+              {stackItemLabel(view, item)}{i === view.stack.length - 1 ? ' — resolves next' : ''}
+            </li>
+          ))}
+        </ol>
+      )}
       <span
         className="prompt__text"
         role="status"

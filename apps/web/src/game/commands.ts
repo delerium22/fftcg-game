@@ -2,8 +2,7 @@ import {
   HAND_SIZE_LIMIT, abilityCpRequirement, castBlocker, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameResult, type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
-  type ZoneTransitionReason, type CastBlocker,
-} from '@fftcg/engine'
+  type ZoneTransitionReason, type CastBlocker, type StackItem } from '@fftcg/engine'
 import { preferredPayment, preferredPaymentFor } from '@fftcg/ai'
 import type { Choice, ChoiceSet } from './types.js'
 
@@ -700,6 +699,21 @@ function actingIn(v: PlayerView): PlayerId | null {
   return v.pending?.player ?? v.priority
 }
 
+/**
+ * What a stack item is called in a sentence (rung J1-D15): a Summon by its qualified name ("your Ramuh",
+ * "the AI's Odin"), an ability by its source's ("the AI's Hugh Yurg's ability"). `qualifiedName` works for a
+ * stacked Summon because the view carries it in `cards` (§7.12.2).
+ */
+export function stackItemLabel(v: PlayerView, item: StackItem): string {
+  // Always owned: whose item it is matters here even without a same-named twin on the table (the rule
+  // `qualifiedName` applies), because a stacked card sits in no player's zone the eye could read it from.
+  const owned = (id: CardId, controller: PlayerId): string => {
+    const name = qualifiedName(v, id)
+    return /^(your|the AI's) /.test(name) ? name : `${possessive(v, controller)} ${name}`
+  }
+  return item.kind === 'summon' ? owned(item.card, item.controller) : `${owned(item.frame.source, item.frame.controller)}'s ability`
+}
+
 /** The Attack Phase's six states (rung J1-D10) in the player's words: what has just happened, not the CR's step name. */
 export const ATTACK_STEP_LABEL: Record<string, string> = {
   // Never the words "attack" or "block" (nor "cast", "ability"): the prompt built from these names only the
@@ -789,6 +803,18 @@ function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
   const offer = (verbs: string[], nothing: string): string =>
     verbs.length === 0 ? nothing : `${[...verbs, 'pass'].join(', ').replace(/, ([^,]*)$/, verbs.length > 1 ? ', or $1' : ' or $1')}`
 
+  // Rung J1-D15: a RESPONSE window names what it is a response to. With something on the stack the item on
+  // top is the subject and a pass lets it resolve; in the opponent's phase the phase is theirs and a pass
+  // lets it end. Neither is "pass to continue", which reads as ending your own phase.
+  const top = v.stack.at(-1)
+  if (top !== undefined) {
+    const verbs = [...(canCast ? ['cast a Summon'] : []), ...(canActivate ? ['use an ability'] : [])]
+    return `${capitalise(stackItemLabel(v, top))} is on the stack — ${offer(verbs, 'pass to let it resolve')}`
+  }
+  if (v.turnPlayer !== v.me && (v.phase === 'main1' || v.phase === 'main2')) {
+    const verbs = [...(canCast ? ['cast a Summon'] : []), ...(canActivate ? ['use an ability'] : [])]
+    return `The AI's ${PHASE_LABEL[v.phase]} — ${offer(verbs, 'pass to let it end')}`
+  }
   switch (v.phase) {
     // NOT "cast, attack, or pass". An attack is declared in the Attack Phase — `legalCommands` only ever emits
     // `declareAttack` under `case 'attack'` — so Main Phase 1 naming one is not merely unavailable in this

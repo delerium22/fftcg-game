@@ -402,6 +402,27 @@ body {
   letter-spacing: 0.01em;
 }
 
+/* Rung J1-D15: the stack, bottom to top, beside the prompt. */
+.stack-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: var(--s1) var(--s3);
+  list-style: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  font-family: var(--font-condensed);
+  font-size: var(--t-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.stack-row__item--top {
+  color: var(--gold);
+}
+
 .prompt__actions {
   display: flex;
   gap: var(--s2);
