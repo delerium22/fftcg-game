@@ -213,10 +213,19 @@ registerRuleProcesses(runRuleProcesses)
  * as a zone movement (not a break — no `broken` event, watchers of the movement fire), and the rule processes
  * run again in case the removal changed anything. The End Phase, if it was interrupted, resumes in `apply`.
  */
-export function applyBreakExcessBackups(state: GameState, player: PlayerId, cards: readonly CardId[]): [GameState, Event[]] {
+/** Why an excess-Backup answer would be refused, or null (rung J7-D1): the exact test `applyBreakExcessBackups` runs. */
+export function excessBackupsCheck(state: GameState, player: PlayerId, cards: readonly CardId[]): string | null {
+  if (state.result) return 'game is over'
   const pending = state.pending
-  if (pending?.kind !== 'breakExcessBackups' || pending.player !== player) throw new IllegalCommandError('no excess-Backup choice owed by this player')
-  if (cards.length !== pending.count || new Set(cards).size !== cards.length) throw new IllegalCommandError(`choose exactly ${pending.count} distinct Backups (§12.4.8)`)
+  if (pending?.kind !== 'breakExcessBackups' || pending.player !== player) return 'no excess-Backup choice owed by this player'
+  if (cards.length !== pending.count || new Set(cards).size !== cards.length) return `choose exactly ${pending.count} distinct Backups (§12.4.8)`
+  for (const id of cards) if (!state.players[player].backups.some((c) => c.id === id)) return `${id} is not a Backup you control`
+  return null
+}
+
+export function applyBreakExcessBackups(state: GameState, player: PlayerId, cards: readonly CardId[]): [GameState, Event[]] {
+  const why = excessBackupsCheck(state, player, cards)
+  if (why) throw new IllegalCommandError(why)
   const ps = state.players[player]
   const transitions: ZoneTransition[] = []
   for (const id of cards) {

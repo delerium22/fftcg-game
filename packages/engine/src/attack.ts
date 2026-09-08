@@ -168,19 +168,27 @@ export function legalPartyDamageAssignments(state: GameState): Assignment[][] {
   return result.length === 0 ? [[]] : result
 }
 
-export function applyAssignPartyDamage(state: GameState, player: PlayerId, assignments: Assignment[]): [GameState, Event[]] {
-  if (state.result) throw new IllegalCommandError('game is over')
-  if (state.pending?.kind !== 'assignPartyDamage' || state.pending.player !== player) throw new IllegalCommandError('you do not owe a party damage assignment')
-  const at = state.attack!
+/** Why a party-damage split would be refused, or null (rung J7-D1): the exact test `applyAssignPartyDamage` runs. */
+export function partyDamageCheck(state: GameState, player: PlayerId, assignments: readonly Assignment[]): string | null {
+  if (state.result) return 'game is over'
+  if (state.pending?.kind !== 'assignPartyDamage' || state.pending.player !== player) return 'you do not owe a party damage assignment'
+  const at = state.attack
+  if (!at) return 'no attack'
   const blocker = at.blocker === null ? null : findFieldCard(state, at.blocker)
   const total = blocker ? powerOf(state, blocker.card) : 0
   const noValidSplit = blocker !== null && splits(total, at.attackers).length === 0
-  if (assignments.length === 0 && noValidSplit) return resolveDamage({ ...state, pending: null }, assignments)
+  if (assignments.length === 0 && noValidSplit) return null
   const sum = assignments.reduce((n, a) => n + a.amount, 0)
-  if (sum !== total) throw new IllegalCommandError(`assignments must total the blocker's power ${total} (§10.1.4.2.1)`)
-  if (assignments.some((a) => a.amount < 1000 || a.amount % 1000 !== 0)) throw new IllegalCommandError('each assignment must be a multiple of 1000 and at least 1000 (§10.1.4.2.1)')
-  if (new Set(assignments.map((a) => a.target)).size !== assignments.length) throw new IllegalCommandError('duplicate target')
-  if (assignments.some((a) => !at.attackers.includes(a.target))) throw new IllegalCommandError('targets must be attacking forwards')
+  if (sum !== total) return `assignments must total the blocker's power ${total} (§10.1.4.2.1)`
+  if (assignments.some((a) => a.amount < 1000 || a.amount % 1000 !== 0)) return 'each assignment must be a multiple of 1000 and at least 1000 (§10.1.4.2.1)'
+  if (new Set(assignments.map((a) => a.target)).size !== assignments.length) return 'duplicate target'
+  if (assignments.some((a) => !at.attackers.includes(a.target))) return 'targets must be attacking forwards'
+  return null
+}
+
+export function applyAssignPartyDamage(state: GameState, player: PlayerId, assignments: Assignment[]): [GameState, Event[]] {
+  const why = partyDamageCheck(state, player, assignments)
+  if (why) throw new IllegalCommandError(why)
   return resolveDamage({ ...state, pending: null }, assignments)
 }
 

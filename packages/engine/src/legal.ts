@@ -1,12 +1,14 @@
 import type { PlayerId } from './types.js'
 import type { CardId, GameState } from './state.js'
 import { defOf } from './state.js'
-import type { Command } from './commands.js'
+import { discardCheck } from './phases.js'
+import { excessBackupsCheck } from './rules.js'
+import type { Command, Payment } from './commands.js'
 import { enumeratePayments, enumeratePaymentsFor } from './cp.js'
 import { abilityCpRequirement, activationCheck, activationTargetSets, hasAnyActivation } from './activate.js'
 import { castCheck, instantSpeedAllowed } from './cast.js'
-import { deckPickCandidates } from './resolve.js'
-import { legalAttackSets, legalBlockers, legalPartyDamageAssignments } from './attack.js'
+import { deckPickCandidates, chooseTargetsCheck } from './resolve.js'
+import { attackCheck, legalAttackSets, legalBlockers, legalPartyDamageAssignments, partyDamageCheck } from './attack.js'
 
 export function actingPlayer(state: GameState): PlayerId | null {
   if (state.result) return null
@@ -91,6 +93,39 @@ function combinations<T>(items: T[], k: number): T[][] {
   if (k === 0) return [[]]
   return items.flatMap((x, i) => combinations(items.slice(i + 1), k - 1).map((rest) => [x, ...rest]))
 }
+
+/**
+ * Why `command` would be refused by `apply`, or null (rung J7-D1). The one legality authority the browser
+ * asks before sending a command it BUILT (a target set picked card by card, a party of attackers) rather
+ * than picked from `legalCommands`' list — which may be a capped sample. For the set-shaped commands this is
+ * the exact predicate their `apply*` runs; for the rest, "listed by `legalCommands`" (their answer spaces
+ * are small and fully enumerated).
+ */
+export function isLegal(state: GameState, command: Command): string | null {
+  if (state.result) return 'game is over'
+  if (command.type !== 'concede' && actingPlayer(state) !== command.player) return `player ${command.player} is not the acting player`
+  switch (command.type) {
+    case 'declareAttack': return attackCheck(state, command.player, command.attackers)
+    case 'chooseTargets': return chooseTargetsCheck(state, command.player, command.targets)
+    case 'assignPartyDamage': return partyDamageCheck(state, command.player, command.assignments)
+    case 'discardToHandSize': return discardCheck(state, command.player, command.cards)
+    case 'breakExcessBackups': return excessBackupsCheck(state, command.player, command.cards)
+    case 'activateAbility': {
+      const why = activationCheck(state, command.player, command.source, command.abilityId, command.targets)
+      if (why) return why
+      // The payment is validated by `apply` (`pay`); the listed payments are the minimal ones, and a
+      // non-minimal one is legal too (§11.2.2.3) — accept any payment that lists for this activation.
+      return legalCommands(state, command.player).some((c) => c.type === 'activateAbility' && c.source === command.source && c.abilityId === command.abilityId
+        && sameSet(c.targets, command.targets) && samePayment(c.payment, command.payment)) ? null : 'no such payment for this activation'
+    }
+    default:
+      return legalCommands(state, command.player).some((c) => JSON.stringify(c) === JSON.stringify(command)) ? null : `${command.type} is not legal here`
+  }
+}
+const sameSet = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && [...a].sort((x, y) => x - y).every((v, i) => v === [...b].sort((x, y) => x - y)[i])
+const samePayment = (a: Payment, b: Payment): boolean =>
+  sameSet(a.dullBackups, b.dullBackups) && a.discards.length === b.discards.length
+  && a.discards.every((d) => b.discards.some((e) => e.card === d.card && e.element === d.element))
 
 export function legalCommands(state: GameState, player: PlayerId): Command[] {
   if (state.result) return []

@@ -848,15 +848,32 @@ export function dispatchChosenTriggers(state: GameState, chosen: readonly CardId
   return s
 }
 
-export function applyChooseTargets(state: GameState, player: PlayerId, targets: readonly CardId[]): [GameState, Event[]] {
-  if (state.pending?.kind !== 'chooseTargets' || state.pending.player !== player) throw new IllegalCommandError('no target choice owed by this player')
-  const { frame, node } = suspendedNode(state)
-  if (node.kind !== 'chooseTargets') throw new IllegalCommandError('the waiting ability is not choosing targets')
-  if (new Set(targets).size !== targets.length) throw new IllegalCommandError('duplicate target')
+/**
+ * Why a `chooseTargets` answer would be refused, or null (rung J7-D1): the exact test `applyChooseTargets`
+ * runs, exported so the browser's picker can validate a set it built card by card without `legalCommands`
+ * having enumerated it.
+ */
+export function chooseTargetsCheck(state: GameState, player: PlayerId, targets: readonly CardId[]): string | null {
+  if (state.result) return 'game is over'
+  if (state.pending?.kind !== 'chooseTargets' || state.pending.player !== player) return 'no target choice owed by this player'
+  const frame = state.resolution.active
+  if (!frame) return 'no ability is waiting for an answer'
+  const ability = abilityOf(state, frame)
+  if (!ability) return 'the waiting ability no longer exists'
+  const node = effectAtPath(ability.effects, frame.path, frame.modes)
+  if (!node || node.kind !== 'chooseTargets') return 'the waiting ability is not choosing targets'
+  if (new Set(targets).size !== targets.length) return 'duplicate target'
   const candidates = targetCandidates(state, frame.source, frame.controller, node.from)
   const max = Math.min(node.max, candidates.length)
-  if (targets.length < node.min || targets.length > max) throw new IllegalCommandError(`choose ${node.min}..${max} targets, got ${targets.length}`)
-  for (const id of targets) if (!candidates.includes(id)) throw new IllegalCommandError(`${id} is not a legal target`)
+  if (targets.length < node.min || targets.length > max) return `choose ${node.min}..${max} targets, got ${targets.length}`
+  for (const id of targets) if (!candidates.includes(id)) return `${id} is not a legal target`
+  return null
+}
+
+export function applyChooseTargets(state: GameState, player: PlayerId, targets: readonly CardId[]): [GameState, Event[]] {
+  const why = chooseTargetsCheck(state, player, targets)
+  if (why) throw new IllegalCommandError(why)
+  const { frame } = suspendedNode(state)
   // Extending the path by one level says "the choice at this node is made" — resume runs `then`, not the prompt.
   const active: Frame = { ...frame, chosen: [...targets], path: [...frame.path, 0] }
   // "When <this> is chosen" triggers HERE (spec C11, rung J1-D7) and is placed above the choosing item.

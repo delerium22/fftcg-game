@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, apply, createGame, forcedPass, legalCommands, viewFor,
-  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason,
-} from '@fftcg/engine'
+  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
 import { ATTACK_STEP_LABEL, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, sameCommand, type TriggerCause } from './commands.js'
@@ -368,7 +367,9 @@ export const narrator = (before: PlayerView, after: PlayerView): PlayerView => (
 function narrateApply(
   state: GameState, legal: readonly Command[], command: Command,
 ): { state: GameState; lines: LogLine[] } {
-  if (!legal.some((c) => sameCommand(c, command))) throw new Error(`agent chose an illegal command: ${command.type}`)
+  // Rung J7-D1: legality is the engine's predicate, not membership in a list that may be a capped sample.
+  const refused = isLegal(state, command)
+  if (refused !== null) throw new Error(`agent chose an illegal command: ${command.type} (${refused})`)
   const before = viewFor(state, HUMAN)
   const applied = apply(state, command)
   // Rung J1: the windows the command opened are closed here, before anyone renders them — and what closing
@@ -578,8 +579,8 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
     // that turned out to be illegal had already cancelled the AI's outstanding search on its way to throwing:
     // state unchanged, nothing outstanding, and no reason for the state-keyed effect to request again — the
     // AI simply stopped. Nothing happens between these two statements, so there is no window to protect.
-    const legal = legalCommands(current, HUMAN)
-    if (!legal.some((c) => sameCommand(c, choice.command))) throw new Error(`illegal command: ${choice.label}`)
+    const refused = isLegal(current, choice.command)
+    if (refused !== null) throw new Error(`illegal command: ${choice.label} (${refused})`)
     // D2-4: an external commit synchronously drops whatever the AI has outstanding. `concede` is legal even
     // when the human is NOT the acting player, so a click really can land in the middle of the AI's search.
     searchRef.current?.invalidate()

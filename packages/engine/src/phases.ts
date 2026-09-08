@@ -109,11 +109,19 @@ function beginEndPhase(state: GameState): [GameState, Event[]] {
   return [t, [...events, ...more]]
 }
 
-export function applyDiscardToHandSize(state: GameState, player: PlayerId, cards: CardId[]): [GameState, Event[]] {
+/** Why a hand-size discard would be refused, or null (rung J7-D1): the exact test `applyDiscardToHandSize` runs. */
+export function discardCheck(state: GameState, player: PlayerId, cards: readonly CardId[]): string | null {
+  if (state.result) return 'game is over'
   const pending = state.pending
-  if (pending?.kind !== 'discardToHandSize' || pending.player !== player) throw new IllegalCommandError('no discard decision owed by this player')
-  if (cards.length !== pending.count || new Set(cards).size !== cards.length) throw new IllegalCommandError(`discard exactly ${pending.count} distinct cards`)
-  for (const id of cards) if (!state.players[player].hand.includes(id)) throw new IllegalCommandError(`${id} is not in your hand`)
+  if (pending?.kind !== 'discardToHandSize' || pending.player !== player) return 'no discard decision owed by this player'
+  if (cards.length !== pending.count || new Set(cards).size !== cards.length) return `discard exactly ${pending.count} distinct cards`
+  for (const id of cards) if (!state.players[player].hand.includes(id)) return `${id} is not in your hand`
+  return null
+}
+
+export function applyDiscardToHandSize(state: GameState, player: PlayerId, cards: CardId[]): [GameState, Event[]] {
+  const why = discardCheck(state, player, cards)
+  if (why) throw new IllegalCommandError(why)
   let s = updatePlayer(state, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => !cards.includes(id)), breakZone: [...ps.breakZone, ...cards] }))
   const events: Event[] = cards.map((card) => ({ type: 'discarded', player, card, reason: 'handSize' }))
   s = { ...s, pending: null }
