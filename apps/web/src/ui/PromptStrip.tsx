@@ -202,8 +202,9 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, 
           </button>
         )}
         {/* Rung K4: "I won't be responding for now." Last in the row and without `data-command`, so the focus
-          * restoration above never lands on it and it never reads as one of the position's answers. */}
-        {!view.result && onAutoPass && (
+          * restoration above never lands on it and it never reads as one of the position's answers. Not while
+          * a tray is open: the tray replaces the strip, and "Auto" beside "Auto-pass" read as one control. */}
+        {!view.result && !tray && onAutoPass && (
           <button
             type="button"
             className="btn btn--ghost"

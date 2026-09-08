@@ -1,4 +1,4 @@
-import { act, createElement } from 'react'
+import { act, createElement, type JSX } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 import { legalCommands, viewFor } from '@fftcg/engine'
@@ -9,7 +9,7 @@ import { makeGame } from '../../../packages/engine/test/helpers.js'
 
 /** Rung K4-A3: the auto-pass toggle on the strip. */
 describe('the auto-pass toggle on the strip (K4-A3)', () => {
-  function mount(autoPass: boolean, onAutoPass?: (on: boolean) => void): { host: HTMLElement; unmount: () => void } {
+  function mount(autoPass: boolean, onAutoPass?: (on: boolean) => void, tray?: JSX.Element): { host: HTMLElement; unmount: () => void } {
     const s = makeGame()
     const view = viewFor(s, HUMAN)
     const choices = buildChoiceSet(view, legalCommands(s, HUMAN))
@@ -17,7 +17,7 @@ describe('the auto-pass toggle on the strip (K4-A3)', () => {
     document.body.appendChild(host)
     const root = createRoot(host)
     act(() => {
-      root.render(createElement(PromptStrip, { view, choices, shown: choices.loose, aiThinking: false, onChoose: () => {}, autoPass, onAutoPass }))
+      root.render(createElement(PromptStrip, { view, choices, shown: choices.loose, aiThinking: false, onChoose: () => {}, autoPass, onAutoPass, ...(tray ? { tray } : {}) }))
     })
     return { host, unmount: () => { act(() => { root.unmount() }); host.remove() } }
   }
@@ -38,5 +38,9 @@ describe('the auto-pass toggle on the strip (K4-A3)', () => {
     const none = mount(false)
     expect(none.host.querySelector('[data-toggle="auto-pass"]')).toBeNull()
     none.unmount()
+    // Not beside a tray's own "Auto": the tray replaces the strip while a payment or a set is being built.
+    const withTray = mount(false, onAutoPass, createElement('div', { 'data-payment-tray': true }, 'tray'))
+    expect(withTray.host.querySelector('[data-toggle="auto-pass"]')).toBeNull()
+    withTray.unmount()
   })
 })
