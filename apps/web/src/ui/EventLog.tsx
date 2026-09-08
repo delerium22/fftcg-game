@@ -6,6 +6,14 @@ import type { LogLine } from '../game/types.js'
  * `unimplementedAbility` warnings, so the "pool plays as vanilla until rung C" caveat is visible during play
  * rather than a silent surprise.
  */
+/**
+ * A line is a sentence, and the possessive names the narrator uses are lower-case because most of them sit
+ * mid-sentence ("Lightning's ability triggers — the AI's Prishe was broken"). Half the log used to open
+ * "your Cloud gets +3000 power" / "the AI's Sphene is broken" — read as typos when played (rung K3). The
+ * data keeps its case (tests and the narrator's joins depend on it); the render capitalises.
+ */
+const sentence = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}`
+
 export function EventLog({ log, silenced = false }: { log: LogLine[]; silenced?: boolean }): JSX.Element {
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [log])
@@ -36,7 +44,7 @@ export function EventLog({ log, silenced = false }: { log: LogLine[]; silenced?:
         * information not important enough to be one. So the dialog speaks and these two fall silent.
         */}
       <div className="log__lines" role="log" aria-label="Game log" aria-live={silenced ? 'off' : 'polite'}>
-        {log.map((l, i) => <p key={i} className={`log__line log__line--${l.kind}`}>{l.text}</p>)}
+        {log.map((l, i) => <p key={i} className={`log__line log__line--${l.kind}`}>{sentence(l.text)}</p>)}
         <div ref={end} />
       </div>
     </div>

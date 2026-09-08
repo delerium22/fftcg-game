@@ -335,7 +335,9 @@ function activeAbility(v: PlayerView): { ability: Ability; frame: Frame } | null
 /** Prefix a prompt with the card that is asking, e.g. `Noel: choose up to 2 …`. */
 function sourced(v: PlayerView, text: string): string {
   const active = activeAbility(v)
-  return active ? `${qualifiedName(v, active.frame.source)}: ${text.charAt(0).toLowerCase()}${text.slice(1)}` : text
+  // Capitalised: `qualifiedName` is lower-case ("your Shantotto") because most uses are mid-sentence, and
+  // this one heads the prompt — "your Shantotto: choose …" read as a typo when played.
+  return active ? `${capitalise(qualifiedName(v, active.frame.source))}: ${text.charAt(0).toLowerCase()}${text.slice(1)}` : text
 }
 
 /**
