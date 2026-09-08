@@ -62,6 +62,8 @@ export function checkInvariants(state: GameState): string[] {
     }
     if (ps.backups.length > MAX_BACKUPS) problems.push(`P${p} controls ${ps.backups.length} backups`)
   }
+  // The stack is a zone (§7.12, rung J1): a Summon on it is in exactly one place, here.
+  state.stack.forEach((item, i) => { if (item.kind === 'summon') note(item.card, `stack[${i}]`) })
   const all = Object.keys(state.cards).map(Number)
   if (seen.size !== all.length) problems.push(`${all.length} card instances but ${seen.size} placed in zones`)
   for (const id of all) if (!seen.has(id)) problems.push(`card ${id} is in no zone`)
@@ -75,6 +77,15 @@ export function checkInvariants(state: GameState): string[] {
   if (state.result && (r.active || r.queue.length || r.continuation)) problems.push('resolution work queued after game over')
   if (r.active) checkFrame(problems, 'active', r.active, state)
   for (const f of r.queue) checkFrame(problems, 'queued', f, state)
+  // --- the stack (rung J1) ---
+  if (state.passes !== 0 && state.passes !== 1) problems.push(`passes is ${String(state.passes)}`)
+  state.stack.forEach((item, i) => {
+    if (item.kind === 'ability') checkFrame(problems, `stack[${i}]`, item.frame, state)
+    else {
+      if (!state.cards[item.card]) problems.push(`stack[${i}] holds unknown card ${item.card}`)
+      for (const f of item.frames) checkFrame(problems, `stack[${i}]`, f, state)
+    }
+  })
   // An ability pending and the active frame are two halves of one suspension — neither may exist alone.
   // Every kind an ABILITY can suspend on. A new one must be added here or the invariant reports the frame as
   // orphaned — which is what it did, correctly, the moment C9 added `chooseFromDeck`.

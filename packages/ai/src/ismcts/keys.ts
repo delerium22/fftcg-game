@@ -1,4 +1,4 @@
-import { ELEMENTS, matchesDefFilter, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type TriggerEvent } from '@fftcg/engine'
+import { ELEMENTS, matchesDefFilter, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type StackItem, type TriggerEvent } from '@fftcg/engine'
 import type { RolloutProfile } from '../greedy.js'
 import type { WeightOverrides } from '../evaluate.js'
 
@@ -164,6 +164,8 @@ function buildIndex(view: PlayerView, root: PlayerId): RefIndex {
     f.damageZone.forEach((id, i) => put(id, `d${p}:${i}`))
     f.breakZone.forEach((id, i) => put(id, `z${p}:${i}`))
   }
+  // The stack (rung J1): public, ordered, and identical in every determinisation — position is identity.
+  view.stack.forEach((item, i) => { if (item.kind === 'summon') put(item.card, `s:${i}`) })
   // Deck slots this viewer has LOOKED at, by code and by owner. A deck position is an artefact of one world
   // exactly as a hand position is — `determinise` samples every slot the viewer does not know — so a card the
   // viewer HAS seen must be named by what it is, like a hand card, and one it has not stays unnameable.
@@ -528,7 +530,18 @@ function frameDigest(view: PlayerView, f: Frame | null): string {
   const r = (id: CardId): CardRef => cardRef(view, id, view.me)
   // `path` and `modes` are program-counter indices, already world-independent. `chosen` is a binding whose
   // order no effect depends on, so it normalises like every other set.
-  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.')].join('/')
+  // `stage` and `declared` (rung J1) are part of the frame's program state: a frame still declaring and one
+  // resolving with those targets are different positions.
+  const declared = (f.declared ?? []).map((d) => `${d.path.join('.')}=${joinRefs(d.targets.map(r))}`).join('|')
+  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.'), f.stage ?? 'resolve', declared].join('/')
+}
+
+/** The stack, top last (rung J1): each item's kind, its card ref, and its frames — a different stack is a different position. */
+function stackDigest(view: PlayerView, stack: readonly StackItem[]): string {
+  const r = (id: CardId): CardRef => cardRef(view, id, view.me)
+  return stack.map((item) => (item.kind === 'summon'
+    ? `S.${r(item.card)}.${item.controller}.[${item.frames.map((f) => frameDigest(view, f)).join(',')}]`
+    : `A.${frameDigest(view, item.frame)}`)).join(';')
 }
 
 function resolutionDigest(view: PlayerView, res: Resolution): string {
@@ -594,6 +607,10 @@ export function observationKey(view: PlayerView): ObservationKey {
     `atk:${at === null ? '-' : `${at.step}/${joinRefs(at.attackers.map(r))}/${at.blocker === null ? '-' : r(at.blocker)}`}`,
     `pend:${pendingDigest(view, view.pending)}`,
     `res:${resolutionDigest(view, view.resolution)}`,
+    // Rung J1. Whether the next pass resolves the top item or merely hands priority over is `passes`; what
+    // it would resolve is the stack. Two positions differing in either are different information sets.
+    `pa${view.passes}`,
+    `stk:${stackDigest(view, view.stack)}`,
   ].join(FIELD)
 }
 

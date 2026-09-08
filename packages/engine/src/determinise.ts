@@ -41,7 +41,10 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     // A deck slot whose id this viewer knows is as fixed as a card on the field: it must keep that identity,
     // and its code must come out of the unseen multiset or the sampler will deal a second copy (spec C9-5).
     const knownDeck = f.deck.map((slot) => slot.card).filter((id): id is CardId => id !== null)
-    const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...f.removedFromGame, ...knownDeck, ...(p === view.me ? view.hand : [])]
+    // A Summon this player OWNS that is on the stack (rung J1) is out of their hand and deck, public, and
+    // keeps its id — leaving it out would deal its code back into the unseen multiset, a 51-card game.
+    const onStack = view.stack.flatMap((item) => (item.kind === 'summon' && view.cards[item.card]?.owner === p ? [item.card] : []))
+    const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...f.removedFromGame, ...knownDeck, ...onStack, ...(p === view.me ? view.hand : [])]
     const visibleCodes = visibleIds.map((id) => { const c = view.cards[id]; if (!c) throw new Error(`view lacks visible card ${id}`); return c.code })
     const unseen = removeVisible(decks[p], visibleCodes, p)
     const [order, r2] = shuffle(r, unseen); r = r2
@@ -79,7 +82,8 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
   }
   const state: GameState = {
     rng: r, turn: view.turn, turnPlayer: view.turnPlayer, firstPlayer: view.firstPlayer, phase: view.phase, attack: view.attack,
-    priority: view.priority, pending: view.pending, resolution: view.resolution, players: [players[0]!, players[1]!], cards, knownBy, defs: view.defs, result: view.result,
+    priority: view.priority, pending: view.pending, resolution: view.resolution, stack: view.stack, passes: view.passes,
+    players: [players[0]!, players[1]!], cards, knownBy, defs: view.defs, result: view.result,
   }
   // Everything EXCEPT `defs` is copied; `defs` travels by reference (spec D4).
   //

@@ -356,6 +356,14 @@ export interface Frame {
    * for a thing the player deliberately chose.
    */
   readonly origin?: 'triggered' | 'activated' | 'exBurst'
+  /**
+   * Rung J1. `declare` while the frame's choices are being made as it is PUT ON the stack (§11.3.3–4,
+   * §11.6.5–6, §11.8.9–10); `resolve` (or absent) while it executes. In the declare stage only choice nodes
+   * run; their answers land in `modes` and `declared`.
+   */
+  readonly stage?: 'declare' | 'resolve'
+  /** Targets declared at placement, by the path of the `chooseTargets` node they answer; re-validated at resolution (§11.11.2). */
+  readonly declared?: readonly { readonly path: readonly number[]; readonly targets: readonly CardId[] }[]
 }
 
 /**

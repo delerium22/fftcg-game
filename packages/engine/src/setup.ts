@@ -49,6 +49,7 @@ export function createGame(opts: CreateGameOptions): GameState {
   return {
     rng: r2, turn: 0, turnPlayer: 0, firstPlayer: 0, phase: 'setup', attack: null, priority: chooser as PlayerId,
     pending: { kind: 'chooseFirst', player: chooser as PlayerId }, resolution: EMPTY_RESOLUTION,
+    passes: 0, stack: [],
     players, cards, knownBy: {}, defs, result: null,
   }
 }

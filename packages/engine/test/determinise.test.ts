@@ -334,3 +334,37 @@ describe('deck knowledge survives determinisation (spec C9-5)', () => {
     expect(worlds.size, 'every determinisation sampled the same three cards').toBeGreaterThan(1)
   })
 })
+
+describe('a Summon on the stack (rung J1-A9)', () => {
+  /** Hand-built: the human's first hand Summon moved from hand to the stack, as `castSummon` will do in slice 4. */
+  function withStackedSummon(): { s: GameState; card: CardId } {
+    let s = walk(3, 12)
+    const p = 0 as PlayerId
+    const card = s.players[p].hand.find((id) => s.defs[s.cards[id]!.code]!.type === 'summon')
+      ?? s.players[p].deck.find((id) => s.defs[s.cards[id]!.code]!.type === 'summon')!
+    s = {
+      ...s,
+      players: [{ ...s.players[0], hand: s.players[0].hand.filter((id) => id !== card), deck: s.players[0].deck.filter((id) => id !== card) }, s.players[1]],
+      stack: [{ kind: 'summon', card, controller: p, frames: [] }],
+    }
+    expect(checkInvariants(s), 'the fixture itself is not a legal state').toEqual([])
+    return { s, card }
+  }
+
+  it('is visible to both players, keeps its id, and is NOT dealt back into a deck or hand', () => {
+    const { s, card } = withStackedSummon()
+    for (const me of [0, 1] as const) {
+      const view = viewFor(s, me)
+      expect(view.cards[card], `seat ${me} cannot see the stacked Summon`).toBeDefined()
+      expect(view.stack[0]).toMatchObject({ kind: 'summon', card })
+      const [det] = determinise({ view, decks: DECKS, rng: seedRng(9) })
+      expect(det.stack[0]).toMatchObject({ kind: 'summon', card })
+      expect(det.cards[card]?.code).toBe(s.cards[card]!.code)
+      expect(checkInvariants(det)).toEqual([])
+      // Conservation: the owner's deck list is exactly deck + hand + zones + the stacked card.
+      const q = det.players[0]
+      const all = [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame, card].map((id) => det.cards[id]!.code).sort()
+      expect(all).toEqual([...DEFAULT_DECK].sort())
+    }
+  })
+})

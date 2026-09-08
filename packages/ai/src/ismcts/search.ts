@@ -244,9 +244,11 @@ export function searchView(state: GameState, me: PlayerId): PlayerView {
     // unpicked cards go to the BOTTOM and stay known for the rest of the game, so this is not a corner.
     for (const id of ps.deck) if (knows(state, me, id)) see(id)
   }
+  // A Summon on the stack (rung J1) — public, in no player zone, and `viewFor` shows it too.
+  for (const item of state.stack) if (item.kind === 'summon') see(item.card)
   return {
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
-    pending: state.pending, resolution: state.resolution, result: state.result, hand: state.players[me].hand,
+    pending: state.pending, resolution: state.resolution, stack: state.stack, passes: state.passes, result: state.result, hand: state.players[me].hand,
     fields: [field(0), field(1)], cards, knownBy: visibleKnownBy(state, cards), defs: state.defs, firstPlayer: state.firstPlayer,
     mulliganDecided: [state.players[0].mulliganDecided, state.players[1].mulliganDecided],
   }

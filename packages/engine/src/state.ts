@@ -1,6 +1,6 @@
 import type { Rng } from './rng.js'
 import type { PlayerId, CardDef, Keyword } from './types.js'
-import type { FieldFlag, Resolution, TargetFilter } from './abilities.js'
+import type { FieldFlag, Frame, Resolution, TargetFilter } from './abilities.js'
 
 export type CardId = number
 export interface CardInstance { id: CardId; code: string; owner: PlayerId }
@@ -49,6 +49,16 @@ export interface PlayerState {
   removedFromGame: CardId[]
   mulliganDecided: boolean
 }
+/**
+ * One thing on the stack (rung J1, CR §7.12). A Summon is the CARD — it sits here, in no player zone, from
+ * casting until it resolves (§11.3.2, §11.11.10) — with zero or more `summonResolve` frames to run; an
+ * ability is its frame. The top of the stack is the LAST element, and it stays there while it resolves,
+ * prompts included, so a suspended Summon is never in no zone at all.
+ */
+export type StackItem =
+  | { readonly kind: 'summon'; readonly card: CardId; readonly controller: PlayerId; readonly frames: readonly Frame[] }
+  | { readonly kind: 'ability'; readonly frame: Frame }
+
 export type Phase = 'setup' | 'active' | 'draw' | 'main1' | 'attack' | 'main2' | 'end'
 export type AttackStep = 'preparation' | 'declaration' | 'block' | 'damage'
 export interface AttackState { step: AttackStep; attackers: CardId[]; blocker: CardId | null }
@@ -137,7 +147,15 @@ export interface GameState {
   firstPlayer: PlayerId
   phase: Phase
   attack: AttackState | null   // non-null only while phase === 'attack'
-  priority: PlayerId           // CR §11.1 priority holder. MVP0-SIMPLIFICATION: always the turn player (no stack, no passing)
+  /**
+   * CR §11.1 priority holder (rung J1). Until slice 2 of J1 lands this is still always the turn player — the
+   * MVP0-SIMPLIFICATION marker moves to `applyPass`, which is where the forfeit semantics go.
+   */
+  priority: PlayerId
+  /** Consecutive forfeits of priority (§11.1.7): 0, or 1 after one player has passed and the other now holds it. */
+  passes: 0 | 1
+  /** The stack (§7.12), top LAST. Public. Empty until J1's slice 3 places anything on it. */
+  stack: readonly StackItem[]
   pending: Pending | null      // a decision owed by `pending.player`; takes precedence over priority for who acts
   /** Ability work the engine owes itself (spec C1-3). `pending` stays the ONE visible decision; this is the queue behind it. */
   resolution: Resolution

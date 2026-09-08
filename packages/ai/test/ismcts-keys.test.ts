@@ -651,3 +651,26 @@ describe('KEY_CONTRACT', () => {
     expect(KEY_CONTRACT.decodeAction(v, 'concede|p0')).toEqual({ type: 'concede', player: 0 })
   })
 })
+
+describe('observationKey reads the stack and the forfeit count (rung J1-A9)', () => {
+  it('differs when `passes` differs, and when the stack differs, and is equal for equal stacks', () => {
+    const { view, ids } = richView()
+    const key = observationKey(view)
+    expect(observationKey({ ...view, passes: 1 }), 'passes').not.toBe(key)
+    const frame = { abilityId: 'V-S1:x', source: ids.a1!, controller: 0 as PlayerId, path: [], chosen: [], modes: [], triggerEvent: null }
+    const one: PlayerView = { ...view, stack: [{ kind: 'ability', frame }] }
+    expect(observationKey(one), 'an ability on the stack').not.toBe(key)
+    expect(observationKey(one), 'canonical').toBe(observationKey({ ...view, stack: [{ kind: 'ability', frame }] }))
+    const two: PlayerView = { ...view, stack: [{ kind: 'ability', frame }, { kind: 'ability', frame: { ...frame, controller: 1 } }] }
+    expect(observationKey(two), 'a second item').not.toBe(observationKey(one))
+    // A Summon on the stack: its card is public and named by stack position.
+    const card = 8200 as CardId
+    const withSummon: PlayerView = { ...view, cards: { ...view.cards, [card]: { id: card, code: 'V-S1', owner: 0 } }, stack: [{ kind: 'summon', card, controller: 0, frames: [] }] }
+    expect(observationKey(withSummon), 'a Summon on the stack').not.toBe(key)
+    // The frame's stage and declared targets are program state too.
+    const declaring: PlayerView = { ...view, stack: [{ kind: 'ability', frame: { ...frame, stage: 'declare' } }] }
+    expect(observationKey(declaring), 'stage').not.toBe(observationKey(one))
+    const declared: PlayerView = { ...view, stack: [{ kind: 'ability', frame: { ...frame, declared: [{ path: [0], targets: [ids.a1!] }] } }] }
+    expect(observationKey(declared), 'declared targets').not.toBe(observationKey(one))
+  })
+})

@@ -1,5 +1,5 @@
 import type { CardDef, PlayerId } from './types.js'
-import type { AttackState, CardId, CardInstance, FieldCard, GameResult, GameState, Pending, Phase } from './state.js'
+import type { AttackState, CardId, CardInstance, FieldCard, GameResult, GameState, Pending, Phase, StackItem } from './state.js'
 import { knows, knowsBit } from './state.js'
 import type { Resolution } from './abilities.js'
 
@@ -31,6 +31,9 @@ export interface PlayerView {
   pending: Pending | null; result: GameResult | null; hand: CardId[]; fields: [FieldView, FieldView]
   /** Carried so `determinise` can rebuild the SAME agenda: the AI must simulate the ability game it is playing (spec C1-2/C1-A6). Every id in it is already public. */
   resolution: Resolution
+  /** The stack and the forfeit count (rung J1), public (§7.12.2) and carried verbatim for the same reason as `resolution`. */
+  stack: readonly StackItem[]
+  passes: 0 | 1
   cards: Record<CardId, CardInstance>; defs: Record<string, CardDef>
   /**
    * Who knows what, for the cards this view can see at all (spec C9-5). Restricted to keys present in
@@ -70,11 +73,14 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
     // it should hide, it only fails to remember one it could have shown.
     for (const id of ps.deck) if (knows(state, me, id)) visibleIds.add(id)
   }
+  // A Summon on the stack is in no player zone and is public (§7.12.2): it must be in `cards`, or the stack
+  // names an id the view cannot resolve and `determinise` deals its code a second time (rung J1).
+  for (const item of state.stack) if (item.kind === 'summon') visibleIds.add(item.card)
   const cards: Record<CardId, CardInstance> = {}
   for (const id of visibleIds) { const inst = state.cards[id]; if (inst) cards[id] = inst }
   return structuredClone({
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
-    pending: state.pending, resolution: state.resolution, result: state.result, hand: state.players[me].hand, fields: [field(0), field(1)], cards, knownBy: visibleKnownBy(state, cards), defs: state.defs,
+    pending: state.pending, resolution: state.resolution, stack: state.stack, passes: state.passes, result: state.result, hand: state.players[me].hand, fields: [field(0), field(1)], cards, knownBy: visibleKnownBy(state, cards), defs: state.defs,
     firstPlayer: state.firstPlayer, mulliganDecided: [state.players[0].mulliganDecided, state.players[1].mulliganDecided],
   })
 }
