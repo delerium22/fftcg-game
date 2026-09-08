@@ -425,9 +425,14 @@ describe('per-clause coverage warnings (spec C1-9)', () => {
     ;[s, victim] = withField(s, 1, 'forwards', 'V-F8')
     const [t, events] = applyCastSummon(s, 0, card, { dullBackups: [bk], discards: [] })
     expect(events.some((e) => e.type === 'summonResolvedNoEffect')).toBe(false)
-    expect(t.players[0].breakZone).toContain(card)   // the summon resolves FROM the break zone (§7.10.1)
+    // Rung J1-D5: the card is on the STACK until it resolves (§11.3.2), and only then in the Break Zone (§11.11.10).
+    // Called without `apply`'s settlement, so the Summon is still DECLARING (its one clause has no choice to
+    // make; settlement would push it at once).
+    expect(t.resolution.placing?.item).toMatchObject({ kind: 'summon', card })
+    expect(t.players[0].breakZone).not.toContain(card)
     const [u] = drainResolution(t)
     expect(fc(u, victim)?.damage).toBe(2000)
+    expect(u.players[0].breakZone).toContain(card)
   })
 })
 

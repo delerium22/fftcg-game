@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyCastCharacter, applyCastSummon, castCheck } from '../src/cast.js'
 import { IllegalCommandError } from '../src/errors.js'
+import { drainResolution } from '../src/resolve.js'
 import { makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 import type { GameState } from '../src/state.js'
 
@@ -82,22 +83,28 @@ describe('castCheck', () => {
   })
 })
 
-describe('§11.3 casting a Summon (MVP0: no effect)', () => {
-  it('pays, goes to the break zone, emits summonResolvedNoEffect; no unimplementedAbility for a vanilla summon', () => {
+describe('§11.3 casting a Summon (rung J1: onto the stack)', () => {
+  it('pays, goes onto the stack, and once resolved reaches the break zone with summonResolvedNoEffect; no unimplementedAbility for a vanilla summon', () => {
     let { s, b2 } = ready(); let x: number
     ;[s, x] = withHand(s, 0, 'V-S1')   // lightning cost 2
     ;[s] = withField(s, 0, 'backups', 'V-B5')
     const b3 = s.players[0].backups[2]!.id
     const [t, events] = applyCastSummon(s, 0, x, { dullBackups: [b2, b3], discards: [] })
-    expect(t.players[0].breakZone).toContain(x)
     expect(t.players[0].hand).not.toContain(x)
-    expect(events).toContainEqual({ type: 'summonResolvedNoEffect', card: x })
+    expect(t.stack.map((i) => (i.kind === 'summon' ? i.card : -1)), 'a cast Summon sits on the stack (§11.3.2)').toEqual([x])
+    expect(events).toContainEqual({ type: 'stackPushed', item: { kind: 'summon', card: x }, controller: 0 })
     expect(events.some((e) => e.type === 'unimplementedAbility')).toBe(false)
+    const [u, more] = drainResolution(t)
+    expect(u.players[0].breakZone, 'a resolved Summon goes to the Break Zone (§11.11.10)').toContain(x)
+    expect(more).toContainEqual({ type: 'summonResolvedNoEffect', card: x })
   })
-  it('cannot be cast in the attack phase (MVP0 simplification of §9.3.1.6)', () => {
+  it('is castable by the priority holder in an Attack Phase WINDOW, not in the declaration step (§9.3.1.6)', () => {
     let { s } = ready(); let x: number
     ;[s, x] = withHand(s, 0, 'V-S1')
     expect(castCheck({ ...s, phase: 'attack', attack: { step: 'declaration', attackers: [], blocker: null } }, 0, x)).toMatch(/main phase/i)
+    expect(castCheck({ ...s, phase: 'attack', attack: { step: 'preparation', attackers: [], blocker: null } }, 0, x)).toBeNull()
+    // And by the NON-turn player when they hold priority — a Character never is.
+    expect(castCheck({ ...s, priority: 1 }, 0, x)).toMatch(/priority/)
   })
   it('an unknown card id throws IllegalCommandError instead of a plain Error (castCheck runs before defOf)', () => {
     const { s } = ready()

@@ -18,12 +18,20 @@ import { AI, HUMAN, type GameApi } from '../src/game/types.js'
 
 const newGame = (seed: number): GameState => createGame({ seed, decks: DECKS, defs: CARD_DEFS })
 
-/** Walk to the human's first Main Phase 1 with the AI answering. */
+/**
+ * Walk to a Main Phase of the human's where the AI, handed priority by a pass, would have NOTHING to do — a
+ * pass-only window. Since slice 4 the AI may respond with a Summon or an ability, so the position is found
+ * rather than assumed: the first seed whose Main Phase 1 pass opens a forced window.
+ */
 function humanMain(seed: number): GameState | null {
   let s = newGame(seed)
   const agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
   for (let i = 0; i < 60 && !s.result; i++) {
-    if (actingPlayer(s) === HUMAN && s.phase === 'main1' && !s.pending) return s
+    if (actingPlayer(s) === HUMAN && s.phase === 'main1' && !s.pending) {
+      const passed = apply(s, { type: 'pass', player: HUMAN }).state
+      if (forcedPass(passed)) return s
+      return null
+    }
     if (actingPlayer(s) === AI) { s = stepAi(s, agent).state; continue }
     const next = legalCommands(s, HUMAN).find((c) => c.type !== 'concede')
     if (!next) return null
@@ -31,23 +39,30 @@ function humanMain(seed: number): GameState | null {
   }
   return null
 }
+function forcedWindowSeed(): number {
+  for (let seed = 1; seed < 40; seed++) if (humanMain(seed)) return seed
+  throw new Error('no seed under 40 opens a pass-only window from the human\'s Main Phase 1')
+}
 
 describe('a pass-only window is closed in the same step (J1-A12)', () => {
   it('settleForcedWindows applies every forced pass and stops at the first real decision', () => {
-    const s = humanMain(1)!
+    const s = humanMain(forcedWindowSeed())!
     expect(s).not.toBeNull()
     const passed = apply(s, { type: 'pass', player: HUMAN }).state
     expect(isResponseWindow(passed), 'the human’s pass should open the AI’s window').toBe(true)
     expect(forcedPass(passed)?.type).toBe('pass')
     const settled = settleForcedWindows(passed)
-    expect(isResponseWindow(settled)).toBe(false)
+    // The Attack Phase's preparation window IS a response window (slice 4: the human may cast a Summon from
+    // it), so what is asserted is that the settling stopped at a REAL decision, not at a window as such.
+    expect(forcedPass(settled)).toBeNull()
     expect(settled.phase).toBe('attack')
     expect(actingPlayer(settled)).toBe(HUMAN)
   })
 
   it('stepAi closes the window and hands the real decision back without deciding for the human', () => {
-    const s = humanMain(1)!
-    const agent = new GreedyAgent({ seed: 1, decks: DECKS, depth: 1 })
+    const seed = forcedWindowSeed()
+    const s = humanMain(seed)!
+    const agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
     const passed = apply(s, { type: 'pass', player: HUMAN }).state
     const stepped = stepAi(passed, agent)
     expect(stepped.lines, 'a forced pass was narrated').toEqual([])

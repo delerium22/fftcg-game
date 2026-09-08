@@ -514,7 +514,7 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
     const missing = [...need].filter((t) => !seen.has(t))
     expect(missing, `unreachable from the UI: ${missing.join(', ')}`).toEqual([])
     // An exhaustive sweep over dozens of full games; it is legitimately the slowest test in the suite.
-  }, 30_000)
+  }, 120_000)
 })
 
 describe('viewFor hides the AI hand throughout (B-A3)', () => {

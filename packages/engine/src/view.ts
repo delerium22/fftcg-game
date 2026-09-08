@@ -76,6 +76,8 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
   // A Summon on the stack is in no player zone and is public (§7.12.2): it must be in `cards`, or the stack
   // names an id the view cannot resolve and `determinise` deals its code a second time (rung J1).
   for (const item of state.stack) if (item.kind === 'summon') visibleIds.add(item.card)
+  // ...and one still declaring on its way there (rung J1-D5): already off the hand, public since it was cast.
+  if (state.resolution.placing?.item.kind === 'summon') visibleIds.add(state.resolution.placing.item.card)
   const cards: Record<CardId, CardInstance> = {}
   for (const id of visibleIds) { const inst = state.cards[id]; if (inst) cards[id] = inst }
   return structuredClone({

@@ -1,11 +1,12 @@
 import type { PlayerId } from './types.js'
-import type { CardId, GameState } from './state.js'
+import type { AttackStep, CardId, GameState, StackItem } from './state.js'
+import type { Effect, Frame } from './abilities.js'
 import { MAX_BACKUPS, defOf, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { canPay, castRequirement, generateCp, pay } from './cp.js'
-import { dispatchTrigger, putOntoField, warnUnimplemented } from './resolve.js'
+import { putOntoField, targetCandidates, warnUnimplemented } from './resolve.js'
 
 /**
  * WHY a cast is refused, as a code (rung I1) — so the browser can grey a Cast button and say the reason in
@@ -13,25 +14,66 @@ import { dispatchTrigger, putOntoField, warnUnimplemented } from './resolve.js'
  * same decision, and is derived from this so the two cannot disagree. Neither says anything about CP: a
  * `null` here with no legal payment means "cannot afford it", which is the caller's to phrase.
  */
-export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName'
+export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'noTarget'
+
+/** The Attack Phase steps in which priority is held — where a Summon or an action ability may be used (§9.3.1.6–7). Slice 5 widens this to every window. */
+export const ATTACK_WINDOWS: readonly AttackStep[] = ['preparation']
+
+/** Is this a moment the priority holder may cast a Summon or use an action ability? Main Phase, or an Attack Phase window. */
+export function instantSpeedAllowed(state: GameState): boolean {
+  if (state.phase === 'main1' || state.phase === 'main2') return true
+  return state.phase === 'attack' && state.attack !== null && ATTACK_WINDOWS.includes(state.attack.step)
+}
+
+/**
+ * §11.3.3: a Summon that "chooses" needs a legal target to be cast at all. A DRY declaration — walk the head
+ * choice nodes exactly as placement will (rung J1-D3), raising nothing — says whether every declaration can
+ * succeed: a `chooseTargets` needs at least `min` candidates; a `chooseModes` needs at least `min` modes
+ * whose own head choices can succeed.
+ */
+export function canDeclare(state: GameState, source: CardId, controller: PlayerId, effects: readonly Effect[]): boolean {
+  const head = effects[0]
+  if (!head) return true
+  if (head.kind === 'chooseTargets') {
+    const candidates = targetCandidates(state, source, controller, head.from)
+    if (candidates.length < head.min) return false
+    return candidates.length === 0 || canDeclare(state, source, controller, head.then)
+  }
+  if (head.kind === 'chooseModes') {
+    const declarable = head.modes.filter((m) => canDeclare(state, source, controller, m.effects)).length
+    return declarable >= head.min
+  }
+  return true
+}
 
 export function castBlocker(state: GameState, player: PlayerId, card: CardId): CastBlocker | null {
   if (state.result) return 'gameOver'
-  // MVP0-SIMPLIFICATION: Summons are also castable in the Attack Phase (§9.3.1.6); that window needs the stack (MVP3)
-  if (state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
   const ps = state.players[player]
+  // Characters are cast in a Main Phase only (§11.4.1); Summons follow the priority holder, checked below.
+  const summon = ps.hand.includes(card) && defOf(state, card).type === 'summon'
+  if (!summon && state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
   if (!ps.hand.includes(card)) return 'notInHand'
-  // Rung J1: casting is the turn player's (§9.3.1.5 for Characters; Summons join the priority holder in
-  // slice 4, §9.3.1.6), and a Character needs an empty stack (§11.4.1).
+  const def = defOf(state, card)
+  if (def.type === 'summon') {
+    // §9.3.1.6, rung J1-D5/D8: the PRIORITY HOLDER, either player, in a Main Phase or an Attack Phase window.
+    if (!instantSpeedAllowed(state)) return 'phase'
+    if (state.priority !== player) return 'priority'
+    if (state.pending) return 'pending'
+    // §11.3.3: castable only if every choice it makes as it is cast can be made.
+    for (const a of def.abilities ?? []) {
+      if (a.trigger.kind === 'summonResolve' && !canDeclare(state, card, player, a.effects)) return 'noTarget'
+    }
+    return null
+  }
+  // A Character: the turn player's (§9.3.1.5), with priority, and only while the stack is empty (§11.4.1).
   if (state.turnPlayer !== player) return 'notTurnPlayer'
   if (state.priority !== player) return 'priority'
   if (state.pending) return 'pending'
-  const def = defOf(state, card)
-  if (def.type !== 'summon' && state.stack.length > 0) return 'stackNotEmpty'
+  if (state.stack.length > 0) return 'stackNotEmpty'
   if (def.type === 'monster') return 'monster'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
   // MVP0-SIMPLIFICATION: §7.7.4 is normally a rule process (§12.4.8) that keeps a 6th Backup off the field; here casting one is simply illegal.
   if (def.type === 'backup' && ps.backups.length >= MAX_BACKUPS) return 'backupsFull'
-  if (def.type !== 'summon' && !def.generic) {
+  if (!def.generic) {
     // MVP0-SIMPLIFICATION: §7.7.3 only prohibits *simultaneous* deployment; casting a second non-generic
     // same-name Character is legal and §12.4.6 then puts ALL copies into the Break Zone as a rule process.
     // Here the cast is simply illegal. §12.4.6/§12.4.7 are MVP3 work.
@@ -52,6 +94,7 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   monster: 'monsters unsupported in MVP0',
   backupsFull: `you already control ${MAX_BACKUPS} backups (§7.7.4)`,
   sameName: 'you already control a non-generic character with the same name (§7.7.3)',
+  noTarget: 'this Summon has no legal target to choose (§11.3.3)',
 }
 
 export function castCheck(state: GameState, player: PlayerId, card: CardId): string | null {
@@ -96,13 +139,22 @@ export function applyCastSummon(state: GameState, player: PlayerId, card: CardId
   const def = defOf(state, card)
   if (def.type !== 'summon') throw new IllegalCommandError('not a summon')
   const [paid, events] = checkedPay(state, player, card, payment)
-  // MVP0-SIMPLIFICATION: no stack (§7.10.1) — the summon goes straight to the break zone and its effect, if
-  // implemented, resolves immediately from there. `Frame.source` is allowed to be a card that has left the field.
-  let s: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card), breakZone: [...ps.breakZone, card] })), passes: 0 }
+  // §11.3.2, rung J1-D5: the card moves from the hand to the STACK — a zone of its own, in no player's arrays
+  // — and stays there until it resolves (§11.11.10) or is cancelled. Its `summonResolve` clauses are its
+  // frames; each declares its choices now, as it is cast (§11.3.3–4), through the ordinary prompts.
+  let s: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) })), passes: 0, priority: player }
   events.push({ type: 'cast', player, card, cardType: 'summon' })
   warnUnimplemented(def, card, events)
-  const resolves = (def.abilities ?? []).some((a) => a.trigger.kind === 'summonResolve')
-  s = dispatchTrigger(s, def, card, player, 'summonResolve')
-  if (!resolves) events.push({ type: 'summonResolvedNoEffect', card })
+  const frames: Frame[] = (def.abilities ?? [])
+    .filter((a) => a.trigger.kind === 'summonResolve')
+    .map((a) => ({ abilityId: a.id, source: card, controller: player, path: [], chosen: [], modes: [], triggerEvent: null, stage: 'resolve' as const, declared: [] }))
+  const item: StackItem = { kind: 'summon', card, controller: player, frames }
+  if (frames.length === 0) {
+    // A vanilla Summon: nothing to declare, straight onto the stack (§11.3.8).
+    events.push({ type: 'stackPushed', item: { kind: 'summon', card }, controller: player })
+    return [{ ...s, stack: [...s.stack, item] }, events]
+  }
+  const first = frames[0] as Frame
+  s = { ...s, resolution: { ...s.resolution, placing: { item, frameIndex: 0 }, active: { ...first, stage: 'declare', declared: [], modesDeclared: false } } }
   return [s, events]
 }

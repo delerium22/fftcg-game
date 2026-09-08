@@ -233,13 +233,17 @@ describe('activation legality (C3-A5)', () => {
     }
   })
 
-  it('is illegal outside the turn player\'s Main Phases (MVP0-SIMPLIFICATION C3-11)', () => {
+  it('is legal for the PRIORITY HOLDER in a Main Phase or an Attack Phase window, and nowhere else (§9.3.1.7, rung J1)', () => {
     let s = gameWith([dullDef()])
     let src: CardId
     ;[s, src] = withField(s, 0, 'forwards', 'T-DULLCOST')
     expect(activationCheck(s, 0, src, 'T-DULLCOST:act')).toBeNull()
-    expect(activationCheck({ ...s, phase: 'attack' }, 0, src, 'T-DULLCOST:act')).toMatch(/Main Phase/)
-    expect(activationCheck({ ...s, turnPlayer: 1 }, 0, src, 'T-DULLCOST:act')).toMatch(/your own turn/)
+    // The declaration step is a decision, not a window; the preparation step is a window.
+    expect(activationCheck({ ...s, phase: 'attack', attack: { step: 'declaration', attackers: [], blocker: null } }, 0, src, 'T-DULLCOST:act')).toMatch(/window/)
+    expect(activationCheck({ ...s, phase: 'attack', attack: { step: 'preparation', attackers: [], blocker: null } }, 0, src, 'T-DULLCOST:act')).toBeNull()
+    // Not the turn player's alone any more: whoever holds priority. Without it, no.
+    expect(activationCheck({ ...s, turnPlayer: 1 }, 0, src, 'T-DULLCOST:act')).toBeNull()
+    expect(activationCheck({ ...s, priority: 1 }, 0, src, 'T-DULLCOST:act')).toMatch(/priority/)
   })
 
   it('honours sourceZone: a hand ability is unusable from the field and vice versa', () => {

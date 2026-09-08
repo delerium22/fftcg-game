@@ -246,6 +246,7 @@ export function searchView(state: GameState, me: PlayerId): PlayerView {
   }
   // A Summon on the stack (rung J1) — public, in no player zone, and `viewFor` shows it too.
   for (const item of state.stack) if (item.kind === 'summon') see(item.card)
+  if (state.resolution.placing?.item.kind === 'summon') see(state.resolution.placing.item.card)
   return {
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
     pending: state.pending, resolution: state.resolution, stack: state.stack, passes: state.passes, result: state.result, hand: state.players[me].hand,

@@ -155,9 +155,17 @@ describe('what the AI did is announced', () => {
     // asserted the DOM contained it. Circular: a placeholder narration of `The AI: acted` would have passed,
     // because the expectation was derived from the output under test. `narrateApply` hard-codes that prefix,
     // so matching on it proves nothing about the content.
-    const step = stepAi(s, agent)
+    // Rung J1: the AI's first decision here may be a response-window pass, which IS a move it makes and is
+    // narrated as one — but a bare "The AI: Pass" proves little about content. Step on until the AI does
+    // something with a card in it, and pin THAT line, hand-written.
+    let step = stepAi(s, agent)
+    for (let i = 0; i < 40 && !step.lines.some((l) => l.kind === 'ai' && !/^The AI: Pass$/.test(l.text)); i++) {
+      s = step.state
+      for (let j = 0; j < 40 && actingPlayer(s) !== AI && !s.result; j++) s = stepAi(s, agent).state
+      step = stepAi(s, agent)
+    }
     expect(step.state, 'the AI did not actually move').not.toBe(s)
-    const aiLine = "The AI: Geomancer's [Earth], discard: Draw 1 card — paying discard Luso as earth"
+    const aiLine = "The AI: Cast Hugh Yurg paying: discard Geomancer as earth, discard Odin as lightning"
     expect(step.lines.map((l) => l.text), 'the AI narrated something other than the expected move').toContain(aiLine)
     expect(step.lines.find((l) => l.text === aiLine)?.kind, 'the AI move is not tagged as one').toBe('ai')
 

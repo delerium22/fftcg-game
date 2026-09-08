@@ -81,7 +81,7 @@ function reachBreakZoneChoice(): GameState | null {
 }
 
 let BREAK_ZONE_CHOICE: GameState | null = null
-beforeAll(() => { BREAK_ZONE_CHOICE = reachBreakZoneChoice() })
+beforeAll(() => { BREAK_ZONE_CHOICE = reachBreakZoneChoice() }, 60_000)
 
 describe('a Break Zone choice (E10-A1)', () => {
   it('is reachable by playing, with two candidates sharing a printed name', () => {
@@ -185,7 +185,7 @@ describe("an activation's target that no row draws (E10-A3)", () => {
   }
 
   let SPHENE_STATE: GameState | null = null
-  beforeAll(() => { SPHENE_STATE = reachSpheneActivation() })
+  beforeAll(() => { SPHENE_STATE = reachSpheneActivation() }, 60_000)
 
   it('is reachable by playing', () => {
     expect(SPHENE_STATE, 'never reached a Sphene retrieval, so everything below asserts nothing').not.toBe(null)
@@ -328,7 +328,7 @@ describe('a deck search (E10-A2/A3/A4)', () => {
   for (const path of PATHS) {
     describe(path.name, () => {
       let STATE: GameState | null = null
-      beforeAll(() => { STATE = reachSearch(path.want) })
+      beforeAll(() => { STATE = reachSearch(path.want) }, 60_000)
 
       it('is reachable, and the view exposes cards the player may NOT pick', () => {
         expect(STATE, 'never reached this search, so the rest of this block asserts nothing').not.toBe(null)

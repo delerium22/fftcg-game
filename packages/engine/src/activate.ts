@@ -6,6 +6,7 @@ import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { canPay, generateCp, pay, type CpRequirement } from './cp.js'
+import { instantSpeedAllowed } from './cast.js'
 import type { ZoneTransition } from './rules.js'
 import { dispatchChosenTriggers, enqueueZoneChangeTriggers, forgetBreakZoneArrivals, removeFromField, targetCandidates } from './resolve.js'
 
@@ -99,12 +100,10 @@ export function activationCheck(
   if (state.result) return 'the game is over'
   // A decision is owed; nothing else may happen until it is answered.
   if (state.pending) return 'a decision is pending'
-  // MVP0-SIMPLIFICATION (spec C3-11): action abilities are sorcery-speed here — the turn player, in a Main
-  // Phase, only. The real rules (§9.3.1.7) also allow the Attack Phase, so this DOES cost something: Undead
-  // Princess cannot be used as a combat trick after blockers are declared. `priority` is always the turn
-  // player in MVP0, so no non-turn-player window is being lost, but that is not the same as losing nothing.
-  if (state.turnPlayer !== player) return 'you may only use abilities on your own turn'
-  if (state.phase !== 'main1' && state.phase !== 'main2') return 'you may only use abilities in a Main Phase'
+  // §9.3.1.7, rung J1-D6/D8: the PRIORITY HOLDER, either player, in a Main Phase or an Attack Phase window.
+  // (Until J1 this was the turn player in a Main Phase only — spec C3-11's sorcery-speed marker, retired.)
+  if (state.priority !== player) return 'you do not hold priority'
+  if (!instantSpeedAllowed(state)) return 'you may only use abilities in a Main Phase or an Attack Phase window (§9.3.1.7)'
 
   const ability = activatedAbility(state, source, abilityId)
   if (!ability || ability.trigger.kind !== 'activated') return `${abilityId} is not an activated ability of ${source}`

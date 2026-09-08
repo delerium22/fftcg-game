@@ -234,7 +234,15 @@ describe('the hotseat prints WHY a choice is being asked', () => {
         return String((pool[idx] ?? menu[0])!.i)
       },
     }
-    await hotseat({ seed: 11, decks: [deck, deck], defs }, io)
+    // Rung J1 moved every game; the assertions below need one that reveals an EX Burst AND has Forward combat
+    // (seed 12's burst game is all player damage), so the first seed from 11 whose scripted game has both is
+    // the one kept.
+    for (let seed = 11; seed < 40; seed++) {
+      lines.length = 0; asks = 0; rng = seedRng(seed)
+      await hotseat({ seed, decks: [deck, deck], defs }, io)
+      const text = lines.join('\n')
+      if (text.includes('EX Burst revealed on ') && / deals \d+ to \[/.test(text)) break
+    }
 
     // "  Noel (16-092C) — When Noel enters the field, choose up to 2 Forwards opponent controls. Dull them."
     const explained = lines.filter((l) => /^ {2}\S.* \(\d+-\d+[A-Z]\) — \S/.test(l))

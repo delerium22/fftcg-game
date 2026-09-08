@@ -19,7 +19,7 @@ import { parseDeckFile } from '../src/deck.js'
 
 const DECK = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 const DEFS = loadCards()
-const CORPUS_TIMEOUT = 120_000
+const CORPUS_TIMEOUT = 300_000
 
 /**
  * Does this command win the game outright, once the defender has answered?

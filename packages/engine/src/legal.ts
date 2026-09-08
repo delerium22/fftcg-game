@@ -4,7 +4,7 @@ import { defOf } from './state.js'
 import type { Command } from './commands.js'
 import { enumeratePayments, enumeratePaymentsFor } from './cp.js'
 import { abilityCpRequirement, activationCheck, activationTargetSets } from './activate.js'
-import { castCheck } from './cast.js'
+import { castCheck, instantSpeedAllowed } from './cast.js'
 import { deckPickCandidates } from './resolve.js'
 import { legalAttackSets, legalBlockers, legalPartyDamageAssignments } from './attack.js'
 
@@ -37,18 +37,16 @@ const NOTHING: ActionMenu = { castable: [], abilities: false, attack: false, pas
 
 export function actionMenu(state: GameState, player: PlayerId): ActionMenu {
   if (state.result || state.pending || state.priority !== player) return NOTHING
+  const castable = (): CardId[] => state.players[player].hand.filter((card) => castCheck(state, player, card) === null)
   switch (state.phase) {
     case 'main1':
     case 'main2':
-      return {
-        castable: state.players[player].hand.filter((card) => castCheck(state, player, card) === null),
-        abilities: true, attack: false, pass: true,
-      }
+      return { castable: castable(), abilities: true, attack: false, pass: true }
     case 'attack':
-      // Declaration is the turn player's decision; preparation is a window (§10.1.1.2). The other windows
-      // arrive with slice 5 (spec J1-D10).
+      // Declaration is the turn player's decision; a window (§10.1.1.2 and, from slice 5, the rest) admits
+      // Summons and action abilities from the priority holder (§9.3.1.6–7).
       if (state.attack?.step === 'declaration') return { castable: [], abilities: false, attack: true, pass: true }
-      if (state.attack?.step === 'preparation') return { castable: [], abilities: false, attack: false, pass: true }
+      if (instantSpeedAllowed(state)) return { castable: castable(), abilities: true, attack: false, pass: true }
       return NOTHING
     default:
       return NOTHING   // setup/active/draw/end never wait for a non-pending command

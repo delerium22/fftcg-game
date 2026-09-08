@@ -637,6 +637,18 @@ export function startResolvingTop(state: GameState): GameState {
 }
 
 /** A Summon that has resolved (or been cancelled) leaves the stack for its owner's Break Zone (§11.11.10). */
+/**
+ * Game over empties the stack (rung J1): nothing may stay waiting once a result is set, exactly as no frame
+ * may. A Summon still on it goes to its owner's Break Zone so the card is in a zone (invariant conservation);
+ * an ability item is simply dropped. Nothing about the result depends on it — the game has ended.
+ */
+export function clearStackAtGameOver(state: GameState): GameState {
+  if (!state.stack.length) return state
+  let s = state
+  for (const item of state.stack) if (item.kind === 'summon') s = summonToBreakZone(s, item.card)
+  return { ...s, stack: [] }
+}
+
 function summonToBreakZone(state: GameState, card: CardId): GameState {
   const owner = state.cards[card]?.owner ?? 0
   return updatePlayer(state, owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, card] }))
@@ -647,7 +659,10 @@ function finishTopItem(state: GameState, cancelled: boolean, events: Event[]): G
   const top = state.stack[state.stack.length - 1]
   if (!top) return { ...state, resolution: { ...state.resolution, active: null, resolvingFrame: null } }
   let s: GameState = { ...state, stack: state.stack.slice(0, -1), resolution: { ...state.resolution, active: null, resolvingFrame: null }, priority: state.turnPlayer, passes: 0 }
-  if (top.kind === 'summon') s = summonToBreakZone(s, top.card)
+  if (top.kind === 'summon') {
+    s = summonToBreakZone(s, top.card)
+    if (top.frames.length === 0) events.push({ type: 'summonResolvedNoEffect', card: top.card })
+  }
   events.push(cancelled ? { type: 'stackCancelled', item: stackRefOf(top), reason: 'targetsGone' } : { type: 'stackResolved', item: stackRefOf(top) })
   return s
 }

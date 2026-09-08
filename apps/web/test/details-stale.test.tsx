@@ -185,21 +185,26 @@ describe('G4 — the details panel never outlives its own claim', () => {
     // A brand new game: same component, freshly minted ids starting again at 1. Rendered at SETUP first,
     // exactly as `restart()` does — the reset watches for turn 0 in the setup phase, so a test that jumped
     // straight to mid-game would never trigger it and would be testing a path the app does not take.
-    let fresh = createGame({ seed: 99, decks: DECKS, defs: CARD_DEFS })
-    render(fresh)
     // Then on to a position where that same id DOES have an action, which is the only place the two builds
     // differ: at setup nothing is clickable, so a stale `inspected` and a cleared one look identical and the
-    // mutation survives. This is what makes the assertion below able to fail.
-    for (let i = 0; i < 200 && !fresh.result; i++) {
-      if (choicesFor(fresh).byCard.has(card) && actingPlayer(fresh) === HUMAN) break
-      const p2 = actingPlayer(fresh)
-      if (p2 === null) break
-      const next = legalCommands(fresh, p2).find((c) => c.type !== 'concede')
-      if (!next) break
-      fresh = apply(fresh, next).state
+    // mutation survives. This is what makes the assertion below able to fail. The first-legal-command walk is
+    // degenerate (it ends games by turn 8), so the new game's seed is searched for one where the id acts.
+    let fresh: GameState | null = null
+    for (let seed = 99; seed < 140 && fresh === null; seed++) {
+      let g = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
+      const start = g
+      for (let i = 0; i < 600 && !g.result; i++) {
+        if (choicesFor(g).byCard.has(card) && actingPlayer(g) === HUMAN) { fresh = g; break }
+        const p2 = actingPlayer(g)
+        if (p2 === null) break
+        const next = legalCommands(g, p2).find((c) => c.type !== 'concede')
+        if (!next) break
+        g = apply(g, next).state
+      }
+      if (fresh) render(start)   // rendered at SETUP first, exactly as `restart()` does
     }
-    expect(choicesFor(fresh).byCard.has(card), 'the reused id never became actionable, so nothing is proven')
-      .toBe(true)
+    expect(fresh, 'the reused id never became actionable in any new game, so nothing is proven').not.toBeNull()
+    fresh = fresh!
     render(fresh)
     // NOTHING, not `currentAction(fresh, card)`. Asserting the latter was my first attempt and it could not
     // fail: the buggy build looks up exactly that, and with a fixed deck order the reused id even carries the

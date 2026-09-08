@@ -166,6 +166,7 @@ function buildIndex(view: PlayerView, root: PlayerId): RefIndex {
   }
   // The stack (rung J1): public, ordered, and identical in every determinisation — position is identity.
   view.stack.forEach((item, i) => { if (item.kind === 'summon') put(item.card, `s:${i}`) })
+  if (view.resolution.placing?.item.kind === 'summon') put(view.resolution.placing.item.card, 's:placing')
   // Deck slots this viewer has LOOKED at, by code and by owner. A deck position is an artefact of one world
   // exactly as a hand position is — `determinise` samples every slot the viewer does not know — so a card the
   // viewer HAS seen must be named by what it is, like a hand card, and one it has not stays unnameable.

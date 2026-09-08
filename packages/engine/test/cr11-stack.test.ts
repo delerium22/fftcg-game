@@ -6,6 +6,7 @@ import { findFieldCard } from '../src/state.js'
 import { apply } from '../src/apply.js'
 import { legalCommands } from '../src/legal.js'
 import { checkInvariants } from '../src/invariants.js'
+import { viewFor } from '../src/view.js'
 import { makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
 /**
@@ -197,5 +198,134 @@ describe('the acting player during placement is the clause’s controller, and t
     expect(s.pending?.player).toBe(0)
     expect(legalCommands(s, 1).map((c) => c.type)).toEqual(['concede'])
     expect(legalCommands(s, 0).some((c) => c.type === 'chooseTargets')).toBe(true)
+  })
+})
+
+describe('J1-A2 — a Summon is cast onto the stack, declares as it is cast, and resolves after both forfeit', () => {
+  const BOLT: Ability = {
+    id: 'T-BOLT:summon', trigger: { kind: 'summonResolve' }, text: 'synthetic: choose a Forward, deal it 5000',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'damage', amount: 5000 }] }],
+  }
+  const summonDef = (code: string, ...abilities: Ability[]): CardDef =>
+    makeDef({ code, type: 'summon', power: null, cost: 0, hasAbilities: abilities.length > 0, abilityClauses: abilities.length, abilities })
+  const DEFS = [...VANILLA_POOL, summonDef('T-BOLT', BOLT), summonDef('T-VANILLA')]
+  const inNoPlayerZone = (s: GameState, id: CardId): boolean =>
+    s.players.every((ps) => !ps.hand.includes(id) && !ps.breakZone.includes(id) && !ps.forwards.some((c) => c.id === id) && !ps.deck.includes(id))
+
+  it('declares its target at cast, sits on the stack in no player zone, and goes to the Break Zone once resolved', () => {
+    let s = makeGame({ defs: DEFS })
+    let bolt: CardId, victim: CardId
+    ;[s, bolt] = withHand(s, 0, 'T-BOLT')
+    ;[s, victim] = withField(s, 1, 'forwards', 'V-F2')
+    const r = apply(s, { type: 'castSummon', player: 0, card: bolt, payment: { dullBackups: [], discards: [] } })
+    expect(r.state.pending?.kind, 'the Summon declares its choice as it is cast (§11.3.3)').toBe('chooseTargets')
+    expect(r.state.resolution.placing?.item).toMatchObject({ kind: 'summon', card: bolt })
+    expect(inNoPlayerZone(r.state, bolt), 'the card is on its way to the stack, in no player zone').toBe(true)
+    ok(r.state)
+    const declared = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] }).state
+    expect(stackIds(declared)).toEqual([`summon:${bolt}`])
+    expect(inNoPlayerZone(declared, bolt)).toBe(true)
+    expect(declared.priority, 'the caster regains priority (§11.3.8)').toBe(0)
+    // Both seats see it (§7.12.2).
+    for (const me of [0, 1] as const) expect(viewFor(declared, me).cards[bolt]).toBeDefined()
+    expect(fc(declared, victim)?.damage).toBe(0)
+    const resolved = pass(pass(declared, 0), 1)
+    expect(fc(resolved, victim), '5000 to a 5000 Forward: the rule process broke it after the Summon resolved').toBeUndefined()
+    expect(resolved.players[0].breakZone, 'a resolved Summon goes to its owner\'s Break Zone (§11.11.10)').toContain(bolt)
+    expect(resolved.stack).toEqual([])
+    ok(resolved)
+  })
+
+  it('a vanilla Summon resolves to nothing and reaches the Break Zone', () => {
+    let s = makeGame({ defs: DEFS })
+    let card: CardId
+    ;[s, card] = withHand(s, 0, 'T-VANILLA')
+    const r = apply(s, { type: 'castSummon', player: 0, card, payment: { dullBackups: [], discards: [] } })
+    expect(stackIds(r.state)).toEqual([`summon:${card}`])
+    expect(r.events).toContainEqual({ type: 'stackPushed', item: { kind: 'summon', card }, controller: 0 })
+    const done = apply(pass(r.state, 0), { type: 'pass', player: 1 })
+    expect(done.state.players[0].breakZone).toContain(card)
+    expect(done.events).toContainEqual({ type: 'summonResolvedNoEffect', card })
+    ok(done.state)
+  })
+
+  it('§11.3.3: a Summon whose choice has no legal target is not offered at all', () => {
+    let s = makeGame({ defs: DEFS })
+    let bolt: CardId
+    ;[s, bolt] = withHand(s, 0, 'T-BOLT')   // no Forward anywhere
+    expect(legalCommands(s, 0).some((c) => c.type === 'castSummon' && c.card === bolt)).toBe(false)
+    ;[s] = withField(s, 1, 'forwards', 'V-F2')
+    expect(legalCommands(s, 0).some((c) => c.type === 'castSummon' && c.card === bolt)).toBe(true)
+  })
+
+  it('a Summon cast in response resolves first (LIFO), and the opponent may cast it while the first waits', () => {
+    let s = makeGame({ defs: DEFS })
+    let mine: CardId, theirs: CardId, a: CardId, b: CardId
+    ;[s, mine] = withHand(s, 0, 'T-BOLT')
+    ;[s, theirs] = withHand(s, 1, 'T-BOLT')
+    ;[s, a] = withField(s, 1, 'forwards', 'V-F2')   // 5000, mine will target it
+    ;[s, b] = withField(s, 0, 'forwards', 'V-F2')   // 5000, theirs will target it
+    s = apply(s, { type: 'castSummon', player: 0, card: mine, payment: { dullBackups: [], discards: [] } }).state
+    s = apply(s, { type: 'chooseTargets', player: 0, targets: [a] }).state
+    s = pass(s, 0)
+    expect(s.priority, 'the opponent holds priority with my Summon on the stack').toBe(1)
+    expect(legalCommands(s, 1).some((c) => c.type === 'castSummon' && c.card === theirs), 'the opponent may respond with a Summon (§9.3.1.6)').toBe(true)
+    expect(legalCommands(s, 1).some((c) => c.type === 'castCharacter'), 'but never a Character (§11.4.1)').toBe(false)
+    s = apply(s, { type: 'castSummon', player: 1, card: theirs, payment: { dullBackups: [], discards: [] } }).state
+    s = apply(s, { type: 'chooseTargets', player: 1, targets: [b] }).state
+    expect(stackIds(s)).toEqual([`summon:${mine}`, `summon:${theirs}`])
+    expect(s.priority, 'the responder regains priority').toBe(1)
+    expect(s.passes).toBe(0)
+    const first = apply(pass(s, 1), { type: 'pass', player: 0 })
+    expect(first.events.filter((e) => e.type === 'stackResolved').map((e) => e.type === 'stackResolved' && e.item.kind === 'summon' ? e.item.card : 0)).toEqual([theirs])
+    expect(fc(first.state, b), 'the response resolved first').toBeUndefined()
+    expect(fc(first.state, a), 'mine is still waiting').toBeDefined()
+    expect(first.state.priority, 'priority back to the turn player (§11.1.5)').toBe(0)
+    const second = pass(pass(first.state, 0), 1)
+    expect(fc(second, a)).toBeUndefined()
+    expect(second.stack).toEqual([])
+    ok(second)
+  })
+})
+
+describe('J1-A5 — a Character needs an empty stack, and is the turn player’s', () => {
+  it('with anything on the stack no Character is castable; the non-turn player never', async () => {
+    const { castBlocker } = await import('../src/cast.js')
+    let s = makeGame()
+    let f: CardId
+    ;[s, f] = withHand(s, 0, 'V-F1')
+    ;[s] = withField(s, 0, 'backups', 'V-B1')
+    expect(castBlocker(s, 0, f)).toBeNull()
+    const stacked: GameState = { ...s, stack: [{ kind: 'ability', frame: { abilityId: 'x', source: f, controller: 0, path: [], chosen: [], modes: [], triggerEvent: null } }] }
+    expect(castBlocker(stacked, 0, f)).toBe('stackNotEmpty')
+    let g: CardId
+    ;[s, g] = withHand(s, 1, 'V-F1')
+    expect(castBlocker({ ...s, priority: 1 }, 1, g)).toBe('notTurnPlayer')
+  })
+})
+
+describe('J1-A3 (part) — an action ability is usable by the priority holder in a window', () => {
+  it('the non-turn player may activate in the Attack Preparation window', async () => {
+    const PUMP: Ability = {
+      id: 'T-PUMP:act', trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 0 } } }, text: 'synthetic: +1000 to a Forward you control',
+      effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'addPower', amount: 1000 }] }],
+    }
+    let s = makeGame({ defs: [...VANILLA_POOL, bearer('T-PUMP', PUMP)] })
+    let theirs: CardId
+    ;[s, theirs] = withField(s, 1, 'forwards', 'T-PUMP')
+    // Into the preparation window: both forfeit Main Phase 1; the turn player passes; the opponent holds priority.
+    s = pass(pass(s, 0), 1)
+    expect(s.attack?.step).toBe('preparation')
+    s = pass(s, 0)
+    expect(s.priority).toBe(1)
+    const use = legalCommands(s, 1).find((c) => c.type === 'activateAbility' && c.source === theirs)
+    expect(use, 'the opponent could not use an action ability in a window (§9.3.1.7)').toBeDefined()
+    const r = apply(s, use!).state
+    expect(stackIds(r)).toEqual(['T-PUMP:act'])
+    expect(r.priority, 'the activating player regains priority (§11.6.11)').toBe(1)
+    const done = pass(pass(r, 1), 0)
+    expect(fc(done, theirs)?.powerBonus).toBe(1000)
+    expect(done.attack?.step, 'still in the preparation window').toBe('preparation')
+    ok(done)
   })
 })

@@ -62,8 +62,10 @@ export function checkInvariants(state: GameState): string[] {
     }
     if (ps.backups.length > MAX_BACKUPS) problems.push(`P${p} controls ${ps.backups.length} backups`)
   }
-  // The stack is a zone (§7.12, rung J1): a Summon on it is in exactly one place, here.
+  // The stack is a zone (§7.12, rung J1): a Summon on it is in exactly one place, here — and a Summon still
+  // declaring its choices on the way there (`resolution.placing`) is already off the hand and counts too.
   state.stack.forEach((item, i) => { if (item.kind === 'summon') note(item.card, `stack[${i}]`) })
+  if (state.resolution.placing?.item.kind === 'summon') note(state.resolution.placing.item.card, 'placing')
   const all = Object.keys(state.cards).map(Number)
   if (seen.size !== all.length) problems.push(`${all.length} card instances but ${seen.size} placed in zones`)
   for (const id of all) if (!seen.has(id)) problems.push(`card ${id} is in no zone`)
@@ -75,6 +77,7 @@ export function checkInvariants(state: GameState): string[] {
   if (!Number.isInteger(r.steps) || r.steps < 0) problems.push(`resolution.steps is ${r.steps}`)
   if (r.steps > MAX_RESOLUTION_STEPS) problems.push(`resolution.steps ${r.steps} exceeds the ${MAX_RESOLUTION_STEPS} budget`)
   if (state.result && (r.active || r.queue.length || r.placing || r.resolvingFrame !== null)) problems.push('resolution work queued after game over')
+  if (state.result && state.stack.length) problems.push('stack items waiting after game over')
   if (r.placing) { const it = r.placing.item; for (const f of it.kind === 'summon' ? it.frames : [it.frame]) checkFrame(problems, 'placing', f, state) }
   if (r.resolvingFrame !== null && state.stack.length === 0) problems.push('a stack frame is resolving but the stack is empty')
   if (r.active) checkFrame(problems, 'active', r.active, state)

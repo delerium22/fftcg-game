@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test'
  *   seed 1  — turn 1, six pressable hand cards under "cast, use an ability, or pass" (seed 21 until rung J1
  *             moved the AI's opening choice). Where the defect was found by playing: not one of them said
  *             what pressing it did.
- *   seed 11 — Class Tenth Moogle, funded exactly three ways, so the count is a specific number and not a shape.
+ *   seed 202 — Class Tenth Moogle, funded exactly four ways, so the count is a specific number and not a shape.
  * Both reach their position with one click, and the human moves first, so no AI timing enters either route.
  */
 
@@ -46,8 +46,9 @@ test('seed 1: every hand card names what pressing it does', async ({ page }) => 
   await expect(page.getByRole('button', { name: /paying/ })).toHaveCount(0)
 })
 
-test('seed 11: the sheet offers the cast, and the tray lists the cost', async ({ page }) => {
-  await page.goto('/?seed=11')
+test('seed 202: the sheet offers the cast, and the tray lists the cost', async ({ page }) => {
+  // Seed 202, not 11: since rung J1 seed 11's opening is the AI's turn with a response window for the human.
+  await page.goto('/?seed=202')
   await page.getByRole('button', { name: /Keep hand/ }).click()
 
   // A sole cast is announced by its headline, and pressing the card opens its sheet rather than casting.

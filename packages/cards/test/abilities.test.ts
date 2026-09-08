@@ -315,11 +315,13 @@ describe('20-103H Ramuh — "Select up to 2 of the 3 following actions." (the on
     return { r, mine, theirs, ramuh: r.card }
   }
 
-  it('resolves from the Break Zone instead of reporting no effect (§7.10.1; the path was dead code)', () => {
+  it('is cast onto the stack and declares its modes at once, instead of reporting no effect (§11.3.2, rung J1)', () => {
     const { r, ramuh } = ramuhCast()
-    expect(r.state.players[0].breakZone).toContain(ramuh)
+    expect(r.state.resolution.placing?.item, 'the cast Summon is declaring on its way to the stack').toMatchObject({ kind: 'summon', card: ramuh })
+    expect(r.state.players[0].breakZone).not.toContain(ramuh)
     expect(r.events.some((e) => e.type === 'summonResolvedNoEffect')).toBe(false)
-    expect(r.events).toContainEqual(expect.objectContaining({ type: 'abilityTriggered', player: 0, card: ramuh, abilityId: '20-103H:summon' }))
+    // A Summon's own clause is the Summon being cast, not a trigger: no `abilityTriggered` (rung J1).
+    expect(r.events.some((e) => e.type === 'abilityTriggered' && e.abilityId === '20-103H:summon')).toBe(false)
     expect(r.state.pending).toEqual({
       kind: 'chooseMode', player: 0, min: 0, max: 2,
       labels: ['Choose 1 Forward. Dull it.', 'Choose 1 Forward. Deal it 5000 damage.', 'Choose 1 Forward. It gains Haste until the end of the turn.'],
@@ -846,11 +848,13 @@ describe('13-072R Odin — "If you have received 5 points of damage or more, the
     const cast = legalCommands(s, 0).find((c) => c.type === 'castSummon' && c.card === odin)
     const r = apply(s, cast!)
 
-    // Exactly one clause reaches the agenda — the Summon effect. The static contributes nothing.
-    const triggered = r.events.filter((e) => e.type === 'abilityTriggered')
-    expect(triggered.map((e) => (e as { abilityId: string }).abilityId)).toEqual(['13-072R:summon'])
-    const queued = [r.state.resolution.active, ...r.state.resolution.queue].filter(Boolean)
-    expect(queued.every((f) => f?.abilityId !== '13-072R:cost-reduction')).toBe(true)
+    // Exactly one clause reaches the agenda — the Summon effect, as the frame of the Summon being cast. The
+    // static contributes nothing: no frame, and (since rung J1 a Summon's own clause is not "triggered") no
+    // `abilityTriggered` at all.
+    expect(r.events.filter((e) => e.type === 'abilityTriggered')).toEqual([])
+    const frames = [r.state.resolution.active, ...(r.state.resolution.placing?.item.kind === 'summon' ? r.state.resolution.placing.item.frames : []), ...r.state.resolution.queue].filter(Boolean)
+    expect(frames.some((f) => f?.abilityId === '13-072R:summon')).toBe(true)
+    expect(frames.every((f) => f?.abilityId !== '13-072R:cost-reduction')).toBe(true)
   })
 })
 

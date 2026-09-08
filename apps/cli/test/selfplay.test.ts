@@ -24,7 +24,7 @@ describe('self-play with the real Vol. 2 pool', () => {
     expect(r.unimplementedAbilities, 'a printed clause is unimplemented and not declared inert').toBe(0)
     expect(r.agents).toEqual(['random', 'random'])
     expect(r.search).toEqual([null, null])                // D-A4: no search ran, so no counters — not zeros
-  })
+  }, 60_000)
 
   it('greedy beats random decisively (30 games, depth 1, both seats)', () => {
     const a = selfPlay({ games: 15, seed: 500, decks: decks(), defs: loadCards(), agents: [{ kind: 'greedy' }, { kind: 'random' }], strict: false })

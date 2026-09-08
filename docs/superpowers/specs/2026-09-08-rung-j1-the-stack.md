@@ -39,6 +39,11 @@ ISMCTS `searchView` verbatim, and are digested into `observationKey` (the ordere
 and `passes`). A Summon on the stack is in `view.cards`, is removed from its owner's unseen multiset by
 `determinise`, and counts as a zone in `checkInvariants` (every card in exactly one place). `createGame`,
 `startTurn`, `stateShim` and the search's view rebuild all carry the two fields.
+Game over empties the stack (slice 4, `clearStackAtGameOver`): a Summon still on it goes to its owner's Break
+Zone so conservation holds, an ability item is dropped, and `checkInvariants` rejects a result with items
+waiting — the same rule the resolution lists already had. This is the review's "documented cleanup that keeps
+every card's location" alternative, chosen over preserving the terminal stack because the AI's rollout proxy
+(`agendaSize`, C2-A11) and the browser's response-window logic both read a non-empty stack as unfinished work.
 
 **J1-D2 — three lists, three predicates.** `resolution.queue` becomes the TRIGGERED holding list (frames
 that have triggered and are not yet placed); `stack` holds placed items; `resolution.active` is the one
@@ -246,7 +251,7 @@ missing `passes`/stack → D1 + A9; `observesChosen` inline → D7.
 by prompts, and the §11.3.3 "no target → not castable" rule implemented as a dry declare in `legalCommands`,
 so the revision-1 deviation is gone; activated-frame re-validation (D6); `beginPriority` vs the pass counter
 (D4: caller sets `passes`); `AttackStep` keeps `preparation` (D10 has six states); stale combatants (D10);
-terminal stack preserved, cards on the stack counted as a zone (D1); greedy tail over stack work (D14); stack
+terminal stack: emptied at game over with Summons to the Break Zone, cards on the stack counted as a zone (D1); greedy tail over stack work (D14); stack
 lifecycle events with cause (D13); the test-migration list (slice 3's helper; slices name their suites).
 
 **Accepted (MEDIUM, 8):** End Phase deviation recorded (D8); within-controller placement reversed so

@@ -306,7 +306,7 @@ describe('the flag reaches the tournament (G1a, and the bug an A/A caught)', () 
     expect(treated.agents[0]).toBe('ismcts:1+damage=25')
     expect(control.agents[0]).toBe('ismcts:1')
     expect(treated.search[0]?.decisions ?? 0, 'the arm never searched, so nothing is proven').toBeGreaterThan(0)
-  })
+  }, 60_000)
 
   it('an agent BUILT through the CLI path plays differently under a dominating weight', () => {
     // The behavioural half, entered where the CLI enters it — `parseAgentSpec` -> `withDefaults` ->

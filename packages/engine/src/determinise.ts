@@ -43,7 +43,8 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     const knownDeck = f.deck.map((slot) => slot.card).filter((id): id is CardId => id !== null)
     // A Summon this player OWNS that is on the stack (rung J1) is out of their hand and deck, public, and
     // keeps its id — leaving it out would deal its code back into the unseen multiset, a 51-card game.
-    const onStack = view.stack.flatMap((item) => (item.kind === 'summon' && view.cards[item.card]?.owner === p ? [item.card] : []))
+    const placing = view.resolution.placing?.item
+    const onStack = [...view.stack, ...(placing ? [placing] : [])].flatMap((item) => (item.kind === 'summon' && view.cards[item.card]?.owner === p ? [item.card] : []))
     const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...f.removedFromGame, ...knownDeck, ...onStack, ...(p === view.me ? view.hand : [])]
     const visibleCodes = visibleIds.map((id) => { const c = view.cards[id]; if (!c) throw new Error(`view lacks visible card ${id}`); return c.code })
     const unseen = removeVisible(decks[p], visibleCodes, p)

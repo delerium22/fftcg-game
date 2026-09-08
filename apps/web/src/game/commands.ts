@@ -656,6 +656,7 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   priority: 'Not while the AI holds priority',
   pending: 'Answer the current prompt first',
   stackNotEmpty: 'Not while something is on the stack',
+  noTarget: 'Nothing it could choose',
   monster: 'Monsters are not supported in this build',
   backupsFull: 'You already have five Backups',
   sameName: 'You already control a card with this name',
@@ -793,10 +794,17 @@ function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
       'pass to end your turn',
     )}`
     case 'attack': {
-      if (v.attack?.step !== 'declaration') return `Attack Phase — ${v.attack?.step ?? 'resolving'}`
-      return has((c) => c.type === 'declareAttack')
-        ? 'Attack Phase — declare an attack or pass'
-        : 'Attack Phase — no Forward of yours is ready; pass'
+      if (v.attack?.step === 'declaration') {
+        return has((c) => c.type === 'declareAttack')
+          ? 'Attack Phase — declare an attack or pass'
+          : 'Attack Phase — no Forward of yours is ready; pass'
+      }
+      // A WINDOW (rung J1): Summons and abilities may be used from it, and the offer says so, from the
+      // commands — the same rule as the Main Phases above.
+      const step = v.attack?.step ?? 'resolving'
+      const verbs = [...(canCast ? ['cast a Summon'] : []), ...(canActivate ? ['use an ability'] : [])]
+      if (!verbs.length && !has((c) => c.type === 'pass')) return `Attack Phase — ${step}`
+      return `Attack Phase — ${step}: ${offer(verbs, 'pass to continue')}`
     }
     default: return `${PHASE_LABEL[v.phase] ?? v.phase} — nothing to do`
   }
