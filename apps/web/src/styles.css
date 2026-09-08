@@ -981,3 +981,29 @@ body {
   display: inline-flex;
   gap: var(--s2);
 }
+
+/* Rung J7: the set picker's chips. */
+.tray__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+}
+
+.chip {
+  padding: 2px var(--s3);
+  border: 1px solid var(--gold-dim);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gold);
+  font: inherit;
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.card.is-chosen .card__face {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.card__paying--chosen { background: var(--gold); color: #000; }

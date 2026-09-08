@@ -3,12 +3,13 @@ import { unimplementedClauseCount, type CardDef } from '@fftcg/engine'
 import type { Choice } from '../game/types.js'
 import { Card, type CardProps } from './Card.js'
 
-/** One thing the sheet's card can do: press to commit it, or press to open the payment tray for it. */
+/** One thing the sheet's card can do: press to commit it, press to open the payment tray for it, or (rung J7)
+ *  press to start picking a SET with this card as the first member. */
 export interface SheetAction {
   choice: Choice
   /** The button text — the full label when the press commits, the payment-free headline when it opens the tray. */
   label: string
-  kind: 'commit' | 'pay'
+  kind: 'commit' | 'pay' | 'select'
 }
 
 /**
@@ -24,7 +25,7 @@ export interface SheetAction {
  * description (I1-D4): a greyed button that will not say why is the thing the How-to-play sheet promised
  * this table would not have.
  */
-export function CardSheet({ face, def, actions, castBlocked, onCommit, onPay, onClose }: {
+export function CardSheet({ face, def, actions, castBlocked, onCommit, onPay, onSelect, onClose }: {
   face: CardProps
   def: CardDef | undefined
   actions: readonly SheetAction[]
@@ -32,6 +33,8 @@ export function CardSheet({ face, def, actions, castBlocked, onCommit, onPay, on
   castBlocked: string | null
   onCommit: (c: Choice) => void
   onPay: (c: Choice) => void
+  /** Rung J7: start building a set with this sheet's card. Optional: a caller without a picker never offers the action. */
+  onSelect?: ((c: Choice) => void) | undefined
   onClose: () => void
 }): JSX.Element {
   const ref = useRef<HTMLDialogElement | null>(null)
@@ -97,7 +100,7 @@ export function CardSheet({ face, def, actions, castBlocked, onCommit, onPay, on
                 className="btn btn--primary sheet__action"
                 data-command={a.choice.command.type}
                 data-sheet-action={a.kind}
-                onClick={() => (a.kind === 'pay' ? onPay(a.choice) : onCommit(a.choice))}
+                onClick={() => (a.kind === 'pay' ? onPay(a.choice) : a.kind === 'select' ? onSelect?.(a.choice) : onCommit(a.choice))}
               >
                 {a.label}
               </button>

@@ -17,7 +17,20 @@ export async function playToTheEnd(page: Page, budgetMs = 120_000): Promise<void
     if (await page.locator('dialog.banner').count() > 0) return
     const sheet = page.locator('dialog[data-card-sheet]')
     if (await sheet.count()) {
-      await sheet.locator('.sheet__actions button:not([disabled])').first().click({ timeout: 3000 }).catch(() => {})
+      // Rung J7: "Choose several…" opens the set picker; the driver takes the plain commit or pay action.
+      const plain = sheet.locator('.sheet__actions button:not([disabled]):not([data-sheet-action="select"]):not([data-command="sheetBack"])')
+      if (await plain.count()) await plain.first().click({ timeout: 3000 }).catch(() => {})
+      else await sheet.locator('[data-sheet-action="select"], [data-command="sheetBack"]').first().click({ timeout: 3000 }).catch(() => {})
+      continue
+    }
+    const picker = page.locator('[data-selection-tray]')
+    if (await picker.count()) {
+      // Confirm as soon as the set is legal; otherwise add the next offered card; with nothing to add, give up.
+      const confirm = picker.getByRole('button', { name: 'Confirm' })
+      if (await confirm.isEnabled().catch(() => false)) { await confirm.click({ timeout: 3000 }).catch(() => {}); continue }
+      const next = page.locator('[role="gridcell"] button[aria-label*="Press to add"]').first()
+      if (await next.count()) await next.click({ timeout: 3000 }).catch(() => {})
+      else await picker.getByRole('button', { name: 'Cancel' }).click({ timeout: 3000 }).catch(() => {})
       continue
     }
     const tray = page.locator('[data-payment-tray]')

@@ -1,6 +1,8 @@
 # Rung J7 — target sets picked card by card, and a cap on what `legalCommands` enumerates
 
-> **STATUS: draft for plan review, 2026-09-08.** The audit's pressure point 3 (ladder J7): "pre-enumeration
+> **STATUS: BUILT (slices 1–3), 2026-09-08; the Codex plan review is still owed** (the CLI hit its usage limit
+> until 19:06) and its findings will be adjudicated into a revision 2 with follow-up commits. The audit's
+> pressure point 3 (ladder J7): "pre-enumeration
 > in `legalCommands`" — needed before the pool grows past ~40 cards. Bounded in the engine, a new picker in
 > the browser (the shape of I2's payment tray). The user was away; the design calls are mine, recorded here.
 

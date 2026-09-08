@@ -56,6 +56,8 @@ export interface CardProps {
    * the accessible name too, because a fill is not a channel a screen reader has.
    */
   paying?: 'dull' | 'discard' | undefined
+  /** Rung J7: picked into the set being built (an attack party, a target set) — press again to put back. */
+  chosen?: boolean | undefined
   faceDown?: boolean | undefined
   size?: 'hand' | 'field' | 'small' | 'large' | undefined
   onClick?: (() => void) | undefined
@@ -149,7 +151,7 @@ function cardBuffs({ power, powerBonus = 0, granted = [], flags = [] }: CardProp
  * duplication rung E2 was about, with the drift landing somewhere only a screen-reader user would find it.
  */
 export function cardAccessibleName(props: CardProps): string {
-  const { name, cost, elements, type, power, damage = 0, dull = false, faceDown = false, action, paying } = props
+  const { name, cost, elements, type, power, damage = 0, dull = false, faceDown = false, action, paying, chosen = false } = props
   if (faceDown) return 'Face-down card'
   const remaining = power === null ? null : power - damage
   return [
@@ -157,13 +159,14 @@ export function cardAccessibleName(props: CardProps): string {
     remaining === null ? '' : `power ${remaining} of ${power}`,
     dull ? 'dull' : '', ...cardBuffs(props).map((b) => b.said),
     paying === 'dull' ? 'will be dulled to pay' : paying === 'discard' ? 'will be discarded to pay' : '',
+    chosen ? 'chosen for this move' : '',
     action ?? '',
   ].filter(Boolean).join(', ')
 }
 
 /** Every card on the board — the opponent's hand, the decks, both fields — renders through here. */
 export function Card(props: CardProps): JSX.Element {
-  const { code, name, cost, elements, type, power, damage = 0, dull = false, actionable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, text, tabIndex, descriptionId, presentational = false, paying } = props
+  const { code, name, cost, elements, type, power, damage = 0, dull = false, actionable = false, selected = false, faceDown = false, size = 'field', onClick, onInspect, text, tabIndex, descriptionId, presentational = false, paying, chosen = false } = props
 
   // Local state is keyed on `code` rather than reset by an effect, so reusing one component instance
   // for a different card re-attempts that card's art instead of inheriting the previous failure. The
@@ -186,7 +189,7 @@ export function Card(props: CardProps): JSX.Element {
   const shownDull = dull || paying === 'dull'
   const className = [
     'card', `card--${size}`, shownDull ? 'is-dull' : '', actionable ? 'is-selectable' : '', selected ? 'is-selected' : '',
-    paying === 'dull' ? 'is-paying-dull' : paying === 'discard' ? 'is-paying-discard' : '',
+    paying === 'dull' ? 'is-paying-dull' : paying === 'discard' ? 'is-paying-discard' : '', chosen ? 'is-chosen' : '',
   ].filter(Boolean).join(' ')
   const label = cardAccessibleName(props)
 
@@ -231,6 +234,7 @@ export function Card(props: CardProps): JSX.Element {
             </span>
           )}
           {paying && <span className="card__paying" aria-hidden="true">{paying === 'dull' ? 'Dulls' : 'Discard'}</span>}
+          {chosen && !paying && <span className="card__paying card__paying--chosen" aria-hidden="true">Chosen</span>}
           {remaining !== null && damage > 0 && <span className="card__damage" />}
         </span>
         <span className="card__plate">

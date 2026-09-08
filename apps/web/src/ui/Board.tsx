@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type JSX, useMemo } from 'react'
 import type { CardId, Element, FieldCard, GameState, Payment, PlayerId, PlayerView } from '@fftcg/engine'
 import { castBlockerText, displayName, fieldCardDisplay, headline, stateShim } from '../game/commands.js'
+import { candidatesFor, commandFor, completedChoice as completedSelection, extendableWith, refusal, selectionText, setKindFor, toggled, type Selection } from '../game/selection.js'
+import { SelectionTray } from './SelectionTray.js'
 import {
   EMPTY_PAYMENT, candidateSources, completedChoice, crystals, extendable, generatedFor, legalPaymentsOf, needsTray,
   paidText, requirementFor, withBackup, withDiscard,
@@ -224,6 +226,8 @@ export function Board({ game, onHelp }: {
 
   /** The payment being built (rung I2), or `null` for the ordinary strip. */
   const [paying, setPaying] = useState<Paying | null>(null)
+  /** The set being built (rung J7-D3): an attack party, a target set, the cards to discard. */
+  const [selecting, setSelecting] = useState<Selection | null>(null)
   const inspect = (code: string | undefined, card: CardId): void => {
     if (code !== undefined) setInspected({ code, card })
   }
@@ -330,6 +334,10 @@ export function Board({ game, onHelp }: {
    */
   const actionFor = (id: CardId): string | undefined => {
     if (paying) return sourceAction(id)
+    if (selecting) {
+      if (selecting.chosen.includes(id)) return 'Chosen — press to put back'
+      return extendableWith(view, selecting, id) ? 'Press to add' : undefined
+    }
     const forCard = choices.byCard.get(id) ?? []
     if (forCard.length === 0) return undefined
     if (forCard.length === 1) return headline(view, forCard[0] as Choice)
@@ -393,7 +401,19 @@ export function Board({ game, onHelp }: {
       onDeclare={(card, element) => setPaying({ ...paying, selection: withDiscard(paying.selection, card, element), ask: null })}
     />
   ) : null
-  const payingPrompt = paying ? `Paying for: ${headline(view, paying.choice)} — ${paidText(lit)}` : null
+  const selectionTray = selecting ? (
+    <SelectionTray
+      chosen={selecting.chosen}
+      name={(id) => displayName(view, id)}
+      refusal={refusal(view, selecting)}
+      onClear={() => setSelecting({ ...selecting, chosen: [] })}
+      onCancel={() => setSelecting(null)}
+      onConfirm={() => { const c = completedSelection(view, selecting); if (c) { setSelecting(null); choose(c) } }}
+      onRemove={(id) => setSelecting(toggled(selecting, id))}
+    />
+  ) : null
+  const payingPrompt = paying ? `Paying for: ${headline(view, paying.choice)} — ${paidText(lit)}`
+    : selecting ? selectionText(view, selecting, (id) => displayName(view, id)) : null
 
   const inspectedAction = inspected === null ? null : actionFor(inspected.card) ?? null
 
@@ -401,7 +421,7 @@ export function Board({ game, onHelp }: {
   // would leave the tray spending cards against a move that may no longer be legal. The SHEET survives a
   // change of position: it is for reading, and its actions are re-derived live on every render, so a sheet
   // opened on the AI's Forward while the AI thinks simply stops offering "Block with" once the attack is over.
-  useEffect(() => { setPaying(null) }, [choices])
+  useEffect(() => { setPaying(null); setSelecting(null) }, [choices])
 
   /**
    * A press on a card (rung I1): while a payment is being built it picks or puts back a source; otherwise it
@@ -412,6 +432,10 @@ export function Board({ game, onHelp }: {
   const pick = (id: CardId): void => {
     if (paying) {
       if (sourceState(id).offered) { toggleSource(id); return }
+      setSheet(id); return
+    }
+    if (selecting) {
+      if (selecting.chosen.includes(id) || extendableWith(view, selecting, id)) { setSelecting(toggled(selecting, id)); return }
       setSheet(id); return
     }
     setSheet(id)
@@ -464,7 +488,10 @@ export function Board({ game, onHelp }: {
 
   /** Whether a card glows: a key of `byCard`, or — while paying — a source the tray offers or has taken. */
   const glows = (id: CardId): boolean =>
-    paying ? sourceState(id).offered : (choices.byCard.get(id) ?? []).length > 0
+    paying ? sourceState(id).offered
+      : selecting ? selecting.chosen.includes(id) || extendableWith(view, selecting, id)
+      : (choices.byCard.get(id) ?? []).length > 0
+  const chosenNow = (id: CardId): boolean => selecting !== null && selecting.chosen.includes(id)
   const payingRole = (id: CardId): 'dull' | 'discard' | undefined => sourceState(id).role ?? undefined
 
   const field = (p: PlayerId, kind: 'forwards' | 'backups'): GridItem[] =>
@@ -476,6 +503,7 @@ export function Board({ game, onHelp }: {
         ...fieldCardProps(view, c, glows(c.id), kind === 'backups' ? 'small' : 'field', shim),
         ...(actionFor(c.id) === undefined ? {} : { action: actionFor(c.id) }),
         ...(payingRole(c.id) === undefined ? {} : { paying: payingRole(c.id) }),
+        ...(chosenNow(c.id) ? { chosen: true } : {}),
       }
       return gridItem(c.id, props, { selected: sheet === c.id })
     })
@@ -518,11 +546,26 @@ export function Board({ game, onHelp }: {
     const face: CardProps = onField
       ? fieldCardProps(view, onField, false, 'field', shim)
       : { code: d.code, name: displayName(view, id), cost: d.cost, elements: d.elements, type: d.type, power: d.power, ...(d.text === undefined ? {} : { text: d.text }) }
-    const forCard = paying ? [] : (choices.byCard.get(id) ?? [])
-    const actions: SheetAction[] = forCard.map((c) => ({
+    const forCard = paying || selecting ? [] : (choices.byCard.get(id) ?? [])
+    // Rung J7-D3: when the decision is a SET this card may join, its several-member commands collapse into
+    // one "Choose several…" action that starts the picker with this card; a singleton stays a plain commit.
+    const setKind = setKindFor(view)
+    const joins = setKind !== null && candidatesFor(view, setKind).includes(id)
+    const members = (c: Choice): number => {
+      const cmd = c.command
+      return cmd.type === 'declareAttack' ? cmd.attackers.length : cmd.type === 'chooseTargets' ? cmd.targets.length
+        : cmd.type === 'discardToHandSize' || cmd.type === 'breakExcessBackups' ? cmd.cards.length : 1
+    }
+    const singles = joins ? forCard.filter((c) => members(c) <= 1) : forCard
+    const actions: SheetAction[] = singles.map((c) => ({
       choice: c, kind: needsTray(c) ? 'pay' : 'commit',
       label: needsTray(c) ? headline(view, c) : c.label,
     }))
+    if (joins && setKind !== null) {
+      const first = forCard[0] ?? { command: commandFor(view, { kind: setKind, chosen: [id] }), label: '', card: id }
+      const verb = setKind === 'attackers' ? 'Attack with several…' : setKind === 'discards' ? 'Discard several…' : setKind === 'backups' ? 'Put several into the Break Zone…' : 'Choose several…'
+      actions.push({ choice: first, kind: 'select', label: verb })
+    }
     const castable = forCard.some((c) => c.command.type === 'castCharacter' || c.command.type === 'castSummon')
     const castBlocked = paying ? null : castBlockerText(view, id, castable)
     return (
@@ -530,6 +573,7 @@ export function Board({ game, onHelp }: {
         face={face} def={d} actions={actions} castBlocked={castBlocked}
         onCommit={(c) => { setSheet(null); setPaying(null); choose(c) }}
         onPay={startPaying}
+        onSelect={() => { const k = setKindFor(view); if (k) { setSheet(null); setSelecting({ kind: k, chosen: [id] }) } }}
         onClose={() => setSheet(null)}
       />
     )
@@ -595,6 +639,7 @@ export function Board({ game, onHelp }: {
               ...(d?.text === undefined ? {} : { text: d.text }),
               ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
               ...(payingRole(id) === undefined ? {} : { paying: payingRole(id) }),
+              ...(chosenNow(id) ? { chosen: true } : {}),
             }, { selected: sheet === id })
           })}
         />
@@ -602,8 +647,8 @@ export function Board({ game, onHelp }: {
 
       <PromptStrip
         view={view} choices={choices} shown={shown} aiThinking={aiThinking}
-        tray={tray} paying={payingPrompt}
-        onChoose={(c) => { setPaying(null); choose(c) }}
+        tray={tray ?? selectionTray} paying={payingPrompt}
+        onChoose={(c) => { setPaying(null); setSelecting(null); choose(c) }}
       />
 
       {sheet !== null && sheetProps(sheet)}
