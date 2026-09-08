@@ -8,7 +8,7 @@ import { enumeratePayments, enumeratePaymentsFor } from './cp.js'
 import { abilityCpRequirement, activationCheck, activationTargetSets, hasAnyActivation } from './activate.js'
 import { castCheck, instantSpeedAllowed } from './cast.js'
 import { deckPickCandidates, chooseTargetsCheck } from './resolve.js'
-import { attackCheck, legalAttackSets, legalBlockers, legalPartyDamageAssignments, partyDamageCheck } from './attack.js'
+import { attackCheck, legalBlockers, legalPartyDamageAssignments, partyDamageCheck } from './attack.js'
 
 export function actingPlayer(state: GameState): PlayerId | null {
   if (state.result) return null
@@ -127,10 +127,71 @@ const samePayment = (a: Payment, b: Payment): boolean =>
   sameSet(a.dullBackups, b.dullBackups) && a.discards.length === b.discards.length
   && a.discards.every((d) => b.discards.some((e) => e.card === d.card && e.element === d.element))
 
+/**
+ * Rung J7-D2: the most set-shaped commands one enumeration lists. Below it every legal set is listed as
+ * before; above it the list is a SAMPLE — the singletons, the pairs, then larger sets in order until the cap,
+ * plus the largest legal sets — and `capped` says so. `isLegal` is the authority for anything not listed.
+ */
+export const DEFAULT_SET_CAP = 64
+export interface LegalList { readonly commands: Command[]; readonly capped: boolean }
+
+/** Lazily every k-subset of `items`, in lexicographic order of positions. */
+function* subsetsOf<T>(items: readonly T[], k: number, start = 0, acc: T[] = []): Generator<T[]> {
+  if (acc.length === k) { yield [...acc]; return }
+  for (let i = start; i <= items.length - (k - acc.length); i++) {
+    acc.push(items[i] as T)
+    yield* subsetsOf(items, k, i + 1, acc)
+    acc.pop()
+  }
+}
+const choose = (n: number, k: number): number => { let r = 1; for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i; return r }
+
+/**
+ * The legal subsets of `items` of sizes `min..max`, bounded by `cap` (J7-D2). `ok` says whether a set is
+ * legal (attack parties must share an element); `largest` supplies the sets worth listing even when the cap
+ * bites (a full party per element, the first `max` candidates). Deduplicated by sorted signature.
+ */
+function boundedSubsets<T extends number>(
+  items: readonly T[], min: number, max: number, cap: number, ok: (set: T[]) => boolean, largest: () => T[][],
+): { sets: T[][]; capped: boolean } {
+  const hi = Math.min(max, items.length)
+  let total = 0
+  for (let k = min; k <= hi; k++) total += choose(items.length, k)
+  const sets: T[][] = []
+  const seen = new Set<string>()
+  const add = (set: T[]): boolean => {
+    const key = [...set].sort((a, b) => a - b).join(',')
+    if (seen.has(key)) return false
+    seen.add(key); sets.push(set); return true
+  }
+  if (total <= cap) {
+    for (let k = min; k <= hi; k++) for (const set of subsetsOf(items, k)) if (ok(set)) add(set)
+    return { sets, capped: false }
+  }
+  outer: for (let k = min; k <= hi; k++) {
+    for (const set of subsetsOf(items, k)) {
+      if (sets.length >= cap) break outer
+      if (ok(set)) add(set)
+    }
+  }
+  for (const set of largest()) if (ok(set)) add(set)
+  return { sets, capped: true }
+}
+
 export function legalCommands(state: GameState, player: PlayerId): Command[] {
-  if (state.result) return []
+  return legalCommandsWithMeta(state, player).commands
+}
+
+export function legalCommandsWithMeta(state: GameState, player: PlayerId, setCap = DEFAULT_SET_CAP): LegalList {
+  if (state.result) return { commands: [], capped: false }
   const out: Command[] = [{ type: 'concede', player }]   // §2.1: always allowed
-  if (actingPlayer(state) !== player) return out
+  let capped = false
+  const bounded = <T extends number>(items: readonly T[], min: number, max: number, ok: (set: T[]) => boolean, largest: () => T[][]): T[][] => {
+    const r = boundedSubsets(items, min, max, setCap, ok, largest)
+    if (r.capped) capped = true
+    return r.sets
+  }
+  if (actingPlayer(state) !== player) return { commands: out, capped }
   const pending = state.pending
   if (pending) {
     switch (pending.kind) {
@@ -139,10 +200,10 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
       case 'mulligan':
         out.push({ type: 'mulligan', player, redraw: false }, { type: 'mulligan', player, redraw: true }); break
       case 'discardToHandSize':
-        for (const cards of combinations(state.players[player].hand, pending.count)) out.push({ type: 'discardToHandSize', player, cards })
+        for (const cards of bounded(state.players[player].hand, pending.count, pending.count, () => true, () => [])) out.push({ type: 'discardToHandSize', player, cards })
         break
       case 'breakExcessBackups':   // §12.4.8 (rung J4)
-        for (const cards of combinations(state.players[player].backups.map((c) => c.id), pending.count)) out.push({ type: 'breakExcessBackups', player, cards })
+        for (const cards of bounded(state.players[player].backups.map((c) => c.id), pending.count, pending.count, () => true, () => [])) out.push({ type: 'breakExcessBackups', player, cards })
         break
       case 'declareBlock':
         out.push({ type: 'declareBlock', player, blocker: null })
@@ -151,14 +212,14 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
       case 'assignPartyDamage':
         for (const assignments of legalPartyDamageAssignments(state)) out.push({ type: 'assignPartyDamage', player, assignments })
         break
-      case 'chooseTargets':
-        // Σ C(N, k) for k in min..max. `max` is the printed "up to N" (≤ 2 everywhere in the C1 pool) and N is
-        // one zone of one or both fields, so the bound is ~C(20,2) = 190 commands. A clause printing "up to 4"
-        // over a large Break Zone would need a candidate cap here — spec C1-6 flagged the combinatorics.
-        for (let k = pending.min; k <= pending.max; k++) {
-          for (const targets of combinations([...pending.candidates], k)) out.push({ type: 'chooseTargets', player, targets })
-        }
+      case 'chooseTargets': {
+        // Σ C(N, k) for k in min..max, bounded (J7-D2): the singletons, the pairs, then larger sets up to the
+        // cap, plus the first `max` candidates as one full set. Every subset within the size range is legal.
+        const cands = [...pending.candidates]
+        const full = () => (pending.max >= 1 && cands.length >= pending.min ? [cands.slice(0, Math.min(pending.max, cands.length))] : [])
+        for (const targets of bounded(cands, pending.min, pending.max, () => true, full)) out.push({ type: 'chooseTargets', player, targets })
         break
+      }
       case 'chooseFromDeck': {
         // Σ C(eligible, k) over min..max. The pool's clauses are "add 1 among 3", "add 1 among 5" and "up to 1
         // of a whole deck", so this is a handful of commands; a future "up to 3 of 5" would want the same cap
@@ -188,17 +249,30 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
         }
         break
     }
-    return out
+    return { commands: out, capped }
   }
   const menu = actionMenu(state, player)
   for (const card of menu.castable) {
     const type = defOf(state, card).type === 'summon' ? 'castSummon' : 'castCharacter'
     for (const payment of enumeratePayments(state, player, card)) out.push({ type, player, card, payment })
   }
-  if (menu.abilities) for (const c of activationsFor(state, player)) out.push(c)
-  if (menu.attack) for (const attackers of legalAttackSets(state, player)) out.push({ type: 'declareAttack', player, attackers })
+  if (menu.abilities) {
+    const r = activationsWithMeta(state, player, setCap)
+    if (r.capped) capped = true
+    out.push(...r.commands)
+  }
+  if (menu.attack) {
+    // Every subset of the ready Forwards is 2ⁿ; bounded, the singles, the pairs and each element's full party.
+    const eligible = state.players[player].forwards.map((c) => c.id).filter((id) => attackCheck(state, player, [id]) === null)
+    const parties = () => {
+      const byElement = new Map<string, CardId[]>()
+      for (const id of eligible) for (const e of defOf(state, id).elements) byElement.set(e, [...(byElement.get(e) ?? []), id])
+      return [...byElement.values()].filter((ids) => ids.length >= 2)
+    }
+    for (const attackers of bounded(eligible, 1, eligible.length, (set) => attackCheck(state, player, set) === null, parties)) out.push({ type: 'declareAttack', player, attackers })
+  }
   if (menu.pass) out.push({ type: 'pass', player })
-  return out
+  return { commands: out, capped }
 }
 
 /**
@@ -209,7 +283,12 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
  * ability enumerate through this same path instead of needing their own.
  */
 export function activationsFor(state: GameState, player: PlayerId): Command[] {
+  return activationsWithMeta(state, player, DEFAULT_SET_CAP).commands
+}
+
+function activationsWithMeta(state: GameState, player: PlayerId, setCap: number): LegalList {
   const out: Command[] = []
+  let capped = false
   const ps = state.players[player]
   const sources = [...ps.hand, ...ps.breakZone, ...ps.forwards.map((c) => c.id), ...ps.backups.map((c) => c.id)]
   for (const source of sources) {
@@ -217,8 +296,11 @@ export function activationsFor(state: GameState, player: PlayerId): Command[] {
       if (ability.trigger.kind !== 'activated') continue
       const req = abilityCpRequirement(source, ability.trigger.cost)
       // Payment x declared target set. Both are part of the command now, because an activation declares its
-      // choices before it pays (spec C3-1) — so both have to be enumerated for the choice to be offered.
-      const targetSets = activationTargetSets(state, player, source, ability)
+      // choices before it pays (spec C3-1) — so both have to be enumerated for the choice to be offered. The
+      // target sets are bounded like every other set (J7-D2); the payments are the minimal ones and few.
+      const all = activationTargetSets(state, player, source, ability)
+      let targetSets = all
+      if (all.length > setCap) { targetSets = all.slice(0, setCap); capped = true }
       for (const payment of enumeratePaymentsFor(state, player, req)) {
         for (const targets of targetSets) {
           if (activationCheck(state, player, source, ability.id, targets) !== null) continue
@@ -227,5 +309,5 @@ export function activationsFor(state: GameState, player: PlayerId): Command[] {
       }
     }
   }
-  return out
+  return { commands: out, capped }
 }
