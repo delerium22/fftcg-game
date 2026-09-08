@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EMPTY_RESOLUTION, apply, attackCheck, defOf, drainResolution, enqueueTrigger, legalCommands, type Ability, type CardDef, type CardId, type Command, type Effect, type GameState, type PlayerId } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
 import { cardValue } from '../src/cardValue.js'
-import { VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
+import { endPhase, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 /** A synthetic one-clause ability. The AI lane never depends on a real card: the policy reads the AST, not the code. */
 const clause = (id: string, effects: readonly Effect[]): Ability => ({ id, trigger: { kind: 'enterField' }, text: `synthetic clause ${id}`, effects })
@@ -38,7 +38,7 @@ describe('candidateCommands', () => {
   })
   it('chooses discards by value and mirrors legalCommands for decisions', () => {
     let s = makeGame()   // 6 cards → discard pending at end of turn
-    s = apply(s, { type: 'pass', player: 0 }).state; s = apply(s, { type: 'pass', player: 0 }).state; s = apply(s, { type: 'pass', player: 0 }).state
+    s = endPhase(s); s = apply(s, { type: 'pass', player: 0 }).state; s = endPhase(s)   // main1 → attack → main2 → end
     const c = candidateCommands(s, 0)
     expect(c).toHaveLength(1); expect(c[0]!.type).toBe('discardToHandSize')
     expect(() => apply(s, c[0]!)).not.toThrow()
@@ -53,7 +53,7 @@ describe('candidateCommands', () => {
     const defs = [...VANILLA_POOL, makeDef({ code: 'V-DUAL', elements: ['earth', 'lightning'], cost: 1, power: 3000 })]
     let s = withHandSize(makeGame({ defs }), 0, 0)
     for (let i = 0; i < 8; i++) [s] = withField(s, 0, 'forwards', 'V-DUAL')
-    s = apply(s, { type: 'pass', player: 0 }).state   // main1 -> attack declaration
+    s = endPhase(s)   // main1 -> attack declaration (both forfeit, rung J1)
     const c = candidateCommands(s, 0)
     const attacks = c.filter((x): x is Extract<Command, { type: 'declareAttack' }> => x.type === 'declareAttack')
     // 8 singles + up to C(8,2)=28 pairs + 1 party per shared element (earth, lightning) = up to 8 + 28 + 2 = 38

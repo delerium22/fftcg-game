@@ -12,7 +12,7 @@ import {
   type SearchEdge, type SearchNode, type SearchTree,
 } from '../src/ismcts/search.js'
 import { IsmctsAgent } from '../src/ismcts/agent.js'
-import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -42,7 +42,7 @@ const bearer = (code: string, a: Ability): CardDef => makeDef({ code, type: 'bac
 /** Put a clause on the agenda and run it until it asks its question — the state the search meets in play. */
 const arm = (s: GameState, source: CardId, controller: PlayerId, a: Ability): GameState => drainResolution(enqueueTrigger(s, source, controller, a))[0] as GameState
 
-const toAttackDeclaration = (s: GameState): GameState => apply(s, { type: 'pass', player: 0 }).state
+const toAttackDeclaration = (s: GameState): GameState => endPhase(s)
 
 /** A 3000 of mine against an active 7000 of theirs: attacking trades my Forward for one point of damage. */
 function suicideAttackPosition(): GameState {
@@ -393,7 +393,7 @@ describe('every Pending is a tree ply, whoever owns it (D-3)', () => {
   it('the turn player owns the discardToHandSize ply that follows their pass', () => {
     let s = withHandSize(makeGame(), 0, 5)
     for (const code of ['V-F1', 'V-F2']) { [s] = withHand(s, 0, code) }   // 7 cards, so the End Phase owes 2
-    s = apply(apply(s, { type: 'pass', player: 0 }).state, { type: 'pass', player: 0 }).state   // -> main2
+    s = apply(endPhase(s), { type: 'pass', player: 0 }).state   // -> attack (both forfeit), then declaration -> main2
     const { root } = search(s, 0, { iterations: 200, cap: 4 })
     expect(pendingPlies(root).get('discardToHandSize/0')).toEqual(new Set([0]))
   })

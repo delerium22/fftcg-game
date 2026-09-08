@@ -5,7 +5,7 @@ import { actingPlayer, legalCommands } from '../src/legal.js'
 import { checkInvariants } from '../src/invariants.js'
 import { IllegalCommandError } from '../src/errors.js'
 import { nextInt, seedRng } from '../src/rng.js'
-import { DEFAULT_DECK, VANILLA_POOL, makeGame, withField, withHand, withHandSize } from './helpers.js'
+import { endPhase, DEFAULT_DECK, VANILLA_POOL, makeGame, withField, withHand, withHandSize } from './helpers.js'
 
 describe('legalCommands', () => {
   it('during setup only the chooser may act; concede is legal for both', () => {
@@ -28,7 +28,7 @@ describe('legalCommands', () => {
   it('at the block step only the defender acts: declareBlock(null) plus one per active forward', () => {
     let s = makeGame(); let a: number, d: number
     ;[s, a] = withField(s, 0, 'forwards', 'V-F2'); [s, d] = withField(s, 1, 'forwards', 'V-F2')
-    s = apply(s, { type: 'pass', player: 0 }).state
+    s = endPhase(s)
     s = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
     expect(actingPlayer(s)).toBe(1)
     expect(legalCommands(s, 0)).toEqual([{ type: 'concede', player: 0 }])
@@ -37,7 +37,7 @@ describe('legalCommands', () => {
   })
   it('when a discard is pending, only discardToHandSize with exactly `count` cards is legal', () => {
     let s = makeGame()   // player 0: 6 cards
-    for (let i = 0; i < 3; i++) s = apply(s, { type: 'pass', player: 0 }).state
+    for (let i = 0; i < 3; i++) s = endPhase(s)
     expect(s.pending?.kind).toBe('discardToHandSize')
     const cmds = legalCommands(s, 0)
     expect(cmds.every((c) => c.type === 'concede' || (c.type === 'discardToHandSize' && c.cards.length === 1))).toBe(true)

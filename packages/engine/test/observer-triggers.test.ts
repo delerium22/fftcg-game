@@ -13,7 +13,7 @@ import { checkInvariants } from '../src/invariants.js'
 import { viewFor } from '../src/view.js'
 import { determinise } from '../src/determinise.js'
 import { seedRng } from '../src/rng.js'
-import { makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
+import { endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
 /**
  * Rung C2 stage 1: the observer-trigger machinery (spec C2-3/C2-4/C2-6/C2-7/C2-10/C2-11) and the three clauses
@@ -247,7 +247,7 @@ describe('C2-A4: Luso breaks what it damages, in combat and by ability alike (sp
     let luso: CardId, blocker: CardId
     ;[s, luso] = withField(s, 0, 'forwards', '27-125S')      // 3000 power
     ;[s, blocker] = withField(s, 1, 'forwards', 'V-F8')      // 9000 power — survives 3000, deals 9000 back
-    s = apply(s, { type: 'pass', player: 0 }).state          // §10.1.1–2 into the declaration step
+    s = endPhase(s)          // §10.1.1–2 into the declaration step (both forfeit, rung J1)
     s = apply(s, { type: 'declareAttack', player: 0, attackers: [luso] }).state
     const r = apply(s, { type: 'declareBlock', player: 1, blocker })
 
@@ -421,7 +421,7 @@ describe('an ability-caused break is watched exactly as a rule-process break is'
     ;[s, watcher] = withField(s, 0, 'forwards', '27-127S')   // P0's Lightning, watching P1's field
     ;[s, luso] = withField(s, 0, 'forwards', '27-125S')      // 3000
     ;[s, blocker] = withField(s, 1, 'forwards', 'V-F8')      // 9000 — survives 3000, so ONLY the ability breaks it
-    s = apply(s, { type: 'pass', player: 0 }).state
+    s = endPhase(s)
     s = apply(s, { type: 'declareAttack', player: 0, attackers: [luso] }).state
     const r = apply(s, { type: 'declareBlock', player: 1, blocker })
 

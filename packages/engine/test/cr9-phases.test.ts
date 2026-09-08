@@ -5,7 +5,7 @@ import type { CardId, GameState } from '../src/state.js'
 import { findFieldCard } from '../src/state.js'
 import type { PlayerId } from '../src/types.js'
 import { IllegalCommandError } from '../src/errors.js'
-import { makeGame, withField, withHandSize } from './helpers.js'
+import { endPhase, makeGame, withField, withHandSize } from './helpers.js'
 
 describe('§9.1 active phase', () => {
   it('activates all of the turn player\'s dull cards and only theirs', () => {
@@ -85,16 +85,16 @@ describe('§9.3–9.5 passing through phases', () => {
   it('main1 → attack declaration → main2 → end → next turn', () => {
     let s = withHandSize(makeGame(), 0, 5)   // avoid the hand-size discard decision
     expect(s.phase).toBe('main1')
-    s = pass(s, 0)
+    s = endPhase(s)
     expect(s.phase).toBe('attack'); expect(s.attack?.step).toBe('declaration'); expect(s.priority).toBe(0)
-    s = pass(s, 0)
+    s = endPhase(s)
     expect(s.phase).toBe('main2'); expect(s.attack).toBeNull()
-    s = pass(s, 0)
+    s = endPhase(s)
     expect(s.turn).toBe(2); expect(s.turnPlayer).toBe(1); expect(s.phase).toBe('main1'); expect(s.priority).toBe(1)
   })
   it('§9.5.1.2: with more than 5 cards in hand, the end phase asks for discards', () => {
     let s = makeGame()   // player 0 has 6 cards
-    s = pass(pass(pass(s, 0), 0), 0)
+    s = endPhase(endPhase(endPhase(s)))
     expect(s.phase).toBe('end')
     expect(s.pending).toEqual({ kind: 'discardToHandSize', player: 0, count: 1 })
     const victim = s.players[0].hand[0]!
@@ -106,17 +106,59 @@ describe('§9.3–9.5 passing through phases', () => {
   it('§9.5.1.3: damage on forwards and attacked flags are cleared at end of turn', () => {
     let s = withHandSize(makeGame(), 0, 5); let f: number
     ;[s, f] = withField(s, 0, 'forwards', 'V-F2', { damage: 3000, attackedThisTurn: true, granted: ['haste'] })
-    s = pass(pass(pass(s, 0), 0), 0)
+    s = endPhase(endPhase(endPhase(s)))
     const fc = s.players[0].forwards.find((c) => c.id === f)!
     expect(fc.damage).toBe(0); expect(fc.attackedThisTurn).toBe(false); expect(fc.granted).toEqual([])
   })
   it('pass and discard validate their preconditions', () => {
     let s = makeGame()
     expect(() => applyPass(s, 1)).toThrow(IllegalCommandError)                       // not the priority holder
-    s = pass(pass(pass(s, 0), 0), 0)             // → end phase, discard pending
+    s = endPhase(endPhase(endPhase(s)))          // → end phase, discard pending
     expect(() => applyPass(s, 0)).toThrow(IllegalCommandError)                       // decision pending
     expect(() => applyDiscardToHandSize(s, 1, [s.players[1].hand[0]!])).toThrow(IllegalCommandError)
     expect(() => applyDiscardToHandSize(s, 0, [])).toThrow(/exactly 1/)
     expect(() => applyDiscardToHandSize(s, 0, [12345])).toThrow(/hand/)
+  })
+})
+
+describe('§11.1.6–7 priority passes before a phase ends (rung J1-A1)', () => {
+  it('the first pass hands priority to the opponent; the second, consecutive, ends the phase', () => {
+    let s = withHandSize(makeGame(), 0, 5)
+    expect(s.passes).toBe(0)
+    s = pass(s, 0)
+    expect(s.phase, 'one forfeit must not end the phase').toBe('main1')
+    expect(s.priority).toBe(1)
+    expect(s.passes).toBe(1)
+    expect(() => applyPass(s, 0)).toThrow(IllegalCommandError)   // player 0 no longer holds priority
+    s = pass(s, 1)
+    expect(s.phase).toBe('attack'); expect(s.attack?.step).toBe('declaration')
+    expect(s.priority, 'the turn player regains priority when the step changes').toBe(0)
+    expect(s.passes).toBe(0)
+  })
+  it('the non-turn player holding priority in a Main Phase may only pass (until instant speed lands in slice 4)', async () => {
+    const { legalCommands } = await import('../src/legal.js')
+    let s = withHandSize(makeGame(), 0, 5)
+    s = pass(s, 0)
+    const types = legalCommands(s, 1).map((c) => c.type).sort()
+    expect(types).toEqual(['concede', 'pass'])
+    expect(legalCommands(s, 0).map((c) => c.type)).toEqual(['concede'])
+  })
+  it('an action by the priority holder resets the forfeit count: Main Phase 2 is reached only by two consecutive passes', () => {
+    let s = withHandSize(makeGame(), 0, 5)
+    s = pass(s, 0)               // 0 forfeits, 1 holds priority
+    s = pass(s, 1)               // both: attack phase
+    s = pass(s, 0)               // declaration step: the turn player passes straight to Main Phase 2 (§10.1.4.6)
+    expect(s.phase).toBe('main2'); expect(s.priority).toBe(0); expect(s.passes).toBe(0)
+    s = pass(s, 0)
+    expect(s.phase).toBe('main2'); expect(s.priority).toBe(1)
+    s = pass(s, 1)
+    expect(s.turn).toBe(2); expect(s.turnPlayer).toBe(1); expect(s.priority).toBe(1); expect(s.passes).toBe(0)
+  })
+  it('isResponseWindow: the opponent holding priority is a window; the turn player at an empty-stack phase end is not', async () => {
+    const { isResponseWindow } = await import('../src/legal.js')
+    let s = withHandSize(makeGame(), 0, 5)
+    expect(isResponseWindow(s)).toBe(false)
+    s = pass(s, 0)
+    expect(isResponseWindow(s)).toBe(true)
   })
 })

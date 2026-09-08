@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { GreedyAgent, IsmctsAgent, RandomAgent } from '@fftcg/ai'
 import { loadCards } from '@fftcg/cards'
-import { actingPlayer, apply, createGame, legalCommands, viewFor } from '@fftcg/engine'
+import { actingPlayer, apply, createGame, forcedPass, legalCommands, viewFor } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { parseDeckFile } from '../src/deck.js'
 import { MAX_ITERATIONS, MAX_ROLLOUT_CAP, describeAgentSpec, makeAgent, parseAgentSpec, parseDepth, parseWeightOverrides, withDefaults, parseIterations, parsePositiveInt, parseRolloutCap, type AgentSpec } from '../src/agents.js'
@@ -315,7 +315,17 @@ describe('the flag reaches the tournament (G1a, and the bug an A/A caught)', () 
     // whether or not the weight lands, so it would pass for the wrong reason. One decision at twenty
     // iterations is enough to show the override reaches the rollouts through this route.
     const d = decks()
-    const s = createGame({ seed: 5, decks: d, defs: loadCards() })
+    // A MID-GAME position, walked with greedy (forced windows skipped, rung J1), rather than the opening
+    // chooseFirst: at setup the two answers are so close that a rollout weight cannot always separate them
+    // at test-affordable iteration counts, and this test is about the route, not the position.
+    let s = createGame({ seed: 5, decks: d, defs: loadCards() })
+    const walker = new GreedyAgent({ seed: 5, decks: d, depth: 1 })
+    for (let i = 0; i < 14 && !s.result; i++) {
+      const q = actingPlayer(s)
+      if (q === null) break
+      s = apply(s, walker.decide(viewFor(s, q), legalCommands(s, q))).state
+      for (let f = forcedPass(s); f; f = forcedPass(s)) s = apply(s, f).state
+    }
     const p = actingPlayer(s) ?? 0
     const build = (spec: string): AgentSpec => withDefaults(parseAgentSpec(spec), 1, 20, null, null)
     const decide = (spec: string) => makeAgent(build(spec), 7, d).decide(viewFor(s, p), legalCommands(s, p))

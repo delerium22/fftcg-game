@@ -3,7 +3,7 @@ import { actingPlayer, apply, legalCommands, viewFor, type CardId, type GameStat
 import { newRolloutProfile, profiledApplies, GreedyAgent } from '../src/greedy.js'
 import { rolloutToCap, searchIsmcts, DEFAULT_ROLLOUT_COMMAND_CAP } from '../src/ismcts/search.js'
 import { DEFAULT_WEIGHTS } from '../src/evaluate.js'
-import { DEFAULT_DECK, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
+import { settleWindows, endPhase, DEFAULT_DECK, makeGame, withField, withHandSize } from '../../engine/test/helpers.js'
 
 /**
  * Rung D7 — the attribution has to be trustworthy before anything is decided from it.
@@ -20,7 +20,8 @@ function midGame(seed: number, steps: number): GameState {
   for (let i = 0; i < steps && !s.result; i++) {
     const p = actingPlayer(s)
     if (p === null) break
-    s = apply(s, agent.decide(viewFor(s, p), legalCommands(s, p))).state
+    // Forced windows are not decisions (rung J1): skipped, so the walk lands where it did before the stack.
+    s = settleWindows(apply(s, agent.decide(viewFor(s, p), legalCommands(s, p))).state)
   }
   return s
 }
@@ -92,7 +93,7 @@ describe('rollout apply attribution (rung D7)', () => {
     let atk: CardId
     ;[s, atk] = withField(s, 0, 'forwards', 'V-F5')
     ;[s] = withField(s, 1, 'forwards', 'V-F3')
-    s = apply(s, { type: 'pass', player: 0 }).state
+    s = endPhase(s)
     const attack = legalCommands(s, 0).find((c) => c.type === 'declareAttack' && c.attackers.includes(atk))
     expect(attack, 'the fixture cannot declare the attack it needs').toBeDefined()
     const before = s          // at the DECLARATION: one command later there is a block outstanding
@@ -148,7 +149,7 @@ describe('rollout apply attribution (rung D7)', () => {
     let atk: number
     ;[s, atk] = withField(withHandSize(makeGame({ seed: 4 }), 0, 5), 0, 'forwards', 'V-F5')
     ;[s] = withField(s, 1, 'forwards', 'V-F3')
-    s = apply(s, { type: 'pass', player: 0 }).state    // into the Attack Phase
+    s = endPhase(s)    // into the Attack Phase (both forfeit, rung J1)
     expect(s.phase).toBe('attack')
     expect(legalCommands(s, 0).some((c) => c.type === 'declareAttack'), 'no attack is available, so nothing forces a block').toBe(true)
     const combat = newRolloutProfile()

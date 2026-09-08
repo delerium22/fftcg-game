@@ -1,5 +1,5 @@
 import type { PlayerId } from './types.js'
-import type { GameState } from './state.js'
+import type { CardId, GameState } from './state.js'
 import { defOf } from './state.js'
 import type { Command } from './commands.js'
 import { enumeratePayments, enumeratePaymentsFor } from './cp.js'
@@ -12,6 +12,71 @@ export function actingPlayer(state: GameState): PlayerId | null {
   if (state.result) return null
   return state.pending?.player ?? state.priority
 }
+
+/**
+ * What the PRIORITY HOLDER may do here, by kind (rung J1-D8) — the one phase/step switch in the engine.
+ *
+ * `legalCommands` expands it into every exact command; the AI's `candidateCommands` expands it into its
+ * pruned set. Before J1 each had its own copy of "which phases allow what", and the plan review found that
+ * a response window would have had commands in one list and none in the other. The per-card checks
+ * (`castBlocker`, `activationCheck`, `attackCheck`) still decide each candidate; this decides only which
+ * kinds are on the table at all.
+ */
+export interface ActionMenu {
+  /** Hand cards the holder may cast now (every check but CP passed). */
+  readonly castable: readonly CardId[]
+  /** Whether activated abilities may be used in this phase and step. */
+  readonly abilities: boolean
+  /** Whether an attack may be declared (the declaration step, turn player). */
+  readonly attack: boolean
+  /** Whether priority may be forfeited. */
+  readonly pass: boolean
+}
+
+const NOTHING: ActionMenu = { castable: [], abilities: false, attack: false, pass: false }
+
+export function actionMenu(state: GameState, player: PlayerId): ActionMenu {
+  if (state.result || state.pending || state.priority !== player) return NOTHING
+  switch (state.phase) {
+    case 'main1':
+    case 'main2':
+      return {
+        castable: state.players[player].hand.filter((card) => castCheck(state, player, card) === null),
+        abilities: true, attack: false, pass: true,
+      }
+    case 'attack':
+      // Only the declaration step is a decision here until slice 5 opens the windows (spec J1-D10).
+      if (state.attack?.step !== 'declaration') return NOTHING
+      return { castable: [], abilities: false, attack: true, pass: true }
+    default:
+      return NOTHING   // setup/active/draw/end never wait for a non-pending command
+  }
+}
+
+/**
+ * A RESPONSE window (rung J1-D15): priority is held while something is on the stack, or by the non-turn
+ * player, or in an Attack Phase step that is a window rather than a decision. The browser auto-passes a
+ * window whose only answer is `pass`; it never auto-passes the turn player's own empty-stack phase end,
+ * which is the Pass that ends a Main Phase and stays a button.
+ */
+export function isResponseWindow(state: Pick<GameState, 'result' | 'pending' | 'stack' | 'priority' | 'turnPlayer' | 'phase' | 'attack'>): boolean {
+  if (state.result || state.pending) return false
+  if (state.stack.length > 0) return true
+  if (state.priority !== state.turnPlayer) return true
+  if (state.phase === 'attack' && state.attack !== null && state.attack.step !== 'declaration') return true
+  return false
+}
+
+/** The one command a pass-only window admits, or null when the holder has a real decision (or none at all). */
+export function forcedPass(state: GameState): Command | null {
+  const player = actingPlayer(state)
+  if (player === null || !isResponseWindow(state)) return null
+  const menu = actionMenu(state, player)
+  if (!menu.pass || menu.attack || menu.castable.length > 0) return null
+  if (menu.abilities && activationsFor(state, player).length > 0) return null
+  return { type: 'pass', player }
+}
+
 
 function combinations<T>(items: T[], k: number): T[][] {
   if (k === 0) return [[]]
@@ -78,28 +143,14 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
     }
     return out
   }
-  switch (state.phase) {
-    case 'main1':
-    case 'main2': {
-      for (const card of state.players[player].hand) {
-        if (castCheck(state, player, card) !== null) continue
-        const type = defOf(state, card).type === 'summon' ? 'castSummon' : 'castCharacter'
-        for (const payment of enumeratePayments(state, player, card)) out.push({ type, player, card, payment })
-      }
-      for (const c of activationsFor(state, player)) out.push(c)
-      out.push({ type: 'pass', player })
-      break
-    }
-    case 'attack': {
-      if (state.attack?.step === 'declaration') {
-        for (const attackers of legalAttackSets(state, player)) out.push({ type: 'declareAttack', player, attackers })
-        out.push({ type: 'pass', player })
-      }
-      break
-    }
-    default:
-      break   // setup/active/draw/end never wait for a non-pending command
+  const menu = actionMenu(state, player)
+  for (const card of menu.castable) {
+    const type = defOf(state, card).type === 'summon' ? 'castSummon' : 'castCharacter'
+    for (const payment of enumeratePayments(state, player, card)) out.push({ type, player, card, payment })
   }
+  if (menu.abilities) for (const c of activationsFor(state, player)) out.push(c)
+  if (menu.attack) for (const attackers of legalAttackSets(state, player)) out.push({ type: 'declareAttack', player, attackers })
+  if (menu.pass) out.push({ type: 'pass', player })
   return out
 }
 
@@ -110,7 +161,7 @@ export function legalCommands(state: GameState, player: PlayerId): Command[] {
  * declared precondition on the ability (spec C3-3), so Geomancer's hand-only ability and a future Break-Zone
  * ability enumerate through this same path instead of needing their own.
  */
-function activationsFor(state: GameState, player: PlayerId): Command[] {
+export function activationsFor(state: GameState, player: PlayerId): Command[] {
   const out: Command[] = []
   const ps = state.players[player]
   const sources = [...ps.hand, ...ps.breakZone, ...ps.forwards.map((c) => c.id), ...ps.backups.map((c) => c.id)]

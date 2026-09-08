@@ -63,7 +63,9 @@ describe('determinise', () => {
     const [b] = determinise({ view, decks: DECKS, rng: seedRng(3) })
     const [c] = determinise({ view, decks: DECKS, rng: seedRng(4) })
     expect(a).toEqual(b)
-    expect(a.players[1].hand.map((id) => a.cards[id]!.code)).not.toEqual(c.players[1].hand.map((id) => c.cards[id]!.code))
+    // The DECK order, not the hand: a random walk can empty the opponent's hand (it did at seed 9 once rung
+    // J1's forfeit windows lengthened the walk), and two empty hands are equal under any rng.
+    expect(a.players[1].deck.map((id) => a.cards[id]!.code)).not.toEqual(c.players[1].deck.map((id) => c.cards[id]!.code))
   })
   it('works from setup states (chooseFirst pending; mulligan pending) and mid-attack (declareBlock pending)', () => {
     const s0 = createGame({ seed: 2, decks: DECKS, defs: VANILLA_POOL })

@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, activationCheck, activationTargetSets, attackCheck, castCheck, defOf, effectAtPath, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, attackCheck, defOf, effectAtPath, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -286,22 +286,20 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
       default: { const _exhaustive: never = pending; return _exhaustive }
     }
   }
-  if (state.phase === 'main1' || state.phase === 'main2') {
-    for (const card of state.players[player].hand) {
-      if (castCheck(state, player, card) !== null) continue
-      const payment = preferredPayment(state, player, card)
-      if (!payment) continue
-      out.push({ type: defOf(state, card).type === 'summon' ? 'castSummon' : 'castCharacter', player, card, payment })
-    }
-    // C3: activations must be emitted HERE, not merely be legal. This list — not `legalCommands` — is what
-    // both agents search, so a command that exists only in `legalCommands` is invisible to the AI, which
-    // would have shipped an opponent that never used an ability it was holding.
-    out.push(...activationCandidates(state, player))
-    out.push({ type: 'pass', player })
-  } else if (state.phase === 'attack' && state.attack?.step === 'declaration') {
-    for (const attackers of boundedAttackSets(state, player)) out.push({ type: 'declareAttack', player, attackers })
-    out.push({ type: 'pass', player })
+  // Rung J1-D8: WHICH kinds are on the table is the engine's `actionMenu` — the same switch `legalCommands`
+  // expands. This function only prunes within a kind (one payment per cast, bounded attack sets).
+  const menu = actionMenu(state, player)
+  for (const card of menu.castable) {
+    const payment = preferredPayment(state, player, card)
+    if (!payment) continue
+    out.push({ type: defOf(state, card).type === 'summon' ? 'castSummon' : 'castCharacter', player, card, payment })
   }
+  // C3: activations must be emitted HERE, not merely be legal. This list — not `legalCommands` — is what
+  // both agents search, so a command that exists only in `legalCommands` is invisible to the AI, which
+  // would have shipped an opponent that never used an ability it was holding.
+  if (menu.abilities) out.push(...activationCandidates(state, player))
+  if (menu.attack) for (const attackers of boundedAttackSets(state, player)) out.push({ type: 'declareAttack', player, attackers })
+  if (menu.pass) out.push({ type: 'pass', player })
   return out
 }
 

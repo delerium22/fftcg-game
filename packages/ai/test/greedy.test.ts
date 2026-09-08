@@ -3,7 +3,7 @@ import { SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainR
 import { GreedyAgent, greedyStep, pruneCandidates, resolveForcedDecisions, scoreCandidates } from '../src/greedy.js'
 import { candidateCommands } from '../src/candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from '../src/evaluate.js'
-import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 /** withField/withHand MINT extra card instances, so deck lists must be derived from the state under test, not DEFAULT_DECK. */
 const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
@@ -17,7 +17,7 @@ const hurt = (s: GameState, p: 0 | 1, n: number): GameState => {
   players[p] = { ...ps, damageZone: ps.deck.slice(0, n), deck: ps.deck.slice(n) }
   return { ...s, players }
 }
-const toAttackDeclaration = (s: GameState): GameState => apply(s, { type: 'pass', player: 0 }).state
+const toAttackDeclaration = (s: GameState): GameState => endPhase(s)
 const ZERO_WEIGHTS: Weights = { damage: 0, forwardPower: 0, forwardPresence: 0, dullFactor: 0, backup: 0, hand: 0, handQuality: 0, deck: 0, threat: 0, terminal: 0, haste: 0, brave: 0, protection: 0, temporaryPower: 0, expiredThreat: 0, damageCurve: 0 }
 
 describe('GreedyAgent', () => {
@@ -50,10 +50,10 @@ describe('GreedyAgent', () => {
     let s = withHandSize(makeGame(), 0, 0)
     s = withHandSize(s, 1, 0)
     ;[s] = withField(s, 1, 'forwards', 'V-F3')   // opponent's active 7000; my board is empty (no blockers)
-    s = apply(s, { type: 'pass', player: 0 }).state   // main1 -> attack declaration
+    s = endPhase(s)                                   // main1 -> attack declaration (both forfeit, rung J1)
     s = apply(s, { type: 'pass', player: 0 }).state   // attack declaration -> main2
-    s = apply(s, { type: 'pass', player: 0 }).state   // main2 -> end phase -> player 1's turn
-    s = apply(s, { type: 'pass', player: 1 }).state   // player 1's main1 -> attack declaration
+    s = endPhase(s)                                   // main2 -> end phase -> player 1's turn
+    s = endPhase(s)                                   // player 1's main1 -> attack declaration
     const cmd = greedyStep(s, 1, DEFAULT_WEIGHTS, 0.5)
     expect(cmd?.type).toBe('declareAttack')
   })
@@ -674,7 +674,7 @@ describe('C2: observer triggers reach the agent', () => {
     let s = makeGame({ defs: [...VANILLA_POOL, withAbility('T-WATCH', clause, { cost: 2, power: 5000 })] })   // 6-card hand ⇒ an end-phase discard
     let src: number
     ;[s, src] = withField(s, 0, 'forwards', 'T-WATCH')
-    for (let i = 0; i < 3; i++) s = apply(s, { type: 'pass', player: 0 }).state   // main1 → attack → main2 → end
+    s = endPhase(s); s = apply(s, { type: 'pass', player: 0 }).state; s = endPhase(s)   // main1 → attack → main2 → end
     expect(s.pending?.kind).toBe('discardToHandSize')
     // Narrowness first: with a QUIET agenda this is the agent's own move to score and must be left untouched.
     expect(resolveForcedDecisions(s, DEFAULT_WEIGHTS, 0.5, 0)).toBe(s)
@@ -699,8 +699,8 @@ describe('C2: observer triggers reach the agent', () => {
     ;[s, mine] = withField(s, 0, 'forwards', 'V-F1')                             // 3000 blocker: dies to the 7000
     ;[s, attacker] = withField(s, 1, 'forwards', 'V-F5', { enteredTurn: 0 })
     ;[s] = withField(s, 1, 'forwards', 'T-WATCH', { enteredTurn: 0 })
-    for (let i = 0; i < 3; i++) s = apply(s, { type: 'pass', player: 0 }).state
-    s = apply(s, { type: 'pass', player: 1 }).state                              // player 1's main1 → declaration
+    s = endPhase(s); s = apply(s, { type: 'pass', player: 0 }).state; s = endPhase(s)   // main1 → attack → main2 → end
+    s = endPhase(s)                                                              // player 1's main1 → declaration
     expect(s.turnPlayer).toBe(1)
     ;[s, fresh] = withField(s, 1, 'forwards', 'V-F8', { enteredTurn: s.turn })   // entered THIS turn: Haste unlocks it
     s = apply(s, { type: 'declareAttack', player: 1, attackers: [attacker] }).state

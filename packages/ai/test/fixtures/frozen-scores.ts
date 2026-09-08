@@ -1,6 +1,6 @@
 import { actingPlayer, apply, legalCommands, viewFor, type GameState, type PlayerId } from '@fftcg/engine'
 import { GreedyAgent } from '../../src/greedy.js'
-import { DEFAULT_DECK, makeGame } from '../../../engine/test/helpers.js'
+import { settleWindows, DEFAULT_DECK, makeGame } from '../../../engine/test/helpers.js'
 
 /**
  * The corpus rung G1b-A1 freezes against.
@@ -32,7 +32,8 @@ function walk(seed: number, steps: number): GameState {
   for (let i = 0; i < steps && !s.result; i++) {
     const p = actingPlayer(s)
     if (p === null) break
-    s = apply(s, agent.decide(viewFor(s, p), legalCommands(s, p))).state
+    // Forced windows are not decisions (rung J1): skipped, so the walk lands where it did before the stack.
+    s = settleWindows(apply(s, agent.decide(viewFor(s, p), legalCommands(s, p))).state)
   }
   return s
 }

@@ -14,7 +14,7 @@ import { targetCandidates } from '../src/resolve.js'
 import { viewFor } from '../src/view.js'
 import { determinise } from '../src/determinise.js'
 import { seedRng } from '../src/rng.js'
-import { makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
+import { endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
 /**
  * Rung C2 stage 2: player-damage attribution across a party (spec C2-8), `TargetFilter.types` (spec C2-9) and the
@@ -104,7 +104,7 @@ function withBreak(state: GameState, p: PlayerId, code: string): [GameState, Car
 
 /** P0 attacks with `attackers` and P1 declines to block, so §10.1.4.1 player damage lands. */
 function attackUnblocked(state: GameState, attackers: CardId[]) {
-  let s = apply(state, { type: 'pass', player: 0 }).state          // §10.1.1–2 into the declaration step
+  let s = endPhase(state)          // §10.1.1–2 into the declaration step (both forfeit, rung J1)
   s = apply(s, { type: 'declareAttack', player: 0, attackers }).state
   return apply(s, { type: 'declareBlock', player: 1, blocker: null })
 }

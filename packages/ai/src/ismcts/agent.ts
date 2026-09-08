@@ -1,5 +1,6 @@
 import { SYNTHETIC_ID_BASE, nextInt, seedRng, type CardId, type Command, type PlayerView, type Rng } from '@fftcg/engine'
 import type { Agent } from '../agent.js'
+import { passOnly } from '../greedy.js'
 import { DEFAULT_EXPLORATION_C, DEFAULT_ITERATIONS, DEFAULT_ROLLOUT_COMMAND_CAP, searchIsmcts } from './search.js'
 import type { SearchBudget, SearchDiagnostics, SearchInput } from './keys.js'
 import type { WeightOverrides } from '../evaluate.js'
@@ -73,6 +74,10 @@ export class IsmctsAgent implements Agent {
   decide(view: PlayerView, legal: Command[]): Command {
     this.lastDiagnostics = null
     const me = view.me
+    // Rung J1-D14: a pass-only response window is answered without a search, and without advancing the
+    // per-decision seed — it is not a decision.
+    const forced = passOnly(view, legal)
+    if (forced) return forced
     // The engine never asks a non-acting player to move; `legalCommands` for one returns `[concede]` alone, so
     // there is nothing to search and `GreedyAgent`'s fallback is the same command by a longer route.
     if ((view.pending?.player ?? view.priority) !== me || view.result) {

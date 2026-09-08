@@ -82,6 +82,17 @@ function withCp(state: GameState, player: PlayerId, codes: string[]): [GameState
   return [s, ids]
 }
 
+/** Both players forfeit priority (rung J1): what ends a Main Phase now that a single pass only hands priority over. */
+function passBoth(state: GameState): { state: GameState; events: Event[] } {
+  const p = actingPlayer(state)!
+  const first = apply(state, { type: 'pass', player: p })
+  const same = first.state.phase === state.phase && first.state.attack?.step === state.attack?.step
+  const q = actingPlayer(first.state)
+  if (!same || first.state.pending || first.state.result || q === null || q === p) return first
+  const second = apply(first.state, { type: 'pass', player: q })
+  return { state: second.state, events: [...first.events, ...second.events] }
+}
+const endPhase = (state: GameState): GameState => passBoth(state).state
 const fc = (s: GameState, id: CardId): FieldCard | undefined => findFieldCard(s, id)?.card
 const ok = (s: GameState) => expect(checkInvariants(s)).toEqual([])
 const powerOfId = (s: GameState, id: CardId) => powerOf(s, fc(s, id) as FieldCard)
@@ -350,7 +361,7 @@ describe('20-103H Ramuh — "Select up to 2 of the 3 following actions." (the on
 
 /** P0 attacks with `attackers`; P1 declines to block, so §10.1.4.1 puts one point of damage on P1. */
 function attackUnblocked(state: GameState, attackers: CardId[]) {
-  let s = apply(state, { type: 'pass', player: 0 }).state          // §10.1.1–2 into the declaration step
+  let s = endPhase(state)          // §10.1.1–2 into the declaration step (both forfeit, rung J1)
   s = apply(s, { type: 'declareAttack', player: 0, attackers }).state
   return apply(s, { type: 'declareBlock', player: 1, blocker: null })
 }
@@ -401,7 +412,7 @@ describe('27-125S Luso — "When Luso deals damage to a Forward, break it." and 
     let s = makeGame(); let luso: CardId, blocker: CardId
     ;[s, luso] = withField(s, 0, 'forwards', '27-125S')      // 3000 power
     ;[s, blocker] = withField(s, 1, 'forwards', '24-063H')   // Hugh Yurg 8000 — survives 3000, kills Luso back
-    s = apply(s, { type: 'pass', player: 0 }).state
+    s = endPhase(s)
     s = apply(s, { type: 'declareAttack', player: 0, attackers: [luso] }).state
     const r = apply(s, { type: 'declareBlock', player: 1, blocker })
     expect(r.events).toContainEqual({ type: 'brokenByAbility', card: blocker, source: luso })
@@ -831,7 +842,8 @@ describe('13-072R Odin — "If you have received 5 points of damage or more, the
 // ---------------------------------------------------------------------------
 
 describe('27-124S Cloud — "At the beginning of the Attack Phase during each of your turns, …"', () => {
-  const pass = (state: GameState, player: PlayerId) => apply(state, { type: 'pass', player })
+  // Rung J1: ending Main Phase 1 takes both players' forfeits; `passBoth` sends them and joins the events.
+  const pass = (state: GameState, _player: PlayerId) => passBoth(state)
 
   it('reaches declaration in one pass when nothing triggers, emitting each phase event once (C5-A2)', () => {
     const r = pass(makeGame(), 0)

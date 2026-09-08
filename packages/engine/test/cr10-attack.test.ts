@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { apply } from '../src/apply.js'
 import { applyAssignPartyDamage, applyDeclareAttack, applyDeclareBlock, attackCheck, legalAttackSets, legalBlockers, legalPartyDamageAssignments } from '../src/attack.js'
 import { IllegalCommandError } from '../src/errors.js'
-import { makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
+import { endPhase, makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
 
 /**
  * Turn 1, player 0 in the attack declaration step.
@@ -13,7 +12,7 @@ import { makeDef, makeGame, VANILLA_POOL, withField } from './helpers.js'
  * correct and is what real play never sees.
  */
 function inAttack() {
-  return apply(makeGame(), { type: 'pass', player: 0 }).state
+  return endPhase(makeGame())
 }
 const IDLE = { step: 'declaration', attackers: [], blocker: null }
 
@@ -137,7 +136,7 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     // separate (pre-existing, documented) "power < 1000 never breaks by damage" behavior in rules.ts.
     const defs = [...VANILLA_POOL, makeDef({ code: 'V-W5', power: 2500 })]
     // Through `apply`, for the same reason `inAttack` does: entering the Attack Phase is two steps since C5.
-    let s = apply(makeGame({ defs }), { type: 'pass', player: 0 }).state
+    let s = endPhase(makeGame({ defs }))
     let a1: number, a2: number, b: number
     ;[s, a1] = withField(s, 0, 'forwards', 'V-F1')   // 3000
     ;[s, a2] = withField(s, 0, 'forwards', 'V-F2')   // 5000

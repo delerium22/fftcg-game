@@ -13,7 +13,7 @@ import { dispatchTrigger, putOntoField, warnUnimplemented } from './resolve.js'
  * same decision, and is derived from this so the two cannot disagree. Neither says anything about CP: a
  * `null` here with no legal payment means "cannot afford it", which is the caller's to phrase.
  */
-export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'priority' | 'pending' | 'monster' | 'backupsFull' | 'sameName'
+export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName'
 
 export function castBlocker(state: GameState, player: PlayerId, card: CardId): CastBlocker | null {
   if (state.result) return 'gameOver'
@@ -21,9 +21,13 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
   if (state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
   const ps = state.players[player]
   if (!ps.hand.includes(card)) return 'notInHand'
+  // Rung J1: casting is the turn player's (§9.3.1.5 for Characters; Summons join the priority holder in
+  // slice 4, §9.3.1.6), and a Character needs an empty stack (§11.4.1).
+  if (state.turnPlayer !== player) return 'notTurnPlayer'
   if (state.priority !== player) return 'priority'
   if (state.pending) return 'pending'
   const def = defOf(state, card)
+  if (def.type !== 'summon' && state.stack.length > 0) return 'stackNotEmpty'
   if (def.type === 'monster') return 'monster'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
   // MVP0-SIMPLIFICATION: §7.7.4 is normally a rule process (§12.4.8) that keeps a 6th Backup off the field; here casting one is simply illegal.
   if (def.type === 'backup' && ps.backups.length >= MAX_BACKUPS) return 'backupsFull'
@@ -41,8 +45,10 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   gameOver: 'game is over',
   phase: 'characters and summons can only be cast in a main phase (§11.4.1; MVP0 restriction for summons)',
   notInHand: 'card is not in your hand',
+  notTurnPlayer: 'only the turn player may cast (§9.3.1.5)',
   priority: 'you do not have priority',
   pending: 'a decision is pending',
+  stackNotEmpty: 'a Character can only be cast while the stack is empty (§11.4.1)',
   monster: 'monsters unsupported in MVP0',
   backupsFull: `you already control ${MAX_BACKUPS} backups (§7.7.4)`,
   sameName: 'you already control a non-generic character with the same name (§7.7.3)',

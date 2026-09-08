@@ -501,13 +501,13 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
  * target choice, and the player must answer it before declaration arrives.
  */
 export function enterAttackPreparation(state: GameState, player: PlayerId): [GameState, Event[]] {
-  const s: GameState = { ...state, phase: 'attack', attack: { step: 'preparation', attackers: [], blocker: null }, priority: player }
+  const s: GameState = { ...state, phase: 'attack', attack: { step: 'preparation', attackers: [], blocker: null }, priority: player, passes: 0 }
   return [s, [{ type: 'phaseStarted', phase: 'attack', step: 'preparation' }]]
 }
 
 /** §10.1.2 Declaration. Reached from preparation, either immediately or once the beginning-of-phase triggers drain. */
 export function enterAttackDeclaration(state: GameState, player: PlayerId): [GameState, Event[]] {
-  const s: GameState = { ...state, phase: 'attack', attack: { step: 'declaration', attackers: [], blocker: null }, priority: player }
+  const s: GameState = { ...state, phase: 'attack', attack: { step: 'declaration', attackers: [], blocker: null }, priority: player, passes: 0 }
   return [s, [{ type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]
 }
 

@@ -68,6 +68,9 @@ function play(games: number, answer: boolean): Tally {
       // standing right there, so these clauses nearly always have a legal target.)
       if (awaiting && r.state.resolution.active?.abilityId === awaiting.abilityId
         && r.state.resolution.active.origin === 'exBurst') t.ownClauseRan++
+      // ...or it ran and found nothing to choose. Rare, as the comment above says, but rung J1's forfeit
+      // windows moved the corpus and two games reached it: the clause still ran, and the event names its id.
+      else if (awaiting && r.events.some((e) => e.type === 'abilityNoLegalTarget' && e.abilityId === awaiting!.abilityId)) t.ownClauseRan++
       // Each reveal is classified AT THE REVEAL, from the state it produced — not by subtracting offers from
       // reveals afterwards. Deriving it was the defect a code review found: `lethalSuppressed = reveals -
       // offered` silently relabels every offer that went missing for any other reason as "suppressed", so the

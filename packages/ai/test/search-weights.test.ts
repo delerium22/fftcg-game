@@ -4,7 +4,7 @@ import { GreedyAgent } from '../src/greedy.js'
 import { DEFAULT_WEIGHTS, resolveWeights, type WeightOverrides } from '../src/evaluate.js'
 import { searchIsmcts, DEFAULT_ROLLOUT_COMMAND_CAP } from '../src/ismcts/search.js'
 import { IsmctsAgent } from '../src/ismcts/agent.js'
-import { DEFAULT_DECK, makeGame } from '../../engine/test/helpers.js'
+import { settleWindows, DEFAULT_DECK, makeGame } from '../../engine/test/helpers.js'
 
 /**
  * Rung G1a — the search takes its weights as data.
@@ -21,7 +21,8 @@ function midGame(seed: number, steps: number): GameState {
   for (let i = 0; i < steps && !s.result; i++) {
     const p = actingPlayer(s)
     if (p === null) break
-    s = apply(s, agent.decide(viewFor(s, p), legalCommands(s, p))).state
+    // Forced windows are not decisions (rung J1): skipped, so the walk lands where it did before the stack.
+    s = settleWindows(apply(s, agent.decide(viewFor(s, p), legalCommands(s, p))).state)
   }
   return s
 }

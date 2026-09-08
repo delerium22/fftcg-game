@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  actingPlayer, apply, createGame, legalCommands, viewFor,
+  actingPlayer, apply, createGame, forcedPass, legalCommands, viewFor,
   type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason,
 } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
@@ -366,7 +366,9 @@ function narrateApply(
 ): { state: GameState; lines: LogLine[] } {
   if (!legal.some((c) => sameCommand(c, command))) throw new Error(`agent chose an illegal command: ${command.type}`)
   const before = viewFor(state, HUMAN)
-  const result = apply(state, command)
+  const applied = apply(state, command)
+  // Rung J1: the windows the command opened are closed here, before anyone renders them.
+  const result = { state: settleForcedWindows(applied.state), events: applied.events }
   // The move label and the events that follow it are narrated from the SAME view, and it is the human's.
   //
   // It used to be the ACTOR's, so "a card only it can see still reads sensibly" — which is exactly the leak
@@ -409,11 +411,31 @@ export const moveLine = (actor: PlayerId, label: string): LogLine =>
  * with the lines it produced. Pure and React-free so the whole driver is testable headlessly (spec B-A7).
  */
 export function stepAi(state: GameState, agent: Agent): { state: GameState; lines: LogLine[] } {
-  const p = actingPlayer(state)
-  if (p === null) return { state, lines: [] }
-  const actorView = viewFor(state, p)
-  const legal = legalCommands(state, p)
-  return narrateApply(state, legal, agent.decide(actorView, legal))
+  const settled = settleForcedWindows(state)
+  const p = actingPlayer(settled)
+  // Closing a window may hand the decision to the OTHER seat; that seat's move is not this agent's to make.
+  if (p === null || (settled !== state && p !== actingPlayer(state))) return { state: settled, lines: [] }
+  const actorView = viewFor(settled, p)
+  const legal = legalCommands(settled, p)
+  return narrateApply(settled, legal, agent.decide(actorView, legal))
+}
+
+/**
+ * Apply every pass-only response window, for EITHER seat, silently (rung J1-D14/D15).
+ *
+ * A window whose only answer is `pass` is not a decision: the human is never shown it (it would be a strip
+ * with one button that does nothing), and the AI does not search it (a 600 ms "thinking" pause to pass is a
+ * game that feels broken). It is applied in the same step as the command that opened it, so no render ever
+ * sees the window, and no log line is written for it — the move that matters is the one before.
+ */
+export function settleForcedWindows(state: GameState): GameState {
+  let s = state
+  for (let i = 0; i < 16; i++) {
+    const c = forcedPass(s)
+    if (!c) return s
+    s = apply(s, c).state
+  }
+  return s
 }
 
 // --- the browser's opponent: SO-ISMCTS in a worker (spec D2) -----------------------------------------------
@@ -544,7 +566,10 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
     // when the human is NOT the acting player, so a click really can land in the middle of the AI's search.
     searchRef.current?.invalidate()
     const before = viewFor(current, HUMAN)
-    const result = apply(current, choice.command)
+    const applied = apply(current, choice.command)
+    // Rung J1: close the pass-only windows the move opened — the AI's forced pass and the human's own — in
+    // this same commit, so no render ever shows a strip whose one button does nothing.
+    const result = { state: settleForcedWindows(applied.state), events: applied.events }
     const lines = eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, current.resolution.queue)
     commit(result.state, [moveLine(HUMAN, describeChoice(before, choice.command)), ...lines])
   }, [commit])

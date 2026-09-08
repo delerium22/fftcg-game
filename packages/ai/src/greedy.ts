@@ -1,4 +1,4 @@
-import { SYNTHETIC_ID_BASE, actingPlayer, apply, determinise, hasResolutionWork, legalCommands, seedRng, type CardId, type Command, type Event, type GameState, type PlayerId, type PlayerView, type Rng } from '@fftcg/engine'
+import { SYNTHETIC_ID_BASE, actingPlayer, apply, determinise, forcedPass, hasResolutionWork, isResponseWindow, legalCommands, seedRng, type CardId, type Command, type Event, type GameState, type PlayerId, type PlayerView, type Rng } from '@fftcg/engine'
 import type { Agent } from './agent.js'
 import { candidateCommands } from './candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, type Weights } from './evaluate.js'
@@ -190,7 +190,12 @@ export function resolveForcedDecisions(state: GameState, weights: Weights, aggre
   const prof = budget?.profile
   if (prof) prof.depth++
   try {
-    while (!s.result && isForcedDecision(s)) {
+    while (!s.result && (isForcedDecision(s) || forcedPass(s) !== null)) {
+      // Rung J1-D14: a pass-only response window is not a decision. It is applied outright — no scoring, no
+      // budget — so a rollout's depth is spent on moves, and the trajectories recorded before the stack
+      // existed (the frozen-score corpus) are reproduced apply for apply.
+      const forced = forcedPass(s)
+      if (forced) { s = apply(s, forced).state; continue }
       const p = actingPlayer(s)
       if (p === null) break
       const localAggression = p === perspective ? aggression : 1 - aggression
@@ -260,6 +265,19 @@ export function greedyStep(state: GameState, player: PlayerId, weights: Weights,
     if (better(score, waste.fizzled, bestScore, bestFizzled)) { best = c; bestScore = score; bestFizzled = waste.fizzled }
   }
   return best
+}
+
+/**
+ * The one answer of a pass-only RESPONSE WINDOW (rung J1-D14), or null.
+ *
+ * A window only: the turn player's own phase end with nothing to do is still their decision, and the agent
+ * scores it (and spends rng on it) exactly as it did before the stack, so recorded trajectories replay.
+ * `legal` may be empty for a caller on the hot path; then nothing is known and the search decides.
+ */
+export function passOnly(view: PlayerView, legal: readonly Command[]): Command | null {
+  if (!isResponseWindow(view)) return null
+  const real = legal.filter((c) => c.type !== 'concede')
+  return real.length === 1 && real[0]?.type === 'pass' ? real[0] : null
 }
 
 /** Deterministically keep only the first `max` candidates, but always keep `pass` (moved to the end) if it was present. */
@@ -386,6 +404,10 @@ export class GreedyAgent implements Agent {
   decide(view: PlayerView, legal: Command[]): Command {
     this.lastSimulations = 0; this.lastCandidates = 0; this.lastDepth = 0; this.lastScores = []
     const me = view.me
+    // Rung J1-D14: a pass-only response window is not a decision. Answered before the determinisation, so the
+    // agent's rng is not spent on it and a game recorded before the stack existed replays move for move.
+    const forced = passOnly(view, legal)
+    if (forced) return forced
     const [det, rng] = determinise({ view, decks: this.decks, rng: this.rng })
     this.rng = rng
     let cands = candidateCommands(det, me)   // pass is last by contract

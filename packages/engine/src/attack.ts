@@ -238,5 +238,5 @@ export function applyChooseExBurst(state: GameState, player: PlayerId, use: bool
  * fields it resets.
  */
 export function finishDamageStep(s: GameState): GameState {
-  return { ...s, attack: IDLE, pending: null, priority: s.turnPlayer }
+  return { ...s, attack: IDLE, pending: null, priority: s.turnPlayer, passes: 0 }
 }

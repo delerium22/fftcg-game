@@ -13,7 +13,7 @@ import { drawCards } from './draw.js'
 
 export function startTurn(state: GameState, turn: number, player: PlayerId): [GameState, Event[]] {
   const events: Event[] = [{ type: 'turnStarted', turn, player }]
-  let s: GameState = { ...state, turn, turnPlayer: player, priority: player, attack: null, pending: null }
+  let s: GameState = { ...state, turn, turnPlayer: player, priority: player, passes: 0, attack: null, pending: null }
   // The turn's Break-Zone arrival history clears HERE, at the actual boundary — not in `finishEndPhase`'s
   // per-turn reset, which runs BEFORE a final rule-process pass (§9.5.1.4). A card broken by that pass would
   // be recorded after the clear and stay retrievable into the next turn (spec C10-3).
@@ -46,11 +46,27 @@ export function startTurn(state: GameState, turn: number, player: PlayerId): [Ga
   return [s, events]
 }
 
+/**
+ * `pass` is a FORFEIT of priority (rung J1-D9, CR §11.1.6–7). The first forfeit hands priority to the
+ * opponent and counts; the second, consecutive, resolves the top of the stack (slice 3) or, with an empty
+ * stack, ends the step or phase. Any action in between resets the count (the actor regains priority with
+ * `passes = 0`, §11.3.8/§11.6.11).
+ *
+ * The Attack Phase's declaration step is NOT a window (§10.1.2.1, §10.1.4.6): it is the turn player's own
+ * decision to attack or not, so a pass there goes straight to Main Phase 2. Slice 5 makes the other steps
+ * windows.
+ */
 export function applyPass(state: GameState, player: PlayerId): [GameState, Event[]] {
   if (state.result) throw new IllegalCommandError('game is over')
   if (state.pending) throw new IllegalCommandError('a decision is pending')
   if (state.priority !== player) throw new IllegalCommandError('you do not hold priority')
   if (state.phase === 'attack' && state.attack?.step !== 'declaration') throw new IllegalCommandError('cannot pass during this attack step')
+  const isWindow = state.phase === 'main1' || state.phase === 'main2'
+  if (isWindow && state.passes === 0) {
+    return [{ ...state, passes: 1, priority: opponentOf(player) }, []]
+  }
+  // Both players have forfeited consecutively (§11.1.7) — or this step is not a window at all.
+  const turn = state.turnPlayer
   switch (state.phase) {
     case 'main1':
       // §10.1.1 Attack Preparation Step, then §10.1.2 Declaration — the two-step transition C2 left the seam
@@ -61,14 +77,14 @@ export function applyPass(state: GameState, player: PlayerId): [GameState, Event
       // Doing it in one hop, as this used to, would resolve any such trigger while the state still said Main
       // Phase 1: the clause would fire at a moment its own printed text says it does not.
       {
-        const [prepared, events] = enterAttackPreparation(state, player)
-        const queued = enqueueAttackPhaseTriggers(prepared, player)
+        const [prepared, events] = enterAttackPreparation({ ...state, passes: 0 }, turn)
+        const queued = enqueueAttackPhaseTriggers(prepared, turn)
         return [{ ...queued, resolution: { ...queued.resolution, continuation: 'enterAttackDeclaration' } }, events]
       }
     case 'attack':   // declaration step, checked above; §10.1.4.6
-      return [{ ...state, phase: 'main2', attack: null, priority: player }, [{ type: 'phaseStarted', phase: 'main2' }]]
+      return [{ ...state, phase: 'main2', attack: null, priority: turn, passes: 0 }, [{ type: 'phaseStarted', phase: 'main2' }]]
     case 'main2':
-      return beginEndPhase(state)
+      return beginEndPhase({ ...state, passes: 0, priority: turn })
     default:
       throw new IllegalCommandError(`pass not applicable in phase ${state.phase}`)
   }

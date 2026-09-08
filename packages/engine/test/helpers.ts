@@ -1,6 +1,9 @@
 import type { CardDef, PlayerId } from '../src/types.js'
 import type { CardId, FieldCard, GameState } from '../src/state.js'
 import { applyChooseFirst, applyMulligan, createGame } from '../src/setup.js'
+import { apply } from '../src/apply.js'
+import { actingPlayer, forcedPass } from '../src/legal.js'
+import type { Event } from '../src/events.js'
 
 export function makeDef(over: Partial<CardDef> & { code: string }): CardDef {
   return { name: over.code, type: 'forward', elements: ['earth'], cost: 2, power: 5000, keywords: [], generic: false, exBurst: false, text: '', hasAbilities: false, ...over }
@@ -73,4 +76,37 @@ export function withHand(state: GameState, player: PlayerId, code: string): [Gam
 export function withHandSize(state: GameState, player: PlayerId, n: number): GameState {
   const ps = state.players[player]
   return setPlayer(state, player, { ...ps, hand: ps.hand.slice(0, n), deck: [...ps.deck, ...ps.hand.slice(n)] })
+}
+
+/**
+ * Both players forfeit priority (rung J1, CR §11.1.7): from a Main Phase this is what ends it, and it is what a
+ * single `pass` did before the stack existed. From the declaration step one pass suffices (§10.1.4.6) and the
+ * second is not sent. Events of both applies are concatenated, so a test reading "the events of ending the
+ * phase" sees the phase transition wherever it lands.
+ */
+export function passBoth(state: GameState): { state: GameState; events: Event[] } {
+  const p = actingPlayer(state)
+  if (p === null) throw new Error('passBoth: nobody is acting')
+  const first = apply(state, { type: 'pass', player: p })
+  const same = first.state.phase === state.phase && first.state.attack?.step === state.attack?.step
+  const q = actingPlayer(first.state)
+  if (!same || first.state.pending || first.state.result || q === null || q === p) return first
+  const second = apply(first.state, { type: 'pass', player: q })
+  return { state: second.state, events: [...first.events, ...second.events] }
+}
+export const endPhase = (state: GameState): GameState => passBoth(state).state
+
+/**
+ * Apply every pass-only response window (rung J1): the non-turn player holding priority with nothing to do.
+ * A walk that counts DECISIONS must not count these, or every trajectory recorded before the stack existed
+ * (the frozen-score corpus, the mid-game fixtures) lands somewhere else.
+ */
+export function settleWindows(state: GameState): GameState {
+  let s = state
+  for (let i = 0; i < 8; i++) {
+    const c = forcedPass(s)
+    if (!c) return s
+    s = apply(s, c).state
+  }
+  return s
 }
