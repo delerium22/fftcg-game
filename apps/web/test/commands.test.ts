@@ -892,3 +892,15 @@ describe('a party split under a card leads with the answer that puts the most on
     expect(underB[0]).toBe(7000)
   })
 })
+
+describe('an Attack Phase window says whose Attack Phase it is', () => {
+  it('"The AI\'s Attack Phase — combat declared" in the AI\'s turn; "Attack Phase — combat declared" in yours', () => {
+    const base = viewFor(makeGame(), HUMAN)
+    const window = (turnPlayer: PlayerId): PlayerView => ({
+      ...base, turnPlayer, phase: 'attack', attack: { step: 'declared', attackers: [], blocker: null }, priority: HUMAN, pending: null, stack: [],
+    })
+    const pass: Command[] = [{ type: 'pass', player: HUMAN }]
+    expect(promptFor(window(AI), pass)).toBe("The AI's Attack Phase — combat declared: pass to continue")
+    expect(promptFor(window(HUMAN), pass)).toBe('Attack Phase — combat declared: pass to continue')
+  })
+})

@@ -847,8 +847,11 @@ function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
       // commands — the same rule as the Main Phases above.
       const step = ATTACK_STEP_LABEL[v.attack?.step ?? ''] ?? v.attack?.step ?? 'resolving'
       const verbs = [...(canCast ? ['cast a Summon'] : []), ...(canActivate ? ['use an ability'] : [])]
-      if (!verbs.length && !has((c) => c.type === 'pass')) return `Attack Phase — ${step}`
-      return `Attack Phase — ${step}: ${offer(verbs, 'pass to continue')}`
+      // Whose Attack Phase, as the Main Phase prompt above already says: found by playing, "Attack Phase —
+      // preparation: use an ability or pass" read the same in the AI's turn as in mine.
+      const phase = v.turnPlayer === v.me ? 'Attack Phase' : "The AI's Attack Phase"
+      if (!verbs.length && !has((c) => c.type === 'pass')) return `${phase} — ${step}`
+      return `${phase} — ${step}: ${offer(verbs, 'pass to continue')}`
     }
     default: return `${PHASE_LABEL[v.phase] ?? v.phase} — nothing to do`
   }
