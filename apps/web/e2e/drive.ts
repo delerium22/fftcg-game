@@ -41,7 +41,9 @@ export async function playToTheEnd(page: Page, budgetMs = 120_000): Promise<void
       else await tray.getByRole('button', { name: 'Cancel' }).click({ timeout: 3000 }).catch(() => {})
       continue
     }
-    const action = page.locator('.prompt__actions button').filter({ hasNotText: 'Concede' }).first()
+    // `[data-command]`: the position's answers. Rung K4's auto-pass toggle sits in the same row without one,
+    // and a driver that took it as an action flipped it every step instead of playing.
+    const action = page.locator('.prompt__actions button[data-command]').filter({ hasNotText: 'Concede' }).first()
     const glowing = page.locator('[role="gridcell"] button.is-selectable').first()
     const next = (await action.count()) ? action : (await glowing.count()) ? glowing : null
     if (next === null) { await page.waitForTimeout(120); continue }

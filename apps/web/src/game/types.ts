@@ -62,4 +62,8 @@ export interface GameApi {
   choose(choice: Choice): void
   /** Start a new game with a fresh seed. */
   restart(): void
+  /** Rung K4: while on, the human's response windows are passed automatically. Off after a restart. Optional
+   *  so the many test fixtures that build a `GameApi` by hand need not know about the toggle. */
+  autoPass?: boolean
+  setAutoPass?: (on: boolean) => void
 }

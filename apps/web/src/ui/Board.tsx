@@ -655,6 +655,7 @@ export function Board({ game, onHelp }: {
         view={view} choices={choices} shown={shown} aiThinking={aiThinking}
         tray={tray ?? selectionTray} paying={payingPrompt}
         onChoose={(c) => { setPaying(null); setSelecting(null); choose(c) }}
+        autoPass={game.autoPass ?? false} onAutoPass={game.setAutoPass}
       />
 
       {sheet !== null && sheetProps(sheet)}

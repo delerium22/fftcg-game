@@ -28,12 +28,15 @@ const isAbility = (c: Choice): boolean => c.command.type === 'chooseMode' || c.c
  * it is and what the game is waiting for. Every command with no card subject (pass, mulligan, concede, the
  * no-block option) is a button here, plus whatever the currently selected card can do.
  */
-export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, paying }: {
+export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, paying, autoPass = false, onAutoPass }: {
   view: PlayerView
   choices: ChoiceSet
   shown: Choice[]
   aiThinking: boolean
   onChoose: (c: Choice) => void
+  /** Rung K4: the auto-pass toggle's state, and the handler that flips it. No handler, no control. */
+  autoPass?: boolean
+  onAutoPass?: ((on: boolean) => void) | undefined
   /** The payment tray (rung I2), which REPLACES the buttons while a payment is being built. */
   tray?: JSX.Element | null
   /** What the tray is asking, for the live region: "Paying for Ramuh — 1 of 2 CP paid". */
@@ -121,7 +124,7 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, 
     if (!yours || !hadFocus.current || document.activeElement !== document.body) return
     // `[data-command]`, not a CSS class: the first version excluded Concede by `.btn--danger`, which ties
     // whether the game can be conceded by accident to a styling token.
-    actions.current?.querySelector<HTMLButtonElement>('button:not([data-command="concede"])')?.focus()
+    actions.current?.querySelector<HTMLButtonElement>('button[data-command]:not([data-command="concede"])')?.focus()
   }, [yours, shown])
 
   return (
@@ -196,6 +199,20 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, 
         {yours && !tray && armed && (
           <button className="btn btn--ghost" data-command="cancel-concede" onClick={() => { setArmed(false) }}>
             Keep playing
+          </button>
+        )}
+        {/* Rung K4: "I won't be responding for now." Last in the row and without `data-command`, so the focus
+          * restoration above never lands on it and it never reads as one of the position's answers. */}
+        {!view.result && onAutoPass && (
+          <button
+            type="button"
+            className="btn btn--ghost"
+            data-toggle="auto-pass"
+            aria-pressed={autoPass}
+            title="While on, your response windows are passed automatically. Your own Main Phases, blocks and other decisions are still yours."
+            onClick={() => { onAutoPass(!autoPass) }}
+          >
+            Auto-pass: {autoPass ? 'on' : 'off'}
           </button>
         )}
       </div>
