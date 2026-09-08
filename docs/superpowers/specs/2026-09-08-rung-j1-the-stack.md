@@ -274,3 +274,12 @@ through the same delivery path (D14); declaration/block trigger vocabulary defer
 
 **Accepted (LOW, 5):** `passes: 0 | 1`; A8's branches; the mutation table extended; the strength gate made
 numeric (A11); stale references corrected.
+
+## Slice 6 gate (measured 2026-09-08, after the perf commit 29017ab)
+
+`mirror --pairs 1 --seed N --a ismcts:200 --b greedy --fast` for N = 1..10, one pair per foreground run (the
+machine was memory-starved by other processes and background runs were killed): **ISMCTS 16 of 20 games,
+80 %** (per seed: 1, 1, 2, 1, 2, 2, 1, 2, 2, 2 of 2). Median 2.6 s per ISMCTS decision at 200 iterations
+(the browser's 500 ms budget with a 64-iteration floor therefore thinks for about a second in the worst
+positions). A11's bar is 60 %; the pre-J1 figure was 75 % over 60 pairs. Twenty games is a coarse estimate
+(a 95 % interval of roughly 58–93 %); re-run with more pairs when the machine allows.
