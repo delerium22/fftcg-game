@@ -116,7 +116,7 @@ function defFor(state: GameState, id: CardId) {
  * can ask the same question of a `PlayerView` (spec C9). The other half — `excludeSource`/`excludeSourceName`
  * — needs the source instance and stays in `matchesFilter`, which delegates here rather than restating this.
  */
-export function matchesDefFilter(def: CardDef, filter: TargetFilter | undefined): boolean {
+export function matchesDefFilter(def: CardDef, filter: TargetFilter | undefined, instanceAxesElsewhere = false): boolean {
   if (!filter) return true
   if (filter.type !== undefined && def.type !== filter.type) return false
   // "Character" is Forward, Backup OR Monster and never Summon (§7.2), which a single `type` cannot say — both
@@ -133,7 +133,9 @@ export function matchesDefFilter(def: CardDef, filter: TargetFilter | undefined)
   if (filter.name !== undefined && def.name !== filter.name) return false
   if (filter.keyword !== undefined && !def.keywords.includes(filter.keyword)) return false
   // The power bounds are INSTANCE axes (`matchesFilter` reads the field); off the field the printing is all
-  // there is, and a Summon or Backup (no power) satisfies no bound.
+  // there is, and a Summon or Backup (no power) satisfies no bound. `matchesFilter` answers them itself and
+  // says so with the flag — no filter is copied per candidate on the engine's hottest path.
+  if (instanceAxesElsewhere) return true
   if (filter.minPower !== undefined && (def.power === null || def.power < filter.minPower)) return false
   if (filter.maxPower !== undefined && (def.power === null || def.power > filter.maxPower)) return false
   if (filter.grantedKeyword !== undefined && !def.keywords.includes(filter.grantedKeyword)) return false
@@ -170,14 +172,8 @@ function matchesFilter(state: GameState, source: CardId, id: CardId, filter: Tar
   if (!filter) return true
   const def = defFor(state, id)
   if (!def) return false
-  // The def axes; the instance axes (power, status, granted keyword) are re-asked of the field below, so the
-  // def half must not veto them: strip them before asking (rung J5).
-  const defAxes: TargetFilter = { ...filter }
-  delete (defAxes as { minPower?: number }).minPower
-  delete (defAxes as { maxPower?: number }).maxPower
-  delete (defAxes as { status?: string }).status
-  delete (defAxes as { grantedKeyword?: string }).grantedKeyword
-  if (!matchesDefFilter(def, defAxes)) return false
+  // The def axes; the instance axes (power, status, granted keyword) are answered by the field below (rung J5).
+  if (!matchesDefFilter(def, filter, true)) return false
   if (!matchesInstanceFilter(state, id, filter)) return false
   // A fact about the INSTANCE and the state, which is why it lives here and not in `matchesDefFilter`
   // (spec C10-2). Sphene's "put in your Break Zone from the field during this turn".

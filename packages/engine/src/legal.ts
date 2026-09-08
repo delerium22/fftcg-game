@@ -3,7 +3,7 @@ import type { CardId, GameState } from './state.js'
 import { defOf } from './state.js'
 import type { Command } from './commands.js'
 import { enumeratePayments, enumeratePaymentsFor } from './cp.js'
-import { abilityCpRequirement, activationCheck, activationTargetSets } from './activate.js'
+import { abilityCpRequirement, activationCheck, activationTargetSets, hasAnyActivation } from './activate.js'
 import { castCheck, instantSpeedAllowed } from './cast.js'
 import { deckPickCandidates } from './resolve.js'
 import { legalAttackSets, legalBlockers, legalPartyDamageAssignments } from './attack.js'
@@ -33,23 +33,29 @@ export interface ActionMenu {
   readonly pass: boolean
 }
 
-const NOTHING: ActionMenu = { castable: [], abilities: false, attack: false, pass: false }
 
 export function actionMenu(state: GameState, player: PlayerId): ActionMenu {
-  if (state.result || state.pending || state.priority !== player) return NOTHING
-  const castable = (): CardId[] => state.players[player].hand.filter((card) => castCheck(state, player, card) === null)
+  const shape = menuShape(state, player)
+  const castable = shape.casts ? state.players[player].hand.filter((card) => castCheck(state, player, card) === null) : []
+  return { castable, abilities: shape.abilities, attack: shape.attack, pass: shape.pass }
+}
+
+/** The KINDS the priority holder may use here — `actionMenu` without the per-card cast enumeration. */
+function menuShape(state: GameState, player: PlayerId): { casts: boolean; abilities: boolean; attack: boolean; pass: boolean } {
+  const nothing = { casts: false, abilities: false, attack: false, pass: false }
+  if (state.result || state.pending || state.priority !== player) return nothing
   switch (state.phase) {
     case 'main1':
     case 'main2':
-      return { castable: castable(), abilities: true, attack: false, pass: true }
+      return { casts: true, abilities: true, attack: false, pass: true }
     case 'attack':
       // Declaration is the turn player's decision; a window (§10.1.1.2 and, from slice 5, the rest) admits
       // Summons and action abilities from the priority holder (§9.3.1.6–7).
-      if (state.attack?.step === 'declaration') return { castable: [], abilities: false, attack: true, pass: true }
-      if (instantSpeedAllowed(state)) return { castable: castable(), abilities: true, attack: false, pass: true }
-      return NOTHING
+      if (state.attack?.step === 'declaration') return { casts: false, abilities: false, attack: true, pass: true }
+      if (instantSpeedAllowed(state)) return { casts: true, abilities: true, attack: false, pass: true }
+      return nothing
     default:
-      return NOTHING   // setup/active/draw/end never wait for a non-pending command
+      return nothing   // setup/active/draw/end never wait for a non-pending command
   }
 }
 
@@ -71,9 +77,12 @@ export function isResponseWindow(state: Pick<GameState, 'result' | 'pending' | '
 export function forcedPass(state: GameState): Command | null {
   const player = actingPlayer(state)
   if (player === null || !isResponseWindow(state)) return null
-  const menu = actionMenu(state, player)
-  if (!menu.pass || menu.attack || menu.castable.length > 0) return null
-  if (menu.abilities && activationsFor(state, player).length > 0) return null
+  // First-hit checks, not enumerations: this is asked on every step of every AI rollout, and enumerating each
+  // cast's payments and each activation's target sets here was a quarter of a rollout's time.
+  const shape = menuShape(state, player)
+  if (!shape.pass || shape.attack) return null
+  if (shape.casts && state.players[player].hand.some((card) => castCheck(state, player, card) === null)) return null
+  if (shape.abilities && hasAnyActivation(state, player)) return null
   return { type: 'pass', player }
 }
 

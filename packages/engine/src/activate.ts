@@ -5,7 +5,7 @@ import type { Ability, AbilityCost, Effect, Frame } from './abilities.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
-import { canPay, generateCp, pay, type CpRequirement } from './cp.js'
+import { canPay, generateCp, pay, type CpRequirement, enumeratePaymentsFor } from './cp.js'
 import { instantSpeedAllowed } from './cast.js'
 import type { ZoneTransition } from './rules.js'
 import { dispatchChosenTriggers, enqueueZoneChangeTriggers, forgetBreakZoneArrivals, removeFromField, targetCandidates } from './resolve.js'
@@ -150,6 +150,27 @@ export function activationCheck(
   if (targets.length < node.min || targets.length > max) return `${abilityId} needs ${node.min}..${max} targets`
   for (const id of targets) if (!candidates.includes(id)) return `${id} is not a legal target for ${abilityId}`
   return null
+}
+
+/**
+ * Is ANY activation legal for `player` right now? The first-hit form of `activationsFor` (legal.ts), for the
+ * predicates the AI's rollouts ask on every step (`forcedPass`): the cheap checks first, the payment
+ * enumeration last and only for an ability that has a legal target set — measured at a quarter of a
+ * rollout's time when `activationsFor` was enumerated instead.
+ */
+export function hasAnyActivation(state: GameState, player: PlayerId): boolean {
+  const ps = state.players[player]
+  const sources = [...ps.hand, ...ps.breakZone, ...ps.forwards.map((c) => c.id), ...ps.backups.map((c) => c.id)]
+  for (const source of sources) {
+    for (const ability of defOf(state, source).abilities ?? []) {
+      if (ability.trigger.kind !== 'activated') continue
+      const sets = activationTargetSets(state, player, source, ability)
+      if (sets.length === 0) continue
+      if (activationCheck(state, player, source, ability.id, sets[0]) !== null) continue
+      if (enumeratePaymentsFor(state, player, abilityCpRequirement(source, ability.trigger.cost)).length > 0) return true
+    }
+  }
+  return false
 }
 
 /** Every legal declaration of an activation's targets — the sets `legalCommands` must offer. */

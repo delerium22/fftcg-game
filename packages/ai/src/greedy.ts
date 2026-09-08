@@ -205,16 +205,19 @@ export function resolveForcedDecisions(state: GameState, weights: Weights, aggre
   const prof = budget?.profile
   if (prof) prof.depth++
   try {
-    while (!s.result && (isForcedDecision(s) || forcedPass(s) !== null || stackWaiting(s) || combatWindow(s))) {
+    for (;;) {
+      if (s.result) break
       // Rung J1-D14: a pass-only response window is not a decision. It is applied outright — no scoring, no
       // budget — so a rollout's depth is spent on moves, and the trajectories recorded before the stack
-      // existed (the frozen-score corpus) are reproduced apply for apply.
+      // existed (the frozen-score corpus) are reproduced apply for apply. Asked ONCE per pass of the loop:
+      // it is the most expensive predicate here.
       const forced = forcedPass(s)
       if (forced) { s = apply(s, forced).state; continue }
       // And a stack with items waiting is settled by passing priority: the policy does not respond in a
       // window (a Summon in answer to a Summon is a J1 follow-up), so `evaluate` must never price a board
       // whose stack has not done its work — the same defect class R4 named for a half-resolved attack.
       if (stackWaiting(s) || combatWindow(s)) { s = apply(s, { type: 'pass', player: actingPlayer(s) as PlayerId }).state; continue }
+      if (!isForcedDecision(s)) break
       const p = actingPlayer(s)
       if (p === null) break
       const localAggression = p === perspective ? aggression : 1 - aggression
