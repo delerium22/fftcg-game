@@ -870,3 +870,25 @@ describe('a private deck look cannot be narrated by the wrong seat (rung C9)', (
     expect(describeChoice(v, { type: 'chooseFromDeck', player: HUMAN, picks: [] })).toBe('Find nothing')
   })
 })
+
+describe('a party split under a card leads with the answer that puts the most on it', () => {
+  it('"8000 → Prishe" heads Prishe\'s sheet, not "1000 → Prishe, 7000 → Hugh Yurg"', () => {
+    // Player 1 blocks a two-Forward party with a 7000 and owes the split (the vanilla pool, not the starter).
+    let s = makeGame()
+    s = { ...s, phase: 'attack', attack: { step: 'declaration', attackers: [], blocker: null }, priority: 0, passes: 0 }
+    let a: CardId, b: CardId, blocker: CardId
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F5')
+    ;[s, b] = withField(s, 0, 'forwards', 'V-F5')
+    ;[s, blocker] = withField(s, 1, 'forwards', 'V-F3')
+    const pass = (st: GameState, p: 0 | 1): GameState => apply(st, { type: 'pass', player: p }).state
+    s = pass(pass(apply(s, { type: 'declareAttack', player: 0, attackers: [a, b] }).state, 0), 1)
+    s = pass(pass(apply(s, { type: 'declareBlock', player: 1, blocker }).state, 0), 1)
+    expect(s.pending).toEqual({ kind: 'assignPartyDamage', player: 1 })
+    const set = buildChoiceSet(viewFor(s, 1), legalCommands(s, 1))
+    const underA = set.byCard.get(a)!.map((c) => c.command.type === 'assignPartyDamage' ? c.command.assignments.find((x) => x.target === a)?.amount ?? 0 : -1)
+    expect(underA[0], 'the concentration on this card comes first').toBe(7000)
+    expect([...underA].sort((x, y) => y - x)).toEqual(underA)
+    const underB = set.byCard.get(b)!.map((c) => c.command.type === 'assignPartyDamage' ? c.command.assignments.find((x) => x.target === b)?.amount ?? 0 : -1)
+    expect(underB[0]).toBe(7000)
+  })
+})

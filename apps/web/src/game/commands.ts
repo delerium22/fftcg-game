@@ -944,6 +944,17 @@ export function buildChoiceSet(v: PlayerView, legal: Command[], alternatives?: M
     if (!subjects.length) { loose.push(choice); continue }
     for (const id of subjects) byCard.set(id, [...(byCard.get(id) ?? []), choice])
   }
+  // A party split is filed under every attacker it names, in the engine's enumeration order — which under
+  // Prishe read "1000 → Prishe, 7000 → Hugh Yurg" first and "8000 → Prishe" last. Found by playing: the
+  // answer a player opens THIS card's sheet for is the one that puts the most on it, so that comes first.
+  for (const [id, choices] of byCard) {
+    const isSplit = (c: Choice): boolean => c.command.type === 'assignPartyDamage'
+    if (!choices.some(isSplit)) continue
+    const onThis = (c: Choice): number => (c.command.type === 'assignPartyDamage' ? c.command.assignments.find((a) => a.target === id)?.amount ?? 0 : 0)
+    // Only the splits move, among the slots they already hold; any other choice keeps its place.
+    const splits = choices.filter(isSplit).sort((a, b) => onThis(b) - onThis(a))
+    byCard.set(id, choices.map((c) => (isSplit(c) ? splits.shift()! : c)))
+  }
   return { all, byCard, loose, prompt: promptFor(v, legal), capped }
 }
 
