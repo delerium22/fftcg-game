@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, attackCheck, defOf, effectAtPath, effectivePower, findFieldCard, keywordsOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, attackCheck, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -103,7 +103,7 @@ function breaksWhatItDamages(state: GameState, source: CardId): boolean {
 function targetDelta(state: GameState, source: CardId, effects: readonly Effect[], id: CardId): number {
   const loc = findFieldCard(state, id)
   const def = defOf(state, id)
-  const power = loc ? effectivePower(def, loc.card) : (def.power ?? 0)
+  const power = loc ? powerOf(state, loc.card) : (def.power ?? 0)
   let d = 0
   for (const eff of effects) {
     switch (eff.kind) {
@@ -118,7 +118,7 @@ function targetDelta(state: GameState, source: CardId, effects: readonly Effect[
         // not is worth only the exposure it leaves behind. C2: a source that breaks what it damages (Luso) kills
         // the target whatever its power — `cannotBeBroken` stops both routes (§12.4.5 and `breakCard` alike).
         const lethal = power >= 1000 && loc.card.damage + eff.amount >= power
-        const breaks = (lethal || breaksWhatItDamages(state, source)) && !loc.card.flags.includes('cannotBeBroken')
+        const breaks = (lethal || breaksWhatItDamages(state, source)) && !flagsOf(state, loc.card).has('cannotBeBroken')
         const kill = cardValue(def) + power / 1000
         if (breaks) { d -= kill; break }
         // Non-lethal damage was priced `eff.amount / 1000` — a constant, independent of the target and of the
@@ -138,7 +138,7 @@ function targetDelta(state: GameState, source: CardId, effects: readonly Effect[
         break
       }
       case 'breakCard':
-        if (loc && !loc.card.flags.includes('cannotBeBroken')) d -= cardValue(def) + power / 1000
+        if (loc && !flagsOf(state, loc.card).has('cannotBeBroken')) d -= cardValue(def) + power / 1000
         break
       case 'moveToHand':
         // From the field this is removal (that side loses a body and keeps the card); from the Break Zone it is
@@ -156,7 +156,7 @@ function targetDelta(state: GameState, source: CardId, effects: readonly Effect[
         d += eff.keyword === 'haste' ? hasteUnlock(state, loc.owner, loc.card, loc.zone === 'forwards') : 0.5
         break
       case 'grantFlag':
-        if (loc && eff.flag === 'cannotBeBroken' && !loc.card.flags.includes('cannotBeBroken')) {
+        if (loc && eff.flag === 'cannotBeBroken' && !flagsOf(state, loc.card).has('cannotBeBroken')) {
           d += protectionValue(state, loc.card, loc.zone === 'forwards')
         }
         break

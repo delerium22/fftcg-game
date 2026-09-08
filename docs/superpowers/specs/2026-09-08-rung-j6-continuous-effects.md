@@ -1,6 +1,6 @@
 # Rung J6 — the continuous-effect layer (CR §11.12.4)
 
-> **STATUS: revision 2, 2026-09-08, cleared to build.** Revision 1 went to a Codex plan review
+> **STATUS: BUILT, 2026-09-08 (revision 2, slices 1–3 in one commit).** Revision 1 went to a Codex plan review
 > ([the review](../plans/2026-09-08-rung-j6-continuous-effects.codex-review.md)); every finding was checked
 > against the code and the adjudication is at the end. The audit's "scaling item for more effect types"
 > (ladder J6). The user was away; the design calls are mine, recorded so they can be overturned here.

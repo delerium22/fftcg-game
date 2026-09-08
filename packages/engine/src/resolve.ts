@@ -5,7 +5,9 @@ import { drawCards } from './draw.js'
 import { shuffle } from './rng.js'
 import { EMPTY_RESOLUTION, MAX_RESOLUTION_STEPS, effectAtPath, hasResolutionWork, unimplementedClauseCount } from './abilities.js'
 import type { CardId, FieldCard, GameState, Pending, StackItem } from './state.js'
-import { defOf, findFieldCard, forget, learn, updatePlayer, powerOf, keywordsOf } from './state.js'
+import { defOf, findFieldCard, forget, learn, updatePlayer, powerOf, keywordsOf, flagsOf } from './state.js'
+import { matchesDefFilter } from './filters.js'
+export { matchesDefFilter } from './filters.js'
 import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event, StackRef } from './events.js'
@@ -109,39 +111,6 @@ export function abilityOf(state: GameState, frame: Frame): Ability | null {
 function defFor(state: GameState, id: CardId) {
   const code = state.cards[id]?.code
   return code === undefined ? undefined : state.defs[code]
-}
-
-/**
- * The half of a `TargetFilter` that depends only on the card's DEFINITION, split out so the search's decoder
- * can ask the same question of a `PlayerView` (spec C9). The other half — `excludeSource`/`excludeSourceName`
- * — needs the source instance and stays in `matchesFilter`, which delegates here rather than restating this.
- */
-export function matchesDefFilter(def: CardDef, filter: TargetFilter | undefined, instanceAxesElsewhere = false): boolean {
-  if (!filter) return true
-  if (filter.type !== undefined && def.type !== filter.type) return false
-  // "Character" is Forward, Backup OR Monster and never Summon (§7.2), which a single `type` cannot say — both
-  // Prishe's and Luso's Break-Zone retrievals need it (spec C2-9). `type` and `types` conjoin: a filter carrying
-  // both must satisfy both.
-  if (filter.types !== undefined && !filter.types.includes(def.type)) return false
-  if (filter.element !== undefined && !def.elements.includes(filter.element)) return false
-  if (filter.maxCost !== undefined && def.cost > filter.maxCost) return false
-  // EXACT, not a ceiling: a cost-3 Forward must not satisfy Hugh Yurg's "of cost 1" (spec C8-3).
-  if (filter.cost !== undefined && def.cost !== filter.cost) return false
-  // Rung J5. An unknown job or category (the patched exclusives) matches nothing: `undefined !== 'Dragoon'`.
-  if (filter.job !== undefined && def.job !== filter.job) return false
-  if (filter.category !== undefined && !(def.categories ?? []).includes(filter.category)) return false
-  if (filter.name !== undefined && def.name !== filter.name) return false
-  if (filter.keyword !== undefined && !def.keywords.includes(filter.keyword)) return false
-  // The power bounds are INSTANCE axes (`matchesFilter` reads the field); off the field the printing is all
-  // there is, and a Summon or Backup (no power) satisfies no bound. `matchesFilter` answers them itself and
-  // says so with the flag — no filter is copied per candidate on the engine's hottest path.
-  if (instanceAxesElsewhere) return true
-  if (filter.minPower !== undefined && (def.power === null || def.power < filter.minPower)) return false
-  if (filter.maxPower !== undefined && (def.power === null || def.power > filter.maxPower)) return false
-  if (filter.grantedKeyword !== undefined && !def.keywords.includes(filter.grantedKeyword)) return false
-  // `status` is a fact about a FieldCard: off the field there is none, so it matches nothing.
-  if (filter.status !== undefined) return false
-  return true
 }
 
 /** The instance half of the power/status/keyword axes (rung J5): read from the FieldCard when the card is on a field. */
@@ -494,7 +463,7 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       for (const id of ctx.chosen) {
         const loc = findFieldCard(ctx.state, id)
         if (!loc) continue
-        if (loc.card.flags.includes('cannotBeBroken')) { ctx.events.push({ type: 'breakPrevented', card: id, flag: 'cannotBeBroken' }); continue }
+        if (flagsOf(ctx.state, loc.card).has('cannotBeBroken')) { ctx.events.push({ type: 'breakPrevented', card: id, flag: 'cannotBeBroken' }); continue }
         // `loc.owner` is the field the card sat on — its CONTROLLER. Real ownership is `CardInstance.owner`, and
         // §12.4.4/§15.1.1.3 sends a broken card to its OWNER's Break Zone. They coincide across the MVP0 pool.
         const owner = ctx.state.cards[id]?.owner ?? loc.owner

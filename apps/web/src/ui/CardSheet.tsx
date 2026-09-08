@@ -74,7 +74,8 @@ export function CardSheet({ face, def, actions, castBlocked, onCommit, onPay, on
               <span>{def.type}</span>
               <span>{def.elements.join(' / ')}</span>
               <span>{def.cost} CP</span>
-              {def.power !== null && <span>{def.power}</span>}
+              {/* Rung J6: the power the game uses, and the printing when they differ. */}
+              {def.power !== null && <span>{face.power !== null && face.power !== def.power ? `${face.power} (printed ${def.power})` : def.power}</span>}
             </p>
           )}
           {def && (def.job || def.categories?.length) && (

@@ -1,6 +1,7 @@
 import type { Rng } from './rng.js'
 import type { PlayerId, CardDef, Keyword } from './types.js'
 import type { FieldFlag, Frame, Resolution, TargetFilter } from './abilities.js'
+import { layerFor } from './layer.js'
 
 export type CardId = number
 export interface CardInstance { id: CardId; code: string; owner: PlayerId }
@@ -203,21 +204,39 @@ export function findFieldCard(state: GameState, id: CardId) {
 }
 
 /**
- * THE single power authority (spec C1-7). Nothing may add `powerBonus` anywhere else — `powerOf` delegates here,
- * and the web board imports it so a pumped Forward displays the power combat actually uses.
+ * THE single power authority (spec C1-7, rung J6): printed power, plus the until-end-of-turn stamp
+ * (`powerBonus`, §11.12.4.2), plus what the field abilities in play add through the layer (§11.12.4.4–5).
+ * Nothing may read `powerBonus` anywhere else — `powerOf` delegates here, and the web board reads through it
+ * (via `stateShim`) so a pumped Forward displays the power combat actually uses.
  * Power floors at 0: a −9000 debuff on a 3000-power Forward deals no negative damage, it is put into the Break
  * Zone by the §12.4.4 zero-power rule process instead.
  */
-export function effectivePower(def: CardDef, card: FieldCard): number {
-  return Math.max(0, (def.power ?? 0) + card.powerBonus)
+export function effectivePower(state: GameState, card: FieldCard): number {
+  const def = defOf(state, card.id)
+  return Math.max(0, (def.power ?? 0) + card.powerBonus + layerFor(state, card, controllerOf(state, card)).power)
 }
 
 export function powerOf(state: GameState, card: FieldCard): number {
-  return effectivePower(defOf(state, card.id), card)
+  return effectivePower(state, card)
 }
 
+/** Printed keywords, plus the granted stamps, plus the layer (rung J6). The ONE keyword authority. */
 export function keywordsOf(state: GameState, card: FieldCard): Set<Keyword> {
-  return new Set([...defOf(state, card.id).keywords, ...card.granted])
+  return new Set([...defOf(state, card.id).keywords, ...card.granted, ...layerFor(state, card, controllerOf(state, card)).keywords])
+}
+
+/** The flag stamps plus the layer (rung J6). The ONE flag authority — `cannotBeBroken` is asked here, nowhere else. */
+export function flagsOf(state: GameState, card: FieldCard): Set<FieldFlag> {
+  return new Set([...card.flags, ...layerFor(state, card, controllerOf(state, card)).flags])
+}
+
+/** Whose field a card sits on — the layer's scopes are relative to the source's controller. Falls back to the owner. */
+function controllerOf(state: GameState, card: FieldCard): PlayerId {
+  for (const p of [0, 1] as const) {
+    const ps = state.players[p]
+    if (ps.forwards.some((c) => c.id === card.id) || ps.backups.some((c) => c.id === card.id)) return p
+  }
+  return state.cards[card.id]?.owner ?? 0
 }
 
 export function updatePlayer(state: GameState, p: PlayerId, f: (ps: PlayerState) => PlayerState): GameState {

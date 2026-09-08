@@ -1,5 +1,6 @@
+import { staticApplies } from './layer.js'
 import type { CardDef, Element, PlayerId } from './types.js'
-import type { StaticCondition } from './abilities.js'
+
 import type { CardId, GameState } from './state.js'
 import { defOf, findFieldCard, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
@@ -124,25 +125,14 @@ function costReduction(state: GameState, def: CardDef, caster: PlayerId): number
     if (ability.trigger.kind !== 'static') continue
     const { effect } = ability.trigger
     if (effect.kind !== 'costReduction') continue
-    if (!staticApplies(state, effect.when, caster)) continue
+    if (!staticApplies({ state, source: null, controller: caster }, effect.when)) continue
     total += effect.amount
   }
   return total
 }
 
-/** Whether a static's condition currently holds, from the perspective of `player`. */
-export function staticApplies(state: GameState, when: StaticCondition, player: PlayerId): boolean {
-  // Exhaustive by construction: one entry per `StaticCondition` kind, so adding a variant without handling it
-  // fails to compile. A `switch` cannot carry that here — with a single-member union TypeScript does not
-  // narrow the default branch to `never`, so the usual assertion would be a compile error today and a silent
-  // gap the moment a second variant lands.
-  const conditions: { readonly [K in StaticCondition['kind']]: (w: Extract<StaticCondition, { kind: K }>) => boolean } = {
-    // §9.4 — damage is received by a PLAYER, and "you have received" is the CASTER, never the opponent. A
-    // symmetric fixture cannot tell those apart, so this one has a test of its own.
-    damageReceived: (w) => state.players[player].damageZone.length >= w.atLeast,
-  }
-  return conditions[when.kind](when as never)
-}
+// `staticApplies` lives in layer.ts since rung J6 (source-aware context); re-exported for its existing importers.
+export { staticApplies } from './layer.js'
 
 /** Every *minimal* legal payment for `card` (no source can be removed and still pay). Used by legalCommands as the canonical choice list; `apply` accepts any payment that `canPay` — overpaying is legal (§11.2.2.3). */
 export function enumeratePayments(state: GameState, player: PlayerId, card: CardId): Payment[] {

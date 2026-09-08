@@ -58,9 +58,9 @@ describe('effectivePower is the single power authority (spec C1-7)', () => {
     let { s } = setup([]); let f: CardId
     ;[s, f] = withField(s, 1, 'forwards', 'V-F2', { powerBonus: 3000 })   // printed 5000
     const card = fc(s, f)!
-    expect(effectivePower(defOf(s, f), card)).toBe(8000)
+    expect(effectivePower(s, card)).toBe(8000)
     expect(powerOf(s, card)).toBe(8000)
-    expect(effectivePower(defOf(s, f), { ...card, powerBonus: -9000 })).toBe(0)
+    expect(effectivePower(s, { ...card, powerBonus: -9000 })).toBe(0)
   })
 })
 

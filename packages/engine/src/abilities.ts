@@ -245,6 +245,26 @@ export type AbilityTrigger =
  * What a static ability makes true. Exactly ONE shape today, deliberately: a second arrives when a second
  * card needs one, and the union makes adding it a compile-time exercise rather than a guess now.
  */
+/**
+ * The definition axes of `TargetFilter` (rung J5) — the only ones a CONTINUOUS effect's scope may use.
+ *
+ * MVP0-SIMPLIFICATION (§11.12.4.12–13, rung J6-D2): an instance axis here (effective power, a granted keyword,
+ * status) would make the continuous-effect layer read its own output — dependency between ongoing effects,
+ * which the CR orders by dependence then timestamp. Every layer member today is additive, so the order is
+ * unobservable; the day a non-additive or instance-scoped effect lands, fixed-point semantics go here.
+ */
+export type DefFilter = Pick<TargetFilter, 'type' | 'types' | 'element' | 'cost' | 'maxCost' | 'job' | 'category' | 'name' | 'keyword'>
+
+/**
+ * Whom a continuous effect reaches (rung J6-D2): the existing targeting vocabulary — `controller` is relative
+ * to the SOURCE's controller, `excludeSource` is "other than this card", `filter` is definition-only.
+ */
+export interface StaticScope {
+  readonly controller: TargetController
+  readonly excludeSource?: boolean
+  readonly filter?: DefFilter
+}
+
 export type StaticEffect =
   /**
    * "the cost required to cast <this card> is reduced by N" — Odin. Note the scope: it modifies its OWN
@@ -259,6 +279,17 @@ export type StaticEffect =
    * is on the field, which is what the printed text says. Read where CP is generated and nowhere else.
    */
   | { readonly kind: 'produceElement'; readonly element: Element }
+  // --- rung J6: CONTINUOUS field effects (§11.12.4.4–5), applied by the layer while the source is on the field ---
+  /** "Forwards you control gain +N power" — read by `effectivePower` through the layer. */
+  | { readonly kind: 'modifyPower'; readonly amount: number; readonly to: StaticScope; readonly when?: StaticCondition }
+  /** "Your Forwards gain Haste" — read by `keywordsOf`. */
+  | { readonly kind: 'grantKeyword'; readonly keyword: Keyword; readonly to: StaticScope; readonly when?: StaticCondition }
+  /** "Your Forwards cannot be broken" — read by `flagsOf`. */
+  | { readonly kind: 'grantFlag'; readonly flag: FieldFlag; readonly to: StaticScope; readonly when?: StaticCondition }
+
+/** The continuous kinds — what `layer.ts` indexes; `costReduction` and `produceElement` keep their own readers. */
+export const CONTINUOUS_STATIC_KINDS = ['modifyPower', 'grantKeyword', 'grantFlag'] as const
+export type ContinuousStatic = Extract<StaticEffect, { kind: (typeof CONTINUOUS_STATIC_KINDS)[number] }>
 
 /**
  * When a static applies. Plain data, never a predicate function: card definitions travel through

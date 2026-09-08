@@ -1,5 +1,5 @@
 import {
-  HAND_SIZE_LIMIT, abilityCpRequirement, castBlocker, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, pickedDeckCards, seedRng,
+  HAND_SIZE_LIMIT, abilityCpRequirement, castBlocker, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, flagsOf, keywordsOf, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameResult, type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
   type ZoneTransitionReason, type CastBlocker, type StackItem } from '@fftcg/engine'
@@ -495,13 +495,18 @@ export interface FieldCardDisplay {
   flags: readonly FieldFlag[]
 }
 
-export function fieldCardDisplay(v: PlayerView, c: FieldCard): FieldCardDisplay {
+export function fieldCardDisplay(v: PlayerView, c: FieldCard, shim: GameState = stateShim(v)): FieldCardDisplay {
   const def = defFor(v, c.id)
+  // Through the engine's three readers (spec C1-7, rung J6): the power, keywords and flags the GAME uses,
+  // layer included. `shim` is built once per render by the caller (`Board`) and passed down, not once per card.
+  const power = def && def.power !== null ? effectivePower(shim, c) : null
+  const printedKeywords = def?.keywords ?? []
   return {
-    power: def && def.power !== null ? effectivePower(def, c) : null,
-    powerBonus: c.powerBonus,
-    granted: c.granted,
-    flags: c.flags,
+    power,
+    // The badge is the whole difference from the printing — a stamped pump AND a layer pump both show.
+    powerBonus: power === null ? 0 : power - (def?.power ?? 0),
+    granted: [...keywordsOf(shim, c)].filter((k) => !printedKeywords.includes(k)),
+    flags: [...flagsOf(shim, c)],
   }
 }
 

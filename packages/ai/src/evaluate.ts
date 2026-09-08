@@ -1,4 +1,4 @@
-import { DAMAGE_TO_LOSE, HAND_SIZE_LIMIT, MAX_BACKUPS, defOf, keywordsOf, opponentOf, powerOf, type FieldCard, type GameState, type PlayerId } from '@fftcg/engine'
+import { DAMAGE_TO_LOSE, HAND_SIZE_LIMIT, MAX_BACKUPS, defOf, keywordsOf, opponentOf, powerOf, type FieldCard, type GameState, type PlayerId, flagsOf } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 
 export interface Weights {
@@ -147,15 +147,16 @@ export function protectionValue(state: GameState, c: FieldCard, isForward: boole
  * term of its own: `powerOf` already delegates to `effectivePower` (spec C1-7).
  */
 function abilityTerms(state: GameState, p: PlayerId, c: FieldCard, isForward: boolean, w: Weights): number {
-  const def = defOf(state, c.id)
-  if (!c.granted.length && !c.flags.length && !def.keywords.length) return 0
+  // Through the readers (rung J6): a Haste or a protection the LAYER grants is worth what a stamped one is.
   const kw = keywordsOf(state, c)
+  const fl = flagsOf(state, c)
+  if (kw.size === 0 && fl.size === 0) return 0
   let v = 0
   // `enteredTurn` and `attackedThisTurn` enter the evaluation here, and only here.
   if (kw.has('haste')) v += w.haste * hasteUnlock(state, p, c, isForward)
   // Brave (§15.2.1): does not dull to attack, so it threatens and still blocks. Flat — a standing quality.
   if (kw.has('brave') && isForward) v += w.brave
-  if (c.flags.includes('cannotBeBroken')) v += w.protection * protectionValue(state, c, isForward)
+  if (fl.has('cannotBeBroken')) v += w.protection * protectionValue(state, c, isForward)
   return v
 }
 

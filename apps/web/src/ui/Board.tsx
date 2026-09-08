@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
-import type { CardId, Element, FieldCard, Payment, PlayerId, PlayerView } from '@fftcg/engine'
-import { castBlockerText, displayName, fieldCardDisplay, headline } from '../game/commands.js'
+import { useEffect, useRef, useState, type JSX, useMemo } from 'react'
+import type { CardId, Element, FieldCard, GameState, Payment, PlayerId, PlayerView } from '@fftcg/engine'
+import { castBlockerText, displayName, fieldCardDisplay, headline, stateShim } from '../game/commands.js'
 import {
   EMPTY_PAYMENT, candidateSources, completedChoice, crystals, extendable, generatedFor, legalPaymentsOf, needsTray,
   paidText, requirementFor, withBackup, withDiscard,
@@ -40,12 +40,12 @@ function defOf(v: PlayerView, id: CardId) {
  * is focused through the cell, so the cell carries the accessible name — and it must be the same name, from
  * the same numbers. Two spellings would drift somewhere only a screen-reader user ever goes.
  */
-function fieldCardProps(v: PlayerView, c: FieldCard, actionable: boolean, size: 'field' | 'small'): CardProps {
+function fieldCardProps(v: PlayerView, c: FieldCard, actionable: boolean, size: 'field' | 'small', shim: GameState): CardProps {
   const d = defOf(v, c.id)
   // Spec C1-7: `effectivePower` (via `fieldCardDisplay`) is the ONE power authority, and the board is a
   // consumer of it. Passing printed `def.power` here would show a pumped Forward the wrong power AND the wrong
   // damage ratio, because `Card` derives remaining power and the damage bar from whatever number it is given.
-  const shown = fieldCardDisplay(v, c)
+  const shown = fieldCardDisplay(v, c, shim)
   return {
     code: d?.code ?? '?',
     name: displayName(v, c.id),
@@ -193,6 +193,8 @@ export function Board({ game, onHelp }: {
   onHelp?: (() => void) | undefined
 }): JSX.Element {
   const { view, choices, log, aiThinking, choose, restart } = game
+  // Rung J6-D7: one engine shim per render for the three readers (power, keywords, flags), not one per card.
+  const shim = useMemo(() => stateShim(view), [view])
   /** The card whose sheet is open (rung I1), or null. */
   const [sheet, setSheet] = useState<CardId | null>(null)
   // The card the player last pointed at, by CODE rather than by instance id: the panel shows what the CARD
@@ -471,7 +473,7 @@ export function Board({ game, onHelp }: {
       // announced only its power — the same silence as a hand card, on the row where the decision is most
       // often irreversible.
       const props: CardProps = {
-        ...fieldCardProps(view, c, glows(c.id), kind === 'backups' ? 'small' : 'field'),
+        ...fieldCardProps(view, c, glows(c.id), kind === 'backups' ? 'small' : 'field', shim),
         ...(actionFor(c.id) === undefined ? {} : { action: actionFor(c.id) }),
         ...(payingRole(c.id) === undefined ? {} : { paying: payingRole(c.id) }),
       }
@@ -514,7 +516,7 @@ export function Board({ game, onHelp }: {
     if (!d) return null
     const onField = ([0, 1] as const).flatMap((p) => [...view.fields[p].forwards, ...view.fields[p].backups]).find((c) => c.id === id)
     const face: CardProps = onField
-      ? fieldCardProps(view, onField, false, 'field')
+      ? fieldCardProps(view, onField, false, 'field', shim)
       : { code: d.code, name: displayName(view, id), cost: d.cost, elements: d.elements, type: d.type, power: d.power, ...(d.text === undefined ? {} : { text: d.text }) }
     const forCard = paying ? [] : (choices.byCard.get(id) ?? [])
     const actions: SheetAction[] = forCard.map((c) => ({

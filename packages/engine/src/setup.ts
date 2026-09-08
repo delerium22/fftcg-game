@@ -1,6 +1,6 @@
 import type { CardDef, PlayerId } from './types.js'
-import { opponentOf } from './types.js'
-import { EMPTY_RESOLUTION } from './abilities.js'
+import { KEYWORDS, opponentOf } from './types.js'
+import { EMPTY_RESOLUTION, FIELD_FLAGS } from './abilities.js'
 import type { CardId, CardInstance, GameState, PlayerState } from './state.js'
 import { updatePlayer } from './state.js'
 import { nextInt, seedRng, shuffle } from './rng.js'
@@ -26,7 +26,32 @@ function emptyPlayer(): PlayerState {
   return { deck: [], hand: [], forwards: [], backups: [], damageZone: [], breakZone: [], removedFromGame: [], putIntoBreakZoneFromFieldThisTurn: [], mulliganDecided: false }
 }
 
+/**
+ * Rung J6-D9: a continuous static that arrived through JSON is checked once, here — a non-finite amount or an
+ * instance axis in its scope would poison every reader of power, keywords and flags.
+ */
+export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
+  const problems: string[] = []
+  const instanceAxes = ['minPower', 'maxPower', 'status', 'grantedKeyword', 'excludeSource', 'excludeSourceName', 'putIntoBreakZoneFromFieldThisTurn']
+  for (const d of defs) {
+    for (const a of d.abilities ?? []) {
+      if (a.trigger.kind !== 'static') continue
+      const e = a.trigger.effect
+      if (e.kind === 'modifyPower' && !Number.isFinite(e.amount)) problems.push(`${d.code}: ${a.id} has a non-finite amount`)
+      if (e.kind === 'grantKeyword' && !KEYWORDS.includes(e.keyword)) problems.push(`${d.code}: ${a.id} grants unknown keyword ${String(e.keyword)}`)
+      if (e.kind === 'grantFlag' && !FIELD_FLAGS.includes(e.flag)) problems.push(`${d.code}: ${a.id} grants unknown flag ${String(e.flag)}`)
+      if (e.kind === 'modifyPower' || e.kind === 'grantKeyword' || e.kind === 'grantFlag') {
+        for (const k of Object.keys(e.to.filter ?? {})) if (instanceAxes.includes(k)) problems.push(`${d.code}: ${a.id} scopes on instance axis ${k}`)
+        if (!['self', 'opponent', 'any'].includes(e.to.controller)) problems.push(`${d.code}: ${a.id} has an unknown scope controller`)
+      }
+    }
+  }
+  return problems
+}
+
 export function createGame(opts: CreateGameOptions): GameState {
+  const bad = validateContinuousStatics(opts.defs)
+  if (bad.length) throw new Error(`invalid continuous statics: ${bad.join('; ')}`)
   const defs = Object.fromEntries(opts.defs.map((d) => [d.code, d]))
   if (!opts.skipDeckValidation) {
     for (const p of [0, 1] as const) {

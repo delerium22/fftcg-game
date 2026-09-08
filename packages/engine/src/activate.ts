@@ -1,6 +1,6 @@
 import type { PlayerId } from './types.js'
 import type { CardId, FieldCard, GameState } from './state.js'
-import { defOf, findFieldCard, updatePlayer } from './state.js'
+import { defOf, findFieldCard, updatePlayer, keywordsOf } from './state.js'
 import type { Ability, AbilityCost, Effect, Frame } from './abilities.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
@@ -54,7 +54,7 @@ function sourceZoneOf(state: GameState, player: PlayerId, source: CardId): 'fiel
 }
 
 function hasHaste(state: GameState, card: FieldCard): boolean {
-  return card.granted.includes('haste') || defOf(state, card.id).keywords.includes('haste')
+  return keywordsOf(state, card).has('haste')   // printed, granted, or the layer (rung J6)
 }
 
 /**

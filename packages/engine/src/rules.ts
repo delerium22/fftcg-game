@@ -5,7 +5,7 @@ import type { ZoneTransitionReason } from './abilities.js'
 import { IllegalCommandError } from './errors.js'
 import type { Ability } from './abilities.js'
 import type { CardId, FieldCard, GameState } from './state.js'
-import { DAMAGE_TO_LOSE, MAX_BACKUPS, defOf, powerOf, updatePlayer } from './state.js'
+import { DAMAGE_TO_LOSE, MAX_BACKUPS, defOf, flagsOf, powerOf, updatePlayer } from './state.js'
 import type { Event } from './events.js'
 import type { DamageOccurrence } from './resolve.js'
 import { enqueueDamageTriggers, enqueueZoneChangeTriggers, registerRuleProcesses } from './resolve.js'
@@ -112,7 +112,7 @@ export function pendingBreakTransitions(state: GameState): ZoneTransition[] {
         if (zone === 'forwards') {
           const power = powerOf(state, c)
           if (power <= 0) { out.push({ ...base, reason: 'zeroPower' }); continue }
-          if (power >= 1000 && c.damage >= power && !c.flags.includes('cannotBeBroken')) { out.push({ ...base, reason: 'damage' }); continue }
+          if (power >= 1000 && c.damage >= power && !flagsOf(state, c).has('cannotBeBroken')) { out.push({ ...base, reason: 'damage' }); continue }
         }
         const clash = clashing.get(c.id)
         if (clash) out.push({ ...base, reason: clash })
