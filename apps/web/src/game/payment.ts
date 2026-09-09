@@ -19,7 +19,12 @@ import type { Choice } from './types.js'
 
 export const EMPTY_PAYMENT: Payment = { dullBackups: [], discards: [] }
 
-/** A CP crystal in the tray: tinted with a required element, or untinted ("any"), and lit once paid. */
+/**
+ * A CP crystal in the tray: tinted with a required element, or untinted ("any") until paid, and lit once paid.
+ * A generic crystal that IS paid takes the element of the CP that paid it — two earth backups dulled for an
+ * earth Forward show two earth crystals, not one earth and one grey (user report, 2026-09-09); it stays
+ * untinted only while unpaid, or when a flexible source (Moogle) could have been either element.
+ */
 export interface Crystal { element: Element | null; lit: boolean }
 
 export type PayableCommand = Extract<Choice['command'], { payment: Payment }>
@@ -114,11 +119,16 @@ export function generatedFor(v: PlayerView, sel: Payment, req: CpRequirement): G
 export function crystals(req: CpRequirement, cp: readonly GeneratedCp[]): Crystal[] {
   const need = [...req.requiredElements]
   const best = bestAssignment(need, cp)
-  const matched = best.filter((i) => i !== null).length
-  const leftover = Math.max(0, cp.length - matched)
+  const taken = new Set(best.filter((i): i is number => i !== null))
+  const leftover = cp.filter((_, i) => !taken.has(i))
   const generic = Math.max(0, req.amount - need.length)
   const out: Crystal[] = need.map((element, i) => ({ element, lit: best[i] !== null }))
-  for (let i = 0; i < generic; i++) out.push({ element: null, lit: i < leftover })
+  for (let i = 0; i < generic; i++) {
+    const paidBy = leftover[i]
+    out.push(paidBy
+      ? { element: paidBy.elements.length === 1 ? paidBy.elements[0] as Element : null, lit: true }
+      : { element: null, lit: false })
+  }
   return out
 }
 

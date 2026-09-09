@@ -129,11 +129,22 @@ describe('I2-A1 / I2-A2 — crystals are the cost, element first, lit by matchin
     ])
     expect(paidText(crystals(req, []))).toBe('0 of 3 CP paid')
   })
-  it('an off-element CP lights a generic crystal, never the required one', () => {
+  it('an off-element CP lights a generic crystal — in its OWN colour — never the required one', () => {
     const req = { amount: 2, requiredElements: ['lightning' as const], excluded: [] }
     const lit = crystals(req, [{ elements: ['earth'], source: 1 }])
-    expect(lit).toEqual([{ element: 'lightning', lit: false }, { element: null, lit: true }])
+    expect(lit).toEqual([{ element: 'lightning', lit: false }, { element: 'earth', lit: true }])
     expect(paidText(lit)).toBe('1 of 2 CP paid')
+  })
+  it('a generic crystal paid by the same element as the requirement shows that element, not grey', () => {
+    // Two earth backups for an earth cost-2 Forward: both crystals earth (user report, 2026-09-09).
+    const req = { amount: 2, requiredElements: ['earth' as const], excluded: [] }
+    const lit = crystals(req, [{ elements: ['earth'], source: 1 }, { elements: ['earth'], source: 2 }])
+    expect(lit).toEqual([{ element: 'earth', lit: true }, { element: 'earth', lit: true }])
+  })
+  it('a generic crystal paid by a flexible source stays untinted — its element was never decided', () => {
+    const req = { amount: 2, requiredElements: ['lightning' as const], excluded: [] }
+    const lit = crystals(req, [{ elements: ['lightning'], source: 1 }, { elements: ['earth', 'lightning'], source: 2 }])
+    expect(lit).toEqual([{ element: 'lightning', lit: true }, { element: null, lit: true }])
   })
   it('a flexible source takes the required crystal when a fixed one cannot (the C6 backtracking case)', () => {
     const req = { amount: 2, requiredElements: ['lightning' as const, 'earth' as const], excluded: [] }

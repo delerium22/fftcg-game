@@ -371,8 +371,18 @@
 
 .card.is-paying-discard .card__paying { background: var(--danger); color: #fff; }
 
-.card.is-paying-discard .card__face {
+/* A discard-to-pay burns: a red-white pulse, like the card is already on fire (user request, 2026-09-09).
+ * Declared AFTER the playable pulse below so it wins on a card that is both offered and taken. */
+.card.is-paying-discard .card__face,
+.card.is-paying-discard.is-selectable .card__face,
+.card.is-paying-discard.is-selectable:hover .card__face {
   box-shadow: var(--shadow-lift), 0 0 0 3px var(--danger), 0 0 22px -4px rgb(216 87 74 / 60%);
+  animation: discard-flame 0.9s ease-in-out infinite;
+}
+
+@keyframes discard-flame {
+  0%, 100% { box-shadow: var(--shadow-lift), 0 0 0 3px #d8574a, 0 0 18px -2px rgb(216 87 74 / 70%), 0 -6px 26px -6px rgb(255 140 60 / 55%); }
+  50% { box-shadow: var(--shadow-lift), 0 0 0 3px #fff1e8, 0 0 30px 2px rgb(255 120 90 / 95%), 0 -14px 34px -4px rgb(255 190 90 / 80%); }
 }
 
 .card.is-paying-dull .card__face {
@@ -380,27 +390,48 @@
 }
 
 /* ---------------- states ----------------
- * Three signals that must never be confused: selectable lifts, selected rings, focus outlines.
+ * Three signals that must never be confused: playable pulses (blue-white), selected rings (gold), focus
+ * outlines (cyan, outside both).
  */
+
+/* Hover is the same for every face-up card, playable or not: since rung I1 every card is a button that opens
+ * its sheet, so every card is worth lifting for. The lift is a rise AND an enlarge (user request, 2026-09-09:
+ * the 8px rise alone was easy to miss). The rows leave room for it — see `.zone__cards` / `.hand` in
+ * styles.css — because a scroll container clips anything that leaves its box, and the cost gem already sits
+ * 5px outside the card's own. */
+.card:not(.card--large):hover {
+  transform: translateY(-10px) scale(1.08);
+  z-index: 3;
+}
+
+.card:not(.card--large):hover .card__face {
+  box-shadow: var(--shadow-lift), 0 0 0 1px rgb(233 240 244 / 45%);
+}
+
+.card.is-dull:not(.card--large):hover { transform: translateY(-5px) scale(1.06); }
 
 .card.is-selectable {
   cursor: pointer;
 }
 
+/* Playable: a blue-white pulse, so what can be acted on right now reads at a glance across a whole board
+ * (user request, 2026-09-09). Blue rather than gold because gold is "selected", and rather than red because
+ * red is "about to be discarded". The animation is on the face's shadow only — the card itself does not
+ * move, or the hover lift would fight it. */
 .card.is-selectable .card__face {
-  box-shadow: var(--shadow-card), 0 0 0 1px rgb(233 240 244 / 30%), 0 0 14px -4px rgb(233 240 244 / 45%);
-}
-
-.card.is-selectable:hover {
-  transform: translateY(-8px);
-  z-index: 3;
+  box-shadow: var(--shadow-card), 0 0 0 1px rgb(160 210 255 / 60%), 0 0 16px -2px rgb(120 180 255 / 70%);
+  animation: playable-pulse 1.6s ease-in-out infinite;
 }
 
 .card.is-selectable:hover .card__face {
-  box-shadow: var(--shadow-lift), 0 0 0 1px rgb(233 240 244 / 45%);
+  box-shadow: var(--shadow-lift), 0 0 0 2px rgb(210 235 255 / 85%), 0 0 26px -2px rgb(120 180 255 / 90%);
+  animation: none;
 }
 
-.card.is-selectable.is-dull:hover { transform: translateY(-4px); }
+@keyframes playable-pulse {
+  0%, 100% { box-shadow: var(--shadow-card), 0 0 0 1px rgb(160 210 255 / 55%), 0 0 14px -2px rgb(100 170 255 / 60%); }
+  50% { box-shadow: var(--shadow-card), 0 0 0 2px rgb(235 245 255 / 90%), 0 0 26px 0 rgb(140 195 255 / 95%); }
+}
 
 /* Selected is persistent and unmistakable: a solid gold ring plus a warm bloom that survives being
  * laid over full-bleed art, where a border alone would disappear into a bright illustration. */

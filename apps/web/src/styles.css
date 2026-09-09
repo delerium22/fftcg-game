@@ -87,6 +87,9 @@
   --shadow-lift: 0 10px 28px rgb(0 0 0 / 60%);
   --shadow-panel: 0 1px 0 rgb(255 255 255 / 5%) inset, 0 12px 32px rgb(0 0 0 / 45%);
   --rail-w: 320px;
+
+  /* Room a card row reserves above and beside its cards for the hover lift and the cost gem's overhang. */
+  --card-lift-room: 22px;
 }
 
 *,
@@ -299,6 +302,12 @@ body {
   gap: var(--s3);
   min-height: calc(clamp(84px, 11.5vh, 134px) + 4px);
   padding-bottom: var(--s1);
+  /* Headroom for a hovered card. The row is a scroll container (below), and a scroll container clips at its
+     padding edge — so the 10px rise plus 8% enlarge plus the cost gem's 5px overhang were being cut off at
+     the top of every row (user report, 2026-09-09). The padding makes room inside the box and the negative
+     margin gives the same height back, so the board's layout does not move. */
+  padding-top: var(--card-lift-room);
+  margin-top: calc(-1 * var(--card-lift-room));
   /* A Break Zone grows all game. Opened at 24 cards its row measured 1215px inside a 912px container and the
      surplus was simply CLIPPED — unreachable by pointer, and by keyboard too, since a non-scrollable
      container cannot scroll a focused card into view. `safe center` keeps a short row centred while letting
@@ -329,6 +338,9 @@ body {
   align-items: flex-end;
   min-height: calc(clamp(112px, 16vh, 179px) + 11px);
   padding: var(--s2) 0;
+  /* Same headroom as `.zone__cards`, for the same reason. */
+  padding-top: calc(var(--s2) + var(--card-lift-room));
+  margin-top: calc(-1 * var(--card-lift-room));
 }
 
 /* The hand is a `role="grid"` with one `role="row"`, so the cards sit a level deeper than they used to.
@@ -339,8 +351,9 @@ body {
   justify-content: safe center;
   align-items: flex-end;
   gap: var(--s2);
-  /* Room for a focused cell's outline, which an `overflow` ancestor would otherwise crop. */
-  padding: 3px;
+  /* Room for a focused cell's outline, which an `overflow` ancestor would otherwise crop — and, at the sides,
+     for the first and last card's hover enlarge and the cost gem's 5px overhang past the card's left edge. */
+  padding: 3px 12px;
 }
 
 /* A gridcell wraps one card. NOT `display: contents`, tempting as that is for leaving the flex layout
