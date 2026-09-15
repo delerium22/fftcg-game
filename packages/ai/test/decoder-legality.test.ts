@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { actingPlayer, apply, isLegal, legalCommands, nextInt, seedRng, viewFor, type CardId, type Command, type GameState } from '@fftcg/engine'
 import { actionKey, candidateCommands, decodeAction } from '../src/index.js'
-import { makeGame } from '../../engine/test/helpers.js'
+import { VANILLA_POOL, makeDef, makeGame } from '../../engine/test/helpers.js'
 
 /**
  * Rung J7-A7 — the ISMCTS decoder accepts a key exactly when `isLegal` accepts the decoded command: every
@@ -68,5 +68,38 @@ describe('J7-A7 — decodeAction ⇔ isLegal', () => {
     expect(candidates).toBeGreaterThan(1000)
     expect(probed).toBeGreaterThan(500)
     expect(refused).toBeGreaterThan(100)
+  })
+
+  // Rung J8 (review C1): an LB cast's key names the card and its flips by CODE in the LB deck, and decodes to a
+  // legal command — a payment with no flips is one `apply` refuses.
+  it('with LB decks: every LB cast candidate round-trips to a legal command, and at least one is seen', () => {
+    const DEFS = [...VANILLA_POOL, makeDef({ code: 'T-LB2', cost: 0, power: 5000, limitBreak: 2, generic: false }), makeDef({ code: 'T-LB1', cost: 0, power: 3000, limitBreak: 1 })]
+    const LB = ['T-LB2', 'T-LB2', 'T-LB1', 'T-LB1']
+    let lbCasts = 0
+    for (let seed = 1; seed <= 6; seed++) {
+      let s = makeGame({ seed, defs: DEFS, lbDecks: [LB, LB] })
+      let rng = seedRng(seed * 7919)
+      for (let step = 0; step < 80 && !s.result; step++) {
+        const p = actingPlayer(s)
+        if (p === null) break
+        const view = viewFor(s, p)
+        for (const c of candidateCommands(s, p)) {
+          const back = decodeAction(view, actionKey(view, c))
+          expect(back, `${c.type} did not decode: ${actionKey(view, c)}`).not.toBeNull()
+          expect(isLegal(s, back!), `${c.type} decoded to an illegal command: ${actionKey(view, c)}`).toBeNull()
+          if ((c.type === 'castCharacter' || c.type === 'castSummon') && (c.payment.lbFlip?.length ?? 0) > 0) {
+            lbCasts++
+            expect(actionKey(view, c)).not.toContain('?')
+            expect(back!.type === c.type && back!.payment.lbFlip?.length).toBe(c.payment.lbFlip!.length)
+          }
+        }
+        const legal = legalCommands(s, p).filter((c) => c.type !== 'concede')
+        if (!legal.length) break
+        let n: number
+        ;[n, rng] = nextInt(rng, legal.length)
+        s = apply(s, legal[n]!).state
+      }
+    }
+    expect(lbCasts).toBeGreaterThan(0)
   })
 })

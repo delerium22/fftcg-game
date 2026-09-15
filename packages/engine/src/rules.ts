@@ -212,7 +212,13 @@ export function runRuleProcesses(state: GameState): [GameState, Event[]] {
 
 const LB_RETURN_ZONES = ['hand', 'breakZone', 'deck', 'removedFromGame'] as const
 
-function sweepLimitBreak(state: GameState): [GameState, Event[]] {
+/**
+ * §15.2.8.4 (rung J8): every LB card found in a hand, Break Zone, main deck or removed-from-play goes to its owner's LB
+ * deck face up. Runs at the end of every rule-process pass — BETWEEN frames, not inside one (review L1): a clause
+ * whose `then` list both moves an LB card and reads that zone in the same frame would see it there until the frame
+ * ends. No pool clause does; write one knowing it. Also run at game over (`apply`), where rule processes stop early.
+ */
+export function sweepLimitBreak(state: GameState): [GameState, Event[]] {
   let s = state
   const events: Event[] = []
   for (const p of [0, 1] as const) {

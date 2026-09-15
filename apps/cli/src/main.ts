@@ -111,7 +111,7 @@ if (cmd === 'hotseat') {
     const games = parsed(() => parsePositiveInt(flag('games', '3'), 'games', 10_000))
     // G1b-A0: seat 1's policy. Default greedy:1, which is what every earlier profile measured.
     const opponent = withDefaults(parsed(() => parseAgentSpec(flag('opponent', 'greedy:1'))), depth, iterations, rolloutCap, budget)
-    const r = profileSearch({ games, seed, decks: [deck, deck], defs, iterations, opponent })
+    const r = profileSearch({ games, seed, decks: [deck, deck], lbDecks, defs, iterations, opponent })
     console.log(JSON.stringify(r, null, 2))
     process.exit(r.mismatchedDecisions === 0 ? 0 : 1)
   }
@@ -132,7 +132,7 @@ if (cmd === 'hotseat') {
   ])
   const pairs = parsed(() => parsePositiveInt(flag('pairs', '200'), 'pairs', 1_000_000))
   const bootstrapSamples = parsed(() => parsePositiveInt(flag('bootstrap', '2000'), 'bootstrap', MAX_ITERATIONS))
-  const r = mirrorTournament({ pairs, seed, decks: [deck, deck], defs, agents, strict: !has('fast'), bootstrapSamples })
+  const r = mirrorTournament({ pairs, seed, decks: [deck, deck], lbDecks, defs, agents, strict: !has('fast'), bootstrapSamples })
   // `results` is one row per game — useful in a file, noise on a terminal. `JSON.stringify` drops undefined
   // properties, so this is how the summary omits it. The aggregates are the report.
   const summary = { ...r, results: undefined, failures: r.failures.map((f) => ({ seed: f.seed, seatOfA: f.seatOfA, error: f.error.split('\n')[0] })) }

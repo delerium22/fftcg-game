@@ -10,7 +10,7 @@ import { applyChooseFirst, applyMulligan } from './setup.js'
 import { applyDiscardToHandSize, applyPass, finishEndPhase } from './phases.js'
 import { applyCastCharacter, applyCastSummon } from './cast.js'
 import { applyAssignPartyDamage, applyChooseExBurst, applyDeclareAttack, applyDeclareBlock } from './attack.js'
-import { applyBreakExcessBackups, runRuleProcesses } from './rules.js'
+import { applyBreakExcessBackups, runRuleProcesses, sweepLimitBreak } from './rules.js'
 import { advanceAgenda, applyChooseFromDeck, applyChooseMode, applyChooseTargets, clearStackAtGameOver } from './resolve.js'
 
 export interface ApplyResult { state: GameState; events: Event[] }
@@ -52,12 +52,16 @@ function settle(state: GameState): [GameState, Event[]] {
     s = advanced; events.push(...advanceEvents)
     if (s.result || s.pending) break
   }
-  if (s.result) s = { ...clearStackAtGameOver(s), resolution: EMPTY_RESOLUTION }   // nothing may stay queued after game over
+  if (s.result) s = { ...overAndSwept(s), resolution: EMPTY_RESOLUTION }   // nothing may stay queued after game over
   // Rung J1-D12: the step budget spans one whole settlement, stack items included — reset only when nothing
   // is running, placing, triggered or waiting, and no choice is owed.
   else if (!s.pending && !hasResolutionWork(s.resolution) && s.stack.length === 0) s = { ...s, resolution: { ...s.resolution, steps: 0 } }
   return [s, events]
 }
+
+/** Game over: the stack is emptied (Summons to the Break Zone) and, since rule processes stop at a result, the Limit
+ *  Break sweep runs here so an LB Summon that was waiting ends in the LB deck face up (§15.2.8.4.3, review M1). */
+const overAndSwept = (s: GameState): GameState => sweepLimitBreak(clearStackAtGameOver(s))[0]
 
 export function apply(state: GameState, command: Command): ApplyResult {
   if (state.result) throw new IllegalCommandError('game is over', command)
@@ -88,7 +92,7 @@ export function apply(state: GameState, command: Command): ApplyResult {
         [s, events] = applyActivateAbility(state, command.player, command.source, command.abilityId, command.payment, command.targets); break
       case 'pass': [s, events] = applyPass(state, command.player); break
       case 'concede':
-        s = { ...clearStackAtGameOver(state), pending: null, resolution: EMPTY_RESOLUTION, result: { winner: opponentOf(command.player), cause: 'concede', reason: `player ${command.player} conceded (§2.1)` } }; events = []; break
+        s = { ...overAndSwept(state), pending: null, resolution: EMPTY_RESOLUTION, result: { winner: opponentOf(command.player), cause: 'concede', reason: `player ${command.player} conceded (§2.1)` } }; events = []; break
     }
   } catch (e) {
     if (e instanceof IllegalCommandError) throw new IllegalCommandError(e.message, command)
@@ -97,7 +101,7 @@ export function apply(state: GameState, command: Command): ApplyResult {
   if (!s.result) { const [t, more] = settle(s); s = t; events = [...events, ...more] }
   // A result set by the command itself (a block whose damage is lethal) skips `settle`, so the stack is
   // emptied here too — one rule, every exit (rung J1-D1).
-  else s = { ...clearStackAtGameOver(s), resolution: EMPTY_RESOLUTION }
+  else s = { ...overAndSwept(s), resolution: EMPTY_RESOLUTION }
   if (s.result && events.at(-1)?.type !== 'gameOver') events = [...events, { type: 'gameOver', result: s.result }]
   return { state: s, events }
 }

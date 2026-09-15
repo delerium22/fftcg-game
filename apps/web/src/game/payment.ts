@@ -56,27 +56,34 @@ export function legalPaymentsOf(c: Choice): Payment[] {
   return [c.command.payment, ...(c.alternatives ?? []).flatMap((a) => (isPayableChoice(a) ? [a.command.payment] : []))]
 }
 
-/** `small` ⊆ `big`, as sets of sources (a discard's element is part of its identity). */
+/** `small` ⊆ `big`, as sets of CP sources (a discard's element is part of its identity). The Limit Break flips are
+ *  not compared: the engine lists ONE canonical flip subset per CP payment and accepts any (rung J8, review M2). */
 function subsumes(big: Payment, small: Payment): boolean {
   return small.dullBackups.every((b) => big.dullBackups.includes(b))
     && small.discards.every((d) => big.discards.some((o) => o.card === d.card && o.element === d.element))
-    && (small.lbFlip ?? []).every((id) => (big.lbFlip ?? []).includes(id))
 }
+const sameCp = (a: Payment, b: Payment): boolean => samePayment({ dullBackups: a.dullBackups, discards: a.discards }, { dullBackups: b.dullBackups, discards: b.discards })
 
 /** A CP source — or, rung J8, an LB-deck card to turn face up for a Limit Break cost. */
 export type SourceAdd = { backup: CardId } | { discard: CardId; element: Element } | { flip: CardId }
 
 /** I2-D3: may this source be added — is the result still inside some listed payment? */
 export function extendable(legal: readonly Payment[], sel: Payment, add: SourceAdd): boolean {
-  const next = 'backup' in add ? withBackup(sel, add.backup, true) : 'flip' in add ? withFlip(sel, add.flip, true) : withDiscard(sel, add.discard, add.element)
+  // A flip is addable while fewer than X are picked; WHICH face-down card is the player's (any X-subset is legal).
+  if ('flip' in add) return !(sel.lbFlip ?? []).includes(add.flip) && (sel.lbFlip?.length ?? 0) < flipsNeeded(legal)
+  const next = 'backup' in add ? withBackup(sel, add.backup, true) : withDiscard(sel, add.discard, add.element)
   return legal.some((p) => subsumes(p, next))
 }
 
+/** Rung J8: the cards the Limit Break cost may turn face up — the viewer's OTHER face-down LB-deck cards. */
+export function flipCandidates(v: PlayerView, card: CardId): Set<CardId> {
+  return new Set(v.fields[v.me].lbDeck.filter((x) => !x.faceUp && x.id !== card).map((x) => x.id))
+}
+
 /** The union of sources across the listed payments — what the board may light as a candidate at all. */
-export function candidateSources(legal: readonly Payment[]): { backups: Set<CardId>; discards: Map<CardId, Element[]>; flips: Set<CardId> } {
+export function candidateSources(legal: readonly Payment[]): { backups: Set<CardId>; discards: Map<CardId, Element[]> } {
   const backups = new Set<CardId>()
   const discards = new Map<CardId, Element[]>()
-  const flips = new Set<CardId>()
   for (const p of legal) {
     for (const b of p.dullBackups) backups.add(b)
     for (const d of p.discards) {
@@ -84,9 +91,8 @@ export function candidateSources(legal: readonly Payment[]): { backups: Set<Card
       if (!els.includes(d.element)) els.push(d.element)
       discards.set(d.card, els)
     }
-    for (const id of p.lbFlip ?? []) flips.add(id)
   }
-  return { backups, discards, flips }
+  return { backups, discards }
 }
 
 const keepFlips = (sel: Payment): Pick<Payment, 'lbFlip'> => (sel.lbFlip && sel.lbFlip.length ? { lbFlip: sel.lbFlip } : {})
@@ -118,8 +124,17 @@ export function flipsNeeded(legal: readonly Payment[]): number {
  *  selection itself — is what Confirm submits, so the command is an object `legalCommands` produced. */
 export function completedChoice(c: Choice, sel: Payment): Choice | null {
   if (!isPayableChoice(c)) return null
-  if (samePayment(c.command.payment, sel)) return c
-  return (c.alternatives ?? []).find((a) => isPayableChoice(a) && samePayment(a.command.payment, sel)) ?? null
+  const need = flipsNeeded(legalPaymentsOf(c))
+  if (need === 0) {
+    if (samePayment(c.command.payment, sel)) return c
+    return (c.alternatives ?? []).find((a) => isPayableChoice(a) && samePayment(a.command.payment, sel)) ?? null
+  }
+  // Rung J8: the listed payment with this CP part, carrying the player's OWN X flips — `useGame.choose` runs it
+  // through `isLegal`, which accepts any X-subset (review M2).
+  if ((sel.lbFlip?.length ?? 0) !== need) return null
+  const match = [c, ...(c.alternatives ?? [])].find((a) => isPayableChoice(a) && sameCp(a.command.payment, sel))
+  if (!match || !isPayableChoice(match)) return null
+  return { ...match, command: { ...match.command, payment: { ...match.command.payment, lbFlip: [...(sel.lbFlip ?? [])] } } }
 }
 
 /** The CP the selection generates, through the engine's own validator. Throws on an illegal source, which the

@@ -46,7 +46,9 @@ export function checkInvariants(state: GameState): string[] {
     ps.removedFromGame.forEach((id) => note(id, `P${p} removed`))
     // Rung J8: the LB deck is a zone; an LB card may not linger in a zone the sweep empties (§15.2.8.4).
     ps.lbDeck.forEach((x) => { note(x.id, `P${p} lb`); if (typeof x.faceUp !== 'boolean') problems.push(`P${p} LB card ${x.id} has a non-boolean faceUp`) })
-    if (!state.pending && !state.resolution.active) {
+    // Mid-frame only is exempt (review L3): an ability's pending always pairs with an active frame, and a rule-owed
+    // pending (a block, a hand-size discard, an EX Burst) follows a rule-process pass that swept.
+    if (!state.resolution.active) {
       for (const zone of ['hand', 'breakZone', 'deck', 'removedFromGame'] as const) {
         for (const id of ps[zone]) if (state.defs[state.cards[id]?.code ?? '']?.limitBreak !== undefined) problems.push(`LB card ${id} is in P${p} ${zone} instead of the LB deck (§15.2.8.4)`)
       }

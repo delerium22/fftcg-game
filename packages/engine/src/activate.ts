@@ -220,6 +220,8 @@ function applyCosts(
   const transitions: ZoneTransition[] = []
 
   if (validate) {
+    // Rung J8 (review L2): an activation's payment never turns LB cards face up; `paymentCheck` refuses it, so must this.
+    if (payment.lbFlip?.length) throw new IllegalCommandError('an ability cost turns no LB card face up')
     const req = abilityCpRequirement(source, cost)
     const cp = generateCp(s, player, payment, req.excluded)
     if (!canPay(req.amount, req.requiredElements, cp)) {

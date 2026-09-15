@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CardId, Event, GameState } from '@fftcg/engine'
-import { checkInvariants, findFieldCard, keywordsOf, legalCommands, powerOf } from '@fftcg/engine'
+import { checkInvariants, findFieldCard, isLegal, keywordsOf, legalCommands, powerOf } from '@fftcg/engine'
 import { EARTH_BACKUP, endPhase, makeGame, step, trace, withCp, withField } from '../harness.js'
 
 /**
@@ -28,10 +28,11 @@ describe('scenario: Maat from the LB deck — cast for CP plus a flip, pumps the
     const names = { [maat]: 'maat', [noctis]: 'noctis', [luso]: 'luso', [scar]: 'scar' }
     const log: Event[] = []
 
-    // §15.2.8.3: three listed casts — the four Geomancers every time, one of the three other face-down cards flipped.
+    // §15.2.8.3: one listed cast — the four Geomancers, one canonical flip; flipping Noctis instead is legal too.
     const casts = legalCommands(s, 0).filter((c) => c.type === 'castCharacter' && c.card === maat)
-    expect(casts).toHaveLength(3)
+    expect(casts).toHaveLength(1)
     for (const c of casts) if (c.type === 'castCharacter') { expect(c.payment.dullBackups).toEqual(cp); expect(c.payment.lbFlip).toHaveLength(1) }
+    expect(isLegal(s, { type: 'castCharacter', player: 0, card: maat, payment: { dullBackups: cp, discards: [], lbFlip: [noctis] } })).toBeNull()
     s = step(log, s, { type: 'castCharacter', player: 0, card: maat, payment: { dullBackups: cp, discards: [], lbFlip: [noctis] } })
     expect(lbOf(s), 'the cast card left; Noctis is face up').toEqual([['22-119R', false], ['23-125R', true], ['23-125R', false]])
     expect(findFieldCard(s, maat)?.owner, '§15.2.8.4: an ordinary Character on the field').toBe(0)

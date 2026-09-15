@@ -44,7 +44,7 @@ unreachable, not skipped).
 | 7.7.5 / 12.4.7 | One Light/Dark | absent | Pool has none. |
 | 7.12 | **The stack** | ok | Rung J1 (2026-09-08): `state.stack`, `passes`; `cr11-stack.test.ts`. The rows once marked ★ below were its consequences. |
 | 7.13 | Removed from play | ok | C7. |
-| 7.14 / 8.1 / 15.2.8 | LB deck, Limit Break | ok | Rung J8 (2026-09-16): `PlayerState.lbDeck`, `Payment.lbFlip`, the sweep in `rules.ts`; `limit-break.test.ts`, `scenarios/maat-limit-break.test.ts`; `decks/starter-2025-vol2-lb.txt` (Noctis ×2, Maat ×2). Both LB decks are exposed to both seats (open decklists, spec J8-D5). |
+| 7.14 / 8.1 / 15.2.8 | LB deck, Limit Break | ok | Rung J8 (2026-09-16): `PlayerState.lbDeck`, `Payment.lbFlip`, the sweep in `rules.ts`; `limit-break.test.ts`, `scenarios/maat-limit-break.test.ts`; `decks/starter-2025-vol2-lb.txt` (Noctis ×2, Maat ×2). Both LB decks are exposed to both seats (open decklists, spec J8-D5). Review 2026-09-16: the ISMCTS key index names LB cards (it threw at the root before); strict self-play with LB decks is in the suite. |
 | 8.2 | Setup, first player, mulligan | partial | Mulligan keeps hand order to the bottom (`setup.ts:74`); §8.2.1.4 lets you choose. Unobservable in a shuffled 50-card deck without deck-bottom effects. |
 | 9.1 | Active Phase | ok | `phases.ts`. No Freeze (§15.2.4), so "frozen do not activate" is absent. |
 | 9.2 | Draw Phase, first turn draws one | ok | `cr9-phases.test.ts`. |

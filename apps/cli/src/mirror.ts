@@ -27,6 +27,8 @@ export interface MirrorOptions {
   pairs: number
   seed: number
   decks: [string[], string[]]
+  /** Rung J8: the LB decks (§7.14); none when absent. */
+  lbDecks?: [string[], string[]]
   defs: CardDef[]
   /** `[A, B]` — A is the agent under test. */
   agents: [AgentSpec, AgentSpec]
@@ -234,7 +236,7 @@ export function mirrorTournament(opts: MirrorOptions): MirrorReport {
       let winner: PlayerId | null = null
       let gameTurns = 0
       try {
-        const out = playGame({ seed, decks: opts.decks, defs: opts.defs, agents: seated, maxCommands: max, strict }, stats)
+        const out = playGame({ seed, decks: opts.decks, ...(opts.lbDecks ? { lbDecks: opts.lbDecks } : {}), defs: opts.defs, agents: seated, maxCommands: max, strict }, stats)
         winner = out.winner
         gameTurns = out.turns
         points = winner === null ? DRAW : winner === seatOfA ? WIN : LOSS

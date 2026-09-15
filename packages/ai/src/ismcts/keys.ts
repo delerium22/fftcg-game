@@ -164,6 +164,16 @@ function buildIndex(view: PlayerView, root: PlayerId): RefIndex {
     f.damageZone.forEach((id, i) => put(id, `d${p}:${i}`))
     f.breakZone.forEach((id, i) => put(id, `z${p}:${i}`))
   }
+  // Both LB decks (rung J8, spec D5): public and identical in every determinisation. By CODE, like the hand — two
+  // face-down copies of Maat are interchangeable (the D-2 false split) — with the face state in the ref, so a flip
+  // decoded by ref can only land on a face-down copy (review C1: unindexed, every LB cast keyed opaque and the
+  // search threw at the root, leaving the browser's opponent greedy for the rest of the game).
+  for (const p of [0, 1] as const) {
+    for (const x of view.fields[p].lbDeck) {
+      const code = view.cards[x.id]?.code
+      if (code !== undefined) put(x.id, `l${p}:${code}${x.faceUp ? ':up' : ''}`)
+    }
+  }
   // The stack (rung J1): public, ordered, and identical in every determinisation — position is identity.
   view.stack.forEach((item, i) => { if (item.kind === 'summon') put(item.card, `s:${i}`) })
   if (view.resolution.placing?.item.kind === 'summon') put(view.resolution.placing.item.card, 's:placing')
@@ -232,7 +242,9 @@ export function actionKey(view: PlayerView, command: Command): ActionKey {
       // emits backups in field order but hand discards in hand order, which differs between worlds.
       const dull = joinRefs(command.payment.dullBackups.map(r))
       const discards = joinTagged(command.payment.discards.map((d) => [r(d.card), d.element] as const))
-      return `${head}${FIELD}${r(command.card)}${FIELD}${dull}${FIELD}${discards}`
+      // Rung J8: the Limit Break flips are payment sources too (a decoded cast without them is one `apply` refuses).
+      const flips = joinRefs((command.payment.lbFlip ?? []).map(r))
+      return `${head}${FIELD}${r(command.card)}${FIELD}${dull}${FIELD}${discards}${FIELD}${flips}`
     }
     case 'declareAttack':
       // `applyDeclareAttack` sorts the party itself, so attacker order carries no meaning to normalise away.
@@ -438,7 +450,9 @@ function decodeCast({ view, player, args, id, ids }: DecodeCtx, type: 'castChara
     if (src === null || !isElement(tag)) return null
     discards.push({ card: src, element: tag })
   }
-  return { type, player, card, payment: { dullBackups, discards } }
+  const lbFlip = ids(args[3])
+  if (!lbFlip) return null
+  return { type, player, card, payment: { dullBackups, discards, ...(lbFlip.length ? { lbFlip } : {}) } }
 }
 
 export function decodeAction(view: PlayerView, key: ActionKey): Command | null {
@@ -484,6 +498,15 @@ export function decodeAction(view: PlayerView, key: ActionKey): Command | null {
 // ---------------------------------------------------------------------------
 // observationKey
 // ---------------------------------------------------------------------------
+
+/** The LB deck as two code multisets — face down, then face up — order carrying no information (§8.2.1.1). */
+function lbDigest(view: PlayerView, p: PlayerId): string {
+  const code = (id: CardId): string => view.cards[id]?.code ?? OPAQUE
+  const lb = view.fields[p].lbDeck
+  const down = lb.filter((x) => !x.faceUp).map((x) => code(x.id)).sort(cmpStr).join(',')
+  const up = lb.filter((x) => x.faceUp).map((x) => code(x.id)).sort(cmpStr).join(',')
+  return `${down}/${up}`
+}
 
 function fieldDigest(view: PlayerView, p: PlayerId): string {
   const f = view.fields[p]
@@ -617,6 +640,9 @@ export function observationKey(view: PlayerView): ObservationKey {
     `hand[${hand}]`,
     `F0:${fieldDigest(view, 0)}`,
     `F1:${fieldDigest(view, 1)}`,
+    // Rung J8: which LB cards are spent is observable (both decks are public, spec D5) and changes what may be cast.
+    `LB0:${lbDigest(view, 0)}`,
+    `LB1:${lbDigest(view, 1)}`,
     `atk:${at === null ? '-' : `${at.step}/${joinRefs(at.attackers.map(r))}/${at.blocker === null ? '-' : r(at.blocker)}`}`,
     `pend:${pendingDigest(view, view.pending)}`,
     `res:${resolutionDigest(view, view.resolution)}`,

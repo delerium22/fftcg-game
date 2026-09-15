@@ -555,10 +555,11 @@ export function describeChoice(v: PlayerView, c: Command, opts: { payment?: bool
     case 'castSummon': {
       const pay = [...c.payment.dullBackups.map((id) => `dull ${choiceName(v, id)}`), ...c.payment.discards.map((d) => `discard ${choiceName(v, d.card)} as ${d.element}`)]
       // Rung J8: a card cast from the LB deck says so, and names the cards its Limit Break cost turns face up.
-      const fromLb = v.fields[v.me].lbDeck.some((x) => x.id === c.card) || (c.payment.lbFlip?.length ?? 0) > 0
-      const head = fromLb ? `Cast ${choiceName(v, c.card)} from your LB deck` : `Cast ${choiceName(v, c.card)}`
+      const fromLb = ([0, 1] as const).some((p) => v.fields[p].lbDeck.some((x) => x.id === c.card)) || (c.payment.lbFlip?.length ?? 0) > 0
+      const whose = c.player === v.me ? 'your' : "the AI's"   // review L5: the AI's cast is described from the human's view
+      const head = fromLb ? `Cast ${choiceName(v, c.card)} from ${whose} LB deck` : `Cast ${choiceName(v, c.card)}`
       if (!withPayment) return head
-      const flips = c.payment.lbFlip?.length ? `, turning ${c.payment.lbFlip.map((id) => choiceName(v, id)).join(' and ')} face up` : ''
+      const flips = c.payment.lbFlip?.length ? `, turning ${c.payment.lbFlip.map((id) => choiceName(v, id)).join(', ')} face up` : ''
       return pay.length ? `${head}${flips}${flips ? ',' : ''} paying: ${pay.join(', ')}` : `${head}${flips} (free)`
     }
     /*
@@ -685,6 +686,7 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   phase: 'Only in your Main Phase',   // a Summon or a Back Attack Character gets the window wording in `castBlockerText`
   lbCost: 'Not enough face-down cards left in your LB deck for its Limit Break cost',
   notInHand: 'Not in your hand',
+  lbSpent: 'Spent — a face-up LB card is not cast again',
   notTurnPlayer: 'Only on your own turn',
   priority: 'Not while the AI holds priority',
   pending: 'Answer the current prompt first',

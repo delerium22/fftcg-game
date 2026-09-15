@@ -69,7 +69,7 @@ const ZERO = {
 const DAMAGE_SLOTS = 8
 
 export function profileSearch(opts: {
-  games: number; seed: number; decks: [string[], string[]]; defs: CardDef[]; iterations: number
+  games: number; seed: number; decks: [string[], string[]]; lbDecks?: [string[], string[]]; defs: CardDef[]; iterations: number
   /**
    * G1b-A0: seat 1's policy. It defaults to greedy depth 1, which is what every D7 measurement used — but it
    * has to be configurable, because the leaf-damage distribution is a property of the MATCHUP and not of the
@@ -87,7 +87,7 @@ export function profileSearch(opts: {
 
   for (let g = 0; g < opts.games; g++) {
     const seed = opts.seed + g
-    let s: GameState = createGame({ seed, decks: opts.decks, defs: opts.defs })
+    let s: GameState = createGame({ seed, decks: opts.decks, defs: opts.defs, ...(opts.lbDecks ? { lbDecks: opts.lbDecks } : {}) })
     // Seat 0 searches and is profiled; seat 1 is the heuristic, so the run costs one search per pair of moves.
     const searcher = new IsmctsAgent({ seed, decks: opts.decks, iterations: opts.iterations, profile: true })
     const other = makeAgent(opts.opponent ?? { kind: 'greedy', depth: 1 }, seed + 1, opts.decks)

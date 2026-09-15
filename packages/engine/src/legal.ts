@@ -174,13 +174,13 @@ export function isLegal(state: GameState, command: Command): string | null {
 }
 const sameSet = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && [...a].sort((x, y) => x - y).every((v, i) => v === [...b].sort((x, y) => x - y)[i])
 
-/** Does `payment` cover `req`, drawing on sources the player may spend? The engine's own generator decides; an illegal source is its refusal. */
 /** The cards a player may cast from: the hand, and the face-down cards of the LB deck (rung J8). */
 function castableFrom(state: GameState, player: PlayerId): CardId[] {
   const ps = state.players[player]
   return [...ps.hand, ...ps.lbDeck.filter((x) => !x.faceUp).map((x) => x.id)]
 }
 
+/** Does `payment` cover `req`, drawing on sources the player may spend? The engine's own generator decides; an illegal source is its refusal. */
 function paymentCheck(state: GameState, player: PlayerId, payment: Payment, req: CpRequirement): string | null {
   try {
     // Rung J8: the Limit Break part of the payment, exactly as `checkedPay` will judge it.

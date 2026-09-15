@@ -243,7 +243,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.8.2 | "Limit Break -- X" is the LB cost | tested | cards/normalise#Limit Break |
 | 15.2.8.3 | LB cards are cast from the LB deck, under the type's own conditions | tested | engine/limit-break#a face-down LB card is castable in the Main Phase; cards/scenarios/maat-limit-break#L3 maat-limit-break |
 | 15.2.8.3.1 | The LB cost is paid in addition to the base cost | tested | engine/limit-break#a face-down LB card is castable in the Main Phase; cards/scenarios/maat-limit-break#L3 maat-limit-break |
-| 15.2.8.3.2 | Paid by turning X face-down LB-deck cards face up | tested | engine/limit-break#refuses a wrong flip count; engine/limit-break#enumeratePayments crosses CP payments with flip subsets |
+| 15.2.8.3.2 | Paid by turning X face-down LB-deck cards face up | tested | engine/limit-break#refuses a wrong flip count; engine/limit-break#enumeratePayments lists one canonical flip subset |
 | 15.2.8.4 | On the field, an ordinary Character | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |
 | 15.2.8.4.1 | Moved to hand, Break Zone, main deck or removed: goes there, then to the LB deck face up at once | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |
 | 15.2.8.4.2 | The arrival's triggers still apply | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |

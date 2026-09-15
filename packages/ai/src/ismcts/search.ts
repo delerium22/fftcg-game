@@ -242,6 +242,8 @@ export function searchView(state: GameState, me: PlayerId): PlayerView {
     // makes every one of them digest as `?` in a key and re-opens the `determinise` throw above. Reeve's two
     // unpicked cards go to the BOTTOM and stay known for the rest of the game, so this is not a corner.
     for (const id of ps.deck) if (knows(state, me, id)) see(id)
+    // Rung J8: both LB decks are public (spec D5) — the same omission a third time, on the zone J8 added.
+    for (const x of ps.lbDeck) see(x.id)
   }
   // A Summon on the stack (rung J1) — public, in no player zone, and `viewFor` shows it too.
   for (const item of state.stack) if (item.kind === 'summon') see(item.card)

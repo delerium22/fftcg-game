@@ -19,6 +19,14 @@
   the row shows "LB" / "Spent", the ETB pumps. The pressable e2e now counts hand casts only — the LB deck's four
   cards are pressable casts on turn 1 (a discard pays for Maat).
 - The harness `trace` gained `lbFlip:` and `lbReturn:` lines. No seed re-pins: the main deck file is unchanged.
+- **Review fixes (2026-09-16, `claude-j8-review.md`):** C1 the ISMCTS index (J8-D8); H1 strict self-play with the LB
+  decks for random, greedy and ISMCTS, the decoder round-trip with LB decks, and `--lb-deck` reaching `mirror` and
+  `profile` too; M1 the sweep runs at game over as well (an LB Summon waiting on the stack at a concede ends face up
+  in the LB deck, §15.2.8.4.3); M2 the canonical flip subset (J8-D3); L2 an activation's payment refuses `lbFlip`; L3
+  the invariant's LB-zone check is skipped only mid-frame; L4 a spent LB card is refused as `lbSpent`, not
+  `notInHand`; L5/L7 the AI's cast reads "from the AI's LB deck" and flips join with commas; L8 "not shuffled
+  (§8.2.1.1 does not require it)". L1 (sweep granularity is per frame) is recorded on `sweepLimitBreak`; L6
+  (`cast.from` is unread by renderers — the move line already says "from the LB deck") is left as data.
 
 ## The rules, as read from CR 3.3
 
@@ -56,8 +64,11 @@ clause) and drops the LB reminder line from the clause count.
   `Payment.lbFlip?: CardId[]` names the X cards to turn face up; `checkedPay` demands exactly X distinct
   face-down cards of the caster's LB deck, none the cast card itself, and flips them (event `lbFlipped {
   player, cards }`). The cast card leaves the LB deck as a hand card leaves the hand; `cast` events gain
-  `from: 'hand' | 'lbDeck'`. `enumeratePayments` crosses each CP payment with every X-subset of the face-down
-  others (the LB deck is ≤8, so at most C(7,X)); `preferredPayment` flips the face-down cards it values least:
+  `from: 'hand' | 'lbDeck'`. `enumeratePayments` lists ONE canonical flip subset per CP payment (the first X
+  face-down others) and `isLegal`/`apply` accept any X-subset through `lbFlipCheck` — as J7 does for built target
+  sets (review M2: crossing every subset multiplied the list by C(7,X) per CP payment, 240 casts on turn 1). The
+  browser's tray offers every face-down other and completes with the player's own X, validated by `isLegal`.
+  `preferredPayment` flips the face-down cards it values least:
   duplicates of the cast card first, then the highest printed cost.
 - **J8-D4 — the return.** `runRuleProcesses` ends with the Limit Break sweep: every card whose def has
   `limitBreak` found in either player's hand, Break Zone, main deck or removed-from-play moves to its OWNER's LB
@@ -80,8 +91,13 @@ clause) and drops the LB reminder line from the clause count.
   from your LB deck, turning Maat face up, paying: …". Log lines for `lbFlipped` and `lbReturned`.
 - **J8-D7 — the CLI** renders each LB deck as a line of `[id] Name (face down|UP)`; `hotseat`/`selfplay` load
   `decks/starter-2025-vol2-lb.txt` beside the main list.
-- **J8-D8 — the AI** needs no search changes: `actionMenu.castable` and `enumeratePayments` reach the LB casts;
-  the evaluation is blind to the LB deck's remaining value (reported as a follow-up).
+- **J8-D8 — the AI.** `actionMenu.castable` and `enumeratePayments` reach the LB casts for greedy. ISMCTS DID need
+  changes (review C1, 2026-09-16 — the claim "no search changes" was wrong): the key index names both LB decks by
+  code with the face state in the ref (`l0:22-119R`, `l0:22-119R:up`), the cast key carries the flips as a fourth
+  field and `decodeCast` reads them back, `searchView` sees LB ids, and `observationKey` digests both decks' face
+  state. Without the index every LB cast keyed opaque and `searchIsmcts` threw at the root — in the browser the
+  coordinator then dropped the worker and played greedy for the rest of the game. The evaluation is still blind to
+  the LB deck's remaining value (a follow-up).
 
 ## Tests (J8-A1 to J8-A6)
 

@@ -7,7 +7,7 @@ import { apply } from '../src/apply.js'
 import { castBlocker } from '../src/cast.js'
 import { enumeratePayments } from '../src/cp.js'
 import { createGame, validateDeck, validateLbDeck } from '../src/setup.js'
-import { legalCommands } from '../src/legal.js'
+import { isLegal, legalCommands } from '../src/legal.js'
 import { viewFor } from '../src/view.js'
 import { determinise } from '../src/determinise.js'
 import { seedRng } from '../src/rng.js'
@@ -80,8 +80,9 @@ describe('J8 — casting from the LB deck (§15.2.8.3)', () => {
     const others = lbIds(s, 0, 'T-LB1')
     expect(castBlocker(s, 0, lb2!)).toBeNull()
     const casts = legalCommands(s, 0).filter((c) => c.type === 'castCharacter' && c.card === lb2)
-    expect(casts.length, 'C(3,2) flip subsets for a free card').toBe(3)
+    expect(casts.length, 'one canonical flip subset per CP payment (review M2); any other is legal below').toBe(1)
     for (const c of casts) if (c.type === 'castCharacter') expect(c.payment.lbFlip).toHaveLength(2)
+    expect(legalCommands(s, 0).filter((c) => c.type === 'castCharacter' && c.card === lb2).every((c) => c.type === 'castCharacter' && !!c.payment.lbFlip && isLegal(s, { ...c, payment: { ...c.payment, lbFlip: [others[1]!, lbIds(s, 0, 'T-LB-S')[0]!] } }) === null), 'a different pair of others is legal too').toBe(true)
     const r = apply(s, { type: 'castCharacter', player: 0, card: lb2!, payment: { ...NO_CP, lbFlip: others } })
     expect(findFieldCard(r.state, lb2!)?.owner).toBe(0)
     expect(lb(r.state, 0).map((x) => [r.state.cards[x.id]!.code, x.faceUp]), 'the cast card left; the two flipped are face up').toEqual([['T-LB1', true], ['T-LB1', true], ['T-LB-S', false]])
@@ -101,19 +102,35 @@ describe('J8 — casting from the LB deck (§15.2.8.3)', () => {
     expect(cast([one!, one!])).toThrow(/distinct|face-down|twice/)
     // Flip one face up by casting the LB-1 card first; then the LB-2 card has only two others left, one face up.
     s = apply(s, { type: 'castCharacter', player: 0, card: one!, payment: { ...NO_CP, lbFlip: [two!] } }).state
-    expect(castBlocker(s, 0, two!), 'face up: spent').toBe('notInHand')
+    expect(castBlocker(s, 0, two!), 'face up: spent (review L4)').toBe('lbSpent')
     expect(castBlocker(s, 0, lb2!), 'only the Summon is still face down: one short').toBe('lbCost')
     expect(() => apply(s, { type: 'castCharacter', player: 0, card: lb2!, payment: { ...NO_CP, lbFlip: [two!, summon!] } })).toThrow(/face-down/)
     ok(s)
   })
-  it('enumeratePayments crosses CP payments with flip subsets; a hand card never carries lbFlip', () => {
+  it('an LB Summon on the stack at game over goes to the LB deck face up, not the Break Zone (review M1)', () => {
+    let s = game()
+    let victim: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', 'V-F2')
+    const [summon] = lbIds(s, 0, 'T-LB-S')
+    const [flip] = lbIds(s, 0, 'T-LB1')
+    let t = apply(s, { type: 'castSummon', player: 0, card: summon!, payment: { ...NO_CP, lbFlip: [flip!] } }).state
+    t = apply(t, { type: 'chooseTargets', player: 0, targets: [victim] }).state
+    expect(t.stack).toHaveLength(1)
+    const over = apply(t, { type: 'concede', player: 1 }).state   // the Summon is still waiting
+    expect(over.result?.winner).toBe(0)
+    expect(over.players[0].breakZone).not.toContain(summon)
+    expect(lb(over, 0).find((x) => x.id === summon)?.faceUp, '§15.2.8.4.3 holds at game over too').toBe(true)
+    ok(over)
+  })
+
+  it('enumeratePayments lists one canonical flip subset per CP payment; a hand card never carries lbFlip', () => {
     let s = game()
     let hand: CardId
     ;[s, hand] = withHand(s, 0, 'V-F1')
     for (const p of enumeratePayments(s, 0, hand)) expect(p.lbFlip).toBeUndefined()
     const [lb1] = lbIds(s, 0, 'T-LB1')
     const flips = enumeratePayments(s, 0, lb1!).map((p) => p.lbFlip)
-    expect(flips, 'three others face down: three ways to flip one').toHaveLength(3)
+    expect(flips, 'one CP payment (free), one canonical flip').toHaveLength(1)
     for (const f of flips) { expect(f).toHaveLength(1); expect(f).not.toContain(lb1) }
   })
 })

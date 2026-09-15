@@ -15,7 +15,7 @@ import { putOntoField, targetCandidates, warnUnimplemented } from './resolve.js'
  * same decision, and is derived from this so the two cannot disagree. Neither says anything about CP: a
  * `null` here with no legal payment means "cannot afford it", which is the caller's to phrase.
  */
-export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'lightDark' | 'noTarget' | 'lbCost'
+export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'lbSpent' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'lightDark' | 'noTarget' | 'lbCost'
 
 /** The Attack Phase steps in which priority is held AND a Summon or an action ability may be used (§9.3.1.6–7, J1-D10). `firstStrike` holds priority but admits only a pass (§15.2.3.3). */
 export const ATTACK_WINDOWS: readonly AttackStep[] = ['preparation', 'declared', 'blocked', 'damage']
@@ -58,7 +58,7 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
   const available = inHand || inLbDeck
   const instant = available && (defOf(state, card).type === 'summon' || defOf(state, card).keywords.includes('backAttack'))
   if (!instant && state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
-  if (!available) return 'notInHand'
+  if (!available) return ps.lbDeck.some((x) => x.id === card) ? 'lbSpent' : 'notInHand'   // face up in the LB deck: spent (§15.2.8.3)
   const def = defOf(state, card)
   if (def.type !== 'summon' && instant) {
     // §15.2.5.2–3: a Back Attack Character is cast by the PRIORITY HOLDER, either player, in a Main Phase or an
@@ -102,6 +102,7 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   gameOver: 'game is over',
   phase: 'a Character is cast in your main phase (§11.4.1) — with Back Attack, in any window (§15.2.5); a Summon in any window',
   notInHand: 'card is not in your hand',
+  lbSpent: 'this LB card is face up — spent; only a face-down LB card is cast (§15.2.8.3)',
   notTurnPlayer: 'only the turn player may cast (§9.3.1.5)',
   priority: 'you do not have priority',
   pending: 'a decision is pending',

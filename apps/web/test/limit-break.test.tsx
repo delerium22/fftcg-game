@@ -1,10 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { apply, legalCommands, viewFor, type CardDef, type CardId, type GameState, type Payment } from '@fftcg/engine'
+import { apply, isLegal, legalCommands, viewFor, type CardDef, type CardId, type GameState, type Payment } from '@fftcg/engine'
 import { endPhase, makeDef, makeGame, withField, withHandSize, VANILLA_POOL } from '../../../packages/engine/test/helpers.js'
 import { CARD_DEFS, DECKS, LB_DECKS } from '../src/deck.js'
 import { buildChoiceSet, describeChoice, paymentAlternatives, preferredChoices, samePayment } from '../src/game/commands.js'
-import { candidateSources, completedChoice, extendable, flipsNeeded, legalPaymentsOf, needsTray, withBackup, withFlip } from '../src/game/payment.js'
+import { completedChoice, extendable, flipCandidates, flipsNeeded, legalPaymentsOf, needsTray, withBackup, withFlip } from '../src/game/payment.js'
 import { describeEvent } from '../src/game/useGame.js'
 import { HUMAN } from '../src/game/types.js'
 import { Card } from '../src/ui/Card.js'
@@ -55,11 +55,12 @@ describe('the LB deck in the browser (J8-A5)', () => {
     const flip = c.command.type === 'castCharacter' ? c.command.payment.lbFlip ?? [] : []
     expect(flip).toHaveLength(2)
     expect(describeChoice(v, c.command, { payment: false })).toBe('Cast Noctis from your LB deck')
-    expect(describeChoice(v, c.command)).toBe('Cast Noctis from your LB deck, turning Maat and Maat face up (free)')
+    expect(describeChoice(v, c.command)).toBe('Cast Noctis from your LB deck, turning Maat, Maat face up (free)')
+    expect(describeChoice(viewFor(s, 1), { ...c.command }), "the AI's cast, from the human's view").toBe("Cast Noctis from the AI's LB deck, turning Maat, Maat face up (free)")
     expect(describeChoice(v, { ...c.command, payment: { dullBackups: [], discards: [{ card: lb2, element: 'earth' }], lbFlip: [maats[0]!] } } as typeof c.command)).toBe('Cast Noctis from your LB deck, turning Maat face up, paying: discard Noctis as earth')
-    // Every listed payment flips two of the three Maats: C(3,2) = 3 alternatives in all.
+    // ONE canonical flip subset is listed (review M2); any two of the three Maats are legal.
     const payments = legalPaymentsOf(c)
-    expect(payments).toHaveLength(3)
+    expect(payments).toHaveLength(1)
     expect(flipsNeeded(payments)).toBe(2)
     expect(payments.every((p) => p.lbFlip?.length === 2 && p.lbFlip.every((id) => maats.includes(id)))).toBe(true)
   })
@@ -71,22 +72,24 @@ describe('the LB deck in the browser (J8-A5)', () => {
     const set = buildChoiceSet(v, preferredChoices(v, legal), paymentAlternatives(legal))
     const c = set.byCard.get(lb2)![0]!
     const payments = legalPaymentsOf(c)
-    const sources = candidateSources(payments)
-    expect([...sources.flips].sort()).toEqual([...maats].sort())
-    expect(sources.flips.has(lb2), 'the cast card never flips itself').toBe(false)
+    const flips = flipCandidates(v, lb2)
+    expect([...flips].sort()).toEqual([...maats].sort())
+    expect(flips.has(lb2), 'the cast card never flips itself').toBe(false)
     let sel: Payment = NO_CP
     expect(completedChoice(c, sel)).toBeNull()
     expect(extendable(payments, sel, { flip: maats[0]! })).toBe(true)
     sel = withFlip(sel, maats[0]!, true)
     expect(completedChoice(c, sel), 'one of two flips is not a payment').toBeNull()
     expect(extendable(payments, sel, { flip: maats[1]! })).toBe(true)
-    sel = withFlip(sel, maats[1]!, true)
+    // The player's OWN pair — not the listed canonical one — completes, and the engine accepts it.
+    sel = withFlip(sel, maats[2]!, true)
     const done = completedChoice(c, sel)
     expect(done).not.toBeNull()
-    expect(done!.command.type === 'castCharacter' && samePayment(done!.command.payment, { ...NO_CP, lbFlip: [maats[0]!, maats[1]!] })).toBe(true)
-    expect(extendable(payments, sel, { flip: maats[2]! }), 'a third flip leaves every listed payment').toBe(false)
+    expect(done!.command.type === 'castCharacter' && samePayment(done!.command.payment, { ...NO_CP, lbFlip: [maats[0]!, maats[2]!] })).toBe(true)
+    expect(isLegal(s, done!.command), 'any X-subset is legal').toBeNull()
+    expect(extendable(payments, sel, { flip: maats[1]! }), 'a third flip is one too many').toBe(false)
     // Taking a flip back, and a CP source toggled beside the flips, keeps the flips.
-    expect(withFlip(sel, maats[1]!, false).lbFlip).toEqual([maats[0]])
+    expect(withFlip(sel, maats[2]!, false).lbFlip).toEqual([maats[0]])
     expect(withBackup(sel, lb2, true).lbFlip, 'a CP toggle keeps the flips').toEqual(sel.lbFlip)
     // samePayment sees the flips: the same CP with different flips is a different payment.
     expect(samePayment({ ...NO_CP, lbFlip: [maats[0]!] }, { ...NO_CP, lbFlip: [maats[1]!] })).toBe(false)

@@ -86,7 +86,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     const [shuffled, r] = shuffle(rng, ids)   // §8.2.1.1
     rng = r
     players[p].deck = shuffled
-    // §7.14 / §8.2.1.1 (rung J8): the LB deck, face down, in list order — never shuffled.
+    // §7.14 / §8.2.1.1 (rung J8): the LB deck, face down, in list order — not shuffled (§8.2.1.1 does not require it).
     for (const code of opts.lbDecks?.[p] ?? []) { cards[id] = { id, code, owner: p }; players[p].lbDeck.push({ id: id++, faceUp: false }) }
   }
   const [chooser, r2] = nextInt(rng, 2)     // §8.2.1.2

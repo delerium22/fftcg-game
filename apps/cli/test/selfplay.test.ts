@@ -9,6 +9,8 @@ import { newGameStats, playGame, readSearchCounters, selfPlay } from '../src/sel
 
 const deck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 const decks = (): [string[], string[]] => { const d = deck(); return [d, d] }
+const lbDeck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2-lb.txt', import.meta.url), 'utf8'))
+const lbDecks = (): [string[], string[]] => { const d = lbDeck(); return [d, d] }
 
 describe('self-play with the real Vol. 2 pool', () => {
   it('20 random games complete without engine errors', () => {
@@ -45,6 +47,16 @@ describe('self-play with the real Vol. 2 pool', () => {
     const r = selfPlay({ games: 5, seed: 800, decks: decks(), defs: loadCards(), agents: [{ kind: 'greedy' }, { kind: 'greedy' }], strict: true })
     expect(r.failures).toEqual([]); expect(r.completed).toBe(5)
   }, 180_000)
+
+  // Rung J8 (review C1/H1): the shipped LB decks under play — the search must name an LB-deck card at the root,
+  // and the sweep and the invariants must hold across whole games.
+  it('J8: strict games WITH the LB decks complete for random, greedy and a small ISMCTS', () => {
+    const defs = loadCards()
+    const r1 = selfPlay({ games: 4, seed: 900, decks: decks(), lbDecks: lbDecks(), defs, agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: true })
+    expect(r1.failures).toEqual([]); expect(r1.completed).toBe(4)
+    const r2 = selfPlay({ games: 2, seed: 1, decks: decks(), lbDecks: lbDecks(), defs, agents: [{ kind: 'ismcts', iterations: 4 }, { kind: 'ismcts', iterations: 4 }], strict: true })
+    expect(r2.failures).toEqual([]); expect(r2.completed).toBe(2)
+  }, 300_000)
 })
 
 // ---------------------------------------------------------------------------

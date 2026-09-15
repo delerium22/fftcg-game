@@ -5,7 +5,7 @@ import { candidatesFor, commandFor, completedChoice as completedSelection, exten
 import { SelectionTray } from './SelectionTray.js'
 import {
   EMPTY_PAYMENT, candidateSources, completedChoice, crystals, extendable, generatedFor, legalPaymentsOf, needsTray,
-  flipsNeeded, paidText, requirementFor, withBackup, withDiscard, withFlip,
+  flipCandidates, flipsNeeded, paidText, requirementFor, withBackup, withDiscard, withFlip,
 } from '../game/payment.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
@@ -369,7 +369,7 @@ export function Board({ game, onHelp }: {
     // Rung J8: an own LB-deck card is a source of a different kind — it turns face up for the Limit Break cost.
     if (lbOf(HUMAN).has(id)) {
       if ((sel.lbFlip ?? []).includes(id)) return { role: 'flip', offered: true, elements: [] }
-      return { role: null, offered: candidates.flips.has(id) && extendable(legal, sel, { flip: id }), elements: [] }
+      return { role: null, offered: paying.choice.card !== null && flipCandidates(view, paying.choice.card).has(id) && extendable(legal, sel, { flip: id }), elements: [] }
     }
     if (backupsOf(HUMAN).has(id)) {
       if (sel.dullBackups.includes(id)) return { role: 'dull', offered: true, elements: [] }
