@@ -32,16 +32,18 @@ test('seed 28: every hand card names what pressing it does', async ({ page }) =>
   // Before F6 they ended at "power 9000 of 9000".
   const all = page.locator('.hand [data-card-id] button')
   await expect(all, 'seed 28 turn 1 should offer six pressable hand cards').toHaveCount(6)
+  // Scoped to the hand: since rung J8 the LB deck's cards are pressable casts too (a discard pays for Maat).
+  const hand = page.locator('.hand')
   await expect(
-    page.getByRole('button', { name: /, (\d+ options|Cast [^,]+)$/ }),
+    hand.getByRole('button', { name: /, (\d+ options|Cast [^,]+)$/ }),
     'a hand card says nothing about what pressing it does',
   ).toHaveCount(6)
 
   // Both forms appear here, which is why this route is worth pinning: five cards have one move each (a
   // cast), while Geomancer can be cast OR used for its hand ability — two different MOVES.
-  await expect(page.getByRole('button', { name: /, Cast [^,]+$/ }),
+  await expect(hand.getByRole('button', { name: /, Cast [^,]+$/ }),
     'the headline form is missing').toHaveCount(5)
-  await expect(page.getByRole('button', { name: /^Geomancer, .*, 2 options$/ }),
+  await expect(hand.getByRole('button', { name: /^Geomancer, .*, 2 options$/ }),
     'the several-moves form is missing, or Geomancer no longer offers two').toHaveCount(1)
   // And never a payment: the tray chooses that, after the press.
   await expect(page.getByRole('button', { name: /paying/ })).toHaveCount(0)
