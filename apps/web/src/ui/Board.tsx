@@ -60,6 +60,7 @@ function fieldCardProps(v: PlayerView, c: FieldCard, actionable: boolean, size: 
     flags: shown.flags,
     damage: c.damage,
     dull: c.status === 'dull',
+    frozen: c.frozen === true,
     actionable,
     size,
     ...(d?.text === undefined ? {} : { text: d.text }),

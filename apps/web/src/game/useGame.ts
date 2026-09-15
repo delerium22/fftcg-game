@@ -179,6 +179,8 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability finds no legal target — nothing happens` }
     case 'dulled': return { kind: 'event', text: `${qualifiedName(v, e.card)} is dulled` }
+    case 'frozen': return { kind: 'event', text: `${qualifiedName(v, e.card)} is frozen — it will not activate next turn` }
+    case 'thawed': return { kind: 'event', text: `${qualifiedName(v, e.card)} stays dull — it was frozen` }
     case 'abilityDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
     case 'powerModified': return { kind: 'event', text: `${qualifiedName(v, e.card)} gets ${e.amount >= 0 ? '+' : ''}${e.amount} power until the end of the turn` }
     case 'keywordGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} gains ${KEYWORD_LABEL[e.keyword]} until the end of the turn` }

@@ -631,6 +631,8 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
   it('narrates what the clause DID to the board', () => {
     const text = (e: Parameters<typeof describeEvent>[1]): string => describeEvent(view, e)?.text ?? ''
     expect(text({ type: 'dulled', card: anyCard })).toContain('is dulled')
+    expect(text({ type: 'frozen', card: anyCard })).toContain('is frozen — it will not activate next turn')
+    expect(text({ type: 'thawed', card: anyCard })).toContain('stays dull — it was frozen')
     expect(text({ type: 'abilityDamage', source: anyCard, target: anyCard, amount: 3000 })).toContain('3000 damage')
     expect(text({ type: 'powerModified', card: anyCard, amount: 3000 })).toContain('+3000 power until the end of the turn')
     expect(text({ type: 'powerModified', card: anyCard, amount: -1000 })).toContain('-1000 power')

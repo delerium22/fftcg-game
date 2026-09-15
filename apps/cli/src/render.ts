@@ -31,7 +31,7 @@ export function cardName(v: PlayerView, id: CardId): string {
 function fieldCard(v: PlayerView, c: FieldCard): string {
   const d = v.defs[v.cards[c.id]?.code ?? '']
   const power = d?.power != null ? ` ${d.power - c.damage}/${d.power}` : ''
-  const flags = [c.status === 'dull' ? 'DULL' : '', c.attackedThisTurn ? 'attacked' : '', ...c.granted].filter(Boolean).join(',')
+  const flags = [c.status === 'dull' ? 'DULL' : '', c.frozen === true ? 'FROZEN' : '', c.attackedThisTurn ? 'attacked' : '', ...c.granted].filter(Boolean).join(',')
   return `[${c.id}] ${d?.name ?? '?'}${power}${flags ? ` {${flags}}` : ''}`
 }
 

@@ -39,6 +39,13 @@ describe('Card', () => {
     expect(html(cloud)).not.toContain('is-dull')
   })
 
+  it('wears a Frozen badge and says so in its name (rung J3, §15.2.4)', () => {
+    const out = html({ ...cloud, frozen: true })
+    expect(out).toContain('>Frozen<')
+    expect(out).toContain('frozen — will not activate next turn')
+    expect(html(cloud)).not.toContain('Frozen')
+  })
+
   it('shows remaining power over printed power once damaged', () => {
     const out = html({ ...cloud, damage: 2000 })
     expect(out).toContain('5000')

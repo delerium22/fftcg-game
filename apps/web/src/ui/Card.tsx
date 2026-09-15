@@ -43,6 +43,8 @@ export interface CardProps {
   damage?: number | undefined
   /** Dull = the card is turned sideways (CR 1.4.2). */
   dull?: boolean | undefined
+  /** §15.2.4 (rung J3): frozen — it will not activate in its controller's next Active Phase. A badge, like the buffs. */
+  frozen?: boolean | undefined
   /**
    * "You can act on this" — the lift and rim (spec B-A4's highlight). Since rung I1 EVERY face-up card is a
    * button whose press opens its sheet, so this no longer decides whether the card is pressable, only whether
@@ -126,7 +128,7 @@ export interface CardProps {
  * a Backup, but the component's contract allows it — and a +3000 badge on a card with no power is no more
  * meaningful than the sentence, so both stand down together.
  */
-function cardBuffs({ power, powerBonus = 0, granted = [], flags = [] }: CardProps): { badge: string; said: string }[] {
+function cardBuffs({ power, powerBonus = 0, granted = [], flags = [], frozen = false }: CardProps): { badge: string; said: string }[] {
   const modifier = powerBonus === 0 || power === null ? []
     : [{
         badge: powerBonus > 0 ? `+${powerBonus}` : `${powerBonus}`,
@@ -138,6 +140,7 @@ function cardBuffs({ power, powerBonus = 0, granted = [], flags = [] }: CardProp
     ...modifier,
     ...granted.map((k) => ({ badge: KEYWORD_LABEL[k], said: `${KEYWORD_LABEL[k]} granted` })),
     ...flags.map((f) => ({ badge: FLAG_LABEL[f], said: FLAG_LABEL[f].toLowerCase() })),
+    ...(frozen ? [{ badge: 'Frozen', said: 'frozen — will not activate next turn' }] : []),
   ]
 }
 
