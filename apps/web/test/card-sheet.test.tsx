@@ -157,7 +157,7 @@ describe('I1-A2 — Cast on the sheet: enabled headline, or disabled with the re
     press(cardButton(view.hand[0] as CardId))
     const blocked = sheet()!.querySelector<HTMLButtonElement>('[data-command="castBlocked"]')
     expect(blocked, 'a hand card at the mulligan should show a disabled Cast').not.toBeNull()
-    expect(document.getElementById(blocked!.getAttribute('aria-describedby')!)?.textContent).toBe('Only in your Main Phase')
+    expect(document.getElementById(blocked!.getAttribute('aria-describedby')!)?.textContent).toBe('Only in your Main Phase — or, with Back Attack, in any window')
   })
 })
 

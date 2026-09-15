@@ -867,7 +867,9 @@ function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
       // A WINDOW (rung J1): Summons and abilities may be used from it, and the offer says so, from the
       // commands — the same rule as the Main Phases above.
       const step = ATTACK_STEP_LABEL[v.attack?.step ?? ''] ?? v.attack?.step ?? 'resolving'
-      const verbs = [...(canCast ? ['cast a Summon'] : []), ...(canActivate ? ['use an ability'] : [])]
+      // "cast a card" once a Back Attack Character is castable here (rung J2, §15.2.5); "cast a Summon" while only Summons are.
+      const castVerb = has((c) => c.type === 'castCharacter') ? 'cast a card' : 'cast a Summon'
+      const verbs = [...(canCast ? [castVerb] : []), ...(canActivate ? ['use an ability'] : [])]
       // Whose Attack Phase, as the Main Phase prompt above already says: found by playing, "Attack Phase —
       // preparation: use an ability or pass" read the same in the AI's turn as in mine.
       const phase = v.turnPlayer === v.me ? 'Attack Phase' : "The AI's Attack Phase"

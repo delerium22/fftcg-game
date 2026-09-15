@@ -7,7 +7,7 @@ import {
 } from '@fftcg/engine'
 import { GreedyAgent, preferredPayment } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
-import { makeGame, withField } from '../../../packages/engine/test/helpers.js'
+import { endPhase, makeGame, withField } from '../../../packages/engine/test/helpers.js'
 import { buildChoiceSet, describeChoice, describeTriggerCause, fieldCardDisplay, preferredChoices, promptFor, sameCommand, samePayment } from '../src/game/commands.js'
 import { AI, HUMAN } from '../src/game/types.js'
 import { Card } from '../src/ui/Card.js'
@@ -914,5 +914,20 @@ describe('an Attack Phase window says whose Attack Phase it is', () => {
     const pass: Command[] = [{ type: 'pass', player: HUMAN }]
     expect(promptFor(window(AI), pass)).toBe("The AI's Attack Phase — combat declared: pass to continue")
     expect(promptFor(window(HUMAN), pass)).toBe('Attack Phase — combat declared: pass to continue')
+  })
+})
+
+describe('the window prompt names what may be cast (rung J2)', () => {
+  it('says "cast a card" when a Back Attack Character is castable in the window, "cast a Summon" when only Summons are', () => {
+    let s = endPhase(makeGame())
+    let a: CardId
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    s = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
+    const v = viewFor(s, HUMAN)
+    const pay = { dullBackups: [], discards: [] }
+    const summonOnly = promptFor(v, [{ type: 'castSummon', player: HUMAN, card: 1, payment: pay }, { type: 'pass', player: HUMAN }])
+    expect(summonOnly).toBe('Attack Phase — combat declared: cast a Summon or pass')
+    const withCharacter = promptFor(v, [{ type: 'castSummon', player: HUMAN, card: 1, payment: pay }, { type: 'castCharacter', player: HUMAN, card: 2, payment: pay }, { type: 'pass', player: HUMAN }])
+    expect(withCharacter).toBe('Attack Phase — combat declared: cast a card or pass')
   })
 })
