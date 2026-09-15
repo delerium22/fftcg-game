@@ -7,11 +7,15 @@
 > them". This document is the audit; the ladder at the end is the program it implies. Design calls are mine
 > (user away) and are recorded so they can be overturned rather than rediscovered.
 
+> **2026-09-16:** for chapters 9–12 and the combat/keyword parts of 15, the live view is now
+> `docs/rules/timing-matrix.md`, checked by a test (rung J9). The rows once marked ★ below were refreshed to what
+> J1–J7 and K1–K5 built; the rest of the table is as audited on 2026-09-08.
+
 ## Verdict in three sentences
 
 The engine implements the turn structure, combat, CP, damage, EX Burst, zones and the pool's 27 printed
-clauses correctly for the rules it claims, and every deviation is marked in the source (26 markers). **The one
-structural gap is §11.1 and §7.12: there is no stack and no priority passing**, and roughly seven of the
+clauses correctly for the rules it claims, and every deviation is marked in the source (26 markers). **The one structural gap was §11.1 and §7.12 — no stack and no priority passing — closed by rung J1 on
+2026-09-08**, and roughly seven of the
 markers are consequences of that single absence (Summons and action abilities only in a Main Phase, no
 response window, the Damage Resolution Step auto-advancing, fixed trigger order). The ability system itself
 — a data AST on `CardDef`, hand-written per clause — scales to more cards without structural change; what
@@ -38,29 +42,29 @@ unreachable, not skipped).
 | 7.7.3 / 12.4.6 | Same-name rule process | absent | See 5.2.2.1. |
 | 7.7.4 / 12.4.8 | Five backups, 6th to Break Zone | partial | Cast refused (`cast.ts:20`); ability entry unchecked. |
 | 7.7.5 / 12.4.7 | One Light/Dark | absent | Pool has none. |
-| 7.12 | **The stack** | **absent** | `state.ts:140`, `resolve.ts:23`. Root cause of the rows marked ★ below. |
+| 7.12 | **The stack** | ok | Rung J1 (2026-09-08): `state.stack`, `passes`; `cr11-stack.test.ts`. The rows once marked ★ below were its consequences. |
 | 7.13 | Removed from play | ok | C7. |
 | 7.14 / 8.1 / 15.2.8 | LB deck, Limit Break | absent | Deliberately deferred (design spec MVP5); deck file is main deck only. |
 | 8.2 | Setup, first player, mulligan | partial | Mulligan keeps hand order to the bottom (`setup.ts:74`); §8.2.1.4 lets you choose. Unobservable in a shuffled 50-card deck without deck-bottom effects. |
 | 9.1 | Active Phase | ok | `phases.ts`. No Freeze (§15.2.4), so "frozen do not activate" is absent. |
 | 9.2 | Draw Phase, first turn draws one | ok | `cr9-phases.test.ts`. |
 | 9.3.1.5 | Characters cast only with an empty stack | ok (vacuously) | Always empty. |
-| 9.3.1.6 ★ | Summons castable in Main **and Attack** Phase | partial | Main only (`cast.ts:12`). |
-| 9.3.1.7 ★ | Action abilities in Main **and Attack** Phase | partial | Main only, turn player only (`activate.ts:102`). Undead Princess cannot be a combat trick. |
+| 9.3.1.6 | Summons castable in Main **and Attack** Phase | ok | J1 slice 4; `cr11.4-cast.test.ts` (§9.3.1.6). |
+| 9.3.1.7 | Action abilities in Main **and Attack** Phase | ok | J1 slice 4; `activated-abilities.test.ts` (§9.3.1.7). |
 | 9.5 | End Phase: hand size, damage removal, until-end-of-turn expiry, loop back on new triggers | ok / partial | Hand size and expiry ok. §9.5.1.4's "new triggers → priority again" is not modelled (no priority). |
 | 10.1.1 | Attack Preparation Step triggers | ok | C5 (`attackPhaseBegins`). |
 | 10.1.2 | Declaration: active, Haste/continuous control, Brave, party same element, attack cost | ok | `attack.ts:35,61`. No card prints an attack cost; `n/a`. |
 | 10.1.3 | Block: active, restrictions, cost to block | ok | No restrictions or costs in the pool. |
-| 10.1.4 ★ | Damage resolution, party split, **priority after damage** | partial | Damage ok, party split ok (`party-damage.test.ts`); §10.1.4.4 window auto-advances (`attack.ts:94`). |
-| 11.1 ★ | **Priority** | absent | Always the turn player. `applyPass` advances the phase; it is not a priority pass. |
+| 10.1.4 | Damage resolution, party split, **priority after damage** | ok | J1-D10: the `damage` window; `cr10-attack-windows.test.ts`. |
+| 11.1 | **Priority** | ok | J1-D9; `cr9-phases.test.ts` (J1-A1). No End Phase window (§9.5.1.4, marked in `phases.ts`). |
 | 11.2 | Paying CP (exact amount, one excess per element by discard, wasted CP, Light/Dark) | ok | `cp.ts`; `legalCommands` lists minimal payments; `apply` accepts any `canPay` payment. |
-| 11.3 ★ | Casting a Summon (to the stack, respondable) | partial | Resolves immediately from the Break Zone (`cast.ts:69`). |
+| 11.3 | Casting a Summon (to the stack, respondable) | ok | J1-D5; `cr11-stack.test.ts` (J1-A2). |
 | 11.3.3 / 11.6.5 | "Choose" needs a legal target to cast/use | ok | `activationCheck`, `castCheck` + `abilityNoLegalTarget` handling. |
 | 11.4 | Casting a Character (special action, no stack) | ok | Correct even with a stack, since it never uses one. |
 | 11.5.4 / 6.4.2 | Abilities on the stack are independent of their source | n/a today | With a stack, "last known information" (§11.11.4) becomes required. |
-| 11.6 ★ | Action abilities: costs paid simultaneously, `[Dull]` needs continuous control unless Haste | ok / partial | Cost atomicity ok (C3); Haste gate ok (`activate.ts:55`); speed partial (see 9.3.1.7). |
+| 11.6 | Action abilities: costs paid simultaneously, `[Dull]` needs continuous control unless Haste | ok | C3 + J1 slice 4; `activated-abilities.test.ts`. |
 | 11.7 | Special abilities (S icon, discard same name) | absent | None in the pool. |
-| 11.8 ★ | Auto-abilities: trigger, go on the stack when priority is next gained, **controller orders own triggers, NAP on top** | partial | Trigger and resolve ok (C2/C8); fixed AP-first FIFO (`resolve.ts:793`); no stack. |
+| 11.8 | Auto-abilities: trigger, go on the stack when priority is next gained, **controller orders own triggers, NAP on top** | partial | J1-D4: turn player's first, NAP's on top (`cr11-stack.test.ts` §11.8.7); within-player order is FIFO (marked, `resolve.ts`). |
 | 11.8.13 | Conditional auto-abilities re-check on resolution | n/a | None in the pool. |
 | 11.8.14 | "You may" abilities | ok | Modelled as `chooseModes` with min 0 / `chooseTargets` min 0. |
 | 11.8.17 | Delayed auto-abilities | absent | None in the pool; no AST node. |
@@ -128,6 +132,7 @@ verify by playing.
 | **J6** | ~~Continuous effects: a layer computed by `effectivePower`/`keywordsOf` from field abilities in play, with §11.12.4.6 ordering~~ — built 2026-09-08 ([spec](2026-09-08-rung-j6-continuous-effects.md): `modifyPower`/`grantKeyword`/`grantFlag` statics, `flagsOf`, `layer.ts`; ordering deferred as additive-only). Still open: delayed auto-abilities; replacement effects (§11.12.5) — their own spec when a pool card needs them. | The scaling item for "more effect types". Architectural. |
 | **J7** | ~~`legalCommands` combinatorics: candidate cap plus a select-then-confirm pending for target sets, mirroring I2's incremental model.~~ Built 2026-09-08 ([spec](2026-09-08-rung-j7-target-set-selection.md)): `isLegal` + four set checks, a 64-set cap with `capped`, and a browser picker (selection.ts, SelectionTray) — no new pending was needed. | Needed before the pool grows past ~40 cards. |
 | **J8** | Limit Break deck (§7.14, §15.2.8); then Vol. 1 pool. | Last; the design spec's MVP5. |
+| **J9** | ~~The timing matrix: every CR timing rule mapped to a test, three layers (primitives, compositions, real-card scenarios), a referee test.~~ Built 2026-09-16 ([spec](2026-09-16-rung-j9-timing-matrix.md)). | Asked for by the user 2026-09-16; J3/J2/J8 add rows to it. |
 
 Not on the ladder, deliberately: Monsters (§5.2.3.1.1, no pool card), Warp/Priming/Crystals/Counters
 (later sets), infinite-loop procedure (§13), three-player games (§1).

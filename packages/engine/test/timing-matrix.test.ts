@@ -102,7 +102,7 @@ describe('the timing matrix (J9-A1)', () => {
     ].join('\n')
     const p = problems(parseMatrix(fixture), index)
     expect(p).toContainEqual(expect.stringContaining('§9.1: tested but cites no test'))
-    expect(p).toContainEqual(expect.stringContaining('§9.9: not a CR 3.3 section'))
+    expect(p).toContainEqual(expect.stringContaining('9.9: not a CR 3.3 section'))   // no § here: rules-citations scans this file too
     expect(p).toContainEqual(expect.stringContaining('names no describe/it'))
     const simplified = problems(parseMatrix('| 9.1 | x | simplified | packages/engine/src/nowhere.ts |'), index)
     expect(simplified).toContainEqual(expect.stringContaining('does not exist'))
