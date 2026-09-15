@@ -23,9 +23,19 @@ const BURN: Ability = {
   id: 'T-BURN:summon', trigger: { kind: 'summonResolve' }, text: 'Choose 1 Forward. Deal it 5000 damage.',
   effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'damage', amount: 5000 }] }],
 }
+const ETB: Ability = {
+  id: 'T-BA-ETB:etb', trigger: { kind: 'enterField' }, text: 'When this enters the field, choose 1 Forward. Deal it 5000 damage.',
+  effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'damage', amount: 5000 }] }],
+}
+const WATCH_ENTER: Ability = {
+  id: 'T-OBS-ENTER:draw', trigger: { kind: 'observesEnterField', whose: 'opponent', of: 'forward' }, text: 'When a Forward opponent controls enters the field, draw 1 card.',
+  effects: [{ kind: 'draw', count: 1 }],
+}
 const DEFS: CardDef[] = [
   ...VANILLA_POOL,
   makeDef({ code: 'T-BA', cost: 0, power: 5000, keywords: ['backAttack'] }),
+  makeDef({ code: 'T-BA-ETB', cost: 0, power: 5000, keywords: ['backAttack'], hasAbilities: true, abilityClauses: 1, abilities: [ETB] }),
+  makeDef({ code: 'T-OBS-ENTER', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [WATCH_ENTER] }),
   makeDef({ code: 'T-BA-B', type: 'backup', cost: 0, power: null, keywords: ['backAttack'] }),
   makeDef({ code: 'T-PLAIN', cost: 0, power: 5000 }),
   makeDef({ code: 'T-FS6', cost: 0, power: 6000, keywords: ['firstStrike'] }),
@@ -84,6 +94,34 @@ describe('L1 §15.2.5 — a Back Attack Character is cast by the priority holder
     expect(p.attack?.step).toBe('preparation')
     expect(castBlocker(p, 0, mine)).toBeNull()
     ok(u)
+  })
+
+  it('L1 §11.4.7 + §11.8.7 — the ETB of a non-turn player’s Back Attack cast: the turn player holds priority while the caster declares its targets; the turn player’s watcher is placed first and the caster’s ETB resolves on top (J2 review M2)', () => {
+    let s = quiet(endPhase(makeGame({ defs: DEFS })))
+    let a: CardId, watcher: CardId, ba: CardId, victim: CardId
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    ;[s, watcher] = withField(s, 0, 'forwards', 'T-OBS-ENTER')
+    ;[s, victim] = withField(s, 0, 'forwards', 'V-F5')            // 7000: the 5000 only scratches it
+    ;[s, ba] = withHand(s, 1, 'T-BA-ETB')
+    let t = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
+    t = apply(t, { type: 'pass', player: 0 }).state
+    const cast = apply(t, { type: 'castCharacter', player: 1, card: ba, payment: NO_PAY }).state
+    expect(findFieldCard(cast, ba), 'on the field at once (§15.2.5.4)').not.toBeNull()
+    expect(cast.priority, '§11.4.7: the turn player holds priority').toBe(0)
+    expect(cast.pending, 'yet the caster declares its ETB’s targets as it is placed (§11.8.7)').toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 1 }))
+    const placed = apply(cast, { type: 'chooseTargets', player: 1, targets: [victim] }).state
+    expect(placed.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon')), 'the turn player’s clause is placed first, the non-turn player’s on top (§11.8.7)').toEqual(['T-OBS-ENTER:draw', 'T-BA-ETB:etb'])
+    expect([placed.priority, placed.passes]).toEqual([0, 0])
+    expect(placed.attack?.step).toBe('declared')
+    const one = passBoth(placed).state
+    expect(one.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon')), 'the ETB resolved first').toEqual(['T-OBS-ENTER:draw'])
+    expect(findFieldCard(one, victim)?.card.damage).toBe(5000)
+    const two = passBoth(one).state
+    expect(two.stack).toEqual([])
+    expect(two.players[0].hand, 'the watcher drew').toHaveLength(1)
+    expect(two.attack?.step, 'still the declared window: a Summon or ability could not have stopped the entry').toBe('declared')
+    ok(two)
+    void watcher
   })
 
   it('L1 §15.2.5.3 — a response: cast with the opponent’s Summon on the stack, the Character is on the field before it resolves', () => {

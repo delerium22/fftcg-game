@@ -234,10 +234,10 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.4.1 | An ongoing effect applied by Summons and abilities | tested | engine/timing-l1-freeze#§15.2.4.1 |
 | 15.2.4.2 | Frozen Forwards skip their controller's next Active Phase | tested | engine/timing-l1-freeze#§15.2.4.2; cards/scenarios/shiva-freezes#L3 shiva-freezes |
 | 15.2.5 | Back Attack | heading |  |
-| 15.2.5.1 | A Character field ability | tested | engine/timing-l1-back-attack#§15.2.5.2 |
+| 15.2.5.1 | A Character field ability (definitional: the keyword is read from the printed card, `keywords: ['backAttack']`) | tested | engine/timing-l1-back-attack#§15.2.5.2; cards/scenarios/scarmiglione-blocks#L3 scarmiglione-blocks |
 | 15.2.5.2 | Cast with priority in either player's Main or Attack Phase | tested | engine/timing-l1-back-attack#§15.2.5.2 |
 | 15.2.5.3 | Cast as a response | tested | engine/timing-l1-back-attack#§15.2.5.3 |
-| 15.2.5.4 | No stack: cannot be prevented by Summons or abilities | tested | engine/timing-l1-back-attack#§15.2.5.3 |
+| 15.2.5.4 | No stack: cannot be prevented by Summons or abilities | tested | engine/timing-l1-back-attack#§15.2.5.3; engine/timing-l1-back-attack#§11.4.7 + §11.8.7 |
 | 15.2.8 | Limit Break | heading |  |
 | 15.2.8.1 | A field ability written on the card | tested | engine/limit-break#a face-down LB card is castable in the Main Phase |
 | 15.2.8.2 | "Limit Break -- X" is the LB cost | tested | cards/normalise#Limit Break |

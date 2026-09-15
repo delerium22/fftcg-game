@@ -682,7 +682,7 @@ export function headline(v: PlayerView, c: Choice): string {
  */
 const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   gameOver: 'The game is over',
-  phase: 'Only in your Main Phase — or, with Back Attack, in any window',
+  phase: 'Only in your Main Phase',   // a Summon or a Back Attack Character gets the window wording in `castBlockerText`
   lbCost: 'Not enough face-down cards left in your LB deck for its Limit Break cost',
   notInHand: 'Not in your hand',
   notTurnPlayer: 'Only on your own turn',
@@ -698,7 +698,14 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
 export function castBlockerText(v: PlayerView, card: CardId, castable: boolean): string | null {
   if (castable || !v.hand.includes(card)) return null
   const why = castBlocker(stateShim(v), v.me, card)
-  return why === null ? 'Not enough CP' : CAST_BLOCKER_TEXT[why]
+  if (why === null) return 'Not enough CP'
+  // J2 review L2: the `phase` refusal follows the CARD. A Summon or a Back Attack Character (§15.2.5) is cast in a
+  // window, so "Main Phase" is wrong for it; a plain Character is Main-Phase-only (§11.4.1).
+  if (why === 'phase') {
+    const def = v.defs[v.cards[card]?.code ?? '']
+    if (def && (def.type === 'summon' || (def.keywords ?? []).includes('backAttack'))) return 'Not in this step — cast it in a Main Phase or an Attack Phase window'
+  }
+  return CAST_BLOCKER_TEXT[why]
 }
 
 /**
@@ -838,17 +845,19 @@ function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
   // deliberately avoid restating the verb for the same reason.
   const offer = (verbs: string[], nothing: string): string =>
     verbs.length === 0 ? nothing : `${[...verbs, 'pass'].join(', ').replace(/, ([^,]*)$/, verbs.length > 1 ? ', or $1' : ' or $1')}`
+  // "cast a card" once a Back Attack Character is castable here (rung J2, §15.2.5); "cast a Summon" while only Summons are.
+  const castVerb = has((c) => c.type === 'castCharacter') ? 'cast a card' : 'cast a Summon'
 
   // Rung J1-D15: a RESPONSE window names what it is a response to. With something on the stack the item on
   // top is the subject and a pass lets it resolve; in the opponent's phase the phase is theirs and a pass
   // lets it end. Neither is "pass to continue", which reads as ending your own phase.
   const top = v.stack.at(-1)
   if (top !== undefined) {
-    const verbs = [...(canCast ? ['cast a Summon'] : []), ...(canActivate ? ['use an ability'] : [])]
+    const verbs = [...(canCast ? [castVerb] : []), ...(canActivate ? ['use an ability'] : [])]
     return `${capitalise(stackItemLabel(v, top))} is on the stack — ${offer(verbs, 'pass to let it resolve')}`
   }
   if (v.turnPlayer !== v.me && (v.phase === 'main1' || v.phase === 'main2')) {
-    const verbs = [...(canCast ? ['cast a Summon'] : []), ...(canActivate ? ['use an ability'] : [])]
+    const verbs = [...(canCast ? [castVerb] : []), ...(canActivate ? ['use an ability'] : [])]
     return `The AI's ${PHASE_LABEL[v.phase]} — ${offer(verbs, 'pass to let it end')}`
   }
   switch (v.phase) {
@@ -872,8 +881,6 @@ function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
       // A WINDOW (rung J1): Summons and abilities may be used from it, and the offer says so, from the
       // commands — the same rule as the Main Phases above.
       const step = v.attack ? ATTACK_STEP_LABEL[v.attack.step] : 'resolving'
-      // "cast a card" once a Back Attack Character is castable here (rung J2, §15.2.5); "cast a Summon" while only Summons are.
-      const castVerb = has((c) => c.type === 'castCharacter') ? 'cast a card' : 'cast a Summon'
       const verbs = [...(canCast ? [castVerb] : []), ...(canActivate ? ['use an ability'] : [])]
       // Whose Attack Phase, as the Main Phase prompt above already says: found by playing, "Attack Phase —
       // preparation: use an ability or pass" read the same in the AI's turn as in mine.

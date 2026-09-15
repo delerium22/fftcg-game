@@ -9,6 +9,12 @@
 
 - No browser play-through: the mechanism is the same tray-and-window path the K rungs verified for Summons, and
   the prompt/sheet wording is unit-tested; a play at a seed holding Scarmiglione is a follow-up.
+- **Review H1 (2026-09-16):** under the default Smart auto-pass (K5-D4) the AI's `declared` window was PASSED, so
+  the surprise-blocker cast this card exists for never reached the human. `smartPasses` now keeps any window in
+  which a Character is castable (`actionMenu.castable` holds a non-Summon). Review M1: the stack-top and AI-Main-
+  Phase prompts say "cast a card" too. Review L2: the sheet's `phase` refusal follows the card — "Only in your Main
+  Phase" for a plain Character, "Not in this step — cast it in a Main Phase or an Attack Phase window" for a
+  Summon or a Back Attack Character.
 - J2-A4's second case asserts greedy CASTS the surprise blocker in the `declared` window (it does, at depth 1).
 - The deck change re-pinned: deck-search → 135, card-details → 135, the announcements literal ("Cast Sphene …
   discard Dragoon as lightning"), the blocker-choice and Reeve sweeps now seek what they assert, and the mirror
@@ -36,7 +42,11 @@ parser already turns the keyword line (with its parenthetical) into `keywords: [
 - **J2-D2 — castability.** In `castBlocker`, a Character whose printed keywords include `backAttack` skips the
   three Character-only refusals — `phase` (Main Phase only), `notTurnPlayer`, `stackNotEmpty` — and is instead
   gated like a Summon: `instantSpeedAllowed` (a Main Phase, or an Attack Phase window; NOT the `firstStrike`
-  window, §15.2.3.3), the caster holds priority, nothing is pending. The field limits (§7.7.3–5), the Backup
+  window), the caster holds priority, nothing is pending. **The First Strike exclusion is a reading (review L1):**
+  §15.2.3.3 bars "Summons or ... action or special abilities" there; casting a Character is a special ACTION
+  (§9.3.1.5), which the letter does not name. The intent — nothing enters or acts between the two batches — is
+  taken; it is encoded in `instantSpeedAllowed` (`cast.ts`) and `menuShape` (`legal.ts`), and a revised reading
+  must touch both. Unobservable in this pool (Scarmiglione has no ETB and the block is already declared). The field limits (§7.7.3–5), the Backup
   cap and the Monster refusal still apply. Printed keywords only: a card in hand has no field card to carry a
   granted keyword, and no pool effect grants Back Attack.
 - **J2-D3 — priority after the cast.** §11.4.7: the Character is on the field, its ETB triggers are placed at
@@ -50,7 +60,11 @@ parser already turns the keyword line (with its parenthetical) into `keywords: [
 - **J2-D5 — the AI.** `actionMenu(...).castable` runs every hand card through `castCheck`, so the cast appears
   among the AI's candidates in every window where it is legal, and `forcedPass` no longer reports a window in
   which the AI could cast it. No AI code changes; a test proves greedy sees the candidate in the `declared`
-  window and casts it as a blocker when that saves a point of damage for free.
+  window and casts it as a blocker when that saves a point of damage for free. **Limit (review L4):** inside
+  rollouts, greedy's `combatWindow` passes through every combat window, so neither agent anticipates the
+  opponent's Back Attack when it attacks, and its own Back Attack inside a rollout never happens — the cast is
+  a top-level candidate only. An ISMCTS node opens for the non-turn player in those windows whenever the
+  determinised hand holds the card and CP; the rollout below prices it as a pass.
 - **J2-D6 — the browser and the engine's words.** The window prompt says "cast a card" when a Character is
   castable there (it says "cast a Summon" when only Summons are). The engine's and the sheet's `phase` refusal
   texts mention Back Attack: "Only in your Main Phase — or, with Back Attack, in any window".

@@ -2,7 +2,7 @@ import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
 import { actingPlayer, apply, createGame, forcedDecision, forcedPass, isResponseWindow, legalCommands, type CardId, type GameState } from '@fftcg/engine'
-import { endPhase, makeGame, withField, withHand, withHandSize } from '../../../packages/engine/test/helpers.js'
+import { VANILLA_POOL, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../../packages/engine/test/helpers.js'
 import { GreedyAgent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { aiHandlers, settleForcedWindows, settleWindows, stepAi, useGame } from '../src/game/useGame.js'
@@ -200,6 +200,21 @@ describe('smart auto-pass (K5-A1)', () => {
     const { state } = aiAttack()
     const settled = settleWindows(state, { control: 'smart' }).state
     expect(settled.pending).toEqual({ kind: 'declareBlock', player: HUMAN })
+  })
+  it('smart: the `declared` window of the AI’s attack is KEPT when the human could cast a Back Attack Character there (J2 review H1)', () => {
+    // K5-D4 passed `declared` when only Summons could be cast there; rung J2 made it the surprise-blocker window.
+    const defs = [...VANILLA_POOL, makeDef({ code: 'T-BA', cost: 0, power: 5000, keywords: ['backAttack'] })]
+    let b = endPhase(makeGame({ defs }))
+    b = { ...b, turnPlayer: AI, priority: AI, firstPlayer: AI }
+    let attacker: CardId
+    ;[b, attacker] = withField(b, AI, 'forwards', 'V-F2')
+    b = withHandSize(withHandSize(b, AI, 0), HUMAN, 0)
+    ;[b] = withHand(b, HUMAN, 'T-BA')
+    const declared = apply(b, { type: 'declareAttack', player: AI, attackers: [attacker] }).state
+    const w = apply(declared, { type: 'pass', player: AI }).state   // §11.1.6: the attacker forfeits first
+    expect(humanWindow(w) && w.attack?.step === 'declared').toBe(true)
+    expect(legalCommands(w, HUMAN).some((c) => c.type === 'castCharacter'), 'the Back Attack cast is on the menu').toBe(true)
+    expect(settleWindows(w, { control: 'smart' }).state, 'kept: a Character could enter here').toBe(w)
   })
   it('smart: the `blocked` window before damage is kept (K5-D3.2)', () => {
     const { state, blocker } = aiAttack()

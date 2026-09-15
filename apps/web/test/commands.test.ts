@@ -930,4 +930,16 @@ describe('the window prompt names what may be cast (rung J2)', () => {
     const withCharacter = promptFor(v, [{ type: 'castSummon', player: HUMAN, card: 1, payment: pay }, { type: 'castCharacter', player: HUMAN, card: 2, payment: pay }, { type: 'pass', player: HUMAN }])
     expect(withCharacter).toBe('Attack Phase — combat declared: cast a card or pass')
   })
+  it('the stack-top and AI-Main-Phase prompts say "cast a card" too (J2 review M1)', () => {
+    const s = makeGame()
+    const pay = { dullBackups: [], discards: [] }
+    const legal: Command[] = [{ type: 'castCharacter', player: HUMAN, card: 2, payment: pay }, { type: 'pass', player: HUMAN }]
+    // The AI's Main Phase 1, the human holding priority after its pass.
+    const aiMain = viewFor({ ...s, turnPlayer: AI, priority: HUMAN }, HUMAN)
+    expect(promptFor(aiMain, legal)).toBe("The AI's Main Phase 1 — cast a card or pass")
+    // The AI's Summon on the stack: §15.2.5.3, the response Back Attack exists for.
+    const summon = s.players[AI].deck[0]!
+    const top = viewFor({ ...s, turnPlayer: AI, priority: HUMAN, stack: [{ kind: 'summon', card: summon, controller: AI, frames: [] }] }, HUMAN)
+    expect(promptFor(top, legal)).toMatch(/ is on the stack — cast a card or pass$/)
+  })
 })

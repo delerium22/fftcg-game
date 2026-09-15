@@ -9,6 +9,7 @@ import { GreedyAgent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { Board } from '../src/ui/Board.js'
 import { buildChoiceSet, headline, paymentAlternatives, preferredChoices } from '../src/game/commands.js'
+import { endPhase, makeGame, withHand, withHandSize } from '../../../packages/engine/test/helpers.js'
 import { stepAi } from '../src/game/useGame.js'
 import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
 
@@ -154,10 +155,29 @@ describe('I1-A2 — Cast on the sheet: enabled headline, or disabled with the re
 
   it('at the mulligan the reason is the phase, not CP', () => {
     const { view } = mount(MULLIGAN)
-    press(cardButton(view.hand[0] as CardId))
+    const card = view.hand[0] as CardId
+    press(cardButton(card))
     const blocked = sheet()!.querySelector<HTMLButtonElement>('[data-command="castBlocked"]')
     expect(blocked, 'a hand card at the mulligan should show a disabled Cast').not.toBeNull()
-    expect(document.getElementById(blocked!.getAttribute('aria-describedby')!)?.textContent).toBe('Only in your Main Phase — or, with Back Attack, in any window')
+    // J2 review L2: the wording follows the CARD — a plain Character is Main-Phase-only; a Summon (or a Back
+    // Attack Character) is cast in a window, and never says "Main Phase".
+    const def = view.defs[view.cards[card]!.code]!
+    const windowCard = def.type === 'summon' || (def.keywords ?? []).includes('backAttack')
+    expect(document.getElementById(blocked!.getAttribute('aria-describedby')!)?.textContent).toBe(windowCard ? 'Not in this step — cast it in a Main Phase or an Attack Phase window' : 'Only in your Main Phase')
+  })
+
+  it('a Back Attack card in the declaration step names the rule (J2-A5)', () => {
+    let s = endPhase(makeGame({ decks: DECKS, defs: CARD_DEFS }))
+    s = withHandSize(s, HUMAN, 0)
+    const [t, scar] = withHand(s, HUMAN, '2-085H')
+    s = t
+    expect(s.attack?.step).toBe('declaration')
+    const { view } = mount(s)
+    press(cardButton(scar))
+    const blocked = sheet()!.querySelector<HTMLButtonElement>('[data-command="castBlocked"]')
+    expect(blocked, 'the declaration step is a decision, not a window (§10.1.2.1)').not.toBeNull()
+    expect(document.getElementById(blocked!.getAttribute('aria-describedby')!)?.textContent).toBe('Not in this step — cast it in a Main Phase or an Attack Phase window')
+    void view
   })
 })
 

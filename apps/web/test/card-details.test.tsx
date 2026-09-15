@@ -578,15 +578,18 @@ describe('the field zones as keyboard grids (rung E3b-2)', () => {
     const canBlock = (g: GameState): boolean =>
       g.pending?.kind === 'declareBlock' && g.pending.player === HUMAN
       && legalCommands(g, HUMAN).some((c) => c.type === 'declareBlock' && c.blocker !== null)
-    let s: GameState = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
-    for (let seed = 1; seed <= 12 && !canBlock(s); seed++) {
-      s = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
+    // J2 review L5: one game per seed (seed 1 was played twice before).
+    const played = (seed: number): GameState => {
+      let g: GameState = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
       const agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
-      for (let i = 0; i < 8000 && !s.result && !canBlock(s); i++) {
-        if (actingPlayer(s) === null) break
-        s = stepAi(s, agent).state
+      for (let i = 0; i < 8000 && !g.result && !canBlock(g); i++) {
+        if (actingPlayer(g) === null) break
+        g = stepAi(g, agent).state
       }
+      return g
     }
+    let s = played(1)
+    for (let seed = 2; seed <= 12 && !canBlock(s); seed++) s = played(seed)
     expect(canBlock(s), 'never reached a block decision with a legal blocker, so this asserts nothing').toBe(true)
     expect(s.pending?.player, 'stopped at the AI decision, not the human one').toBe(HUMAN)
     mount(s)
