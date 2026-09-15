@@ -122,6 +122,9 @@ export function trace(events: readonly Event[], names: Record<number, string> = 
       case 'flagGranted': out.push(`flag:${n(e.card)}:${e.flag}`); break
       case 'returnedToHand': case 'addedToHand': out.push(`toHand:${n(e.card)}`); break
       case 'paidToBreakZone': out.push(`paid:${n(e.card)}`); break
+      case 'frozen': out.push(`frozen:${n(e.card)}`); break
+      case 'thawed': out.push(`thawed:${n(e.card)}`); break
+      case 'dulled': out.push(`dulled:${n(e.card)}`); break
       case 'playerDamaged': out.push(`playerDamaged:${e.player}`); break
       case 'exBurstOffered': out.push('burst:offered'); break
       case 'exBurstUsed': out.push('burst:used'); break

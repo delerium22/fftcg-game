@@ -163,7 +163,9 @@ describe('activated abilities reach the agents (C3-A1)', () => {
   // test that would have failed. It asserts the agents CHOOSE an activation over a real sweep, not merely that
   // one was offered.
   const chosen = new Map<string, number>()
-  for (let seed = 1; seed <= 40 && chosen.size === 0; seed++) {
+  // Until Sphene's retrieve is seen (the assertion below needs it), not merely until SOME activation is: rung J3's
+  // deck change moved the first activating seed to one without it.
+  for (let seed = 1; seed <= 40 && !chosen.has('27-126S:retrieve'); seed++) {
     const d = decks()
     const defs = loadCards()
     const agents: [Agent, Agent] = [

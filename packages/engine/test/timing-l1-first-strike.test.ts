@@ -24,6 +24,11 @@ const WATCH_OWN_DAMAGE: Ability = {
   effects: [{ kind: 'draw', count: 1 }],
 }
 const BLOCKER_WATCH: Ability = { ...WATCH_OWN_DAMAGE, id: 'T-WATCH:draw' }
+const WATCH_OPP_BREAK: Ability = {
+  id: 'T-OBS:draw', trigger: { kind: 'observesZoneChange', from: 'field', to: 'breakZone', whose: 'opponent', of: 'forward' },
+  text: 'When a Forward opponent controls is put from the field into the Break Zone, draw 1 card.',
+  effects: [{ kind: 'draw', count: 1 }],
+}
 const NOOP_SUMMON: Ability = {
   id: 'T-SUMMON:noop', trigger: { kind: 'summonResolve' }, text: 'Choose 1 Forward. Dull it.',
   effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'dull' }] }],
@@ -39,6 +44,7 @@ const DEFS: CardDef[] = [
   makeDef({ code: 'T-FS5', cost: 0, power: 5000, keywords: ['firstStrike'] }),
   makeDef({ code: 'T-FS-WATCH', cost: 0, power: 6000, keywords: ['firstStrike'], hasAbilities: true, abilityClauses: 1, abilities: [WATCH_OWN_DAMAGE] }),
   makeDef({ code: 'T-WATCH', cost: 0, power: 7000, hasAbilities: true, abilityClauses: 1, abilities: [BLOCKER_WATCH] }),
+  makeDef({ code: 'T-OBS', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [WATCH_OPP_BREAK] }),
   makeDef({ code: 'T-SUMMON', type: 'summon', cost: 0, power: null, hasAbilities: true, abilityClauses: 1, abilities: [NOOP_SUMMON] }),
   makeDef({ code: 'T-PUMP', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [PUMP] }),
 ]
@@ -208,6 +214,25 @@ describe('L1 §15.2.3 — First Strike splits the damage step', () => {
     ])
     expect(done.state.stack).toEqual([])
     ok(done.state)
+  })
+
+  it('L1 §15.2.3.3 §11.8.7 — a zone-change trigger fired by the first batch’s break IS placed in the First Strike window and resolves there; only casts and activations are barred', () => {
+    // Player 0's 6000 First Strike attacker breaks the 5000 blocker in the first batch; player 0 also controls a
+    // watcher of the opponent's Forwards leaving. The watcher is not a damage trigger, so it is not held.
+    let { s, attackers, blocker, names } = board(['T-FS6'], 'V-F2')
+    let obs: CardId
+    ;[s, obs] = withField(s, 0, 'forwards', 'T-OBS'); names[obs] = 'obs'
+    const r = intoDamage(s, attackers, blocker)
+    expect(r.state.attack?.step).toBe('firstStrike')
+    expect(r.state.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon')), 'placed as priority was granted (§11.1.4)').toEqual(['T-OBS:draw'])
+    expect(legalCommands(r.state, 0).map((c) => c.type).filter((t) => t !== 'concede')).toEqual(['pass'])
+    const resolved = passBoth(r.state)
+    expect(resolved.state.stack).toEqual([])
+    expect(resolved.state.attack?.step, 'still the First Strike window: the double forfeit resolved the top (§11.1.7)').toBe('firstStrike')
+    expect(trace(resolved.events, names)).toEqual(['drew:0:1'])
+    const w = passBoth(resolved.state)
+    expect(w.state.attack?.step).toBe('damage')
+    ok(w.state)
   })
 
   it('unblocked: no firstStrike step, one point of damage as before', () => {
