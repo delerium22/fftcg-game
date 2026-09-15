@@ -1,9 +1,24 @@
 # Rung J8 — Limit Break (§7.14, §8.1, §15.2.8): the LB deck as a zone, LB cards cast from it
 
-> **STATUS: agreed 2026-09-16** under the user's standing instruction ("loop the work until it's implemented, review
-> with Codex, go with your recommendations at a crossroads"). Calls are mine and recorded so they can be overturned
-> here. Architectural: a new zone, a new cost, a new deck file, a new board row. The Codex plan review is deferred
-> (quota) as J3's and J2's were; the plan is `docs/superpowers/plans/2026-09-16-rung-j8-limit-break.md`.
+> **STATUS: BUILT, 2026-09-16** (commits a1143e5..26971c5; the Codex review is deferred to 08:50 by
+> `~/.claude/handoffs/fftcg-game/codex-j8-review.sh` and adjudicated next session, after J3's and J2's). Agreed under
+> the user's standing instruction ("loop the work until it's implemented, review with Codex, go with your
+> recommendations at a crossroads"). Calls are mine and recorded so they can be overturned here. Architectural: a
+> new zone, a new cost, a new deck file, a new board row. Plan: `docs/superpowers/plans/2026-09-16-rung-j8-limit-break.md`.
+
+## As built (differences from the design below)
+
+- The Layer 3 scenario (J8-A3) spans two turns: Maat cannot attack the turn it is cast (§10.1.2.1.1), so the Brave
+  attack is Scarmiglione's (granted by Maat's ETB, stays active), and Maat's return is Luso's trigger breaking it
+  as a blocker on turn 2 — which also shows the pump expiring and Maat's printed Brave surviving it.
+- §15.2.8.4.4 (a hidden zone) has its own Layer 1 case: a synthetic bounce Summon returns the LB Forward to hand
+  and it is in the LB deck face up when the command returns.
+- The CLI flag is `--lb-deck path|none` (default the starter LB file); `hotseat` and `selfplay` take `lbDecks?`;
+  `mirror`, `profile` and `deckorder` still play without an LB deck (a follow-up if their numbers should include it).
+- The browser play (seed 28, turn 1): Maat cast from the LB deck with Auto (two discards, Maat's twin flipped),
+  the row shows "LB" / "Spent", the ETB pumps. The pressable e2e now counts hand casts only — the LB deck's four
+  cards are pressable casts on turn 1 (a discard pays for Maat).
+- The harness `trace` gained `lbFlip:` and `lbReturn:` lines. No seed re-pins: the main deck file is unchanged.
 
 ## The rules, as read from CR 3.3
 
