@@ -2,8 +2,8 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { CardDef, CardId, Command, Event, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { actingPlayer, apply as engineApply, applyChooseFirst, drainResolution, hasResolutionWork, isResponseWindow, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
+import type { CardDef, CardId, Event, FieldCard, GameState, PlayerId } from '@fftcg/engine'
+import { actingPlayer, apply as engineApply, applyChooseFirst, drainResolution, hasResolutionWork, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, INERT_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -15,96 +15,8 @@ import { ABILITIES, ABILITY_CLAUSES, INERT_CLAUSES, loadCards } from '../src/ind
  * There is no stack and no response window in C1, so none of this is a claim of CR correctness.
  */
 
-const DEFS = loadCards()
+import { DECK, DEFS, EARTH_BACKUP, LIGHTNING_BACKUP, applyNow, endPhase, makeGame, passBoth, setPlayer, withBreakZone, withCp, withDeckTops, withField, withHand } from './harness.js'
 
-/** 50 cards, ≤3 copies of each of the 18 codes (§8.1.1.1–2). */
-const DECK: string[] = (() => {
-  const codes = DEFS.map((d) => d.code)
-  const out: string[] = []
-  for (let i = 0; out.length < 50; i++) out.push(codes[i % codes.length] as string)
-  return out
-})()
-
-function makeGame(): GameState {
-  let s = createGame({ seed: 1, decks: [DECK, DECK], defs: DEFS })
-  const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : 0
-  ;[s] = applyChooseFirst(s, chooser, chooser === 0)   // player 0 always goes first
-  ;[s] = applyMulligan(s, 0, false)
-  ;[s] = applyMulligan(s, 1, false)
-  // An empty hand keeps payments unambiguous; the cards go under the deck so no instance leaves every zone.
-  const p0 = s.players[0]
-  return { ...s, players: [{ ...p0, hand: [], deck: [...p0.deck, ...p0.hand] }, s.players[1]] }
-}
-
-let nextId = 90_000
-function addInstance(state: GameState, owner: PlayerId, code: string): [GameState, CardId] {
-  const id = nextId++
-  return [{ ...state, cards: { ...state.cards, [id]: { id, code, owner } } }, id]
-}
-function setPlayer(state: GameState, p: PlayerId, ps: GameState['players'][0]): GameState {
-  const players: GameState['players'] = [state.players[0], state.players[1]]
-  players[p] = ps
-  return { ...state, players }
-}
-function withField(state: GameState, player: PlayerId, zone: 'forwards' | 'backups', code: string, over: Partial<FieldCard> = {}): [GameState, CardId] {
-  const [s, id] = addInstance(state, player, code)
-  const fc: FieldCard = { id, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [], ...over }
-  const ps = s.players[player]
-  return [setPlayer(s, player, { ...ps, [zone]: [...ps[zone], fc] }), id]
-}
-function withHand(state: GameState, player: PlayerId, code: string): [GameState, CardId] {
-  const [s, id] = addInstance(state, player, code)
-  const ps = s.players[player]
-  return [setPlayer(s, player, { ...ps, hand: [...ps.hand, id] }), id]
-}
-/** Stack `codes` on top of `player`'s deck, TOP FIRST, and return their ids in that order. */
-function withDeckTops(state: GameState, player: PlayerId, codes: string[]): [GameState, CardId[]] {
-  let s = state
-  const ids: CardId[] = []
-  for (const code of codes) { let id: CardId; [s, id] = addInstance(s, player, code); ids.push(id) }
-  const ps = s.players[player]
-  return [setPlayer(s, player, { ...ps, deck: [...ids, ...ps.deck] }), ids]
-}
-
-function withBreakZone(state: GameState, player: PlayerId, code: string): [GameState, CardId] {
-  const [s, id] = addInstance(state, player, code)
-  const ps = s.players[player]
-  return [setPlayer(s, player, { ...ps, breakZone: [...ps.breakZone, id] }), id]
-}
-
-/** `n` active generic Backups of one element, as CP sources. Backups produce their FIRST printed element. */
-const EARTH_BACKUP = '18-064C'      // Geomancer, generic
-const LIGHTNING_BACKUP = '18-069C'  // Red Mage, generic
-function withCp(state: GameState, player: PlayerId, codes: string[]): [GameState, CardId[]] {
-  let s = state
-  const ids: CardId[] = []
-  for (const code of codes) { let id: CardId; [s, id] = withField(s, player, 'backups', code); ids.push(id) }
-  return [s, ids]
-}
-
-/** Both players forfeit priority (rung J1): what ends a Main Phase now that a single pass only hands priority over. */
-function passBoth(state: GameState): { state: GameState; events: Event[] } {
-  const p = actingPlayer(state)!
-  const first = apply(state, { type: 'pass', player: p })
-  const same = first.state.phase === state.phase && first.state.attack?.step === state.attack?.step
-  const q = actingPlayer(first.state)
-  if (!same || first.state.pending || first.state.result || q === null || q === p) return first
-  const second = apply(first.state, { type: 'pass', player: q })
-  return { state: second.state, events: [...first.events, ...second.events] }
-}
-function endPhase(state: GameState): GameState {
-  let s = passBoth(state).state
-  for (let i = 0; i < 4 && !s.pending && !s.result && isResponseWindow(s) && s.stack.length === 0 && s.phase === 'attack'; i++) s = passBoth(s).state
-  return s
-}
-/** `apply`, then resolve everything it triggered or stacked, with no windows (rung J1) — what "immediate resolution" was. */
-function applyNow(state: GameState, command: Command): { state: GameState; events: Event[] } {
-  const r = engineApply(state, command)
-  if (r.state.result) return r
-  const [t, more] = drainResolution(r.state)
-  const s = !t.result && !t.pending && !hasResolutionWork(t.resolution) && t.stack.length === 0 ? { ...t, resolution: { ...t.resolution, steps: 0 } } : t
-  return { state: s, events: [...r.events, ...more] }
-}
 const apply = applyNow
 const fc = (s: GameState, id: CardId): FieldCard | undefined => findFieldCard(s, id)?.card
 const ok = (s: GameState) => expect(checkInvariants(s)).toEqual([])
