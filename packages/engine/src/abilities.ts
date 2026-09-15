@@ -95,6 +95,8 @@ export type Effect =
   /** Run `do` once per card matching `from`, with `chosen` bound to that one card. Untargeted — no choice. */
   | { readonly kind: 'forEach'; readonly from: TargetSpec; readonly do: readonly Effect[] }
   | { readonly kind: 'dull' }
+  /** "Freeze it" (§15.2.4, rung J3): the card skips its controller's next Active Phase. Does not dull. */
+  | { readonly kind: 'freeze' }
   | { readonly kind: 'damage'; readonly amount: number }
   | { readonly kind: 'breakCard' }
   | { readonly kind: 'addPower'; readonly amount: number }

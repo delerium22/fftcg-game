@@ -22,6 +22,12 @@ export interface FieldCard {
    * models for free. Cleared with the other per-turn flags in the End Phase.
    */
   usedThisTurn: readonly string[]
+  /**
+   * §15.2.4 Freeze (rung J3): a frozen Character does not activate in its controller's next Active Phase, and
+   * the status clears there — one skip, then normal. Optional, absent meaning not frozen: fixtures build field
+   * cards by hand in a dozen places, and the engine writes it explicitly on every path that sets or clears it.
+   */
+  frozen?: boolean
 }
 export interface PlayerState {
   deck: CardId[]        // index 0 = top

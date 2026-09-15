@@ -17,6 +17,7 @@ function checkFieldCard(problems: string[], where: string, c: FieldCard, state: 
     else if (a.trigger.sourceZone !== 'field') problems.push(`ability ${id} is oncePerTurn from ${a.trigger.sourceZone}, which has no FieldCard to track it`)
   }
   if (c.damage < 0) problems.push(`card ${c.id} has negative damage`)
+  if (c.frozen !== undefined && typeof c.frozen !== 'boolean') problems.push(`card ${c.id} in ${where} has a non-boolean frozen`)
   if (!Number.isInteger(c.powerBonus) || !Number.isFinite(c.powerBonus)) problems.push(`card ${c.id} in ${where} has non-integral powerBonus ${c.powerBonus}`)
   for (const f of c.flags) if (!FIELD_FLAGS.includes(f)) problems.push(`card ${c.id} has unknown flag ${String(f)}`)
   if (new Set(c.flags).size !== c.flags.length) problems.push(`card ${c.id} has duplicate flags`)

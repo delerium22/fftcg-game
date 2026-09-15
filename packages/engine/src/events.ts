@@ -84,6 +84,10 @@ export type Event =
    *  its own loss, and a narrator that says "your ability" needs the same answer (Codex MAJOR). */
   | { type: 'abilityNoLegalTarget'; card: CardId; abilityId: string; controller: PlayerId }
   | { type: 'dulled'; card: CardId }
+  /** §15.2.4 (rung J3): the card will not activate in its controller's next Active Phase. */
+  | { type: 'frozen'; card: CardId }
+  /** That Active Phase came: the card was left as it was and the status cleared. */
+  | { type: 'thawed'; card: CardId }
   | { type: 'abilityDamage'; source: CardId; target: CardId; amount: number }
   | { type: 'powerModified'; card: CardId; amount: number }
   | { type: 'keywordGranted'; card: CardId; keyword: Keyword }

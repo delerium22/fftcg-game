@@ -438,6 +438,16 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         ctx.events.push({ type: 'dulled', card: id })
       }
       return
+    case 'freeze':
+      // §15.2.4 (rung J3): a status, not a dulling — an active card stays active and frozen. Freezing a frozen
+      // card changes nothing and says nothing.
+      for (const id of ctx.chosen) {
+        const loc = findFieldCard(ctx.state, id)
+        if (!loc || loc.card.frozen === true) continue
+        ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, frozen: true }))
+        ctx.events.push({ type: 'frozen', card: id })
+      }
+      return
     case 'damage': {
       const hits: DamageOccurrence[] = []
       for (const id of ctx.chosen) {

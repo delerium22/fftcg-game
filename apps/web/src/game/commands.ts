@@ -360,6 +360,7 @@ function caused(v: PlayerView, text: string): string {
 function verbOf(e: Effect): { imperative: string; purpose: string } | null {
   switch (e.kind) {
     case 'dull': return { imperative: 'Dull', purpose: 'to dull' }
+    case 'freeze': return { imperative: 'Freeze', purpose: 'to freeze' }
     case 'damage': return { imperative: `Deal ${e.amount} damage to`, purpose: `to deal ${e.amount} damage to` }
     case 'breakCard': return { imperative: 'Break', purpose: 'to break' }
     case 'addPower': return { imperative: `Give ${signed(e.amount)} power to`, purpose: `to give ${signed(e.amount)} power` }

@@ -112,6 +112,11 @@ function targetDelta(state: GameState, source: CardId, effects: readonly Effect[
         // is a no-op, which is why an active target must OUTRANK a dull one rather than tie it.
         if (loc && loc.card.status === 'active') d -= power / 1000 + 1
         break
+      case 'freeze':
+        // §15.2.4 (rung J3): a frozen card misses its next Active Phase. That costs a DULL card a whole turn of
+        // use; an active one keeps acting until it dulls, so freezing it is worth little. Already frozen: nothing.
+        if (loc && loc.card.frozen !== true) d -= loc.card.status === 'dull' ? power / 1000 : 0.5
+        break
       case 'damage': {
         if (!loc || loc.zone !== 'forwards') break   // only Forwards carry damage
         // §12.4.5: damage ≥ power breaks. Damage that actually breaks is worth the whole card; damage that does

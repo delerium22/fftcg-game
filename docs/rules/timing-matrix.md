@@ -231,8 +231,8 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.3.3 | A priority window between the two, with no casts; triggers wait for the second | simplified | packages/engine/src/attack.ts |
 | 15.2.3.4 | A party needs First Strike on every member | simplified | packages/engine/src/attack.ts |
 | 15.2.4 | Freeze | heading |  |
-| 15.2.4.1 | An ongoing effect applied by Summons and abilities | simplified | packages/engine/src/phases.ts |
-| 15.2.4.2 | Frozen Forwards skip their controller's next Active Phase | simplified | packages/engine/src/phases.ts |
+| 15.2.4.1 | An ongoing effect applied by Summons and abilities | tested | engine/timing-l1-freeze#§15.2.4.1 |
+| 15.2.4.2 | Frozen Forwards skip their controller's next Active Phase | tested | engine/timing-l1-freeze#§15.2.4.2 |
 | 15.2.5 | Back Attack | heading |  |
 | 15.2.5.1 | A Character field ability | simplified | packages/engine/src/cast.ts |
 | 15.2.5.2 | Cast with priority in either player's Main or Attack Phase | simplified | packages/engine/src/cast.ts |

@@ -1,6 +1,6 @@
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
-import type { CardId, GameState } from './state.js'
+import type { CardId, FieldCard, GameState } from './state.js'
 import { HAND_SIZE_LIMIT, updatePlayer } from './state.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
@@ -29,16 +29,18 @@ export function startTurn(state: GameState, turn: number, player: PlayerId): [Ga
     { ...s.players[1], putIntoBreakZoneFromFieldThisTurn: [] },
   ] }
   // §9.1 Active Phase
-  // MVP0-SIMPLIFICATION (§15.2.4 Freeze): there is no frozen status, so every dull Character activates here.
-  // §15.2.4.2 says a frozen Forward skips its controller's next Active Phase. Rung J3 adds the status.
   s = { ...s, phase: 'active' }; events.push({ type: 'phaseStarted', phase: 'active' })
   const dulled: CardId[] = []
-  s = updatePlayer(s, player, (ps) => ({
-    ...ps,
-    forwards: ps.forwards.map((c) => { if (c.status === 'dull') dulled.push(c.id); return { ...c, status: 'active' } }),
-    backups: ps.backups.map((c) => { if (c.status === 'dull') dulled.push(c.id); return { ...c, status: 'active' } }),
-  }))
+  const thawed: CardId[] = []
+  // §15.2.4.2 (rung J3): a frozen card is left as it is — dull stays dull — and the status clears: one skip.
+  const activate = (c: FieldCard): FieldCard => {
+    if (c.frozen === true) { thawed.push(c.id); return { ...c, frozen: false } }
+    if (c.status === 'dull') dulled.push(c.id)
+    return { ...c, status: 'active' }
+  }
+  s = updatePlayer(s, player, (ps) => ({ ...ps, forwards: ps.forwards.map(activate), backups: ps.backups.map(activate) }))
   if (dulled.length) events.push({ type: 'activated', player, cards: dulled })
+  for (const card of thawed) events.push({ type: 'thawed', card })
   // §9.2 Draw Phase
   s = { ...s, phase: 'draw' }; events.push({ type: 'phaseStarted', phase: 'draw' })
   const n = turn === 1 ? 1 : 2   // §9.2.1.3
