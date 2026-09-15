@@ -1,9 +1,27 @@
 # Rung J3 — First Strike (§15.2.3) and Freeze (§15.2.4), with real cards in both decks
 
-> **STATUS: agreed 2026-09-16** under the user's standing instruction ("loop the work until it's implemented, review
+> **STATUS: BUILT, 2026-09-16** (commits 6850058..64a3fbd; the Codex review runs when its quota resets and is adjudicated in the next session — see the handoff). Agreed under the user's standing instruction ("loop the work until it's implemented, review
 > with Codex, go with your recommendations at a crossroads"). Every call below is mine and recorded so it can be
 > overturned here. The matrix rows 15.2.3.1–4, 15.2.4.1–2 and 15.1.1.9.7 are `simplified` today; J3 turns them
 > `tested` and removes the markers in `attack.ts` and `phases.ts`.
+
+## As built (differences from the design below)
+
+- `FieldCard.frozen` and `AttackState.heldDamage` are OPTIONAL fields (absent = false / none): a dozen test
+  fixtures build field cards and attack states by hand, and a required field would churn them for no behaviour.
+- The invariant on the `firstStrike` step does NOT forbid a pending decision: a zone-change trigger fired by
+  the first batch's break (Lightning watching the broken blocker) is placed and declares IN the window, which
+  §15.2.3.3 permits — it bars casting and activating, not triggers. Found by self-play (seed 119); pinned by a
+  Layer 1 test.
+- The resumed damage step announces itself (`phaseStarted damage`) BEFORE the second batch lands, so a trace
+  reads `step:damage, battle…, step:firstStrike, step:damage, battle…`.
+- J3-A6 asserts the block's SCORE, not the decision: greedy chump-blocks a 6000 with a 5000 whether or not the
+  attacker has First Strike (a point of damage outweighs the Forward for it), so the observable is that 5000
+  into 5000 scores lower with the keyword (one-sided kill) than without (a trade). It does decline nothing.
+- The deck change re-shuffled every seed: pressable → seed 28, deck-search → 28, card-details → 17, the
+  announcements literal re-derived at seed 1 ("discard Miner as earth, discard Shiva as ice"), two sweeps
+  widened, one sweep now stops on the exact condition it asserts, one given a 60 s budget. Payment's seed 50
+  and how-to-play's 1 and 21 survived by luck.
 
 ## The problem
 
