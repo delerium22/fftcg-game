@@ -55,7 +55,7 @@ import { cardDb } from '../src/index.js'
 describe('cards.json', () => {
   it('contains the Vol. 2 pool with the exclusives patched in', () => {
     const db = cardDb()
-    expect(db.size).toBe(21)
+    expect(db.size).toBe(22)
     expect(db.get('27-124S')?.name).toBe('Cloud')
     expect(db.get('12-120C')?.elements).toEqual(['earth', 'lightning'])
     expect(db.get('9-074C')?.power).toBeNull()

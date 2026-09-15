@@ -10,7 +10,7 @@ import { loadCards } from '../src/index.js'
 
 export const DEFS = loadCards()
 
-/** 50 cards, ≤3 copies of each of the 21 codes (§8.1.1.1–2). */
+/** 50 cards, ≤3 copies of each of the 22 codes (§8.1.1.1–2). */
 export const DECK: string[] = (() => {
   const codes = DEFS.map((d) => d.code)
   const out: string[] = []

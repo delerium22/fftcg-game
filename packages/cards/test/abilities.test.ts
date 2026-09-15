@@ -2153,3 +2153,23 @@ describe('1-040C Summoner — a vanilla ice Backup', () => {
     expect(backupElements(s, ids[0]!)).toContain('ice')
   })
 })
+
+describe('2-085H Scarmiglione — "Back Attack" (rung J2)', () => {
+  it('is a keyword card: keywords backAttack, no abilities, non-generic, earth 2 for 5000', () => {
+    const d = DEFS.find((x) => x.code === '2-085H')!
+    expect(d.keywords).toEqual(['backAttack'])
+    expect(d.abilities ?? []).toEqual([])
+    expect(d.hasAbilities).toBe(false)
+    expect(d.generic).toBe(false)
+    expect([d.type, d.elements, d.cost, d.power]).toEqual(['forward', ['earth'], 2, 5000])
+  })
+  it('is castable by the non-turn player in the turn player’s Main Phase once priority is handed over (§15.2.5.2)', () => {
+    let s = makeGame()
+    let scar: CardId
+    ;[s, scar] = withHand(s, 1, '2-085H')
+    ;[s] = withCp(s, 1, [EARTH_BACKUP, EARTH_BACKUP])
+    expect(legalCommands(s, 1).some((c) => c.type === 'castCharacter' && c.card === scar), 'not before the turn player forfeits').toBe(false)
+    const handed = engineApply(s, { type: 'pass', player: 0 }).state
+    expect(legalCommands(handed, 1).some((c) => c.type === 'castCharacter' && c.card === scar)).toBe(true)
+  })
+})

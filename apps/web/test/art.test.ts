@@ -46,12 +46,13 @@ describe('planFetches (the --dry-run planner)', () => {
     '24-063H', '16-092C', '12-120C', '18-124C', '9-074C', '18-064C',
     '20-074C', '1-121C', '18-069C', '20-105C', '13-072R', '20-103H',
     '1-147C', '1-038R', '1-040C',   // rung J3
+    '2-085H',                        // rung J2
   ]
 
-  it('returns exactly the 21 distinct codes of the real deck file, in list order', () => {
+  it('returns exactly the 22 distinct codes of the real deck file, in list order', () => {
     const plan = planFetches(deckText(), OUT, new Set())
     expect(plan.map((e) => e.code)).toEqual(EXPECTED)
-    expect(plan).toHaveLength(21)
+    expect(plan).toHaveLength(22)
   })
 
   it('dedupes the 50 physical copies down to distinct codes', () => {

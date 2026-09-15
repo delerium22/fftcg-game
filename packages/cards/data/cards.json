@@ -77,6 +77,27 @@
     ]
   },
   {
+    "code": "2-085H",
+    "name": "Scarmiglione",
+    "type": "forward",
+    "elements": [
+      "earth"
+    ],
+    "cost": 2,
+    "power": 5000,
+    "keywords": [
+      "backAttack"
+    ],
+    "generic": false,
+    "exBurst": false,
+    "text": "Back Attack (Like Summons and abilities, this card can be played during either player's Attack Phase or Main Phase.)",
+    "hasAbilities": false,
+    "job": "Archfiend",
+    "categories": [
+      "IV"
+    ]
+  },
+  {
     "code": "9-074C",
     "name": "Class Tenth Moogle",
     "type": "backup",

@@ -1,7 +1,7 @@
 # Starter Set 2025 Vol. 2 — Earth/Lightning (Cloud). Main deck only; LB deck is MVP5.
 3 27-124S
 3 27-125S
-3 27-126S
+2 27-126S
 3 27-127S
 2 19-052C
 3 22-068R
@@ -16,8 +16,10 @@
 2 18-069C
 2 20-105C
 2 13-072R
-3 20-103H
+2 20-103H
 # Rung J3: First Strike and Freeze test cards — Dragoon, Shiva, and the ice Backup Shiva needs
 2 1-147C
 2 1-038R
 2 1-040C
+# Rung J2: Back Attack test card — Scarmiglione, a surprise blocker
+2 2-085H
