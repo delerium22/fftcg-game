@@ -1,5 +1,42 @@
 [
   {
+    "code": "1-038R",
+    "name": "Shiva",
+    "type": "summon",
+    "elements": [
+      "ice"
+    ],
+    "cost": 3,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "text": "EX BURST Choose 1 Forward. Dull it and Freeze it.",
+    "hasAbilities": true,
+    "categories": [
+      "XIII"
+    ]
+  },
+  {
+    "code": "1-040C",
+    "name": "Summoner",
+    "type": "backup",
+    "elements": [
+      "ice"
+    ],
+    "cost": 1,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "",
+    "hasAbilities": false,
+    "job": "Standard Unit",
+    "categories": [
+      "FFT"
+    ]
+  },
+  {
     "code": "1-121C",
     "name": "Red Mage",
     "type": "backup",
@@ -16,6 +53,27 @@
     "job": "Standard Unit",
     "categories": [
       "III"
+    ]
+  },
+  {
+    "code": "1-147C",
+    "name": "Dragoon",
+    "type": "forward",
+    "elements": [
+      "lightning"
+    ],
+    "cost": 3,
+    "power": 6000,
+    "keywords": [
+      "firstStrike"
+    ],
+    "generic": true,
+    "exBurst": false,
+    "text": "First Strike (If this Forward blocks or is blocked by a Forward without First Strike, this Forward deals damage first.)",
+    "hasAbilities": false,
+    "job": "Standard Unit",
+    "categories": [
+      "FFT"
     ]
   },
   {

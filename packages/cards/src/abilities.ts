@@ -28,6 +28,7 @@ import type { Ability, CardDef, CardType } from '@fftcg/engine'
  * one plus an activated one (Odin, Sphene) count both.
  */
 export const ABILITY_CLAUSES: Record<string, number> = {
+  '1-038R': 1,    // EX BURST dull and freeze (rung J3)
   '1-121C': 1,    // [Lightning][Dull]: grant Haste
   '9-074C': 1,    // static: may produce Lightning CP
   '12-120C': 1,   // ETB, modal — the two quoted actions are one clause
@@ -689,8 +690,26 @@ const RED_MAGE_18_DRAW: Ability = {
   effects: [{ kind: 'draw', count: 1 }],
 }
 
+// ---------------------------------------------------------------------------
+// Rung J3 — 1-038R Shiva, brought in for Freeze (§15.2.4). One clause, the marked EX Burst: "Dull it and Freeze
+// it" is two effects on one chosen Forward. Dragoon 1-147C (First Strike) and Summoner 1-040C print no clause.
+// ---------------------------------------------------------------------------
+
+const SHIVA_SUMMON: Ability = {
+  id: '1-038R:summon',
+  trigger: { kind: 'summonResolve' },
+  exBurst: true,
+  text: 'EX BURST Choose 1 Forward. Dull it and Freeze it.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{ kind: 'dull' }, { kind: 'freeze' }],
+  }],
+}
+
 /** Implemented clauses by card code. A card absent from here has none — every clause it prints still warns. */
 export const ABILITIES: Record<string, readonly Ability[]> = {
+  '1-038R': [SHIVA_SUMMON],
   '1-121C': [RED_MAGE_HASTE],
   '9-074C': [MOOGLE_LIGHTNING_CP],
   '12-120C': [SHANTOTTO_ETB],

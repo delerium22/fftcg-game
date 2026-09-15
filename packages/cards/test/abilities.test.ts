@@ -443,21 +443,21 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty-seven implemented clauses on, and only those twenty-seven', () => {
+  it('loadCards merges the twenty-eight implemented clauses on, and only those twenty-eight', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
     // removal), one from C8 (Hugh Yurg's enters-field observer), three from C9 (Reeve's look, Miner's reveal and Hugh Yurg's search) and one from C10 (Sphene's
-    // retrieve). Any
+    // retrieve), and one from J3 (Shiva's EX Burst). Any
     // clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
-      '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
+      '1-038R', '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
       '20-103H', '20-105C', '22-068R', '24-063H', '27-124S', '27-125S', '27-126S', '27-127S', '9-074C',
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
       // a hand-written order just makes the next insertion fail for the wrong reason.
-      '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
+      '1-038R:summon', '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-074C:etb', '20-103H:summon',
       '20-105C:etb', '22-068R:chosen', '22-068R:damages-opponent', '24-063H:cheap-forward', '24-063H:search', '27-126S:retrieve',
@@ -2095,5 +2095,61 @@ describe('clauses left unimplemented ON PURPOSE (found by playing)', () => {
     warnUnimplemented(genuinelyShort, 1 as CardId, short)
     expect(short).toHaveLength(1)
     expect(short[0]?.type === 'unimplementedAbility' && short[0].clauses, 'the inert clause was not subtracted from a real gap').toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung J3 — the First Strike and Freeze cards brought in for the rules they carry
+// ---------------------------------------------------------------------------
+
+describe('1-147C Dragoon — "First Strike"', () => {
+  it('is a keyword card: keywords firstStrike, no abilities, generic, lightning 3 for 6000', () => {
+    const d = DEFS.find((x) => x.code === '1-147C')!
+    expect(d.keywords).toEqual(['firstStrike'])
+    expect(d.abilities ?? []).toEqual([])
+    expect(d.hasAbilities).toBe(false)
+    expect(d.generic).toBe(true)
+    expect([d.type, d.elements, d.cost, d.power]).toEqual(['forward', ['lightning'], 3, 6000])
+  })
+})
+
+describe('1-038R Shiva — "EX BURST Choose 1 Forward. Dull it and Freeze it."', () => {
+  it('is the marked EX Burst clause, and cast in Main Phase 1 on the opponent’s active Forward leaves it dull and frozen', () => {
+    let s = makeGame()
+    let victim: CardId, shiva: CardId, cp: CardId[]
+    ;[s, victim] = withField(s, 1, 'forwards', '27-125S')
+    ;[s, shiva] = withHand(s, 0, '1-038R')
+    ;[s, cp] = withCp(s, 0, ['1-040C', EARTH_BACKUP, EARTH_BACKUP])   // one ice CP (§11.2.2) and two more of any element
+    const d = DEFS.find((x) => x.code === '1-038R')!
+    expect(d.exBurst).toBe(true)
+    expect((d.abilities ?? []).filter((a) => a.exBurst === true).map((a) => a.id)).toEqual(['1-038R:summon'])
+    const cast = legalCommands(s, 0).find((c) => c.type === 'castSummon' && c.card === shiva && c.payment.dullBackups.length === cp.length)
+    expect(cast, 'Shiva is castable with the ice Summoner and two earth Backups').toBeDefined()
+    let r = apply(s, cast!)
+    expect(r.state.pending).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0 }))
+    r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })
+    const events = r.events.map((e) => e.type)
+    expect(events).toContain('dulled'); expect(events).toContain('frozen')
+    expect(fc(r.state, victim)?.status).toBe('dull')
+    expect(fc(r.state, victim)?.frozen).toBe(true)
+    expect(r.state.players[0].breakZone, '§11.11.10').toContain(shiva)
+    ok(r.state)
+  })
+  it('needs an ice CP: two earth Backups and a lightning one cannot pay for it (§11.2.2)', () => {
+    let s = makeGame()
+    let shiva: CardId
+    ;[s] = withField(s, 1, 'forwards', '27-125S')
+    ;[s, shiva] = withHand(s, 0, '1-038R')
+    ;[s] = withCp(s, 0, [EARTH_BACKUP, EARTH_BACKUP, LIGHTNING_BACKUP])
+    expect(legalCommands(s, 0).some((c) => c.type === 'castSummon' && c.card === shiva)).toBe(false)
+  })
+})
+
+describe('1-040C Summoner — a vanilla ice Backup', () => {
+  it('prints nothing, has no abilities, and produces ice CP', () => {
+    const d = DEFS.find((x) => x.code === '1-040C')!
+    expect([d.type, d.elements, d.cost, d.hasAbilities, d.abilities ?? []]).toEqual(['backup', ['ice'], 1, false, []])
+    const [s, ids] = withCp(makeGame(), 0, ['1-040C'])
+    expect(backupElements(s, ids[0]!)).toContain('ice')
   })
 })
