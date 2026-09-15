@@ -129,7 +129,7 @@ export function exitAttackWindow(state: GameState): [GameState, Event[]] {
     case 'firstStrike': {
       // §15.2.3.3 (rung J3): the pass-only window is over. What is still in battle deals to what is still there
       // (§10.1.3.2.1, §10.1.3.3); a non-First-Strike blocker facing what is left of a party owes its split now.
-      const fs = firstStrikeSet(state)
+      const fs = fixedFirstStrikers(state)
       const attack = survivors(state)
       const s: GameState = { ...state, attack: { ...attack, step: 'damage' }, passes: 0 }
       const events: Event[] = [{ type: 'phaseStarted', phase: 'attack', step: 'damage' }]
@@ -161,6 +161,9 @@ export function firstStrikeSet(state: GameState): Set<CardId> {
   return out
 }
 
+/** The set as fixed when the step began (§15.2.3.2), read from the attack state — `firstStrikeSet` only seeds it. */
+const fixedFirstStrikers = (state: GameState): Set<CardId> => new Set(state.attack?.firstStrikers ?? [])
+
 /** Does First Strike split this damage step in two? Only when SOME combatants have it and some do not. */
 function firstStrikeSplits(state: GameState): boolean {
   const at = state.attack
@@ -174,13 +177,15 @@ function beginDamageResolution(state: GameState): [GameState, Event[]] {
   const at = state.attack!
   const events: Event[] = [{ type: 'phaseStarted', phase: 'attack', step: 'damage' }]
   const split = firstStrikeSplits(state)
+  // §15.2.3.2: the set is fixed HERE, at the beginning of the step, and carried on the attack state.
+  const fixed: GameState = split ? { ...state, attack: { ...at, firstStrikers: [...firstStrikeSet(state)] } } : state
   // The blocker's split over a party is owed when the BLOCKER deals: now, unless First Strike puts it in the
   // second batch (then `exitAttackWindow` owes it, over what survived the first).
-  const blockerDealsNow = at.blocker !== null && (!split || firstStrikeSet(state).has(at.blocker))
+  const blockerDealsNow = at.blocker !== null && (!split || fixedFirstStrikers(fixed).has(at.blocker))
   if (at.blocker !== null && at.attackers.length > 1 && blockerDealsNow) {
-    return [{ ...state, pending: { kind: 'assignPartyDamage', player: opponentOf(state.turnPlayer) } }, events]
+    return [{ ...fixed, pending: { kind: 'assignPartyDamage', player: opponentOf(state.turnPlayer) } }, events]
   }
-  const [s, more] = split ? landFirstStrike({ ...state, pending: null }, []) : resolveDamage({ ...state, pending: null }, [])
+  const [s, more] = split ? landFirstStrike({ ...fixed, pending: null }, []) : resolveDamage({ ...fixed, pending: null }, [])
   return [s, [...events, ...more]]
 }
 
@@ -188,7 +193,7 @@ function beginDamageResolution(state: GameState): [GameState, Event[]] {
 function dealAfterSplit(state: GameState, assignments: Assignment[]): [GameState, Event[]] {
   const at = state.attack!
   if (at.heldDamage !== undefined) return landSecondBatch(state, assignments)     // the window is over; the blocker deals second
-  if (firstStrikeSplits(state)) return landFirstStrike(state, assignments)         // a First Strike blocker deals first
+  if (at.firstStrikers !== undefined) return landFirstStrike(state, assignments)   // a First Strike blocker deals first
   return resolveDamage(state, assignments)
 }
 
@@ -286,8 +291,10 @@ function landHits(state: GameState, hits: readonly Hit[]): [GameState, Event[], 
  * batch; and the pass-only window opens with priority to the turn player.
  */
 function landFirstStrike(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
-  const fs = firstStrikeSet(state)
+  const fs = fixedFirstStrikers(state)
   const [hit, events, landed] = landHits(state, hitsFor(state, blockerAssignments).filter((h) => fs.has(h.source)))
+  // Battle damage to Forwards cannot end the game or owe a §12.4.8 decision, so `ruled.result`/`pending` need no
+  // guard here (unlike `resolveDamage`, whose player damage can).
   const [ruled, ruleEvents] = runRuleProcesses(hit)
   events.push(...ruleEvents)
   const s: GameState = { ...ruled, attack: { ...ruled.attack!, step: 'firstStrike', heldDamage: landed }, pending: null, priority: ruled.turnPlayer, passes: 0 }
@@ -302,7 +309,7 @@ function landFirstStrike(state: GameState, blockerAssignments: Assignment[]): [G
  */
 function landSecondBatch(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
   const at = state.attack!
-  const fs = firstStrikeSet(state)
+  const fs = fixedFirstStrikers(state)
   const hits = at.attackers.length === 0 ? [] : hitsFor(state, blockerAssignments).filter((h) => !fs.has(h.source))
   const [hit, events, landed] = landHits(state, hits)
   let s = enqueueDamageTriggers(hit, [...(at.heldDamage ?? []), ...landed])
@@ -359,7 +366,9 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
 /** The §10.1.4.4 window: damage dealt, priority to the turn player, nothing owed, nothing held. */
 function openDamageWindow(s: GameState): GameState {
   const at = s.attack   // null in structural fixtures that deal damage outside an attack (cr12-rules)
-  return { ...s, attack: at ? { step: at.step, attackers: at.attackers, blocker: at.blocker } : null, pending: null, priority: s.turnPlayer, passes: 0 }
+  // `step: 'damage'` explicitly: this window is the §10.1.4.4 one, never the First Strike window (whose held batch
+  // and fixed set are dropped here, on purpose — both batches have landed).
+  return { ...s, attack: at ? { step: 'damage', attackers: at.attackers, blocker: at.blocker } : null, pending: null, priority: s.turnPlayer, passes: 0 }
 }
 
 /**
@@ -382,6 +391,9 @@ export function applyChooseExBurst(state: GameState, player: PlayerId, use: bool
   const pending = state.pending
   if (pending?.kind !== 'chooseExBurst') throw new IllegalCommandError('no EX Burst is being offered')
   if (pending.player !== player) throw new IllegalCommandError(`EX Burst belongs to player ${pending.player}`)
+  // Player damage is dealt only by an unblocked attack, never in the First Strike window; if an ability ever deals
+  // it there, `openDamageWindow` below would drop the held first batch — fail loudly rather than lose triggers.
+  if (state.attack?.step === 'firstStrike') throw new Error('an EX Burst offered in the First Strike window: the held first batch would be lost')
   const events: Event[] = [{
     type: use ? 'exBurstUsed' : 'exBurstDeclined',
     player, card: pending.card, abilityId: pending.abilityId,

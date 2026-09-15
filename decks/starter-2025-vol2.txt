@@ -17,7 +17,9 @@
 2 20-105C
 2 13-072R
 2 20-103H
-# Rung J3: First Strike and Freeze test cards — Dragoon, Shiva, and the ice Backup Shiva needs
+# Rung J3: First Strike and Freeze test cards — Dragoon, Shiva, and the ice Backup Shiva needs.
+# Shiva needs one ICE CP: only Summoner (non-generic, one on the field at a time) or a discarded Shiva/Summoner
+# makes it, so Shiva is often held all game — a rules test card, not a deck-building choice.
 2 1-147C
 2 1-038R
 2 1-040C

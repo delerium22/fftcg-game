@@ -59,8 +59,8 @@ export function startTurn(state: GameState, turn: number, player: PlayerId): [Ga
  * `passes = 0`, §11.3.8/§11.6.11).
  *
  * The Attack Phase's declaration step is NOT a window (§10.1.2.1, §10.1.4.6): it is the turn player's own
- * decision to attack or not, so a pass there goes straight to Main Phase 2. Its four windows (J1-D10) end
- * on the double pass through `exitAttackWindow`.
+ * decision to attack or not, so a pass there goes straight to Main Phase 2. Its five windows (J1-D10, plus J3's
+ * First Strike window) end on the double pass through `exitAttackWindow`.
  */
 export function applyPass(state: GameState, player: PlayerId): [GameState, Event[]] {
   if (state.result) throw new IllegalCommandError('game is over')

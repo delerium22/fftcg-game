@@ -127,7 +127,7 @@ const stackWaiting = (state: GameState): boolean =>
   state.pending === null && !hasResolutionWork(state.resolution) && state.stack.length > 0
 
 /**
- * A combat window — `declared`, `blocked` or the post-damage `damage` step (rung J1-D10) — with nothing owed
+ * A combat window — `declared`, `blocked`, the First Strike window (rung J3) or the post-damage `damage` step (rung J1-D10) — with nothing owed
  * and nothing on the stack. The policy never responds INSIDE a combat during a rollout: the window is passed
  * through, so `evaluate` never prices a half-fought attack (R4: attackers dull, no damage dealt). Whether to
  * respond in a window at the top level is `decide`'s own scored choice, unaffected.
@@ -135,7 +135,7 @@ const stackWaiting = (state: GameState): boolean =>
 const combatWindow = (state: GameState): boolean =>
   state.pending === null && !hasResolutionWork(state.resolution) && state.stack.length === 0
   && state.phase === 'attack' && state.attack !== null
-  && (state.attack.step === 'declared' || state.attack.step === 'blocked' || state.attack.step === 'damage')
+  && (state.attack.step === 'declared' || state.attack.step === 'blocked' || state.attack.step === 'firstStrike' || state.attack.step === 'damage')
 
 const isForcedDecision = (state: GameState): boolean => {
   const kind = state.pending?.kind

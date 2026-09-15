@@ -92,7 +92,14 @@ export interface DamageOccurrence {
  * whose triggers are placed only with the second batch's; its presence is also what says the first batch is
  * done when the party split is owed between the two. Absent outside a split damage step.
  */
-export interface AttackState { step: AttackStep; attackers: CardId[]; blocker: CardId | null; heldDamage?: readonly DamageOccurrence[] }
+export interface AttackState {
+  step: AttackStep; attackers: CardId[]; blocker: CardId | null
+  /** The first batch's occurrences, held through the First Strike window (§15.2.3.3). */
+  heldDamage?: readonly DamageOccurrence[]
+  /** §15.2.3.2: the First Strike combatants, FIXED at the beginning of the Damage Resolution Step — never recomputed
+   *  over the survivors (a mixed party that lost its plain member is not "all First Strike" after the fact). */
+  firstStrikers?: readonly CardId[]
+}
 /** Decisions owed by a specific player that are NOT priority actions (§11.1): setup choices, the defender's step actions in the Attack Phase, and the choices an ability suspends on (spec C1-6). */
 export type Pending =
   | { kind: 'chooseFirst'; player: PlayerId }

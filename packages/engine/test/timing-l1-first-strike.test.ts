@@ -174,6 +174,26 @@ describe('L1 §15.2.3 — First Strike splits the damage step', () => {
     ok(w.state)
   })
 
+  it('L1 §15.2.3.2 — the set is fixed at the beginning of the step: a mixed party\'s First Strike survivor still deals in the second batch', () => {
+    // J3 Codex-stand-in review H1: recomputing the set over the SURVIVORS made a party that lost its plain member
+    // "all First Strike", and its remaining member was filtered out of the second batch — the blocker took nothing.
+    const { s, attackers, blocker, names } = board(['T-FS6', 'V-F2'], 'T-FS5')   // 6000 FS + 5000 into a 5000 FS blocker
+    const r = intoDamage(s, attackers, blocker)
+    expect(r.state.pending, 'the blocker has First Strike: its split is owed in the first batch').toEqual({ kind: 'assignPartyDamage', player: 1 })
+    const split = apply(r.state, { type: 'assignPartyDamage', player: 1, assignments: [{ target: attackers[1]!, amount: 5000 }] })
+    expect(split.state.attack?.step).toBe('firstStrike')
+    expect(gone(split.state, attackers[1]!), 'the plain member broke in the first batch').toBe(true)
+    expect(gone(split.state, blocker), 'FS6 was not in the first batch (a mixed party has no First Strike, §15.1.1.9.7)').toBe(false)
+    const w = passBoth(split.state)
+    expect(gone(w.state, blocker), 'FS6 deals its 6000 in the second batch: the 5000 blocker breaks').toBe(true)
+    expect(trace([...r.events, ...split.events, ...w.events], names)).toEqual([
+      'step:declared', 'step:block', 'step:blocked', 'step:damage',
+      'battle:b>a1:5000', 'broken:a1', 'step:firstStrike',
+      'step:damage', 'battle:a0>b:6000', 'broken:b',
+    ])
+    ok(w.state)
+  })
+
   it('L1 §15.2.3.3 — the window admits only pass: a castable Summon and a live activation are refused; forcedPass reports it; isResponseWindow is true', () => {
     let { s, attackers, blocker } = board(['T-FS6'], 'V-F3')
     let princess: CardId

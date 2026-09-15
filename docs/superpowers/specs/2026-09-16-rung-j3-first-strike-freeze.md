@@ -70,6 +70,13 @@ text as the starter exclusives do).
      or use an ability (§15.2.3.3); `menuShape` offers only `pass`, so `forcedPass` reports it and the browser
      and the AI's rollouts pass through it without a render or a search (J1-D14/D15). It is a window, not a
      decision, so `isResponseWindow` is true and `ATTACK_WINDOWS` (instant speed) does NOT include it.
+     **Reading (review M3, 2026-09-16):** only `dealtDamage` clauses are held. A zone-change trigger CAUSED by the
+     first batch's break (Lightning watching a broken blocker) is triggered by the zone change, not the damage,
+     so it is placed under §11.1.4 and may resolve IN the window. The alternative reading ("triggered by First
+     Strike damage" = anything the damage caused) would hold those too; it is not taken, and a card whose
+     "when this is broken" clause should wait for the second batch is the case that would reopen it.
+     **Fixed set (review H1):** the First Strike set is computed ONCE, at the beginning of the step, and carried
+     as `attack.firstStrikers` (§15.2.3.2) — never recomputed over the survivors.
   5. On the double forfeit (`exitAttackWindow`): the remaining combatants still in battle deal their damage to
      targets still in battle (§10.1.3.2.1: a broken blocker deals nothing, and nothing is dealt to a Forward that
      has left). Then ALL damage occurrences — the held ones first, then this batch — are enqueued in one

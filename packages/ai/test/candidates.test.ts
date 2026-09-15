@@ -94,6 +94,21 @@ describe('candidateCommands: the C1 one-ply target policy', () => {
     expect(candidateCommands(s, 0)).toEqual(c)      // deterministic
   })
 
+  it('dull then freeze (Shiva): the freeze is priced on the status the dull LEAVES — an active 5000 outranks a dull 7000', () => {
+    // J3 Codex-stand-in review M2: `targetDelta` read the target's status once, so the freeze half of Shiva on an
+    // active card was worth 0.5 when the dull just before it had made the card dull (and the freeze costs it a turn).
+    const a = clause('T-SHIVA:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }, { kind: 'freeze' }] }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-SHIVA', a)] }), 0, 0)
+    let src: number, active5: number, dull7: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-SHIVA')
+    ;[s, dull7] = withField(s, 1, 'forwards', 'V-F5', { status: 'dull' })   // 7000, dull: the freeze alone costs 7
+    ;[s, active5] = withField(s, 1, 'forwards', 'V-F2')   // 5000, active: dull (5 + 1) then freeze 5 = 11
+    s = arm(s, src, 0, a)
+    const c = candidateCommands(s, 0)
+    expect(targetsOf(c[0]), 'dull + freeze on the active card takes an attack AND a turn').toEqual([active5])
+    expect(targetsOf(c[0])).not.toContain(dull7)
+  })
+
   it('dull: a pumped Forward is ranked on its EFFECTIVE power, not its printed power', () => {
     const a = clause('T-DULL:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }])
     let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-DULL', a)] }), 0, 0)

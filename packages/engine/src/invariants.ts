@@ -86,6 +86,9 @@ export function checkInvariants(state: GameState): string[] {
   // decision CAN be owed in it: a zone-change trigger fired by the first batch's break is placed here and declares
   // (§15.2.3.3 bars casting and activating, not triggers — found by self-play, seed 119).
   if (state.attack?.step === 'firstStrike' && (state.attack.blocker === null || state.attack.heldDamage === undefined)) problems.push('a firstStrike step without a blocked battle or a held first batch')
+  if (state.attack?.step === 'firstStrike' && state.attack.firstStrikers === undefined) problems.push('a firstStrike step without the fixed First Strike set (§15.2.3.2)')
+  // The held batch lives only in the window, or in the `damage` step while the blocker's post-window split is owed.
+  if (state.attack?.heldDamage !== undefined && state.attack.step !== 'firstStrike' && !(state.attack.step === 'damage' && state.pending?.kind === 'assignPartyDamage')) problems.push('a held first batch outside the First Strike window')
   if (state.result && state.pending) problems.push('pending decision after game over')
 
   // --- the resolution agenda (spec C1-A7) ---

@@ -2,7 +2,7 @@ import {
   HAND_SIZE_LIMIT, abilityCpRequirement, castBlocker, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, flagsOf, keywordsOf, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameResult, type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
-  type ZoneTransitionReason, type CastBlocker, type StackItem } from '@fftcg/engine'
+  type ZoneTransitionReason, type CastBlocker, type StackItem, type AttackStep } from '@fftcg/engine'
 import { preferredPayment, preferredPaymentFor } from '@fftcg/ai'
 import type { Choice, ChoiceSet } from './types.js'
 
@@ -750,7 +750,7 @@ export function stackItemLabel(v: PlayerView, item: StackItem): string {
 }
 
 /** The Attack Phase's six states (rung J1-D10) in the player's words: what has just happened, not the CR's step name. */
-export const ATTACK_STEP_LABEL: Record<string, string> = {
+export const ATTACK_STEP_LABEL: Record<AttackStep, string> = {
   // Never the words "attack" or "block" (nor "cast", "ability"): the prompt built from these names only the
   // moves the position offers, and G2-A1 reads those words as claims.
   preparation: 'preparation', declaration: 'declaration', declared: 'combat declared',
@@ -871,7 +871,7 @@ function phasePrompt(v: PlayerView, legal: readonly Command[]): string {
       }
       // A WINDOW (rung J1): Summons and abilities may be used from it, and the offer says so, from the
       // commands — the same rule as the Main Phases above.
-      const step = ATTACK_STEP_LABEL[v.attack?.step ?? ''] ?? v.attack?.step ?? 'resolving'
+      const step = v.attack ? ATTACK_STEP_LABEL[v.attack.step] : 'resolving'
       // "cast a card" once a Back Attack Character is castable here (rung J2, §15.2.5); "cast a Summon" while only Summons are.
       const castVerb = has((c) => c.type === 'castCharacter') ? 'cast a card' : 'cast a Summon'
       const verbs = [...(canCast ? [castVerb] : []), ...(canActivate ? ['use an ability'] : [])]

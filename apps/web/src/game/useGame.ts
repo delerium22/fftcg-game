@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, apply, createGame, forcedDecision, isResponseWindow, legalCommands, viewFor,
-  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta } from '@fftcg/engine'
+  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldCard, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS, LB_DECKS } from '../deck.js'
 import { ATTACK_STEP_LABEL, bareName, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
@@ -61,6 +61,8 @@ const PHASE_LABEL: Record<string, string> = {
 
 const who = (v: PlayerView, p: PlayerId): string => (p === v.me ? 'You' : 'The AI')
 const whoDoes = (v: PlayerView, p: PlayerId, mine: string, theirs: string): string => (p === v.me ? mine : theirs)
+/** A field card's status as the view shows it (null when it is not on the field). */
+const fieldStatus = (v: PlayerView, id: CardId): FieldCard['status'] | null => ([0, 1] as const).flatMap((p) => [...v.fields[p].forwards, ...v.fields[p].backups]).find((c) => c.id === id)?.status ?? null
 
 const KEYWORD_LABEL: Record<Keyword, string> = { haste: 'Haste', brave: 'Brave', firstStrike: 'First Strike', backAttack: 'Back Attack' }
 const FLAG_LABEL: Record<FieldFlag, string> = {
@@ -183,7 +185,7 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'lbFlipped': return { kind: 'event', text: `${who(v, e.player)} turn${e.player === v.me ? '' : 's'} ${e.cards.map((id) => qualifiedName(v, id)).join(' and ')} face up (Limit Break cost)` }
     case 'lbReturned': return { kind: 'event', text: `${qualifiedName(v, e.card)} goes back to ${whoDoes(v, e.player, 'your', "the AI's")} LB deck face up` }
     case 'frozen': return { kind: 'event', text: `${qualifiedName(v, e.card)} is frozen — it will not activate next turn` }
-    case 'thawed': return { kind: 'event', text: `${qualifiedName(v, e.card)} stays dull — it was frozen` }
+    case 'thawed': return { kind: 'event', text: `${qualifiedName(v, e.card)} ${fieldStatus(v, e.card) === 'dull' ? 'stays dull' : 'is no longer frozen'} — it was frozen` }
     case 'abilityDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
     case 'powerModified': return { kind: 'event', text: `${qualifiedName(v, e.card)} gets ${e.amount >= 0 ? '+' : ''}${e.amount} power until the end of the turn` }
     case 'keywordGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} gains ${KEYWORD_LABEL[e.keyword]} until the end of the turn` }

@@ -105,17 +105,20 @@ function targetDelta(state: GameState, source: CardId, effects: readonly Effect[
   const def = defOf(state, id)
   const power = loc ? powerOf(state, loc.card) : (def.power ?? 0)
   let d = 0
+  // The status the effects so far LEAVE the target in: Shiva's `[dull, freeze]` freezes a card its dull just
+  // dulled, and that freeze costs a whole turn, not the 0.5 of freezing an active card (J3 review M2).
+  let status = loc?.card.status
   for (const eff of effects) {
     switch (eff.kind) {
       case 'dull':
         // A dull Forward can neither attack (§10.1.2.1.1) nor block (§10.1.3.1.1); dulling an already-dull one
         // is a no-op, which is why an active target must OUTRANK a dull one rather than tie it.
-        if (loc && loc.card.status === 'active') d -= power / 1000 + 1
+        if (loc && status === 'active') { d -= power / 1000 + 1; status = 'dull' }
         break
       case 'freeze':
         // §15.2.4 (rung J3): a frozen card misses its next Active Phase. That costs a DULL card a whole turn of
         // use; an active one keeps acting until it dulls, so freezing it is worth little. Already frozen: nothing.
-        if (loc && loc.card.frozen !== true) d -= loc.card.status === 'dull' ? power / 1000 : 0.5
+        if (loc && loc.card.frozen !== true) d -= status === 'dull' ? power / 1000 : 0.5
         break
       case 'damage': {
         if (!loc || loc.zone !== 'forwards') break   // only Forwards carry damage

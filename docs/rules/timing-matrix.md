@@ -212,7 +212,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.1.1.9.2 | Same element only | tested | engine/cr10-attack#§10.1.2.1 |
 | 15.1.1.9.3 | Only Forwards that could attack alone | tested | engine/cr10-attack#dull forwards and forwards that already attacked |
 | 15.1.1.9.4 | Any number of Forwards | tested | engine/timing-l1-priority#§15.1.1.9.4 |
-| 15.1.1.9.5 | Down to one Forward, it is no longer a party | tested | engine/cr10-attack-windows#a party reduced to one; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
+| 15.1.1.9.5 | Down to one Forward, it is no longer a party (untested: a party shrinking to one INSIDE the First Strike window, which needs a trigger that breaks a Forward — none in the pool) | tested | engine/cr10-attack-windows#a party reduced to one; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 15.1.1.9.6 | Blockable if any member is; the whole party is blocked | tested | engine/cr10-attack#§10.1.3.4 |
 | 15.1.1.9.7 | First Strike damage only if every member has it | tested | engine/timing-l1-first-strike#§15.1.1.9.7 |
 | 15.1.1.9.8 | Each member checks it may damage the blocker; any break credits them all | tested | engine/cr10-attack#§10.1.4.2.1 |
@@ -228,7 +228,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.3 | First Strike | heading |  |
 | 15.2.3.1 | A field ability changing the damage step | tested | engine/timing-l1-first-strike#§15.2.3.2 |
 | 15.2.3.2 | First Strike Forwards deal damage first, then the rest | tested | engine/timing-l1-first-strike#§15.2.3.2; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
-| 15.2.3.3 | A priority window between the two, with no casts; triggers wait for the second | tested | engine/timing-l1-first-strike#§15.2.3.3; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
+| 15.2.3.3 | A priority window between the two, with no casts; damage triggers wait for the second (a break OBSERVER fired by the first batch places in the window — spec J3-D3 reading) | tested | engine/timing-l1-first-strike#§15.2.3.3; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
 | 15.2.3.4 | A party needs First Strike on every member | tested | engine/timing-l1-first-strike#§15.2.3.4 |
 | 15.2.4 | Freeze | heading |  |
 | 15.2.4.1 | An ongoing effect applied by Summons and abilities | tested | engine/timing-l1-freeze#§15.2.4.1 |
