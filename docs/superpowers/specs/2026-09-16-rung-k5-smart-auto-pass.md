@@ -1,6 +1,6 @@
 # Rung K5 — smart auto-pass: stop only where a response is worth a look
 
-> **STATUS: agreed 2026-09-16.** The user's decision: "go with your stop list" — the K4 default (every
+> **STATUS: BUILT, 2026-09-16** (commit f5268f9 and its follow-up). The user's decision: "go with your stop list" — the K4 default (every
 > real window is a button) is replaced by a default that stops only at the windows a player would hold for,
 > and the K4 toggle becomes "Full control". This supersedes K4-D1 and K4-D2; K4-D3 to K4-D6 carry over with the
 > toggle's meaning flipped. Every refinement below is recorded so it can be overturned here.
@@ -24,8 +24,9 @@ opponent has done something or combat is about to be decided.
 - **K5-D2 — what Smart passes.** A response window (`isResponseWindow`) held by the human is passed in the
   same step as the move that opened it, for as long as such windows keep opening, UNLESS one of the stops
   in D3 holds. So: the AI's Main Phases with an empty stack; the Attack Phase `preparation`, `declared` and
-  `damage` windows in either turn; and a window whose stack top is the human's OWN Summon or ability after
-  the AI has passed on it — passing resolves it, which is what the player wanted when they cast it.
+  `damage` windows in either turn; and a window whose stack top is the human's OWN Summon or ability —
+  whether the AI has yet seen it or has passed on it. Passing hands it to the AI, or resolves it, which is
+  what the player wanted when they cast it.
 - **K5-D3 — the stops.** Smart never passes:
   1. a window whose TOP stack item the AI controls (`controller === AI` on a Summon, `frame.controller` on
      an ability): the AI cast or triggered something the player could answer. Top, not any item: after the
@@ -55,8 +56,10 @@ opponent has done something or combat is about to be decided.
   the AI's Main Phase; keeps a window whose top is the AI's Summon; passes a window whose top is the human's
   own Summon after the AI's pass; keeps the `blocked` window; never touches the human's own Main Phase or a
   pending. `{ control: 'full' }` keeps every real window and is `settleForcedWindows`.
-- **K5-A2** (hook) the AI's commit path settles under the live mode; turning full control off mid-window
-  closes the window under Smart.
+- **K5-A2** (hook) the AI's commit path settles under the live mode. The setter's mid-window settlement
+  (turning full control off) mirrors K4-D3 line for line and is covered by the pure K5-A1 cases, not by a
+  hook-level test: building a kept window inside the mounted hook is more fixture than the three lines
+  are worth.
 - **K5-A3** (strip) the control renders "Full control: off" with `aria-pressed="false"`, flips through its
   handler, is absent without one, hidden behind a tray, and off after a restart.
 - **Gates** typecheck, lint, unit, browser.

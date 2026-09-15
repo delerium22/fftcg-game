@@ -210,7 +210,7 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, 
             className="btn btn--ghost"
             data-toggle="full-control"
             aria-pressed={fullControl}
-            title="Off: you are asked to respond only when the AI has put something on the stack or a block has been declared. On: every response window is yours."
+            title="Off: you are asked to respond only when the AI has put something on the stack, and once before combat damage. On: every response window is yours."
             onClick={() => { onFullControl(!fullControl) }}
           >
             Full control: {fullControl ? 'on' : 'off'}
