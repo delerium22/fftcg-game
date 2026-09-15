@@ -559,7 +559,7 @@ export function describeChoice(v: PlayerView, c: Command, opts: { payment?: bool
       const head = fromLb ? `Cast ${choiceName(v, c.card)} from your LB deck` : `Cast ${choiceName(v, c.card)}`
       if (!withPayment) return head
       const flips = c.payment.lbFlip?.length ? `, turning ${c.payment.lbFlip.map((id) => choiceName(v, id)).join(' and ')} face up` : ''
-      return pay.length ? `${head}${flips} paying: ${pay.join(', ')}` : `${head}${flips} (free)`
+      return pay.length ? `${head}${flips}${flips ? ',' : ''} paying: ${pay.join(', ')}` : `${head}${flips} (free)`
     }
     /*
      * `legalCommands` pre-enumerates whole target SETS — one command per legal combination of `min..max`

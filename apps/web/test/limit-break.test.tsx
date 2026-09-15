@@ -56,6 +56,7 @@ describe('the LB deck in the browser (J8-A5)', () => {
     expect(flip).toHaveLength(2)
     expect(describeChoice(v, c.command, { payment: false })).toBe('Cast Noctis from your LB deck')
     expect(describeChoice(v, c.command)).toBe('Cast Noctis from your LB deck, turning Maat and Maat face up (free)')
+    expect(describeChoice(v, { ...c.command, payment: { dullBackups: [], discards: [{ card: lb2, element: 'earth' }], lbFlip: [maats[0]!] } } as typeof c.command)).toBe('Cast Noctis from your LB deck, turning Maat face up, paying: discard Noctis as earth')
     // Every listed payment flips two of the three Maats: C(3,2) = 3 alternatives in all.
     const payments = legalPaymentsOf(c)
     expect(payments).toHaveLength(3)
