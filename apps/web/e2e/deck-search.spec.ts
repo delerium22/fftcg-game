@@ -9,7 +9,7 @@ import { expect, test } from '@playwright/test'
  * accessibility tree is derived by the browser, not written by us, and jsdom does not derive it.
  *
  * THE ROUTE IS PINNED, NOT PLAYED. A check that plays randomly until it stumbles into a deck search is
- * vacuous when it misses and flaky when it hits. `?seed=8` reaches Hugh Yurg's whole-deck search in a fixed
+ * vacuous when it misses and flaky when it hits. `?seed=28` reaches Hugh Yurg's whole-deck search in a fixed
  * sequence of clicks — "Take the first turn", "Keep hand", the Hugh Yurg card (which opens its sheet since
  * rung I1), "Cast Hugh Yurg", Auto and Confirm on the payment tray (rung I2), then Pass through the response
  * window rung J1 opens on his ETB. The AI's only decisions on the way are its mulligan and its forced pass. If the route ever stops arriving, this
@@ -21,14 +21,15 @@ import { expect, test } from '@playwright/test'
  * and those names carry both the card's own facts and the marker that says WHICH copy.
  */
 
-const SEED_WITH_A_SEARCH = 8
+const SEED_WITH_A_SEARCH = 28
 
 test('a deck search offers its candidates as cards a person can see and press', async ({ page }) => {
   await page.goto(`/?seed=${SEED_WITH_A_SEARCH}`)
 
-  // Seed 8, not 5: rung J1 moved the AI's opening choice at seed 5 (it now takes the first turn). At seed 8
-  // the human chooses first, keeps a hand holding Hugh Yurg, and — after the AI's one mulligan decision —
-  // opens Main Phase 1 with him castable.
+  // Seed 28 (seed 8 until rung J3 added three cards to the deck list, which reshuffles every seed; seed 5
+  // until rung J1 moved the AI's opening choice). At seed 28 the human chooses first, keeps a hand holding
+  // Hugh Yurg and a Geomancer but no Luso or Undead Princess — so the search still offers all five — and,
+  // after the AI's one mulligan decision, opens Main Phase 1 with him castable.
   await page.getByRole('button', { name: 'Take the first turn', exact: true }).click()
   await page.getByRole('button', { name: /Keep hand/ }).click()
   await expect(page.locator('.prompt__text'), 'the pinned route no longer reaches Main Phase 1')
@@ -57,7 +58,7 @@ test('a deck search offers its candidates as cards a person can see and press', 
   await expect(page.locator('.prompt__text'), 'the pinned route no longer reaches a deck search')
     .toHaveText(/choose up to 1 card in your deck/i)
 
-  // Seed 8's deck still holds every eligible Forward: three Lusos and two Undead Princesses.
+  // Seed 28's deck still holds every eligible Forward: three Lusos and two Undead Princesses.
   const candidates = page.getByRole('grid', { name: 'Choose a card' }).getByRole('button')
   await expect(candidates, 'this deck runs three Lusos and two Undead Princesses, and the search should offer all five').toHaveCount(5)
 

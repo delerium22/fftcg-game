@@ -10,18 +10,19 @@ import { expect, test } from '@playwright/test'
  * this repo once before.
  *
  * ROUTES PINNED, with the exact suffixes the spec predeclared rather than a regex that accepts any number:
- *   seed 1  — turn 1, six pressable hand cards under "cast, use an ability, or pass" (seed 21 until rung J1
- *             moved the AI's opening choice). Where the defect was found by playing: not one of them said
- *             what pressing it did.
+ *   seed 28 — turn 1, six pressable hand cards under "cast, use an ability, or pass" (seed 21 until rung J1
+ *             moved the AI's opening choice; seed 1 until rung J3 changed the deck list). Where the defect
+ *             was found by playing: not one of them said what pressing it did.
  *   seed 50 — Class Tenth Moogle, funded exactly four ways, so the count is a specific number and not a shape.
  * Both reach their position with one or two clicks of the human's own, so no AI timing enters either route.
  */
 
-test('seed 1: every hand card names what pressing it does', async ({ page }) => {
-  // Seed 1, not 21: under rung J1 the AI at seed 21 now chooses to go first, and the route no longer opens
-  // on the human's Main Phase 1. At seed 1 the HUMAN chooses first; the AI's mulligan is the one AI decision
-  // on the way, hence the longer wait.
-  await page.goto('/?seed=1')
+test('seed 28: every hand card names what pressing it does', async ({ page }) => {
+  // Seed 28 (seed 1 until rung J3 added three cards to the deck list, which reshuffles every seed; seed 21
+  // until rung J1 moved the AI's opening choice). Found by a finder over the app's own choice set: the HUMAN
+  // chooses first, and turn 1's hand is five sole casts plus one Geomancer. The AI's mulligan is the one AI
+  // decision on the way, hence the longer wait.
+  await page.goto('/?seed=28')
   await page.getByRole('button', { name: 'Take the first turn', exact: true }).click()
   await page.getByRole('button', { name: /Keep hand/ }).click()
   await expect(page.locator('.prompt__text'), 'the pinned route no longer reaches Main Phase 1')
@@ -30,7 +31,7 @@ test('seed 1: every hand card names what pressing it does', async ({ page }) => 
   // EVERY hand card must end in one of the two forms (rung I1: a sole choice's headline, or a count).
   // Before F6 they ended at "power 9000 of 9000".
   const all = page.locator('.hand [data-card-id] button')
-  await expect(all, 'seed 1 turn 1 should offer six pressable hand cards').toHaveCount(6)
+  await expect(all, 'seed 28 turn 1 should offer six pressable hand cards').toHaveCount(6)
   await expect(
     page.getByRole('button', { name: /, (\d+ options|Cast [^,]+)$/ }),
     'a hand card says nothing about what pressing it does',

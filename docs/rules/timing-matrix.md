@@ -70,7 +70,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 10.1.3.6 | The turn player gains priority (the `blocked` window) | tested | engine/cr10-attack-windows#J1-A3; cards/scenarios/combat-tricks#L3 combat-tricks |
 | 10.1.4 | Damage Resolution Step | heading |  |
 | 10.1.4.1 | Unblocked: one point of damage to the opponent | tested | engine/cr10-attack#§10.1.4.1 |
-| 10.1.4.2 | Blocked: each deals its power to the other as battle damage | tested | engine/cr10-attack#§10.1.4.2 |
+| 10.1.4.2 | Blocked: each deals its power to the other as battle damage | tested | engine/cr10-attack#§10.1.4.2; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
 | 10.1.4.2.1 | Against a party, the blocker splits its damage in multiples of 1000 | tested | engine/cr10-attack#§10.1.4.2.1; engine/party-damage#C2-A6 |
 | 10.1.4.3 | Damage triggers go on the stack | tested | engine/observer-triggers#C2-A4; engine/party-damage#C2-A8; cards/scenarios/combat-tricks#L3 combat-tricks |
 | 10.1.4.4 | The turn player gains priority (the `damage` window) | tested | engine/cr10-attack-windows#declaring a block opens the; engine/timing-l2-compositions#L2-d |
@@ -227,12 +227,12 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.2.3 | May pay a dull-icon cost the turn it arrives | tested | engine/activated-abilities#§11.6.2.2 |
 | 15.2.3 | First Strike | heading |  |
 | 15.2.3.1 | A field ability changing the damage step | tested | engine/timing-l1-first-strike#§15.2.3.2 |
-| 15.2.3.2 | First Strike Forwards deal damage first, then the rest | tested | engine/timing-l1-first-strike#§15.2.3.2 |
-| 15.2.3.3 | A priority window between the two, with no casts; triggers wait for the second | tested | engine/timing-l1-first-strike#§15.2.3.3 |
+| 15.2.3.2 | First Strike Forwards deal damage first, then the rest | tested | engine/timing-l1-first-strike#§15.2.3.2; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
+| 15.2.3.3 | A priority window between the two, with no casts; triggers wait for the second | tested | engine/timing-l1-first-strike#§15.2.3.3; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
 | 15.2.3.4 | A party needs First Strike on every member | tested | engine/timing-l1-first-strike#§15.2.3.4 |
 | 15.2.4 | Freeze | heading |  |
 | 15.2.4.1 | An ongoing effect applied by Summons and abilities | tested | engine/timing-l1-freeze#§15.2.4.1 |
-| 15.2.4.2 | Frozen Forwards skip their controller's next Active Phase | tested | engine/timing-l1-freeze#§15.2.4.2 |
+| 15.2.4.2 | Frozen Forwards skip their controller's next Active Phase | tested | engine/timing-l1-freeze#§15.2.4.2; cards/scenarios/shiva-freezes#L3 shiva-freezes |
 | 15.2.5 | Back Attack | heading |  |
 | 15.2.5.1 | A Character field ability | simplified | packages/engine/src/cast.ts |
 | 15.2.5.2 | Cast with priority in either player's Main or Attack Phase | simplified | packages/engine/src/cast.ts |
