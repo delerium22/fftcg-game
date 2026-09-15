@@ -259,7 +259,7 @@ describe("an activation's target that no row draws (E10-A3)", () => {
     }
     expect(checked, 'the fixture contained no payment after all, so this asserted nothing')
       .toBeGreaterThan(0)
-  })
+  }, 60_000)   // a greedy sweep, like the fixture above: rung J3's deck list pushed the first hit past the default 5 s
 })
 
 /**

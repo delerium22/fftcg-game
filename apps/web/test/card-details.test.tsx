@@ -46,7 +46,9 @@ let mountedState: GameState | null = null
 
 /** The real opening position: first turn chosen, both hands dealt, the mulligan question on the table. */
 function mulliganState(): GameState {
-  const s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+  // Seed 17 (seed 1 until rung J3 added three cards to the deck list): Ramuh and Geomancer are in the opening hand, the first
+  // castable character on turn 1 is a Backup, and a Forward is castable too — the three things the fixtures need.
+  const s = createGame({ seed: 17, decks: DECKS, defs: CARD_DEFS })
   const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : HUMAN
   return applyChooseFirst(s, chooser, chooser === HUMAN)[0]
 }
@@ -59,7 +61,7 @@ function mulliganState(): GameState {
  * rather than the focus case quietly riding on the mulligan one.
  */
 function mainPhaseState(): GameState {
-  let s = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+  let s = createGame({ seed: 17, decks: DECKS, defs: CARD_DEFS })
   const first = s.pending?.kind === 'chooseFirst' ? s.pending.player : HUMAN
   s = applyChooseFirst(s, first, first === HUMAN)[0]
   // Both players keep. `pending.player` names whose answer is owed, so this follows the engine rather than
@@ -167,7 +169,7 @@ const hover = (el: HTMLElement): void => {
   act(() => { el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
 }
 
-// Ramuh is in the opening hand at seed 1, and its printed text is the same string the terminal prints.
+// Ramuh is in the opening hand at seed 17, and its printed text is the same string the terminal prints.
 // Written out by hand rather than read from `defs`, so a panel that renders the wrong field cannot agree
 // with it by construction.
 const RAMUH = 'Ramuh'

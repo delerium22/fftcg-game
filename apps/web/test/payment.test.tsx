@@ -107,7 +107,7 @@ function multiPayment(s: GameState): Map<string, Command[]> {
 }
 
 function reach(kind: 'cast' | 'act'): GameState | null {
-  for (let seed = 1; seed <= 20; seed++) {
+  for (let seed = 1; seed <= 60; seed++) {   // 60, not 20: rung J3's deck change moved the first hits past 20
     const found = play(seed, (s) => actingPlayer(s) === HUMAN
       && [...multiPayment(s).keys()].some((k) => k.startsWith(kind)))
     if (found) return found
@@ -226,32 +226,29 @@ describe('a move with only one way to pay (E11-A2, E11-A4, re-drawn by rung I2)'
     // Before I2 a uniquely-paid move committed on one click. Now NO move spends cards without the tray:
     // one way to pay is still a payment the player should see before it is made. Guarded: the payment must
     // be NON-EMPTY, or a free cast passes this while proving nothing.
+    // The stop predicate is the SAME test `sole` runs below: a card whose ONLY choice is a non-free move with
+    // exactly one way to pay. (It used to stop at any uniquely-paid move and hope the card had no second choice;
+    // rung J3's deck list made the first such state one where it did.)
+    const soleIn = (st: GameState): Choice | undefined => {
+      const v = viewFor(st, HUMAN)
+      const legal = legalCommands(st, HUMAN)
+      const set = buildChoiceSet(v, preferredChoices(v, legal), paymentAlternatives(legal))
+      return set.all.find((c) => c.card !== null && payable(c.command)
+        && (c.alternatives?.length ?? 0) === 0
+        && (c.command.payment.discards.length + c.command.payment.dullBackups.length) > 0
+        && (set.byCard.get(c.card) ?? []).length === 1)
+    }
     const found = (() => {
-      for (let seed = 1; seed <= 20; seed++) {
-        const s = play(seed, (st) => {
-          if (actingPlayer(st) !== HUMAN) return false
-          const groups = new Map<string, Command[]>()
-          for (const c of legalCommands(st, HUMAN)) {
-            const key = actionKey(c)
-            if (key === null || !payable(c)) continue
-            groups.set(key, [...(groups.get(key) ?? []), c])
-          }
-          return [...groups.values()].some((cs) => cs.length === 1
-            && payable(cs[0]!) && (cs[0]!.payment.discards.length + cs[0]!.payment.dullBackups.length) > 0)
-        })
+      for (let seed = 1; seed <= 200; seed++) {
+        const s = play(seed, (st) => actingPlayer(st) === HUMAN && soleIn(st) !== undefined)
         if (s) return s
       }
       return null
     })()
     expect(found, 'never reached a uniquely-paid, non-free move').not.toBe(null)
 
-    const { view, chosen } = mount(found!)
-    const legal = legalCommands(found!, HUMAN)
-    const set = buildChoiceSet(view, preferredChoices(view, legal), paymentAlternatives(legal))
-    const sole = set.all.find((c) => c.card !== null && payable(c.command)
-      && (c.alternatives?.length ?? 0) === 0
-      && (c.command.payment.discards.length + c.command.payment.dullBackups.length) > 0
-      && (set.byCard.get(c.card) ?? []).length === 1)
+    const { chosen } = mount(found!)
+    const sole = soleIn(found!)
     expect(sole, 'the fixture has no uniquely-paid move that is the card\'s only choice').not.toBe(undefined)
 
     act(() => { document.querySelector<HTMLElement>(`[data-card-id="${sole!.card!}"] button`)!.click() })
@@ -279,7 +276,7 @@ describe('a card whose ONE choice hides a payment choice (E11-A4)', () => {
       return [...set.byCard.entries()].find(([, list]) =>
         list.length === 1 && (list[0]?.alternatives?.length ?? 0) > 0)
     }
-    for (let seed = 1; seed <= 20; seed++) {
+    for (let seed = 1; seed <= 60; seed++) {   // 60, not 20: rung J3's deck change moved the first hits past 20
       const state = play(seed, (s) => actingPlayer(s) === HUMAN && hitIn(s) !== undefined)
       if (!state) continue
       const hit = hitIn(state)

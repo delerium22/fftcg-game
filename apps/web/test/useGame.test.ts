@@ -446,9 +446,13 @@ describe('a look and a reveal in the log (rung C9)', () => {
 })
 
 describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
-  // Rung J1 moved every game; the burst assertion below needs one that offers an EX Burst, so the first seed
-  // from 1 whose first-choice game does is the one kept.
-  const SEED = (() => { for (let s = 1; s < 20; s++) if (playFullGame(s).log.some((l) => /has EX Burst/.test(l.text))) return s; return 1 })()
+  // Rung J1 moved every game; the burst assertion below needs one that offers an EX Burst and the command
+  // assertion one that attacks, so the first seed from 1 whose first-choice game does both is the one kept
+  // (rung J3's deck change made the first bursting game one with no attack).
+  const SEED = (() => {
+    for (let s = 1; s < 60; s++) { const g = playFullGame(s); if (g.log.some((l) => /has EX Burst/.test(l.text)) && g.commandTypes.has('declareAttack')) return s }
+    return 1
+  })()
   const played = playFullGame(SEED)
 
   it('terminates with a result', () => {
