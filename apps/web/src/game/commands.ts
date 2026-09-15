@@ -678,7 +678,7 @@ export function headline(v: PlayerView, c: Choice): string {
  */
 const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   gameOver: 'The game is over',
-  phase: 'Only in your Main Phase',
+  phase: 'Only in your Main Phase — or, with Back Attack, in any window',
   notInHand: 'Not in your hand',
   notTurnPlayer: 'Only on your own turn',
   priority: 'Not while the AI holds priority',

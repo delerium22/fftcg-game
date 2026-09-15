@@ -50,14 +50,21 @@ export function canDeclare(state: GameState, source: CardId, controller: PlayerI
 export function castBlocker(state: GameState, player: PlayerId, card: CardId): CastBlocker | null {
   if (state.result) return 'gameOver'
   const ps = state.players[player]
-  // Characters are cast in a Main Phase only (§11.4.1); Summons follow the priority holder, checked below.
-  // MVP0-SIMPLIFICATION (§15.2.5 Back Attack): a Character with Back Attack may be cast by the priority holder in
-  // either player's Main or Attack Phase (§15.2.5.2). No pool card prints it; the keyword is never consulted here.
-  const summon = ps.hand.includes(card) && defOf(state, card).type === 'summon'
-  if (!summon && state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
-  if (!ps.hand.includes(card)) return 'notInHand'
+  // Characters are cast in a Main Phase only (§11.4.1); Summons — and Back Attack Characters (§15.2.5, rung J2) —
+  // follow the priority holder, checked below.
+  const inHand = ps.hand.includes(card)
+  const instant = inHand && (defOf(state, card).type === 'summon' || defOf(state, card).keywords.includes('backAttack'))
+  if (!instant && state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
+  if (!inHand) return 'notInHand'
   const def = defOf(state, card)
-  if (def.type === 'summon') {
+  if (def.type !== 'summon' && instant) {
+    // §15.2.5.2–3: a Back Attack Character is cast by the PRIORITY HOLDER, either player, in a Main Phase or an
+    // Attack Phase window — as a response, so the stack may be non-empty — and never in the First Strike window
+    // (§15.2.3.3, which `instantSpeedAllowed` excludes). The field limits below still apply.
+    if (!instantSpeedAllowed(state)) return 'phase'
+    if (state.priority !== player) return 'priority'
+    if (state.pending) return 'pending'
+  } else if (def.type === 'summon') {
     // §9.3.1.6, rung J1-D5/D8: the PRIORITY HOLDER, either player, in a Main Phase or an Attack Phase window.
     if (!instantSpeedAllowed(state)) return 'phase'
     if (state.priority !== player) return 'priority'
@@ -67,12 +74,13 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
       if (a.trigger.kind === 'summonResolve' && !canDeclare(state, card, player, a.effects)) return 'noTarget'
     }
     return null
+  } else {
+    // A Character: the turn player's (§9.3.1.5), with priority, and only while the stack is empty (§11.4.1).
+    if (state.turnPlayer !== player) return 'notTurnPlayer'
+    if (state.priority !== player) return 'priority'
+    if (state.pending) return 'pending'
+    if (state.stack.length > 0) return 'stackNotEmpty'
   }
-  // A Character: the turn player's (§9.3.1.5), with priority, and only while the stack is empty (§11.4.1).
-  if (state.turnPlayer !== player) return 'notTurnPlayer'
-  if (state.priority !== player) return 'priority'
-  if (state.pending) return 'pending'
-  if (state.stack.length > 0) return 'stackNotEmpty'
   if (def.type === 'monster') return 'monster'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
   // §7.7.3–5: an ACTION that would exceed a field limit is prohibited — the cast is refused. An EFFECT that
   // exceeds one is allowed and the §12.4.6–8 rule processes repair the field (rung J4, rules.ts).
@@ -87,7 +95,7 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
 
 const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   gameOver: 'game is over',
-  phase: 'characters and summons can only be cast in a main phase (§11.4.1; MVP0 restriction for summons)',
+  phase: 'a Character is cast in your main phase (§11.4.1) — with Back Attack, in any window (§15.2.5); a Summon in any window',
   notInHand: 'card is not in your hand',
   notTurnPlayer: 'only the turn player may cast (§9.3.1.5)',
   priority: 'you do not have priority',
@@ -129,7 +137,9 @@ export function applyCastCharacter(state: GameState, player: PlayerId, card: Car
   const def = defOf(state, card)
   if (def.type === 'summon') throw new IllegalCommandError('use castSummon for summons')
   const [paid, events] = checkedPay(state, player, card, payment)
-  const fromHand: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) })), passes: 0 }
+  // §11.4.7: the Character enters, and THE TURN PLAYER gains priority — a no-op for the turn player's own cast, and
+  // the opponent's answer first after a non-turn player's Back Attack (§15.2.5, rung J2). An action resets the count.
+  const fromHand: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) })), priority: state.turnPlayer, passes: 0 }
   events.push({ type: 'cast', player, card, cardType: def.type })
   // Placement, the coverage warning and both trigger dispatches are `putOntoField`'s, not this function's:
   // C9's Hugh Yurg search puts a Character onto the field without casting it and shares every one of them.
