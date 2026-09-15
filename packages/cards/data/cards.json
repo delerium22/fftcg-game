@@ -328,6 +328,48 @@
     ]
   },
   {
+    "code": "22-119R",
+    "name": "Maat",
+    "type": "forward",
+    "elements": [
+      "earth"
+    ],
+    "cost": 4,
+    "power": 8000,
+    "keywords": [
+      "brave"
+    ],
+    "generic": false,
+    "exBurst": false,
+    "text": "(Cards with [LB] cannot be included in your main deck.)\nLimit Break -- 1\nBrave\nWhen Maat enters the field, until the end of the turn, all the Forwards you control gain +1000 power and Brave.",
+    "hasAbilities": true,
+    "limitBreak": 1,
+    "job": "Monk",
+    "categories": [
+      "XI"
+    ]
+  },
+  {
+    "code": "23-125R",
+    "name": "Noctis",
+    "type": "forward",
+    "elements": [
+      "earth"
+    ],
+    "cost": 6,
+    "power": 7000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "Limit Break -- 2\nWhen Noctis enters the field, choose 1 Forward in your Break Zone. Add it to your hand.",
+    "hasAbilities": true,
+    "limitBreak": 2,
+    "job": "King",
+    "categories": [
+      "XV"
+    ]
+  },
+  {
     "code": "24-063H",
     "name": "Hugh Yurg",
     "type": "forward",

@@ -43,5 +43,7 @@ export interface CardDef {
    * A warning that cries wolf is worse than no warning, because the EX Burst ones are real.
    */
   inertClauses?: number
+  /** §15.2.8.2 (rung J8): the LB cost — present only on Limit Break cards, which live in the LB deck, never the main deck (§8.1.3). */
+  limitBreak?: number
 }
 export function opponentOf(p: PlayerId): PlayerId { return p === 0 ? 1 : 0 }

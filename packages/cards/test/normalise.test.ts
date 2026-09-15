@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normaliseSeCard, parseKeywords, cleanText, type SeCard } from '../src/normalise.js'
+import { normaliseSeCard, parseKeywords, parseLimitBreak, cleanText, type SeCard } from '../src/normalise.js'
 
 const base: SeCard = {
   code: '1-014C', name_en: 'Samurai', type_en: 'Forward', element: ['火'], cost: '3', power: '5000',
@@ -39,6 +39,20 @@ describe('parseKeywords', () => {
   })
 })
 
+describe('Limit Break (rung J8, §15.2.8.2)', () => {
+  it('reads "Limit Break -- X" as the LB cost, and neither it nor the LB reminder line is a clause', () => {
+    const maat = '(Cards with 《LB》 cannot be included in your main deck.)[[br]]   [[i]]Limit Break -- 1[[/]][[br]]   Brave[[br]]   When Maat enters the field, all the Forwards you control gain +1000 power.'
+    expect(parseLimitBreak(maat)).toBe(1)
+    const c = normaliseSeCard({ ...base, text_en: maat })
+    expect(c.limitBreak).toBe(1)
+    expect(c.keywords).toEqual(['brave'])
+    expect(c.hasAbilities, 'the ETB is the one clause').toBe(true)
+    expect(normaliseSeCard({ ...base, text_en: '[[i]]Limit Break -- 2[[/]]' }).hasAbilities, 'the LB line alone is no clause').toBe(false)
+    expect(normaliseSeCard(base).limitBreak, 'absent on an ordinary card').toBeUndefined()
+    expect(parseLimitBreak('Brave')).toBeUndefined()
+  })
+})
+
 describe('cleanText / hasAbilities', () => {
   it('strips markup and joins lines with newlines', () => {
     expect(cleanText('[[ex]]EX BURST[[/]] When [[i]]Card Name Noel[[/]] enters the field.[[br]]《雷》《ダル》: Draw 1 card.'))
@@ -55,7 +69,7 @@ import { cardDb } from '../src/index.js'
 describe('cards.json', () => {
   it('contains the Vol. 2 pool with the exclusives patched in', () => {
     const db = cardDb()
-    expect(db.size).toBe(22)
+    expect(db.size).toBe(24)
     expect(db.get('27-124S')?.name).toBe('Cloud')
     expect(db.get('12-120C')?.elements).toEqual(['earth', 'lightning'])
     expect(db.get('9-074C')?.power).toBeNull()

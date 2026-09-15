@@ -41,6 +41,8 @@ function assertCardDef(c: unknown, where: string): CardDef {
   // Rung J5: optional, because the patched exclusives have no known values — but present means well-formed.
   if (d.job !== undefined && (typeof d.job !== 'string' || !d.job)) bad(`${d.code}: bad job ${JSON.stringify(d.job)}`)
   if (d.categories !== undefined && (!Array.isArray(d.categories) || !d.categories.every((c) => typeof c === 'string' && c))) bad(`${d.code}: bad categories`)
+  // Rung J8: the LB cost, when printed, is a positive integer (§15.2.8.2).
+  if (d.limitBreak !== undefined && (!Number.isInteger(d.limitBreak) || d.limitBreak < 1)) bad(`${d.code}: bad limitBreak ${String(d.limitBreak)}`)
   return d
 }
 

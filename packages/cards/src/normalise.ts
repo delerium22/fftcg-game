@@ -25,6 +25,19 @@ const ELEMENT_LABEL: Record<string, string> = {
 const TYPE_BY_NAME: Record<string, CardType> = { Forward: 'forward', Backup: 'backup', Summon: 'summon', Monster: 'monster' }
 const KEYWORD_BY_LABEL: Record<string, Keyword> = { Haste: 'haste', Brave: 'brave', 'First Strike': 'firstStrike', 'Back Attack': 'backAttack' }
 const KEYWORD_LINE = /^(Haste|Brave|First Strike|Back Attack)(\s*\(.*\))?$/
+/** §15.2.8.2 (rung J8): "Limit Break -- X" is the LB cost, a field ability, not a clause. */
+const LB_LINE = /^Limit Break -- (\d+)$/
+/** The reminder some LB cards print above the cost (Maat 22-119R); a rule restatement, not a clause. */
+const LB_REMINDER = /^\(Cards with \[LB\] cannot be included in your main deck\.\)$/
+const isRuleLine = (l: string): boolean => KEYWORD_LINE.test(l) || LB_LINE.test(l) || LB_REMINDER.test(l)
+
+export function parseLimitBreak(textEn: string): number | undefined {
+  for (const line of textLines(textEn)) {
+    const m = LB_LINE.exec(line)
+    if (m?.[1]) return Number.parseInt(m[1], 10)
+  }
+  return undefined
+}
 
 function stripInline(line: string): string {
   return line
@@ -65,7 +78,8 @@ export function normaliseSeCard(se: SeCard): CardDef {
   const rawPower = Number.parseInt(se.power, 10)
   const power = type === 'forward' && Number.isFinite(rawPower) ? rawPower : null
   const keywords = parseKeywords(se.text_en)
-  const nonKeywordLines = textLines(se.text_en).filter((l) => !KEYWORD_LINE.test(l))
+  const limitBreak = parseLimitBreak(se.text_en)
+  const nonKeywordLines = textLines(se.text_en).filter((l) => !isRuleLine(l))
   return {
     code: se.code,
     name: se.name_en,
@@ -78,6 +92,7 @@ export function normaliseSeCard(se: SeCard): CardDef {
     exBurst: se.ex_burst === '1',
     text: cleanText(se.text_en),
     hasAbilities: nonKeywordLines.length > 0,
+    ...(limitBreak !== undefined ? { limitBreak } : {}),
     // Rung J5. Categories print as "VII" or, for a few cards, "XIV &middot; VII" — the separator is kept as
     // the SE data has it; a filter names one category and `matchesDefFilter` asks `includes`, so the list is
     // split on the middle dot too.

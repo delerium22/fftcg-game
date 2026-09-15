@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, Event, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { actingPlayer, apply as engineApply, applyChooseFirst, drainResolution, hasResolutionWork, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
+import { actingPlayer, apply as engineApply, applyChooseFirst, drainResolution, hasResolutionWork, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, keywordsOf, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, INERT_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -443,21 +443,21 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the twenty-eight implemented clauses on, and only those twenty-eight', () => {
+  it('loadCards merges the thirty implemented clauses on, and only those thirty', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
     // removal), one from C8 (Hugh Yurg's enters-field observer), three from C9 (Reeve's look, Miner's reveal and Hugh Yurg's search) and one from C10 (Sphene's
-    // retrieve), and one from J3 (Shiva's EX Burst). Any
+    // retrieve), one from J3 (Shiva's EX Burst) and two from J8 (Maat's and Noctis's ETBs). Any
     // clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
       '1-038R', '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
-      '20-103H', '20-105C', '22-068R', '24-063H', '27-124S', '27-125S', '27-126S', '27-127S', '9-074C',
+      '20-103H', '20-105C', '22-068R', '22-119R', '23-125R', '24-063H', '27-124S', '27-125S', '27-126S', '27-127S', '9-074C',
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
       // a hand-written order just makes the next insertion fail for the wrong reason.
-      '1-038R:summon', '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all',
+      '1-038R:summon', '1-121C:haste', '12-120C:etb', '13-072R:cost-reduction', '13-072R:summon', '16-092C:dull-all', '22-119R:etb', '23-125R:etb',
       '16-092C:etb', '18-064C:draw', '18-069C:draw',
       '18-124C:etb', '19-052C:pump', '19-052C:remove', '20-074C:draw', '20-074C:etb', '20-103H:summon',
       '20-105C:etb', '22-068R:chosen', '22-068R:damages-opponent', '24-063H:cheap-forward', '24-063H:search', '27-126S:retrieve',
@@ -2171,5 +2171,43 @@ describe('2-085H Scarmiglione — "Back Attack" (rung J2)', () => {
     expect(legalCommands(s, 1).some((c) => c.type === 'castCharacter' && c.card === scar), 'not before the turn player forfeits').toBe(false)
     const handed = engineApply(s, { type: 'pass', player: 0 }).state
     expect(legalCommands(handed, 1).some((c) => c.type === 'castCharacter' && c.card === scar)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung J8 — the LB deck's cards
+// ---------------------------------------------------------------------------
+
+describe('22-119R Maat — "Limit Break -- 1", Brave, "When Maat enters the field, … +1000 power and Brave."', () => {
+  it('parses to LB 1 with Brave and one clause; on entering it pumps every Forward its controller has and grants Brave', () => {
+    const d = DEFS.find((x) => x.code === '22-119R')!
+    expect([d.limitBreak, d.keywords, d.abilityClauses, (d.abilities ?? []).map((a) => a.id)]).toEqual([1, ['brave'], 1, ['22-119R:etb']])
+    let s = makeGame()
+    let luso: CardId
+    ;[s, luso] = withField(s, 0, 'forwards', '27-125S')
+    const r = cast(s, '22-119R', [EARTH_BACKUP, EARTH_BACKUP, EARTH_BACKUP, EARTH_BACKUP])
+    expect(powerOfId(r.state, luso)).toBe(4000)
+    expect(keywordsOf(r.state, fc(r.state, luso)!).has('brave')).toBe(true)
+    expect(powerOfId(r.state, r.card), 'Maat pumps itself too: "all the Forwards you control"').toBe(9000)
+    ok(r.state)
+  })
+})
+
+describe('23-125R Noctis — "Limit Break -- 2", "When Noctis enters the field, choose 1 Forward in your Break Zone. Add it to your hand."', () => {
+  it('parses to LB 2 with one clause; on entering it returns a Forward from the Break Zone to hand', () => {
+    const d = DEFS.find((x) => x.code === '23-125R')!
+    expect([d.limitBreak, d.keywords, d.abilityClauses, (d.abilities ?? []).map((a) => a.id)]).toEqual([2, [], 1, ['23-125R:etb']])
+    let s = makeGame()
+    let dead: CardId, noctis: CardId, fodder: CardId, cp: CardId[]
+    ;[s, dead] = withBreakZone(s, 0, '27-125S')
+    ;[s, noctis] = withHand(s, 0, '23-125R')
+    ;[s, fodder] = withHand(s, 0, '27-124S')                                   // an earth discard: 5 Backups + 2 CP for cost 6 (one excess, §11.2.1.1)
+    ;[s, cp] = withCp(s, 0, [EARTH_BACKUP, EARTH_BACKUP, EARTH_BACKUP, EARTH_BACKUP, EARTH_BACKUP])
+    let r = apply(s, { type: 'castCharacter', player: 0, card: noctis, payment: { dullBackups: cp, discards: [{ card: fodder, element: 'earth' }] } })
+    expect(r.state.pending?.kind, 'the ETB declares its target').toBe('chooseTargets')
+    r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [dead] })
+    expect(r.state.players[0].hand).toContain(dead)
+    expect(r.state.players[0].breakZone).not.toContain(dead)
+    ok(r.state)
   })
 })

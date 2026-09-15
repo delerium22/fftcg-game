@@ -28,6 +28,8 @@ import type { Ability, CardDef, CardType } from '@fftcg/engine'
  * one plus an activated one (Odin, Sphene) count both.
  */
 export const ABILITY_CLAUSES: Record<string, number> = {
+  '22-119R': 1,   // ETB pump + Brave (rung J8; the LB line and the reminder are not clauses)
+  '23-125R': 1,   // ETB retrieve a Forward from the Break Zone (rung J8)
   '1-038R': 1,    // EX BURST dull and freeze (rung J3)
   '1-121C': 1,    // [Lightning][Dull]: grant Haste
   '9-074C': 1,    // static: may produce Lightning CP
@@ -707,8 +709,36 @@ const SHIVA_SUMMON: Ability = {
   }],
 }
 
+// ---------------------------------------------------------------------------
+// Rung J8 — the LB deck's two cards. "Limit Break -- X" is parsed as the LB cost, not a clause.
+// ---------------------------------------------------------------------------
+
+const MAAT_ETB: Ability = {
+  id: '22-119R:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Maat enters the field, until the end of the turn, all the Forwards you control gain +1000 power and Brave.',
+  effects: [{
+    kind: 'forEach',
+    from: { zone: 'forwards', controller: 'self' },
+    do: [{ kind: 'addPower', amount: 1000 }, { kind: 'grantKeyword', keyword: 'brave' }],
+  }],
+}
+
+const NOCTIS_ETB: Ability = {
+  id: '23-125R:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Noctis enters the field, choose 1 Forward in your Break Zone. Add it to your hand.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'breakZone', controller: 'self', filter: { types: ['forward'] } },
+    then: [{ kind: 'moveToHand' }],
+  }],
+}
+
 /** Implemented clauses by card code. A card absent from here has none — every clause it prints still warns. */
 export const ABILITIES: Record<string, readonly Ability[]> = {
+  '22-119R': [MAAT_ETB],
+  '23-125R': [NOCTIS_ETB],
   '1-038R': [SHIVA_SUMMON],
   '1-121C': [RED_MAGE_HASTE],
   '9-074C': [MOOGLE_LIGHTNING_CP],
