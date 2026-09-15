@@ -198,11 +198,43 @@ export function runRuleProcesses(state: GameState): [GameState, Event[]] {
       if (excess > 0) { s = { ...s, pending: { kind: 'breakExcessBackups', player: p, count: excess } }; break }
     }
   }
+  // §15.2.8.4 (rung J8): an LB card that reached a hand, a Break Zone, a main deck or removed-from-play goes on to
+  // its owner's LB deck face up, at once and off the stack (§15.2.8.4.5). The move it arrived by was already watched
+  // (§15.2.8.4.2): its triggers were enqueued above, before this sweep, so nothing is lost by the card moving on.
+  const [swept, sweptEvents] = sweepLimitBreak(s)
+  s = swept; events.push(...sweptEvents)
   // §12.4.1 seven damage; §3.3 simultaneous → draw
   const dead = ([0, 1] as const).filter((p) => s.players[p].damageZone.length >= DAMAGE_TO_LOSE)
   if (dead.length === 2) s = { ...s, result: { winner: null, cause: 'bothReachedSeven', reason: 'both players reached 7 damage (§3.3)' } }
   else if (dead.length === 1) s = { ...s, result: { winner: opponentOf(dead[0] as PlayerId), cause: 'damage', reason: `player ${dead[0]} has 7 damage (§12.4.1)` } }
   return [stopped(s), events]
+}
+
+const LB_RETURN_ZONES = ['hand', 'breakZone', 'deck', 'removedFromGame'] as const
+
+function sweepLimitBreak(state: GameState): [GameState, Event[]] {
+  let s = state
+  const events: Event[] = []
+  for (const p of [0, 1] as const) {
+    const ps = s.players[p]
+    const isLb = (id: CardId): boolean => s.defs[s.cards[id]?.code ?? '']?.limitBreak !== undefined
+    const moves: { card: CardId; from: (typeof LB_RETURN_ZONES)[number] }[] = []
+    for (const zone of LB_RETURN_ZONES) for (const id of ps[zone]) if (isLb(id)) moves.push({ card: id, from: zone })
+    if (moves.length === 0) continue
+    const ids = new Set(moves.map((m) => m.card))
+    s = updatePlayer(s, p, (q) => ({
+      ...q,
+      hand: q.hand.filter((id) => !ids.has(id)),
+      breakZone: q.breakZone.filter((id) => !ids.has(id)),
+      deck: q.deck.filter((id) => !ids.has(id)),
+      removedFromGame: q.removedFromGame.filter((id) => !ids.has(id)),
+      // The arrival was recorded (spec C10); the card is gone before any priority, so nothing may retrieve it.
+      putIntoBreakZoneFromFieldThisTurn: q.putIntoBreakZoneFromFieldThisTurn.filter((id) => !ids.has(id)),
+      lbDeck: [...q.lbDeck, ...moves.map((m) => ({ id: m.card, faceUp: true }))],
+    }))
+    for (const m of moves) events.push({ type: 'lbReturned', player: p, card: m.card, from: m.from })
+  }
+  return [s, events]
 }
 
 // The late binding `drainResolution` uses to run rule processes between frames without a runtime import cycle.

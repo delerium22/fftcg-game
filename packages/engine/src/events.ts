@@ -22,7 +22,11 @@ export type Event =
    */
   | { type: 'cpGenerated'; player: PlayerId; cp: readonly (readonly Element[])[] }
   | { type: 'discarded'; player: PlayerId; card: CardId; reason: 'cp' | 'handSize' | 'cost' }
-  | { type: 'cast'; player: PlayerId; card: CardId; cardType: CardType }
+  /** §15.2.8.3.2 (rung J8): the face-down LB-deck cards turned face up to pay a Limit Break cost. */
+  | { type: 'lbFlipped'; player: PlayerId; cards: CardId[] }
+  /** §15.2.8.4 (rung J8): an LB card that reached `from` went on to its owner's LB deck face up, at once. */
+  | { type: 'lbReturned'; player: PlayerId; card: CardId; from: 'hand' | 'breakZone' | 'deck' | 'removedFromGame' }
+  | { type: 'cast'; player: PlayerId; card: CardId; cardType: CardType; from?: 'hand' | 'lbDeck' }
   /** An activated ability was used (spec C3-1) — activated, NOT triggered; the log must not conflate them. */
   | { type: 'abilityActivated'; player: PlayerId; card: CardId; abilityId: string }
   /** Cards exposed off the top of a deck (spec C9). `audience` is who learned them, never which cards. */

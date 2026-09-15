@@ -7,7 +7,7 @@ import type { Command, Payment } from './commands.js'
 import { canPay, castRequirement, enumeratePayments, enumeratePaymentsFor, generateCp, type CpRequirement } from './cp.js'
 import { IllegalCommandError } from './errors.js'
 import { abilityCpRequirement, activatedAbility, activationCheck, activationTargetSets, hasAnyActivation } from './activate.js'
-import { castCheck, instantSpeedAllowed } from './cast.js'
+import { castCheck, instantSpeedAllowed, lbFlipCheck } from './cast.js'
 import { deckPickCandidates, chooseTargetsCheck } from './resolve.js'
 import { attackCheck, legalBlockers, legalPartyDamageAssignments, partyDamageCheck } from './attack.js'
 
@@ -39,7 +39,8 @@ export interface ActionMenu {
 
 export function actionMenu(state: GameState, player: PlayerId): ActionMenu {
   const shape = menuShape(state, player)
-  const castable = shape.casts ? state.players[player].hand.filter((card) => castCheck(state, player, card) === null) : []
+  // Rung J8: the face-down LB deck is cast from as the hand is (§15.2.8.3).
+  const castable = shape.casts ? castableFrom(state, player).filter((card) => castCheck(state, player, card) === null) : []
   return { castable, abilities: shape.abilities, attack: shape.attack, pass: shape.pass }
 }
 
@@ -86,7 +87,7 @@ export function forcedPass(state: GameState): Command | null {
   // cast's payments and each activation's target sets here was a quarter of a rollout's time.
   const shape = menuShape(state, player)
   if (!shape.pass || shape.attack) return null
-  if (shape.casts && state.players[player].hand.some((card) => castCheck(state, player, card) === null)) return null
+  if (shape.casts && castableFrom(state, player).some((card) => castCheck(state, player, card) === null)) return null
   if (shape.abilities && hasAnyActivation(state, player)) return null
   return { type: 'pass', player }
 }
@@ -174,8 +175,17 @@ export function isLegal(state: GameState, command: Command): string | null {
 const sameSet = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && [...a].sort((x, y) => x - y).every((v, i) => v === [...b].sort((x, y) => x - y)[i])
 
 /** Does `payment` cover `req`, drawing on sources the player may spend? The engine's own generator decides; an illegal source is its refusal. */
+/** The cards a player may cast from: the hand, and the face-down cards of the LB deck (rung J8). */
+function castableFrom(state: GameState, player: PlayerId): CardId[] {
+  const ps = state.players[player]
+  return [...ps.hand, ...ps.lbDeck.filter((x) => !x.faceUp).map((x) => x.id)]
+}
+
 function paymentCheck(state: GameState, player: PlayerId, payment: Payment, req: CpRequirement): string | null {
   try {
+    // Rung J8: the Limit Break part of the payment, exactly as `checkedPay` will judge it.
+    const lb = req.excluded[0] === undefined ? null : lbFlipCheck(state, player, req.excluded[0], payment)
+    if (lb) return lb
     const cp = generateCp(state, player, payment, req.excluded)
     return canPay(req.amount, req.requiredElements, cp) ? null : `payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}`
   } catch (e) {

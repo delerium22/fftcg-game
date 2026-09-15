@@ -8,7 +8,7 @@ import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { startTurn } from './phases.js'
 
-export interface CreateGameOptions { seed: number; decks: [string[], string[]]; defs: CardDef[]; skipDeckValidation?: boolean }
+export interface CreateGameOptions { seed: number; decks: [string[], string[]]; defs: CardDef[]; skipDeckValidation?: boolean; /** Rung J8: each player's LB deck list (§7.14), none by default. */ lbDecks?: [string[], string[]] }
 
 export function validateDeck(defs: Record<string, CardDef>, codes: string[]): string[] {
   const problems: string[] = []
@@ -16,6 +16,21 @@ export function validateDeck(defs: Record<string, CardDef>, codes: string[]): st
   const counts = new Map<string, number>()
   for (const c of codes) {
     if (!defs[c]) { problems.push(`unknown card code ${c}`); continue }
+    if (defs[c]?.limitBreak !== undefined) problems.push(`${c} has Limit Break and belongs in the LB deck, not the main deck (§8.1.3)`)
+    counts.set(c, (counts.get(c) ?? 0) + 1)
+  }
+  for (const [c, n] of counts) if (n > 3) problems.push(`${c} appears ${n} times; max 3 copies (§8.1.1.2)`)
+  return problems
+}
+
+/** §8.1.1.1–.3 (rung J8): up to eight cards, ≤3 copies, every one a Limit Break card. Empty is fine. */
+export function validateLbDeck(defs: Record<string, CardDef>, codes: string[]): string[] {
+  const problems: string[] = []
+  if (codes.length > 8) problems.push(`an LB deck holds at most eight cards (§8.1.1.1), has ${codes.length}`)
+  const counts = new Map<string, number>()
+  for (const c of codes) {
+    if (!defs[c]) { problems.push(`unknown card code ${c}`); continue }
+    if (defs[c]?.limitBreak === undefined) problems.push(`${c} has no Limit Break and may not be in an LB deck (§8.1.3)`)
     counts.set(c, (counts.get(c) ?? 0) + 1)
   }
   for (const [c, n] of counts) if (n > 3) problems.push(`${c} appears ${n} times; max 3 copies (§8.1.1.2)`)
@@ -23,7 +38,7 @@ export function validateDeck(defs: Record<string, CardDef>, codes: string[]): st
 }
 
 function emptyPlayer(): PlayerState {
-  return { deck: [], hand: [], forwards: [], backups: [], damageZone: [], breakZone: [], removedFromGame: [], putIntoBreakZoneFromFieldThisTurn: [], mulliganDecided: false }
+  return { deck: [], hand: [], lbDeck: [], forwards: [], backups: [], damageZone: [], breakZone: [], removedFromGame: [], putIntoBreakZoneFromFieldThisTurn: [], mulliganDecided: false }
 }
 
 /**
@@ -57,6 +72,8 @@ export function createGame(opts: CreateGameOptions): GameState {
     for (const p of [0, 1] as const) {
       const problems = validateDeck(defs, opts.decks[p])
       if (problems.length) throw new Error(`player ${p} deck invalid: ${problems.join('; ')}`)
+      const lbProblems = validateLbDeck(defs, opts.lbDecks?.[p] ?? [])
+      if (lbProblems.length) throw new Error(`player ${p} LB deck invalid: ${lbProblems.join('; ')}`)
     }
   }
   let rng = seedRng(opts.seed)
@@ -69,6 +86,8 @@ export function createGame(opts: CreateGameOptions): GameState {
     const [shuffled, r] = shuffle(rng, ids)   // §8.2.1.1
     rng = r
     players[p].deck = shuffled
+    // §7.14 / §8.2.1.1 (rung J8): the LB deck, face down, in list order — never shuffled.
+    for (const code of opts.lbDecks?.[p] ?? []) { cards[id] = { id, code, owner: p }; players[p].lbDeck.push({ id: id++, faceUp: false }) }
   }
   const [chooser, r2] = nextInt(rng, 2)     // §8.2.1.2
   return {

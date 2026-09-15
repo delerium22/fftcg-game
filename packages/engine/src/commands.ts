@@ -1,7 +1,8 @@
 import type { PlayerId, Element } from './types.js'
 import type { CardId } from './state.js'
 
-export interface Payment { dullBackups: CardId[]; discards: { card: CardId; element: Element }[] }
+/** `lbFlip` (rung J8, §15.2.8.3.2): the OTHER face-down LB-deck cards turned face up to pay a Limit Break cost. */
+export interface Payment { dullBackups: CardId[]; discards: { card: CardId; element: Element }[]; lbFlip?: CardId[] }
 export type Command =
   | { type: 'chooseFirst'; player: PlayerId; goFirst: boolean }
   | { type: 'mulligan'; player: PlayerId; redraw: boolean }

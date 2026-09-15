@@ -49,8 +49,8 @@ export function deckOf(codes: string[]): string[] {
 
 export const DEFAULT_DECK = deckOf(VANILLA_POOL.map((d) => d.code))
 
-export function makeGame(opts: { seed?: number; decks?: [string[], string[]]; defs?: CardDef[] } = {}): GameState {
-  let s = createGame({ seed: opts.seed ?? 1, decks: opts.decks ?? [DEFAULT_DECK, DEFAULT_DECK], defs: opts.defs ?? VANILLA_POOL })
+export function makeGame(opts: { seed?: number; decks?: [string[], string[]]; defs?: CardDef[]; lbDecks?: [string[], string[]] } = {}): GameState {
+  let s = createGame({ seed: opts.seed ?? 1, decks: opts.decks ?? [DEFAULT_DECK, DEFAULT_DECK], defs: opts.defs ?? VANILLA_POOL, ...(opts.lbDecks ? { lbDecks: opts.lbDecks } : {}) })
   const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : 0
   ;[s] = applyChooseFirst(s, chooser, chooser === 0)   // player 0 always goes first
   ;[s] = applyMulligan(s, 0, false)

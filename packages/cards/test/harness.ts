@@ -10,16 +10,18 @@ import { loadCards } from '../src/index.js'
 
 export const DEFS = loadCards()
 
-/** 50 cards, ≤3 copies of each of the 22 codes (§8.1.1.1–2). */
+/** 50 cards, ≤3 copies of each of the 22 main-deck codes (§8.1.1.1–2); the LB cards are the LB deck (§8.1.3, rung J8). */
 export const DECK: string[] = (() => {
-  const codes = DEFS.map((d) => d.code)
+  const codes = DEFS.filter((d) => d.limitBreak === undefined).map((d) => d.code)
   const out: string[] = []
   for (let i = 0; out.length < 50; i++) out.push(codes[i % codes.length] as string)
   return out
 })()
+/** The LB deck both seats play in these fixtures: every LB card in the pool, twice (rung J8). */
+export const LB_DECK: string[] = DEFS.filter((d) => d.limitBreak !== undefined).flatMap((d) => [d.code, d.code])
 
 export function makeGame(): GameState {
-  let s = createGame({ seed: 1, decks: [DECK, DECK], defs: DEFS })
+  let s = createGame({ seed: 1, decks: [DECK, DECK], defs: DEFS, lbDecks: [LB_DECK, LB_DECK] })
   const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : 0
   ;[s] = applyChooseFirst(s, chooser, chooser === 0)   // player 0 always goes first
   ;[s] = applyMulligan(s, 0, false)

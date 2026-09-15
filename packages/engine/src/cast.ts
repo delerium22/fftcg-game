@@ -15,7 +15,7 @@ import { putOntoField, targetCandidates, warnUnimplemented } from './resolve.js'
  * same decision, and is derived from this so the two cannot disagree. Neither says anything about CP: a
  * `null` here with no legal payment means "cannot afford it", which is the caller's to phrase.
  */
-export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'lightDark' | 'noTarget'
+export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'lightDark' | 'noTarget' | 'lbCost'
 
 /** The Attack Phase steps in which priority is held AND a Summon or an action ability may be used (§9.3.1.6–7, J1-D10). `firstStrike` holds priority but admits only a pass (§15.2.3.3). */
 export const ATTACK_WINDOWS: readonly AttackStep[] = ['preparation', 'declared', 'blocked', 'damage']
@@ -52,10 +52,13 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
   const ps = state.players[player]
   // Characters are cast in a Main Phase only (§11.4.1); Summons — and Back Attack Characters (§15.2.5, rung J2) —
   // follow the priority holder, checked below.
+  // Rung J8 (§15.2.8.3): an LB card is cast from the LB deck while FACE DOWN, under its type's own conditions.
   const inHand = ps.hand.includes(card)
-  const instant = inHand && (defOf(state, card).type === 'summon' || defOf(state, card).keywords.includes('backAttack'))
+  const inLbDeck = ps.lbDeck.some((x) => x.id === card && !x.faceUp)
+  const available = inHand || inLbDeck
+  const instant = available && (defOf(state, card).type === 'summon' || defOf(state, card).keywords.includes('backAttack'))
   if (!instant && state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
-  if (!inHand) return 'notInHand'
+  if (!available) return 'notInHand'
   const def = defOf(state, card)
   if (def.type !== 'summon' && instant) {
     // §15.2.5.2–3: a Back Attack Character is cast by the PRIORITY HOLDER, either player, in a Main Phase or an
@@ -81,6 +84,8 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
     if (state.pending) return 'pending'
     if (state.stack.length > 0) return 'stackNotEmpty'
   }
+  // §15.2.8.3.2: the LB cost is X OTHER face-down cards of the LB deck; fewer left means the card cannot be cast.
+  if (inLbDeck && ps.lbDeck.filter((x) => !x.faceUp && x.id !== card).length < (def.limitBreak ?? 0)) return 'lbCost'
   if (def.type === 'monster') return 'monster'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
   // §7.7.3–5: an ACTION that would exceed a field limit is prohibited — the cast is refused. An EFFECT that
   // exceeds one is allowed and the §12.4.6–8 rule processes repair the field (rung J4, rules.ts).
@@ -106,6 +111,26 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   sameName: 'you already control a non-generic character with the same name (§7.7.3)',
   lightDark: 'you already control a Light or Dark card (§7.7.5)',
   noTarget: 'this Summon has no legal target to choose (§11.3.3)',
+  lbCost: 'not enough face-down cards left in your LB deck to pay the Limit Break cost (§15.2.8.3.2)',
+}
+
+/**
+ * Why a payment's `lbFlip` would be refused, or null (rung J8, §15.2.8.3.2): exactly X OTHER face-down cards of the
+ * caster's LB deck when the card is cast from it, and none at all otherwise. Shared by `checkedPay` and `isLegal`.
+ */
+export function lbFlipCheck(state: GameState, player: PlayerId, card: CardId, payment: Payment): string | null {
+  const ps = state.players[player]
+  const flips = payment.lbFlip ?? []
+  if (!ps.lbDeck.some((x) => x.id === card && !x.faceUp)) return flips.length ? 'only a card cast from the LB deck pays a Limit Break cost' : null
+  const need = defOf(state, card).limitBreak ?? 0
+  if (flips.length !== need) return `the Limit Break cost turns exactly ${need} other face-down LB card${need === 1 ? '' : 's'} face up (§15.2.8.3.2), not ${flips.length}`
+  if (new Set(flips).size !== flips.length) return 'a card cannot be turned face up twice'
+  for (const id of flips) {
+    if (id === card) return 'a card cannot pay its own Limit Break cost by turning itself face up'
+    const x = ps.lbDeck.find((y) => y.id === id)
+    if (!x || x.faceUp) return `${id} is not a face-down card in your LB deck`
+  }
+  return null
 }
 
 export function castCheck(state: GameState, player: PlayerId, card: CardId): string | null {
@@ -128,7 +153,14 @@ function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: P
   if (!canPay(req.amount, req.requiredElements, cp)) {
     throw new IllegalCommandError(`payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}`)
   }
-  return pay(state, player, payment)
+  const lbWhy = lbFlipCheck(state, player, card, payment)
+  if (lbWhy) throw new IllegalCommandError(lbWhy)
+  const [paid, events] = pay(state, player, payment)
+  const flips = payment.lbFlip ?? []
+  if (flips.length === 0) return [paid, events]
+  // §15.2.8.3.2 (rung J8): the LB cost, paid simultaneously with the CP — the named cards turn face up.
+  const flipped = updatePlayer(paid, player, (ps) => ({ ...ps, lbDeck: ps.lbDeck.map((x) => (flips.includes(x.id) ? { ...x, faceUp: true } : x)) }))
+  return [flipped, [...events, { type: 'lbFlipped', player, cards: [...flips] }]]
 }
 
 export function applyCastCharacter(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
@@ -136,11 +168,12 @@ export function applyCastCharacter(state: GameState, player: PlayerId, card: Car
   if (why) throw new IllegalCommandError(why)
   const def = defOf(state, card)
   if (def.type === 'summon') throw new IllegalCommandError('use castSummon for summons')
+  const fromLb = state.players[player].lbDeck.some((x) => x.id === card)
   const [paid, events] = checkedPay(state, player, card, payment)
   // §11.4.7: the Character enters, and THE TURN PLAYER gains priority — a no-op for the turn player's own cast, and
   // the opponent's answer first after a non-turn player's Back Attack (§15.2.5, rung J2). An action resets the count.
-  const fromHand: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) })), priority: state.turnPlayer, passes: 0 }
-  events.push({ type: 'cast', player, card, cardType: def.type })
+  const fromHand: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card), lbDeck: ps.lbDeck.filter((x) => x.id !== card) })), priority: state.turnPlayer, passes: 0 }
+  events.push({ type: 'cast', player, card, cardType: def.type, from: fromLb ? 'lbDeck' : 'hand' })
   // Placement, the coverage warning and both trigger dispatches are `putOntoField`'s, not this function's:
   // C9's Hugh Yurg search puts a Character onto the field without casting it and shares every one of them.
   return [putOntoField(fromHand, card, player, events), events]
@@ -151,12 +184,13 @@ export function applyCastSummon(state: GameState, player: PlayerId, card: CardId
   if (why) throw new IllegalCommandError(why)
   const def = defOf(state, card)
   if (def.type !== 'summon') throw new IllegalCommandError('not a summon')
+  const fromLb = state.players[player].lbDeck.some((x) => x.id === card)
   const [paid, events] = checkedPay(state, player, card, payment)
-  // §11.3.2, rung J1-D5: the card moves from the hand to the STACK — a zone of its own, in no player's arrays
-  // — and stays there until it resolves (§11.11.10) or is cancelled. Its `summonResolve` clauses are its
-  // frames; each declares its choices now, as it is cast (§11.3.3–4), through the ordinary prompts.
-  let s: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) })), passes: 0, priority: player }
-  events.push({ type: 'cast', player, card, cardType: 'summon' })
+  // §11.3.2, rung J1-D5: the card moves from the hand (or the LB deck, §15.2.8.3) to the STACK — a zone of its own,
+  // in no player's arrays — and stays there until it resolves (§11.11.10) or is cancelled. Its `summonResolve`
+  // clauses are its frames; each declares its choices now, as it is cast (§11.3.3–4), through the ordinary prompts.
+  let s: GameState = { ...updatePlayer(paid, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card), lbDeck: ps.lbDeck.filter((x) => x.id !== card) })), passes: 0, priority: player }
+  events.push({ type: 'cast', player, card, cardType: 'summon', from: fromLb ? 'lbDeck' : 'hand' })
   warnUnimplemented(def, card, events)
   const frames: Frame[] = (def.abilities ?? [])
     .filter((a) => a.trigger.kind === 'summonResolve')

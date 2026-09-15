@@ -679,6 +679,7 @@ export function headline(v: PlayerView, c: Choice): string {
 const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   gameOver: 'The game is over',
   phase: 'Only in your Main Phase — or, with Back Attack, in any window',
+  lbCost: 'Not enough face-down cards left in your LB deck for its Limit Break cost',
   notInHand: 'Not in your hand',
   notTurnPlayer: 'Only on your own turn',
   priority: 'Not while the AI holds priority',
@@ -1090,6 +1091,7 @@ const payableKey = (c: PayableCommand): string =>
 export function stateShim(v: PlayerView): GameState {
   const side = (p: PlayerId): PlayerState => ({
     deck: [], hand: p === v.me ? [...v.hand] : [],
+    lbDeck: [...v.fields[p].lbDeck],   // rung J8: the LB deck is public (spec J8-D5), and a cast from it pays with it
     forwards: v.fields[p].forwards, backups: v.fields[p].backups,
     damageZone: v.fields[p].damageZone, breakZone: v.fields[p].breakZone, removedFromGame: v.fields[p].removedFromGame,
     putIntoBreakZoneFromFieldThisTurn: [...v.fields[p].putIntoBreakZoneFromFieldThisTurn],

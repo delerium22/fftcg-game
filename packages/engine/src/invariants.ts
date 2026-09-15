@@ -44,6 +44,13 @@ export function checkInvariants(state: GameState): string[] {
     // A zone added to `viewFor` but not here fails silently — `note` is what proves every card is in exactly
     // one place, and the fuzzer runs it after every command under --strict (spec C7-5).
     ps.removedFromGame.forEach((id) => note(id, `P${p} removed`))
+    // Rung J8: the LB deck is a zone; an LB card may not linger in a zone the sweep empties (§15.2.8.4).
+    ps.lbDeck.forEach((x) => { note(x.id, `P${p} lb`); if (typeof x.faceUp !== 'boolean') problems.push(`P${p} LB card ${x.id} has a non-boolean faceUp`) })
+    if (!state.pending && !state.resolution.active) {
+      for (const zone of ['hand', 'breakZone', 'deck', 'removedFromGame'] as const) {
+        for (const id of ps[zone]) if (state.defs[state.cards[id]?.code ?? '']?.limitBreak !== undefined) problems.push(`LB card ${id} is in P${p} ${zone} instead of the LB deck (§15.2.8.4)`)
+      }
+    }
     // Every card the turn recorded as reaching this Break Zone from the field must still BE there (spec
     // C10-2). A retrieve or a removal that forgot to prune shows up here rather than as a card Sphene can
     // take twice — and `note` above cannot see it, because this list is not a zone.

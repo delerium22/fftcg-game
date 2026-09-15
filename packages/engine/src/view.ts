@@ -1,5 +1,5 @@
 import type { CardDef, PlayerId } from './types.js'
-import type { AttackState, CardId, CardInstance, FieldCard, GameResult, GameState, Pending, Phase, StackItem } from './state.js'
+import type { AttackState, CardId, CardInstance, FieldCard, GameResult, GameState, LbCard, Pending, Phase, StackItem } from './state.js'
 import { knows, knowsBit } from './state.js'
 import type { Resolution } from './abilities.js'
 
@@ -15,6 +15,13 @@ export interface DeckSlot { card: CardId | null; knownBy: number }
 
 export interface FieldView {
   forwards: FieldCard[]; backups: FieldCard[]; damageZone: CardId[]; breakZone: CardId[]; removedFromGame: CardId[]
+  /**
+   * Rung J8 (spec J8-D5): BOTH LB decks, identities and face state, for either viewer. A deliberate deviation
+   * from §7.14.2 (a face-down card is its owner's to see): this app plays open decklists (spec B4), so the
+   * face-down SET is exactly the list minus the face-up and the cast cards, and which face-down card is which
+   * has no meaning the rules give it (the owner chooses any). Nothing a real opponent lacks is created.
+   */
+  lbDeck: readonly LbCard[]
   /** One entry per card, top first. Replaces a bare count: the count is `deck.length`. */
   deck: DeckSlot[]
   handCount: number
@@ -52,7 +59,7 @@ export interface PlayerView {
 export function viewFor(state: GameState, me: PlayerId): PlayerView {
   const field = (p: PlayerId): FieldView => {
     const ps = state.players[p]
-    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length, putIntoBreakZoneFromFieldThisTurn: ps.putIntoBreakZoneFromFieldThisTurn }
+    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, lbDeck: ps.lbDeck, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length, putIntoBreakZoneFromFieldThisTurn: ps.putIntoBreakZoneFromFieldThisTurn }
   }
   const visibleIds = new Set<CardId>(state.players[me].hand)
   for (const p of [0, 1] as const) {
@@ -62,6 +69,7 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
     for (const id of ps.damageZone) visibleIds.add(id)
     for (const id of ps.breakZone) visibleIds.add(id)
     for (const id of ps.removedFromGame) visibleIds.add(id)   // public, and visible to BOTH players (spec C7-1)
+    for (const x of ps.lbDeck) visibleIds.add(x.id)             // rung J8-D5: both LB decks, open lists
     // Deck cards this viewer has legitimately seen (spec C9-5) — their instances must be in `cards`, or the
     // id in the slot names nothing.
     //

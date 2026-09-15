@@ -136,7 +136,20 @@ export { staticApplies } from './layer.js'
 
 /** Every *minimal* legal payment for `card` (no source can be removed and still pay). Used by legalCommands as the canonical choice list; `apply` accepts any payment that `canPay` — overpaying is legal (§11.2.2.3). */
 export function enumeratePayments(state: GameState, player: PlayerId, card: CardId): Payment[] {
-  return enumeratePaymentsFor(state, player, castRequirement(state, card, player))
+  const base = enumeratePaymentsFor(state, player, castRequirement(state, card, player))
+  // Rung J8 (§15.2.8.3.2): a card cast from the LB deck also turns X OTHER face-down cards face up — every X-subset
+  // is a different payment (the LB deck is at most eight, so at most C(7,X) of them).
+  const ps = state.players[player]
+  const need = defOf(state, card).limitBreak
+  if (need === undefined || !ps.lbDeck.some((x) => x.id === card && !x.faceUp)) return base
+  const others = ps.lbDeck.filter((x) => !x.faceUp && x.id !== card).map((x) => x.id)
+  const subsets = kSubsets(others, need)
+  return base.flatMap((p) => subsets.map((lbFlip) => ({ ...p, lbFlip })))
+}
+
+function kSubsets(items: readonly CardId[], k: number): CardId[][] {
+  if (k === 0) return [[]]
+  return items.flatMap((x, i) => kSubsets(items.slice(i + 1), k - 1).map((rest) => [x, ...rest]))
 }
 
 /** As `enumeratePayments`, for any requirement — an ability cost as readily as a card's printed cost. */

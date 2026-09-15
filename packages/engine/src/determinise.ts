@@ -45,8 +45,9 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     // keeps its id — leaving it out would deal its code back into the unseen multiset, a 51-card game.
     const placing = view.resolution.placing?.item
     const onStack = [...view.stack, ...(placing ? [placing] : [])].flatMap((item) => (item.kind === 'summon' && view.cards[item.card]?.owner === p ? [item.card] : []))
-    const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...f.removedFromGame, ...knownDeck, ...onStack, ...(p === view.me ? view.hand : [])]
-    const visibleCodes = visibleIds.map((id) => { const c = view.cards[id]; if (!c) throw new Error(`view lacks visible card ${id}`); return c.code })
+    const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...f.removedFromGame, ...knownDeck, ...onStack, ...f.lbDeck.map((x) => x.id), ...(p === view.me ? view.hand : [])]
+    // Rung J8: LB cards are never in the main-deck list, so their codes are not subtracted from the unseen multiset.
+    const visibleCodes = visibleIds.map((id) => { const c = view.cards[id]; if (!c) throw new Error(`view lacks visible card ${id}`); return c.code }).filter((code) => view.defs[code]?.limitBreak === undefined)
     const unseen = removeVisible(decks[p], visibleCodes, p)
     const [order, r2] = shuffle(r, unseen); r = r2
     const mint = (code: string): CardId => { const id = nextId++; cards[id] = { id, code, owner: p }; return id }
@@ -79,7 +80,7 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     if (p === view.me) { hand = view.hand; deck = fill(order) }
     else { hand = order.slice(0, f.handCount).map(mint); deck = fill(order.slice(f.handCount)) }
     if (deck.length !== f.deck.length || hand.length !== f.handCount) throw new Error(`deck list for player ${p} is inconsistent with the view (unseen ${unseen.length}, expected hand ${f.handCount} + deck ${f.deck.length})`)
-    players.push({ deck, hand, forwards: f.forwards, backups: f.backups, damageZone: f.damageZone, breakZone: f.breakZone, removedFromGame: f.removedFromGame, putIntoBreakZoneFromFieldThisTurn: [...f.putIntoBreakZoneFromFieldThisTurn], mulliganDecided: view.mulliganDecided[p] })
+    players.push({ deck, hand, lbDeck: [...f.lbDeck], forwards: f.forwards, backups: f.backups, damageZone: f.damageZone, breakZone: f.breakZone, removedFromGame: f.removedFromGame, putIntoBreakZoneFromFieldThisTurn: [...f.putIntoBreakZoneFromFieldThisTurn], mulliganDecided: view.mulliganDecided[p] })
   }
   const state: GameState = {
     rng: r, turn: view.turn, turnPlayer: view.turnPlayer, firstPlayer: view.firstPlayer, phase: view.phase, attack: view.attack,

@@ -29,9 +29,13 @@ export interface FieldCard {
    */
   frozen?: boolean
 }
+/** One card of the LB deck (§7.14, rung J8): face down until it pays a Limit Break cost or comes back spent. */
+export interface LbCard { id: CardId; faceUp: boolean }
 export interface PlayerState {
   deck: CardId[]        // index 0 = top
   hand: CardId[]
+  /** §7.14 / §15.2.8 (rung J8): the LB deck, in list order (never shuffled, §8.2.1.1). Cast from face down; returns face up. */
+  lbDeck: LbCard[]
   /**
    * Cards that moved FIELD → Break Zone under this player's control this turn (spec C10-2), for Sphene's
    * "put in your Break Zone from the field during this turn".

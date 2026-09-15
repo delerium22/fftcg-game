@@ -24,7 +24,7 @@ describe('§11.4 casting a Character', () => {
     expect(t.players[0].forwards).toEqual([{ id: f, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] }])
     expect(t.players[0].hand).not.toContain(f)
     expect(t.players[0].backups.every((b) => b.status === 'dull')).toBe(true)
-    expect(events).toContainEqual({ type: 'cast', player: 0, card: f, cardType: 'forward' })
+    expect(events).toContainEqual({ type: 'cast', player: 0, card: f, cardType: 'forward', from: 'hand' })
   })
   it('§5.2.3.1.1.3: a Backup enters dull', () => {
     let { s, b1 } = ready(); let b: number

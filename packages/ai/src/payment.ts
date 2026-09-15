@@ -73,7 +73,20 @@ function assignRequiredElements(elements: readonly Element[], sources: Source[],
 }
 
 export function preferredPayment(state: GameState, player: PlayerId, card: CardId): Payment | null {
-  return preferredPaymentFor(state, player, castRequirement(state, card, player))
+  const base = preferredPaymentFor(state, player, castRequirement(state, card, player))
+  if (!base) return null
+  // Rung J8 (§15.2.8.3.2): a card cast from the LB deck also turns X other face-down cards face up. Flip what is worth
+  // least to keep: a duplicate of the card being cast first, then the most expensive card (the hardest to cast).
+  const ps = state.players[player]
+  const need = defOf(state, card).limitBreak
+  if (need === undefined || !ps.lbDeck.some((x) => x.id === card && !x.faceUp)) return base
+  const code = state.cards[card]?.code
+  const others = ps.lbDeck.filter((x) => !x.faceUp && x.id !== card)
+  if (others.length < need) return null
+  const worth = (id: CardId): number => (state.cards[id]?.code === code ? 1000 : 0) + defOf(state, id).cost
+  const order = new Map(ps.lbDeck.map((x, i) => [x.id, i]))
+  const lbFlip = [...others].sort((a, b) => worth(b.id) - worth(a.id)).slice(0, need).map((x) => x.id).sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0))
+  return { ...base, lbFlip }
 }
 
 /**
