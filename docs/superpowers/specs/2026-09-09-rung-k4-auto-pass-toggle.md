@@ -1,6 +1,6 @@
 # Rung K4 — the auto-pass toggle: "I won't be responding for now"
 
-> **STATUS: BUILT, 2026-09-09.** The user's decision (2026-09-09): keep the rules-exact windows as the
+> **STATUS: BUILT, 2026-09-09; D1 and D2 SUPERSEDED by rung K5 (2026-09-16-rung-k5-smart-auto-pass.md).** The user's decision (2026-09-09): keep the rules-exact windows as the
 > default — a response is a real game element and must not be lost for fewer clicks — and add a toggle for
 > the stretches where the player knows they will not activate anything.
 

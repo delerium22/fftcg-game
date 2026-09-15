@@ -6,7 +6,7 @@ import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS } from '../deck.js'
 import { ATTACK_STEP_LABEL, bareName, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
-import { AI, HUMAN, type Choice, type GameApi, type LogLine } from './types.js'
+import { AI, HUMAN, type Choice, type Control, type GameApi, type LogLine } from './types.js'
 
 /** Spec B7: the agent decides in ~0.27 ms, far too fast to watch — one move per this many ms instead. */
 export const AI_STEP_MS = 600
@@ -367,7 +367,7 @@ export const narrator = (before: PlayerView, after: PlayerView): PlayerView => (
  * `legalCommands`.
  */
 function narrateApply(
-  state: GameState, legal: readonly Command[], command: Command, autoPass = false,
+  state: GameState, legal: readonly Command[], command: Command, control: Control = 'full',
 ): { state: GameState; lines: LogLine[] } {
   // Rung J7-D1: legality is the engine's predicate, not membership in a list that may be a capped sample.
   const refused = isLegal(state, command)
@@ -376,7 +376,7 @@ function narrateApply(
   const applied = apply(state, command)
   // Rung J1: the windows the command opened are closed here, before anyone renders them — and what closing
   // them did (the damage a block leads to, a game that ends there) is narrated with the move that caused it.
-  const settled = settleWindows(applied.state, { autoPass })
+  const settled = settleWindows(applied.state, { control })
   const result = { state: settled.state, events: [...applied.events, ...settled.events] }
   // The move label and the events that follow it are narrated from the SAME view, and it is the human's.
   //
@@ -450,21 +450,37 @@ export function stepAi(state: GameState, agent: Agent): { state: GameState; line
  * the caller narrates these with the move.
  */
 export function settleForcedWindows(state: GameState): { state: GameState; events: Event[] } {
-  return settleWindows(state, { autoPass: false })
+  return settleWindows(state, { control: 'full' })
 }
 
 /**
- * `settleForcedWindows`, plus — with the auto-pass toggle on (rung K4) — every RESPONSE window the human
- * holds: something on the stack, priority in the AI's phase, an Attack Phase step that is a window. Those
- * are passed too, in the same step, for as long as they keep opening. Never the human's own empty-stack Main
- * Phase (its Pass ends a phase and stays a button), never a decision the game owes (a block, targets, an EX
- * Burst — those are pendings, not windows), never the attack declaration. The AI's decisions are its own.
+ * Rung K5: is this a response window of the human's that Smart passes without showing? The stops (K5-D3):
+ * the top of the stack is the AI's — a Summon it cast or an ability it controls, something the human could
+ * answer; or the Attack Phase is at `blocked`, the block declared and damage not yet dealt, where combat is
+ * decided (in either turn, blocker named or not). Everything else a response window can be is passed: the
+ * AI's Main Phases with an empty stack, the `preparation`, `declared` and `damage` windows, and a window
+ * whose stack top is the human's OWN Summon or ability — passing hands it to the AI, or resolves it.
  */
-export function settleWindows(state: GameState, opts: { autoPass: boolean }): { state: GameState; events: Event[] } {
+export function smartPasses(state: GameState): boolean {
+  if (actingPlayer(state) !== HUMAN || !isResponseWindow(state)) return false
+  const top = state.stack.at(-1)
+  if (top && (top.kind === 'summon' ? top.controller : top.frame.controller) === AI) return false
+  if (state.phase === 'attack' && state.attack?.step === 'blocked') return false
+  return true
+}
+
+/**
+ * `settleForcedWindows`, plus — under Smart (rung K5, the default) — the human's response windows that
+ * `smartPasses` says nobody would hold for. Those are passed too, in the same step, for as long as they keep
+ * opening. Never the human's own empty-stack Main Phase (its Pass ends a phase and stays a button), never a
+ * decision the game owes (a block, targets, an EX Burst — those are pendings, not windows), never the attack
+ * declaration. Under Full control only the forced windows settle. The AI's decisions are its own.
+ */
+export function settleWindows(state: GameState, opts: { control: Control }): { state: GameState; events: Event[] } {
   let s = state
   const events: Event[] = []
   for (let i = 0; i < 64; i++) {
-    const c = forcedDecision(s) ?? (opts.autoPass && actingPlayer(s) === HUMAN && isResponseWindow(s) ? { type: 'pass' as const, player: HUMAN } : null)
+    const c = forcedDecision(s) ?? (opts.control === 'smart' && smartPasses(s) ? { type: 'pass' as const, player: HUMAN } : null)
     if (!c) break
     const r = apply(s, c)
     s = r.state; events.push(...r.events)
@@ -478,8 +494,8 @@ export function settleWindows(state: GameState, opts: { autoPass: boolean }): { 
 export interface AiSink {
   commit(state: GameState, lines: LogLine[]): void
   log(line: LogLine): void
-  /** Rung K4: is the human's auto-pass toggle on right now? Read at commit time, never captured. */
-  autoPass?: () => boolean
+  /** Rung K5: the human's control mode right now. Read at commit time, never captured. */
+  control?: () => Control
 }
 
 /**
@@ -501,7 +517,7 @@ export function aiHandlers(sink: AiSink): SearchRequestHandlers {
         sink.log({ kind: 'warning', text: `The AI chose ${command.type}, which is not legal in this position (${refused}) — the move was discarded` })
         return false
       }
-      const stepped = narrateApply(forState, legalCommands(forState, AI), command, sink.autoPass?.() ?? false)
+      const stepped = narrateApply(forState, legalCommands(forState, AI), command, sink.control?.() ?? 'full')
       sink.commit(stepped.state, stepped.lines)
       return true
     },
@@ -580,11 +596,12 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
   }, [])
 
   const appendLog = useCallback((line: LogLine) => { setLog((prev) => [...prev, line]) }, [])
-  // Rung K4: the auto-pass toggle. A ref beside the state so the AI's commit path (a timer, closed over the
-  // handlers) reads the live value, and the state so the strip re-renders the control.
-  const [autoPass, setAutoPassState] = useState(false)
-  const autoPassRef = useRef(false)
-  const handlers = useMemo(() => aiHandlers({ commit, log: appendLog, autoPass: () => autoPassRef.current }), [commit, appendLog])
+  // Rung K4/K5: the full-control toggle. A ref beside the state so the AI's commit path (a timer, closed over
+  // the handlers) reads the live value, and the state so the strip re-renders the control.
+  const [fullControl, setFullControlState] = useState(false)
+  const fullControlRef = useRef(false)
+  const control = (): Control => (fullControlRef.current ? 'full' : 'smart')
+  const handlers = useMemo(() => aiHandlers({ commit, log: appendLog, control }), [commit, appendLog])
 
   const view = useMemo(() => viewFor(state, HUMAN), [state])
   // The RAW legal commands go to `paymentAlternatives` and the COLLAPSED ones to `buildChoiceSet`: the strip
@@ -611,24 +628,25 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
     const before = viewFor(current, HUMAN)
     const applied = apply(current, choice.command)
     // Rung J1: close the pass-only windows the move opened — the AI's forced pass and the human's own — in
-    // this same commit, so no render ever shows a strip whose one button does nothing. K4: with the toggle
-    // on, the human's response windows too.
-    const settled = settleWindows(applied.state, { autoPass: autoPassRef.current })
+    // this same commit, so no render ever shows a strip whose one button does nothing. K5: under Smart, the
+    // human's response windows nobody would hold for, too.
+    const settled = settleWindows(applied.state, { control: control() })
     const result = { state: settled.state, events: [...applied.events, ...settled.events] }
     const lines = eventLines(narrator(before, viewFor(result.state, HUMAN)), result.events, current.resolution.queue)
     commit(result.state, [moveLine(HUMAN, describeChoice(before, choice.command)), ...lines])
   }, [commit])
 
   /**
-   * K4-D3: turning the toggle ON is itself the answer to whatever window is open — the human's, right now —
-   * so the position is settled at once, narrated like any other settlement. Turning it off does nothing.
+   * K5-D5 (K4-D3 mirrored): turning full control OFF is itself the answer to whatever window is open — the
+   * human's, right now — so the position is settled under Smart at once, narrated like any other settlement.
+   * Turning it on does nothing retroactively.
    */
-  const setAutoPass = useCallback((on: boolean): void => {
-    autoPassRef.current = on
-    setAutoPassState(on)
-    if (!on) return
+  const setFullControl = useCallback((on: boolean): void => {
+    fullControlRef.current = on
+    setFullControlState(on)
+    if (on) return
     const current = stateRef.current
-    const settled = settleWindows(current, { autoPass: true })
+    const settled = settleWindows(current, { control: 'smart' })
     if (settled.state === current) return
     searchRef.current?.invalidate()
     const lines = eventLines(narrator(viewFor(current, HUMAN), viewFor(settled.state, HUMAN)), settled.events, current.resolution.queue)
@@ -637,8 +655,8 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
 
   const restart = useCallback((): void => {
     // K4-D5: the toggle is "for now", not a preference.
-    autoPassRef.current = false
-    setAutoPassState(false)
+    fullControlRef.current = false
+    setFullControlState(false)
     // A fresh but reproducible seed: `useGame(seed)` stays deterministic across restarts, which tests rely on.
     const next = ++seedRef.current
     const game = newGame(next)
@@ -673,5 +691,5 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
   // exactly that window). Computing it here, from the same `state` the choices came from, makes the two
   // disagreeing impossible rather than merely unlikely, and fixes the mirror case for free: the strip no
   // longer shows a stale human prompt for a render after the AI takes over.
-  return { view, choices, log, aiThinking: aiIsThinking(state), choose, restart, autoPass, setAutoPass }
+  return { view, choices, log, aiThinking: aiIsThinking(state), choose, restart, fullControl, setFullControl }
 }

@@ -7,9 +7,9 @@ import { buildChoiceSet } from '../src/game/commands.js'
 import { HUMAN } from '../src/game/types.js'
 import { makeGame } from '../../../packages/engine/test/helpers.js'
 
-/** Rung K4-A3: the auto-pass toggle on the strip. */
-describe('the auto-pass toggle on the strip (K4-A3)', () => {
-  function mount(autoPass: boolean, onAutoPass?: (on: boolean) => void, tray?: JSX.Element): { host: HTMLElement; unmount: () => void } {
+/** Rung K5-A3 (was K4-A3): the full-control toggle on the strip. */
+describe('the full-control toggle on the strip (K5-A3)', () => {
+  function mount(fullControl: boolean, onFullControl?: (on: boolean) => void, tray?: JSX.Element): { host: HTMLElement; unmount: () => void } {
     const s = makeGame()
     const view = viewFor(s, HUMAN)
     const choices = buildChoiceSet(view, legalCommands(s, HUMAN))
@@ -17,30 +17,31 @@ describe('the auto-pass toggle on the strip (K4-A3)', () => {
     document.body.appendChild(host)
     const root = createRoot(host)
     act(() => {
-      root.render(createElement(PromptStrip, { view, choices, shown: choices.loose, aiThinking: false, onChoose: () => {}, autoPass, onAutoPass, ...(tray ? { tray } : {}) }))
+      root.render(createElement(PromptStrip, { view, choices, shown: choices.loose, aiThinking: false, onChoose: () => {}, fullControl, onFullControl, ...(tray ? { tray } : {}) }))
     })
     return { host, unmount: () => { act(() => { root.unmount() }); host.remove() } }
   }
   it('renders pressed state, flips through its handler, and is absent without one', () => {
-    const onAutoPass = vi.fn()
-    const { host, unmount } = mount(false, onAutoPass)
-    const toggle = host.querySelector<HTMLButtonElement>('[data-toggle="auto-pass"]')!
+    const onFullControl = vi.fn()
+    const { host, unmount } = mount(false, onFullControl)
+    const toggle = host.querySelector<HTMLButtonElement>('[data-toggle="full-control"]')!
     expect(toggle).not.toBeNull()
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    expect(toggle.textContent).toBe('Auto-pass: off')
+    expect(toggle.textContent).toBe('Full control: off')
     expect(toggle.hasAttribute('data-command'), 'not one of the position’s answers').toBe(false)
     act(() => { toggle.click() })
-    expect(onAutoPass).toHaveBeenCalledWith(true)
+    expect(onFullControl).toHaveBeenCalledWith(true)
     unmount()
-    const on = mount(true, onAutoPass)
-    expect(on.host.querySelector('[data-toggle="auto-pass"]')?.getAttribute('aria-pressed')).toBe('true')
+    const on = mount(true, onFullControl)
+    expect(on.host.querySelector('[data-toggle="full-control"]')?.getAttribute('aria-pressed')).toBe('true')
+    expect(on.host.querySelector('[data-toggle="full-control"]')?.textContent).toBe('Full control: on')
     on.unmount()
     const none = mount(false)
-    expect(none.host.querySelector('[data-toggle="auto-pass"]')).toBeNull()
+    expect(none.host.querySelector('[data-toggle="full-control"]')).toBeNull()
     none.unmount()
     // Not beside a tray's own "Auto": the tray replaces the strip while a payment or a set is being built.
-    const withTray = mount(false, onAutoPass, createElement('div', { 'data-payment-tray': true }, 'tray'))
-    expect(withTray.host.querySelector('[data-toggle="auto-pass"]')).toBeNull()
+    const withTray = mount(false, onFullControl, createElement('div', { 'data-payment-tray': true }, 'tray'))
+    expect(withTray.host.querySelector('[data-toggle="full-control"]')).toBeNull()
     withTray.unmount()
   })
 })

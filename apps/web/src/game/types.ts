@@ -52,6 +52,9 @@ export interface LogLine {
 }
 
 /** What `useGame()` hands the React tree. It never exposes `GameState` — spec B3. */
+/** Rung K5: how the human's response windows are handled — `smart` passes the ones nobody would hold for. */
+export type Control = 'smart' | 'full'
+
 export interface GameApi {
   view: PlayerView
   choices: ChoiceSet
@@ -62,8 +65,9 @@ export interface GameApi {
   choose(choice: Choice): void
   /** Start a new game with a fresh seed. */
   restart(): void
-  /** Rung K4: while on, the human's response windows are passed automatically. Off after a restart. Optional
-   *  so the many test fixtures that build a `GameApi` by hand need not know about the toggle. */
-  autoPass?: boolean
-  setAutoPass?: (on: boolean) => void
+  /** Rung K5: while on, every response window of the human's is shown; off (Smart, the default) shows only the
+   *  ones worth holding for. Off after a restart. Optional so the many test fixtures that build a `GameApi` by
+   *  hand need not know about the toggle. */
+  fullControl?: boolean
+  setFullControl?: (on: boolean) => void
 }

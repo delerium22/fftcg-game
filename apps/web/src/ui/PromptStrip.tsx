@@ -28,15 +28,15 @@ const isAbility = (c: Choice): boolean => c.command.type === 'chooseMode' || c.c
  * it is and what the game is waiting for. Every command with no card subject (pass, mulligan, concede, the
  * no-block option) is a button here, plus whatever the currently selected card can do.
  */
-export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, paying, autoPass = false, onAutoPass }: {
+export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, paying, fullControl = false, onFullControl }: {
   view: PlayerView
   choices: ChoiceSet
   shown: Choice[]
   aiThinking: boolean
   onChoose: (c: Choice) => void
-  /** Rung K4: the auto-pass toggle's state, and the handler that flips it. No handler, no control. */
-  autoPass?: boolean
-  onAutoPass?: ((on: boolean) => void) | undefined
+  /** Rung K5: the full-control toggle's state, and the handler that flips it. No handler, no control. */
+  fullControl?: boolean
+  onFullControl?: ((on: boolean) => void) | undefined
   /** The payment tray (rung I2), which REPLACES the buttons while a payment is being built. */
   tray?: JSX.Element | null
   /** What the tray is asking, for the live region: "Paying for Ramuh — 1 of 2 CP paid". */
@@ -201,19 +201,19 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, 
             Keep playing
           </button>
         )}
-        {/* Rung K4: "I won't be responding for now." Last in the row and without `data-command`, so the focus
+        {/* Rung K5: "show me every window." Last in the row and without `data-command`, so the focus
           * restoration above never lands on it and it never reads as one of the position's answers. Not while
-          * a tray is open: the tray replaces the strip, and "Auto" beside "Auto-pass" read as one control. */}
-        {!view.result && !tray && onAutoPass && (
+          * a tray is open: the tray replaces the strip, and a second toggle beside "Auto" read as one control. */}
+        {!view.result && !tray && onFullControl && (
           <button
             type="button"
             className="btn btn--ghost"
-            data-toggle="auto-pass"
-            aria-pressed={autoPass}
-            title="While on, your response windows are passed automatically. Your own Main Phases, blocks and other decisions are still yours."
-            onClick={() => { onAutoPass(!autoPass) }}
+            data-toggle="full-control"
+            aria-pressed={fullControl}
+            title="Off: you are asked to respond only when the AI has put something on the stack or a block has been declared. On: every response window is yours."
+            onClick={() => { onFullControl(!fullControl) }}
           >
-            Auto-pass: {autoPass ? 'on' : 'off'}
+            Full control: {fullControl ? 'on' : 'off'}
           </button>
         )}
       </div>

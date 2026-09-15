@@ -128,62 +128,110 @@ describe('a decision with one answer is closed in the same step (K2-A2)', () => 
   })
 })
 
-describe('the auto-pass toggle (K4-A1)', () => {
+describe('smart auto-pass (K5-A1)', () => {
+  /** A seat's hand with a castable Summon in it: makes any response window a REAL one. */
+  function armed(s: GameState, player: 0 | 1): GameState {
+    let t = withHandSize(s, player, 0)
+    for (const code of ['V-S2', 'V-F1', 'V-F1']) [t] = withHand(t, player, code)   // a cost-1 earth Summon, payable by one earth discard
+    return t
+  }
   /** The AI's Main Phase 1 with the human holding priority after the AI's pass, and a castable Summon in hand: a REAL window. */
   function humanWindowInAiMain(): GameState {
     let s = makeGame()
     s = { ...s, turnPlayer: AI, priority: AI, firstPlayer: AI }
-    s = withHandSize(withHandSize(s, AI, 0), HUMAN, 0)
-    for (const code of ['V-S1', 'V-F1', 'V-F1']) [s] = withHand(s, HUMAN, code)
+    s = armed(withHandSize(s, AI, 0), HUMAN)
     const passed = apply(s, { type: 'pass', player: AI }).state
     expect(actingPlayer(passed)).toBe(HUMAN)
     expect(isResponseWindow(passed)).toBe(true)
     expect(forcedDecision(passed), 'a castable Summon makes it a real window').toBeNull()
     return passed
   }
-  it('off: the human’s real window is left for the human', () => {
+  const humanWindow = (s: GameState): boolean => actingPlayer(s) === HUMAN && isResponseWindow(s)
+
+  it('full control: the human’s real window is left for the human', () => {
     const w = humanWindowInAiMain()
-    expect(settleWindows(w, { autoPass: false }).state).toBe(w)
+    expect(settleWindows(w, { control: 'full' }).state).toBe(w)
   })
-  it('on: the human’s response windows are passed until the AI has a decision or the game owes one', () => {
+  it('smart: an empty-stack window in the AI’s Main Phase is passed until the AI has a decision', () => {
     const w = humanWindowInAiMain()
-    const settled = settleWindows(w, { autoPass: true })
+    const settled = settleWindows(w, { control: 'smart' })
     expect(settled.state).not.toBe(w)
-    expect(actingPlayer(settled.state) === HUMAN && isResponseWindow(settled.state), 'a human window survived').toBe(false)
+    expect(humanWindow(settled.state), 'a human window survived').toBe(false)
     expect(settled.events.some((e) => e.type === 'phaseStarted'), 'the AI’s Main Phase ended').toBe(true)
   })
-  it('on: never the human’s own empty-stack Main Phase, and never a decision the game owes', () => {
+  it('smart: a window whose stack top is the AI’s Summon is kept — the AI did something the human could answer', () => {
     let s = makeGame()
-    for (const code of ['V-S1', 'V-F1', 'V-F1']) [s] = withHand(s, HUMAN, code)
-    expect(actingPlayer(s)).toBe(HUMAN)
-    expect(s.phase).toBe('main1')
-    expect(settleWindows(s, { autoPass: true }).state, 'the Pass that ends a phase stays a button').toBe(s)
-    // A block owed with a live blocker is a pending, not a window: untouched.
+    s = { ...s, turnPlayer: AI, priority: AI, firstPlayer: AI }
+    s = armed(armed(s, AI), HUMAN)
+    const cast = legalCommands(s, AI).find((c) => c.type === 'castSummon')
+    expect(cast, 'the AI can cast its Summon').toBeDefined()
+    let w = apply(s, cast!).state
+    if (actingPlayer(w) === AI) w = apply(w, { type: 'pass', player: AI }).state
+    expect(humanWindow(w)).toBe(true)
+    expect(w.stack.at(-1)).toMatchObject({ kind: 'summon', controller: AI })
+    expect(settleWindows(w, { control: 'smart' }).state, 'kept for the human').toBe(w)
+  })
+  it('smart: a window whose stack top is the human’s OWN Summon is passed — the AI’s forced pass then resolves it', () => {
+    let s = makeGame()
+    expect(s.turnPlayer).toBe(HUMAN)
+    s = armed(withHandSize(s, AI, 0), HUMAN)
+    for (const code of ['V-S2', 'V-F1']) [s] = withHand(s, HUMAN, code)   // a second castable Summon, left to answer with
+    const cast = legalCommands(s, HUMAN).find((c) => c.type === 'castSummon')!
+    const w = apply(s, cast).state
+    expect(humanWindow(w) && w.stack.at(-1)?.kind === 'summon', 'the caster holds priority with their Summon on top').toBe(true)
+    expect(forcedDecision(w), 'the second Summon makes it a real window').toBeNull()
+    const settled = settleWindows(w, { control: 'smart' }).state
+    expect(settled.stack, 'the Summon resolved').toEqual([])
+    expect(settled.phase).toBe('main1')
+    expect(actingPlayer(settled), 'back in the human’s own Main Phase, which is never passed').toBe(HUMAN)
+    expect(settled.players[HUMAN].breakZone).toContain(cast.type === 'castSummon' ? cast.card : -1)
+  })
+  /** The AI attacks a human who holds a live blocker and a castable Summon. */
+  function aiAttack(): { state: GameState; blocker: CardId } {
     let b = endPhase(makeGame())
     b = { ...b, turnPlayer: AI, priority: AI, firstPlayer: AI }
-    let attacker: CardId
+    let attacker: CardId, blocker: CardId
     ;[b, attacker] = withField(b, AI, 'forwards', 'V-F2')
-    ;[b] = withField(b, HUMAN, 'forwards', 'V-F3')
-    b = withHandSize(withHandSize(b, HUMAN, 0), AI, 0)
-    const owed = settleWindows(apply(b, { type: 'declareAttack', player: AI, attackers: [attacker] }).state, { autoPass: true }).state
-    expect(owed.pending).toEqual({ kind: 'declareBlock', player: HUMAN })
+    ;[b, blocker] = withField(b, HUMAN, 'forwards', 'V-F3')
+    b = armed(withHandSize(b, AI, 0), HUMAN)
+    return { state: apply(b, { type: 'declareAttack', player: AI, attackers: [attacker] }).state, blocker }
+  }
+  it('smart: the `declared` window of the AI’s attack is passed (K5-D4) and the block decision is the human’s', () => {
+    const { state } = aiAttack()
+    const settled = settleWindows(state, { control: 'smart' }).state
+    expect(settled.pending).toEqual({ kind: 'declareBlock', player: HUMAN })
+  })
+  it('smart: the `blocked` window before damage is kept (K5-D3.2)', () => {
+    const { state, blocker } = aiAttack()
+    const owed = settleWindows(state, { control: 'smart' }).state
+    const blocked = apply(owed, { type: 'declareBlock', player: HUMAN, blocker }).state
+    const settled = settleWindows(blocked, { control: 'smart' }).state
+    expect(settled.attack?.step).toBe('blocked')
+    expect(humanWindow(settled), 'the human holds the window in which combat is decided').toBe(true)
+    expect(forcedDecision(settled)).toBeNull()
+  })
+  it('smart: never the human’s own empty-stack Main Phase, and never a decision the game owes', () => {
+    const s = armed(makeGame(), HUMAN)
+    expect(actingPlayer(s)).toBe(HUMAN)
+    expect(s.phase).toBe('main1')
+    expect(settleWindows(s, { control: 'smart' }).state, 'the Pass that ends a phase stays a button').toBe(s)
   })
 })
 
-describe('the AI’s commit path honours the toggle (K4-A2)', () => {
-  it('with the toggle on, the window the AI’s pass hands the human is closed before the commit; off, it is the human’s', () => {
+describe('the AI’s commit path settles under the live mode (K5-A2)', () => {
+  it('smart: the empty-stack window the AI’s pass hands the human is closed before the commit; full: it is the human’s', () => {
     let s = makeGame()
     s = { ...s, turnPlayer: AI, priority: AI, firstPlayer: AI }
     s = withHandSize(withHandSize(s, AI, 0), HUMAN, 0)
     for (const code of ['V-S1', 'V-F1', 'V-F1']) [s] = withHand(s, HUMAN, code)
     const pass = { type: 'pass' as const, player: AI }
-    for (const on of [false, true]) {
+    for (const control of ['full', 'smart'] as const) {
       const committed: GameState[] = []
-      const handlers = aiHandlers({ commit: (state) => { committed.push(state) }, log: () => {}, autoPass: () => on })
+      const handlers = aiHandlers({ commit: (state) => { committed.push(state) }, log: () => {}, control: () => control })
       expect(handlers.onCommand(pass, s)).toBe(true)
       const after = committed[0]!
       const humanWindow = actingPlayer(after) === HUMAN && isResponseWindow(after)
-      expect(humanWindow, on ? 'on: the human’s window was passed' : 'off: the window is the human’s').toBe(!on)
+      expect(humanWindow, control === 'smart' ? 'smart: the human’s window was passed' : 'full: the window is the human’s').toBe(control === 'full')
     }
   })
 })
