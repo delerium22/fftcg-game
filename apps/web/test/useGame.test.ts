@@ -1649,7 +1649,9 @@ describe('a mirror match names both sides of a trade (found by playing)', () => 
     const inHand = 970, theirs = 971
     v.cards[inHand] = { id: inHand, code: BILLY, owner: HUMAN }
     v.cards[theirs] = { id: theirs, code: BILLY, owner: AI }
-    v.hand = [...v.hand, inHand]
+    // Ours is the ONLY Billy Bob in hand: a second copy dealt there (seed 3 does, since rung J2's deck list) would
+    // earn the occurrence marker "(2)", which is a different rule (duplicates) than the one under test here.
+    v.hand = [...v.hand.filter((id) => v.cards[id]?.code !== BILLY), inHand]
     v.fields[AI].forwards = [...v.fields[AI].forwards, fieldCardFor(theirs)]
     // The twin really is in play — otherwise this passes for the wrong reason.
     expect(v.fields[AI].forwards.some((c) => c.id === theirs), 'the AI has no twin in play').toBe(true)

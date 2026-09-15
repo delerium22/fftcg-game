@@ -282,7 +282,7 @@ describe('a deck search (E10-A2/A3/A4)', () => {
   const SEARCHERS = ['24-063H', '20-105C', '20-074C']    // Hugh Yurg, Reeve, Miner
 
   /** The first state whose pending is a `chooseFromDeck` matching `want`. */
-  function reachSearch(want: (p: Extract<GameState['pending'], { kind: 'chooseFromDeck' }>) => boolean): GameState | null {
+  function reachSearch(want: (p: Extract<GameState['pending'], { kind: 'chooseFromDeck' }>, s: GameState) => boolean): GameState | null {
     for (let seed = 1; seed <= 30; seed++) {
       const greedy = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
       const agent = {
@@ -295,7 +295,7 @@ describe('a deck search (E10-A2/A3/A4)', () => {
       let s: GameState = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
       for (let i = 0; i < 3000 && !s.result; i++) {
         const p = s.pending
-        if (p?.kind === 'chooseFromDeck' && p.player === HUMAN && want(p)) return s
+        if (p?.kind === 'chooseFromDeck' && p.player === HUMAN && want(p, s)) return s
         if (actingPlayer(s) === null) break
         s = stepAi(s, agent).state
       }
@@ -319,9 +319,11 @@ describe('a deck search (E10-A2/A3/A4)', () => {
   }
 
   type DeckPending = Extract<GameState['pending'], { kind: 'chooseFromDeck' }>
-  const PATHS: { name: string; want: (p: DeckPending) => boolean }[] = [
+  const PATHS: { name: string; want: (p: DeckPending, s: GameState) => boolean }[] = [
     { name: 'Hugh Yurg — whole deck, filtered, to the field', want: (p) => p.scope === 'deck' && p.to === 'field' },
-    { name: 'Reeve — top three, unfiltered, to hand', want: (p) => p.scope === 'top' && p.to === 'hand' && p.count === 3 },
+    // Reeve picks any of the three, so an INELIGIBLE visible card can only be one the player already knew (an
+    // earlier reveal); the sweep asks for such a state, since the guard below needs one to observe filtering.
+    { name: 'Reeve — top three, unfiltered, to hand', want: (p, s) => p.scope === 'top' && p.to === 'hand' && p.count === 3 && viewFor(s, HUMAN).fields[HUMAN].deck.filter((slot) => slot.card !== null).length > eligibleIds(s).length },
     { name: 'Miner — top five, filtered, to hand', want: (p) => p.scope === 'top' && p.to === 'hand' && p.count === 5 },
   ]
 

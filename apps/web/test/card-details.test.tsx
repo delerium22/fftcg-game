@@ -46,9 +46,9 @@ let mountedState: GameState | null = null
 
 /** The real opening position: first turn chosen, both hands dealt, the mulligan question on the table. */
 function mulliganState(): GameState {
-  // Seed 17 (seed 1 until rung J3 added three cards to the deck list): Ramuh and Geomancer are in the opening hand, the first
+  // Seed 135 (17 after rung J3, 1 before; every deck-list change reshuffles): Ramuh and Geomancer are in the opening hand, the first
   // castable character on turn 1 is a Backup, and a Forward is castable too — the three things the fixtures need.
-  const s = createGame({ seed: 17, decks: DECKS, defs: CARD_DEFS })
+  const s = createGame({ seed: 135, decks: DECKS, defs: CARD_DEFS })
   const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : HUMAN
   return applyChooseFirst(s, chooser, chooser === HUMAN)[0]
 }
@@ -61,7 +61,7 @@ function mulliganState(): GameState {
  * rather than the focus case quietly riding on the mulligan one.
  */
 function mainPhaseState(): GameState {
-  let s = createGame({ seed: 17, decks: DECKS, defs: CARD_DEFS })
+  let s = createGame({ seed: 135, decks: DECKS, defs: CARD_DEFS })
   const first = s.pending?.kind === 'chooseFirst' ? s.pending.player : HUMAN
   s = applyChooseFirst(s, first, first === HUMAN)[0]
   // Both players keep. `pending.player` names whose answer is owed, so this follows the engine rather than
@@ -169,7 +169,7 @@ const hover = (el: HTMLElement): void => {
   act(() => { el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
 }
 
-// Ramuh is in the opening hand at seed 17, and its printed text is the same string the terminal prints.
+// Ramuh is in the opening hand at seed 135, and its printed text is the same string the terminal prints.
 // Written out by hand rather than read from `defs`, so a panel that renders the wrong field cannot agree
 // with it by construction.
 const RAMUH = 'Ramuh'
@@ -572,17 +572,20 @@ describe('the field zones as keyboard grids (rung E3b-2)', () => {
     // Forwards were DULL, so the only legal answer was "don't block" — no blocker button existed at all, and
     // `selectable = false` would have removed every one of them with this test still green. It now requires
     // a position where a blocker can actually be declared.
-    // Seed 1, not 7. Seed 7 does reach a `declareBlock`, but with both of the human's Forwards dull — so it
-    // offers no legal blocker at all, which is exactly why the first version of this test proved nothing.
-    // Seeds 1 through 5 all reach a position where a blocker can really be declared.
-    let s: GameState = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
-    const agent = new GreedyAgent({ seed: 1, decks: DECKS, depth: 1 })
+    // A sweep from seed 1, because a fixed seed broke on every deck-list change (rungs J3 and J2 each moved the
+    // first seed that reaches a block with a LEGAL blocker): seed 7 once reached a `declareBlock` with both of the
+    // human's Forwards dull, which offers no blocker at all and is exactly why the first version proved nothing.
     const canBlock = (g: GameState): boolean =>
       g.pending?.kind === 'declareBlock' && g.pending.player === HUMAN
       && legalCommands(g, HUMAN).some((c) => c.type === 'declareBlock' && c.blocker !== null)
-    for (let i = 0; i < 8000 && !s.result && !canBlock(s); i++) {
-      if (actingPlayer(s) === null) break
-      s = stepAi(s, agent).state
+    let s: GameState = createGame({ seed: 1, decks: DECKS, defs: CARD_DEFS })
+    for (let seed = 1; seed <= 12 && !canBlock(s); seed++) {
+      s = createGame({ seed, decks: DECKS, defs: CARD_DEFS })
+      const agent = new GreedyAgent({ seed, decks: DECKS, depth: 1 })
+      for (let i = 0; i < 8000 && !s.result && !canBlock(s); i++) {
+        if (actingPlayer(s) === null) break
+        s = stepAi(s, agent).state
+      }
     }
     expect(canBlock(s), 'never reached a block decision with a legal blocker, so this asserts nothing').toBe(true)
     expect(s.pending?.player, 'stopped at the AI decision, not the human one').toBe(HUMAN)

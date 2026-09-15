@@ -165,8 +165,9 @@ describe('what the AI did is announced', () => {
       step = stepAi(s, agent)
     }
     expect(step.state, 'the AI did not actually move').not.toBe(s)
-    // Re-derived for rung J3's deck list (it was "discard Geomancer as earth, discard Odin as lightning" before).
-    const aiLine = "The AI: Cast Hugh Yurg paying: discard Miner as earth, discard Shiva as ice"
+    // Re-derived for each deck-list change: rung J2 ("Cast Sphene … Dragoon as lightning"), J3 ("Cast Hugh Yurg …
+    // Shiva as ice"), before that "Cast Hugh Yurg … Geomancer as earth, discard Odin as lightning".
+    const aiLine = "The AI: Cast Sphene paying: discard Miner as earth, discard Dragoon as lightning"
     expect(step.lines.map((l) => l.text), 'the AI narrated something other than the expected move').toContain(aiLine)
     expect(step.lines.find((l) => l.text === aiLine)?.kind, 'the AI move is not tagged as one').toBe('ai')
 
