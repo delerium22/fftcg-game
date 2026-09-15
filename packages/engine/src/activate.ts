@@ -291,6 +291,10 @@ export function applyActivateAbility(
   if (!ability || ability.trigger.kind !== 'activated') throw new IllegalCommandError('unreachable: checked above')
 
   const pre = state   // observers are read PRE-move, exactly as `breakCard` does
+  // MVP0-SIMPLIFICATION (§11.6.3, §11.6.4; spec C3-A2): the CR puts the ability on the stack, declared, and THEN pays;
+  // here the cost is paid first and the item is placed after, with its targets validated against the post-cost
+  // board. Unobservable in this pool — §11.6.5 forbids choosing the source, and no cost removes any OTHER card a
+  // choice could name — and the events serialise as activate, cost, push. Found by rung J9's Codex review.
   const [paid, events, transitions] = applyCosts(state, player, source, ability.trigger.cost, payment, true)
   events.unshift({ type: 'abilityActivated', player, card: source, abilityId })
 

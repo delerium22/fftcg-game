@@ -12,7 +12,7 @@ const ok = (s: GameState) => expect(checkInvariants(s)).toEqual([])
 const ids = (s: GameState) => s.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon'))
 
 describe('scenario: Ramuh in a window — the non-turn player’s Summon in the declared window kills an attacker', () => {
-  it('L3 ramuh-in-a-window — modes and targets are declared at cast; the chosen Prishe triggers above Ramuh; Ramuh resolves after both forfeit; the party shrinks to one at the window exit', () => {
+  it('L3 ramuh-in-a-window — modes and targets are declared at cast; the chosen Prishe triggers above Ramuh; Ramuh resolves after both forfeit; the party shrinks to one and goes on to deal its point, and Prishe’s damage trigger retrieves Luso', () => {
     let s = endPhase(makeGame())
     let luso: CardId, prishe: CardId, ramuh: CardId, cp: CardId[]
     ;[s, luso] = withField(s, 0, 'forwards', '27-125S')        // 3000
@@ -48,12 +48,26 @@ describe('scenario: Ramuh in a window — the non-turn player’s Summon in the 
     s = step(log, s, { type: 'pass', player: 0 }); s = step(log, s, { type: 'pass', player: 1 })   // out of the window
     expect(s.attack?.attackers, '§15.1.1.9.5: Prishe alone, no longer a party').toEqual([prishe])
     expect(s.pending).toEqual({ kind: 'declareBlock', player: 1 })
+    // §10.1.3.1: no Forward to block with; §10.1.3.6 and §10.1.4.1: the `blocked` window, then one point of damage.
+    s = step(log, s, { type: 'declareBlock', player: 1, blocker: null })
+    s = step(log, s, { type: 'pass', player: 0 }); s = step(log, s, { type: 'pass', player: 1 })
+    expect(s.players[1].damageZone).toHaveLength(1)
+    // §10.1.4.3: Prishe dealt damage to the opponent — her trigger chooses a Character in the Break Zone: Luso.
+    expect(s.pending).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0 }))
+    s = step(log, s, { type: 'chooseTargets', player: 0, targets: [luso] })
+    expect(ids(s)).toEqual(['22-068R:damages-opponent'])
+    expect(s.attack?.step, '§10.1.4.4').toBe('damage')
+    s = step(log, s, { type: 'pass', player: 0 }); s = step(log, s, { type: 'pass', player: 1 })
+    expect(s.players[0].hand, 'Luso is back in hand').toContain(luso)
+    expect(s.players[0].breakZone).not.toContain(luso)
     expect(trace(log, names)).toEqual([
       'attack:luso+prishe', 'step:declared',
       'push:summon:ramuh', 'trigger:22-068R:chosen', 'push:22-068R:chosen',
       'power:prishe:+2000', 'resolve:22-068R:chosen',
       'damage:luso:5000', 'resolve:summon:ramuh', 'broken:luso',
-      'step:block',
+      'step:block', 'block:none', 'step:blocked', 'step:damage', 'playerDamaged:1',
+      'trigger:22-068R:damages-opponent', 'push:22-068R:damages-opponent',
+      'toHand:luso', 'resolve:22-068R:damages-opponent',
     ])
     ok(s)
   })

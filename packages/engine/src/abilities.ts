@@ -391,7 +391,7 @@ export interface Ability {
  * innermost `chooseTargets`/`forEach` established.
  */
 /**
- * MVP0-SIMPLIFICATION (§11.11.4, rung J1-D16): a frame carries no snapshot of its source. A source that leaves
+ * MVP0-SIMPLIFICATION (§11.11.4, §11.11.7, rung J1-D16): a frame carries no snapshot of its source. A source that leaves
  * the field before its item resolves reads nothing of its former self ("last-known information"). No pool
  * clause reads its source's characteristics at resolution, so this is unobservable today.
  */

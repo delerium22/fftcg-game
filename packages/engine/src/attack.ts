@@ -204,7 +204,7 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
   const defender = opponentOf(state.turnPlayer)
   const events: Event[] = []
   let s = state
-  // MVP0-SIMPLIFICATION: §15.2.3 First Strike not implemented — all battle damage is simultaneous
+  // MVP0-SIMPLIFICATION: §15.2.3 First Strike (and §15.1.1.9.7, a party's First Strike) not implemented — all battle damage is simultaneous
   if (at.blocker === null) {
     // §10.1.4.1 — an unblocked party deals ONE point of damage, but every member of it is dealing that damage, so
     // every member's `dealtDamage` clause triggers (spec C2-8). Controllers are captured here, from the field, for

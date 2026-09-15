@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest'
  * Rung J9: the timing matrix (docs/rules/timing-matrix.md) is a claim about which timing rules of CR 3.3 have a
  * test. This keeps the claim honest, the way `rules-citations` keeps citations honest: every in-scope subsection
  * has a row; every row's section exists; every `tested` row cites a describe/it that exists; every `simplified`
- * row names a source file that carries a MVP0-SIMPLIFICATION marker; every `n/a` row says why.
+ * row names a source file whose MVP0-SIMPLIFICATION marker cites that section (or one above it); every `n/a` row
+ * says why. What it cannot check is that a cited test tests the ROW — that is the matrix author's word, reviewed.
  */
 
 const ROOT = resolve(import.meta.dirname, '../../..')
@@ -46,6 +47,16 @@ function testFile(ref: string): string | null {
 }
 const TEST_LINE = /\b(describe|it)(\.\w+)?(\([^)]*\))?\(/
 
+/** Does a MVP0-SIMPLIFICATION marker in `source` (the marker line and the two after it) cite `section` or an ancestor of it? */
+export function markerCites(source: string, section: string): boolean {
+  const lines = source.split('\n')
+  const wanted = new Set<string>()
+  const parts = section.split('.')
+  for (let i = 1; i <= parts.length; i++) wanted.add(parts.slice(0, i).join('.'))
+  return lines.some((l, i) => l.includes('MVP0-SIMPLIFICATION')
+    && [...lines.slice(i, i + 3).join(' ').matchAll(/§(\d+(?:\.\d+)*)/g)].some((m) => wanted.has(m[1] as string)))
+}
+
 /** Every problem with `rows`, one string each; empty when the matrix is truthful. Pure over its inputs, so fixtures can probe it. */
 export function problems(rows: Row[], index: Set<string>): string[] {
   const out: string[] = []
@@ -59,11 +70,13 @@ export function problems(rows: Row[], index: Set<string>): string[] {
     const entries = r.tests ? r.tests.split(';').map((e) => e.trim()).filter(Boolean) : []
     const refs = entries.filter((e) => e.includes('#'))
     const markers = entries.filter((e) => e.endsWith('.ts') && !e.includes('#'))
+    if (r.status !== 'heading' && !inScope(r.section)) out.push(`${at}: outside the matrix's scope`)
     if (r.status === 'tested' && refs.length === 0) out.push(`${at}: tested but cites no test`)
     if (r.status === 'simplified' && markers.length === 0) out.push(`${at}: simplified but names no marker file`)
     if (r.status === 'n/a' && !r.tests) out.push(`${at}: n/a without a reason`)
     for (const ref of refs) {
       const [file, fragment] = ref.split('#') as [string, string]
+      if (!file || !fragment) { out.push(`${at}: malformed ref "${ref}"`); continue }
       const path = testFile(file)
       if (!path) { out.push(`${at}: no test file for "${file}"`); continue }
       const hit = readFileSync(path, 'utf8').split('\n').some((l) => TEST_LINE.test(l) && l.includes(fragment))
@@ -71,8 +84,9 @@ export function problems(rows: Row[], index: Set<string>): string[] {
     }
     for (const m of markers) {
       const path = join(ROOT, m)
-      if (!existsSync(path)) out.push(`${at}: marker file ${m} does not exist`)
-      else if (!readFileSync(path, 'utf8').includes('MVP0-SIMPLIFICATION')) out.push(`${at}: ${m} carries no MVP0-SIMPLIFICATION marker`)
+      if (!/^packages\/[^/]+\/src\/.+\.ts$/.test(m)) { out.push(`${at}: marker ${m} is not under packages/*/src`); continue }
+      if (!existsSync(path)) { out.push(`${at}: marker file ${m} does not exist`); continue }
+      if (!markerCites(readFileSync(path, 'utf8'), r.section)) out.push(`${at}: no MVP0-SIMPLIFICATION marker in ${m} cites §${r.section} or a section above it`)
     }
   }
   for (const n of index) if (inScope(n) && !seen.has(n)) out.push(`§${n} is in scope but has no row`)
@@ -106,6 +120,16 @@ describe('the timing matrix (J9-A1)', () => {
     expect(p).toContainEqual(expect.stringContaining('names no describe/it'))
     const simplified = problems(parseMatrix('| 9.1 | x | simplified | packages/engine/src/nowhere.ts |'), index)
     expect(simplified).toContainEqual(expect.stringContaining('does not exist'))
+    const wrongMarker = problems(parseMatrix('| 9.1 | x | simplified | packages/engine/src/attack.ts |'), index)
+    expect(wrongMarker, 'attack.ts carries a marker, but not one about 9.1').toContainEqual(expect.stringContaining('cites'))
+    const outside = problems(parseMatrix('| 9.1 | x | simplified | packages/engine/test/helpers.ts |'), index)
+    expect(outside).toContainEqual(expect.stringContaining('not under packages/*/src'))
+    expect(markerCites('// MVP0-SIMPLIFICATION (§15.2.3 First Strike)', '15.2.3.2'), 'an ancestor section counts').toBe(true)
+    expect(markerCites('// MVP0-SIMPLIFICATION (§15.2.3 First Strike)', '15.2.4'), 'a sibling does not').toBe(false)
+    const malformed = problems(parseMatrix('| 9.1 | x | tested | engine/cr9-phases# |'), index)
+    expect(malformed).toContainEqual(expect.stringContaining('malformed ref'))
+    const scope = problems(parseMatrix('| 5.2 | x | tested | engine/cr9-phases#draws 2 |'), new Set(['5.2']))
+    expect(scope).toContainEqual(expect.stringContaining('outside the matrix'))
     const missing = problems(parseMatrix('| 9 | x | heading |  |'), index)
     expect(missing).toContainEqual('§9.1 is in scope but has no row')
     const noFile = problems(parseMatrix('| 9 | x | tested | engine/no-such-file#x |'), index)

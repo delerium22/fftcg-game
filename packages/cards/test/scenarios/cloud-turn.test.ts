@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CardId, Event, GameState } from '@fftcg/engine'
-import { checkInvariants, findFieldCard, keywordsOf, legalCommands, powerOf } from '@fftcg/engine'
+import { checkInvariants, findFieldCard, flagsOf, keywordsOf, legalCommands, powerOf } from '@fftcg/engine'
 import { EARTH_BACKUP, makeGame, step, trace, withCp, withField, withHand } from '../harness.js'
 
 /**
@@ -52,6 +52,11 @@ describe('scenario: the Cloud turn — an ETB on the stack, answered from the ot
     s = step(log, s, { type: 'chooseTargets', player: 0, targets: [cloud] })
     expect(ids(s)).toEqual(['27-124S:attack-phase'])
     expect(s.priority, '§10.1.1.2: the turn player gains priority').toBe(0)
+    // §11.1.7: both forfeit in the preparation window; Cloud gains its two protections for the turn.
+    s = step(log, s, { type: 'pass', player: 0 }); s = step(log, s, { type: 'pass', player: 1 })
+    expect(s.stack).toEqual([])
+    expect(s.attack?.step, 'still the preparation window (§11.1.5: the turn player has priority)').toBe('preparation')
+    expect(flagsOf(s, findFieldCard(s, cloud)!.card).has('cannotBeBroken')).toBe(true)
     expect(trace(log, names)).toEqual([
       'trigger:27-124S:etb', 'push:27-124S:etb',
       // C3-A2: the cost is paid before the ability is placed; the placement then fires Prishe's chosen-trigger.
@@ -60,6 +65,7 @@ describe('scenario: the Cloud turn — an ETB on the stack, answered from the ot
       'power:prishe:+4000', 'resolve:19-052C:pump',
       'power:luso:+3000', 'keyword:luso:brave', 'power:cloud:+3000', 'keyword:cloud:brave', 'resolve:27-124S:etb',
       'step:preparation', 'trigger:27-124S:attack-phase', 'push:27-124S:attack-phase',
+      'flag:cloud:cannotBeBroken', 'flag:cloud:cannotBeReturnedByOpponent', 'resolve:27-124S:attack-phase',
     ])
     ok(s)
   })

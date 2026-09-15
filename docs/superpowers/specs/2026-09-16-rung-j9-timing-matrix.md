@@ -71,7 +71,9 @@ Break — are timing rules. They need a floor to stand on.
 - **J9-A1** the matrix exists with every in-scope subsection as a row; the meta-test passes on it and
   fails on a fixture matrix with a bad section, an uncited `tested` row, a dead fragment, and a missing row.
 - **J9-A2** every Layer 1 gap listed in D3 has a test or a `simplified`/`n/a` row with a reason.
-- **J9-A3** the seven Layer 2 compositions exist (two by citation), each asserting an event-type sequence.
+- **J9-A3** (pure) the Layer 2 compositions exist: four new ones asserting an event-type sequence (the
+  until-end-of-turn one asserts power across the turn instead, since expiry emits no event) and three by citation
+  (J1-A4, J1-A5, C2-A5), which assert stack order and state rather than a full sequence. As built.
 - **J9-A4** the four Layer 3 scenarios exist against the shipped card definitions, each asserting a golden
   event sequence and a final board.
 - **J9-A5** the audit table's starred rows match the code; the meta-test is in `pnpm test`.

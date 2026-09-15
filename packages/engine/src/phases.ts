@@ -97,7 +97,7 @@ export function applyPass(state: GameState, player: PlayerId): [GameState, Event
 }
 
 /**
- * MVP0-SIMPLIFICATION (§9.5.1.4, rung J1-D8): the End Phase has no priority window. The CR re-checks for
+ * MVP0-SIMPLIFICATION (§9.5.1.1, §9.5.1.4, rung J1-D8): the End Phase has no priority window. The CR re-checks for
  * triggered abilities after the hand-size discard and opens a window if any were placed; this pool has no
  * end-of-turn trigger, so the phase auto-advances and the deviation is unobservable.
  */

@@ -10,7 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-16-rung-j9-timing-matrix.md`
 
-> **BUILT 2026-09-16, commits 5b6ea90..1cf4aac. As built vs as planned** — the goldens below were written from the
+> **BUILT 2026-09-16, commits 5b6ea90..1cf4aac; ARCHIVAL — the built source is authoritative, the snippets below are
+> not (replaying them would duplicate markers and overwrite correct files). As built vs as planned** — the goldens below were written from the
 > rules; a throwaway probe printed the engine's actual order before the tests were committed, and these differ:
 > (1) cloud-turn: an activation's events are `activate`, `paid`, `push`, THEN the trigger its placement fires
 > (`trigger:22-068R:chosen`, `push`), not trigger-before-push; (2) ramuh-in-a-window: Ramuh's dull mode CHOOSES

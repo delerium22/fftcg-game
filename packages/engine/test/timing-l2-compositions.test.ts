@@ -64,8 +64,9 @@ function trace(events: readonly Event[], names: Record<number, string> = {}): st
       case 'abilityTriggered': out.push(`trigger:${e.abilityId}`); break
       case 'powerModified': out.push(`power:${n(e.card)}:${e.amount > 0 ? '+' : ''}${e.amount}`); break
       case 'abilityDamage': out.push(`damage:${n(e.target)}`); break
-      case 'broken': case 'brokenByAbility': out.push(`broken:${n(e.card)}`); break
-      case 'drew': out.push(`drew:${e.player}`); break
+      case 'broken': out.push(`broken:${n(e.card)}`); break               // the §12.4.5 rule process
+      case 'brokenByAbility': out.push(`abilityBroken:${n(e.card)}`); break   // a `breakCard` effect — kept distinct on purpose
+      case 'drew': out.push(`drew:${e.player}:${e.count}`); break
       case 'exBurstOffered': out.push('burst:offered'); break
       case 'exBurstUsed': out.push('burst:used'); break
       case 'playerDamaged': out.push(`playerDamaged:${e.player}`); break
@@ -152,7 +153,7 @@ describe('L2-b — a trigger fired by a resolving item is placed ABOVE what is s
     expect(trace(events, names)).toEqual([
       'push:summon:burnA', 'push:summon:burnB',
       'damage:v0', 'resolve:summon:burnB', 'broken:v0', 'trigger:T-WATCH:draw', 'push:T-WATCH:draw',
-      'drew:1', 'resolve:T-WATCH:draw',
+      'drew:1:1', 'resolve:T-WATCH:draw',
       'damage:v1', 'resolve:summon:burnA', 'broken:v1',
     ])
     ok(t)
@@ -185,9 +186,9 @@ describe('L2-d — an EX Burst inside combat, and the trigger it causes (§11.10
     r = passBoth(t); t = r.state; events.push(...r.events)       // the watcher resolves in the window
     expect(trace(events, names)).toEqual([
       'step:declared', 'step:block', 'step:blocked', 'step:damage',
-      'playerDamaged:1', 'burst:offered', 'burst:used', 'broken:attacker',
+      'playerDamaged:1', 'burst:offered', 'burst:used', 'abilityBroken:attacker',
       'trigger:T-WATCH:draw', 'push:T-WATCH:draw',
-      'drew:1', 'resolve:T-WATCH:draw',
+      'drew:1:1', 'resolve:T-WATCH:draw',
     ])
     ok(t)
   })

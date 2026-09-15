@@ -56,13 +56,13 @@ unreachable, not skipped).
 | 10.1.2 | Declaration: active, Haste/continuous control, Brave, party same element, attack cost | ok | `attack.ts:35,61`. No card prints an attack cost; `n/a`. |
 | 10.1.3 | Block: active, restrictions, cost to block | ok | No restrictions or costs in the pool. |
 | 10.1.4 | Damage resolution, party split, **priority after damage** | ok | J1-D10: the `damage` window; `cr10-attack-windows.test.ts`. |
-| 11.1 | **Priority** | ok | J1-D9; `cr9-phases.test.ts` (J1-A1). No End Phase window (§9.5.1.4, marked in `phases.ts`). |
+| 11.1 | **Priority** | partial | J1-D9; `cr9-phases.test.ts` (J1-A1). No End Phase window (§9.5.1.1, §9.5.1.4, marked in `phases.ts`; unobservable in this pool). |
 | 11.2 | Paying CP (exact amount, one excess per element by discard, wasted CP, Light/Dark) | ok | `cp.ts`; `legalCommands` lists minimal payments; `apply` accepts any `canPay` payment. |
 | 11.3 | Casting a Summon (to the stack, respondable) | ok | J1-D5; `cr11-stack.test.ts` (J1-A2). |
 | 11.3.3 / 11.6.5 | "Choose" needs a legal target to cast/use | ok | `activationCheck`, `castCheck` + `abilityNoLegalTarget` handling. |
 | 11.4 | Casting a Character (special action, no stack) | ok | Correct even with a stack, since it never uses one. |
 | 11.5.4 / 6.4.2 | Abilities on the stack are independent of their source | n/a today | With a stack, "last known information" (§11.11.4) becomes required. |
-| 11.6 | Action abilities: costs paid simultaneously, `[Dull]` needs continuous control unless Haste | ok | C3 + J1 slice 4; `activated-abilities.test.ts`. |
+| 11.6 | Action abilities: costs paid simultaneously, `[Dull]` needs continuous control unless Haste | partial | C3 + J1 slice 4; `activated-abilities.test.ts`. The cost is paid BEFORE the item is placed (§11.6.3–4 say place, then pay; marked in `activate.ts`; unobservable in this pool). |
 | 11.7 | Special abilities (S icon, discard same name) | absent | None in the pool. |
 | 11.8 | Auto-abilities: trigger, go on the stack when priority is next gained, **controller orders own triggers, NAP on top** | partial | J1-D4: turn player's first, NAP's on top (`cr11-stack.test.ts` §11.8.7); within-player order is FIFO (marked, `resolve.ts`). |
 | 11.8.13 | Conditional auto-abilities re-check on resolution | n/a | None in the pool. |

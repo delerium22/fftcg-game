@@ -5,8 +5,9 @@ section index for chapters 9, 10, 11 (11.1, 11.3, 11.4, 11.6, 11.7, 11.8, 11.10,
 15.2.1–15.2.5. Checked by `packages/engine/test/timing-matrix.test.ts`.
 
 Status: `heading` (a title with sub-rows), `tested` (cites `pkg/file#fragment` refs), `simplified` (names the
-source file carrying the `MVP0-SIMPLIFICATION` marker, optionally plus refs for what IS tested), `n/a` (unreachable
-with the pool, with the reason). The `rule` column paraphrases; the rules text is Square Enix's.
+`packages/*/src` file whose `MVP0-SIMPLIFICATION` marker cites the section, optionally plus refs for what IS tested),
+`n/a` (unreachable with the pool, with the reason). The `rule` column paraphrases; the rules text is Square Enix's.
+The referee checks that every citation exists; that a cited test tests its ROW is the author's word, reviewed.
 
 | § | rule | status | tests |
 |---|---|---|---|
@@ -90,11 +91,11 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.3.3 | "Choose" needs a legal target or it cannot be cast | tested | engine/cr11-stack#§11.3.3 |
 | 11.3.4 | Modal Summons declare their mode | tested | cards/abilities#20-103H Ramuh; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 11.3.4.1 | The number of selectable effects is fixed at declaration | n/a | no pool Summon varies its mode count |
-| 11.3.5 | Cost references, alternative and variable costs, fixed at declaration | tested | cards/abilities#13-072R Odin — "If you have received 5 points |
+| 11.3.5 | A cost that references other information is fixed when referenced (Odin reads the damage count); alternative and variable costs | tested | cards/abilities#13-072R Odin — "If you have received 5 points |
 | 11.3.6 | Effects applying differently to several cards or players | n/a | none in the pool |
-| 11.3.7 | The cost is locked | tested | cards/abilities#13-072R Odin — "If you have received 5 points |
+| 11.3.7 | The cost is locked | n/a | nothing in the pool changes a cost between declaration and payment; the engine computes and pays in one apply |
 | 11.3.7.1 | Paid all at once | tested | engine/cr11.2-cp#§11.2.2 paying a cost |
-| 11.3.8 | The cast completes; cast-triggers fire; the caster regains priority | tested | engine/timing-l1-priority#§11.3.8 |
+| 11.3.8 | The cast completes and the caster regains priority (no pool card triggers on a cast) | tested | engine/timing-l1-priority#§11.3.8 |
 | 11.3.9 | All targets ineligible at resolution: cancelled | tested | engine/cr11-stack#J1-A7 |
 | 11.3.10 | "Power becomes N" sets the base power | n/a | none in the pool |
 | 11.3.11 | A Summon cast by an effect is cast right after it | n/a | none in the pool |
@@ -105,7 +106,7 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.4.3 | Modal Characters | n/a | none in the pool |
 | 11.4.4 | Cost references, alternative and variable costs | n/a | none in the pool |
 | 11.4.5 | Effects applying differently | n/a | none in the pool |
-| 11.4.6 | The cost is locked | tested | engine/cr11.4-cast#a Forward enters the field active |
+| 11.4.6 | The cost is locked | n/a | nothing in the pool changes a cost between declaration and payment; the engine computes and pays in one apply |
 | 11.4.6.1 | Payment per §11.2 | tested | engine/cr11.4-cast#rejects insufficient or wrong-element payment |
 | 11.4.7 | Enters the field; its ETB triggers go on the stack; the turn player gains priority | tested | engine/cr11-stack#J1-A4; cards/scenarios/cloud-turn#L3 cloud-turn |
 | 11.6 | Action Abilities | heading |  |
@@ -115,14 +116,14 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.6.2.2 | Dull-icon costs need control since the turn began, or Haste | tested | engine/activated-abilities#§11.6.2.2 |
 | 11.6.2.3 | Dull/break costs use your own Characters | tested | engine/activated-abilities#a [Dull] cost needs an ACTIVE source |
 | 11.6.2.4 | Remove/return costs need a Character you could otherwise remove or return | tested | cards/abilities#19-052C Undead Princess — "Remove |
-| 11.6.3 | Put on the stack and the cost paid; a failed activation rewinds | tested | engine/cr10-attack-windows#J1-A3; engine/activated-abilities#is ILLEGAL |
-| 11.6.4 | Declared, revealed from a hidden zone, on top of the stack under the activator | tested | engine/activated-abilities#honours sourceZone; engine/cr10-attack-windows#J1-A3 |
+| 11.6.3 | Put on the stack and the cost paid; a failed activation rewinds | simplified | packages/engine/src/activate.ts; engine/cr10-attack-windows#J1-A3; engine/activated-abilities#is ILLEGAL |
+| 11.6.4 | Declared, revealed from a hidden zone, on top of the stack under the activator | simplified | packages/engine/src/activate.ts; engine/activated-abilities#honours sourceZone; engine/cr10-attack-windows#J1-A3 |
 | 11.6.5 | "Choose" needs a legal target | tested | engine/activated-abilities#is ILLEGAL |
 | 11.6.6 | Modal action abilities declare the mode | n/a | none in the pool |
 | 11.6.6.1 | The mode count is fixed | n/a | none in the pool |
 | 11.6.7 | Cost references, alternative and variable costs | n/a | none in the pool |
 | 11.6.8 | Effects applying differently | n/a | none in the pool |
-| 11.6.9 | The cost is locked | tested | engine/activated-abilities#the source may not pay its own CP cost |
+| 11.6.9 | The cost is locked | n/a | nothing in the pool changes a cost between declaration and payment; the engine computes and pays in one apply |
 | 11.6.10 | Paid all at once | tested | engine/activated-abilities#C3-A2 |
 | 11.6.11 | Activated; activation-triggers go on the stack; the activator regains priority | tested | engine/cr10-attack-windows#J1-A3 |
 | 11.6.12 | All targets ineligible at resolution: cancelled | tested | engine/cr11-stack#J1-A7 |
@@ -147,7 +148,7 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.8 | Auto-Abilities | heading |  |
 | 11.8.1 | Trigger automatically on their event | tested | engine/observer-triggers#C2-A2 |
 | 11.8.2 | Written "(trigger), (effect)" | tested | cards/pool-coverage#implements every printed clause |
-| 11.8.3 | Trigger at the event, even in phases where nothing can be cast | tested | engine/observer-triggers#C2-A2; engine/timing-l1-priority#§9.1.1.2 |
+| 11.8.3 | Trigger at the event, even in phases where nothing can be cast | n/a | no pool card triggers in the Active, Draw or End Phase; every trigger in the pool fires where a window follows |
 | 11.8.4 | Trigger even with no legal target, then leave the stack at once | tested | engine/cr11-stack#§11.8.4 |
 | 11.8.5 | The controller is the source's controller | tested | engine/observer-triggers#opponent controls |
 | 11.8.6 | Once per occurrence of the event | tested | engine/observer-triggers#C2-A3 |
@@ -161,7 +162,7 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.8.12 | Effects applying differently | n/a | none in the pool |
 | 11.8.13 | Conditional auto-abilities check at trigger and at resolution | n/a | none in the pool |
 | 11.8.14 | "You may": placed regardless, decided at resolution | tested | cards/abilities#24-063H Hugh Yurg — "you may search |
-| 11.8.15 | Only when the event actually occurs; a replaced event does not trigger | tested | engine/activated-abilities#a self-break cost is a zone movement but NOT a break; cards/scenarios/combat-tricks#L3 combat-tricks |
+| 11.8.15 | Only when the event actually occurs; a replaced event does not trigger | n/a | no replacement effects in the pool and no AST node for one (§11.12.5 is out of scope) |
 | 11.8.16 | Zone movement triggers | tested | engine/observer-triggers#C2-A2 |
 | 11.8.16.1 | Fail when the card did not reach the zone | n/a | none in the pool |
 | 11.8.16.2 | A search whose card does not reach the zone fails | n/a | none in the pool |
@@ -184,18 +185,18 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.11.2 | All chosen targets invalid: cancelled | tested | engine/cr11-stack#J1-A7 |
 | 11.11.2.1 | Some still valid: applies to those | tested | engine/cr11-stack#an item whose declared target is still there |
 | 11.11.3 | Conditional auto-abilities re-check | n/a | none in the pool |
-| 11.11.4 | A moved source is read as it was before it left | simplified | packages/engine/src/resolve.ts |
+| 11.11.4 | A moved source is read as it was before it left | simplified | packages/engine/src/abilities.ts |
 | 11.11.5 | The controller resolves per the text | tested | engine/abilities-engine#choices suspend the frame |
 | 11.11.5.1 | Choices not declared at cast are made at resolution | tested | engine/abilities-engine#a nested chooseModes → chooseTargets chain |
 | 11.11.5.1.1 | Still legal targets | tested | engine/abilities-engine#apply re-derives the candidates |
 | 11.11.6 | Both players choose: the turn player first, then simultaneous | n/a | none in the pool |
-| 11.11.7 | A moved card is read as it was before it left | simplified | packages/engine/src/resolve.ts |
+| 11.11.7 | A moved card is read as it was before it left | simplified | packages/engine/src/abilities.ts |
 | 11.11.8 | An instructed action is done by the source card | tested | engine/observer-triggers#C2-A4 |
 | 11.11.9 | Variables declared once | n/a | none in the pool |
 | 11.11.10 | A resolved Summon goes to its owner's Break Zone; abilities cease | tested | engine/cr11-stack#J1-A2 |
 | 12 | Rule Processes | heading |  |
 | 12.1 | Performed when their condition is met | tested | engine/cr12-rules#§12.4 rule processes |
-| 12.2 | Nobody controls them | tested | engine/cr12-field-limits#J4-A1 |
+| 12.2 | Nobody controls them | tested | engine/cr12-field-limits#runs it: an |
 | 12.3 | Checked when priority is gained; simultaneous; repeated; then triggers are placed; then priority | tested | engine/observer-triggers#C2-A5; engine/cr12-field-limits#runs it: an; engine/timing-l2-compositions#L2-b |
 | 12.4 | The processes: | heading |  |
 | 12.4.1 | Seven damage loses | tested | engine/cr12-rules#§12.4.1 |

@@ -117,7 +117,10 @@ export function trace(events: readonly Event[], names: Record<number, string> = 
       case 'keywordGranted': out.push(`keyword:${n(e.card)}:${e.keyword}`); break
       case 'abilityDamage': out.push(`damage:${n(e.target)}:${e.amount}`); break
       case 'battleDamage': out.push(`battle:${n(e.source)}>${n(e.target)}:${e.amount}`); break
-      case 'broken': case 'brokenByAbility': out.push(`broken:${n(e.card)}`); break
+      case 'broken': out.push(`broken:${n(e.card)}`); break               // the §12.4.5 rule process
+      case 'brokenByAbility': out.push(`abilityBroken:${n(e.card)}`); break   // a `breakCard` effect — kept distinct on purpose
+      case 'flagGranted': out.push(`flag:${n(e.card)}:${e.flag}`); break
+      case 'returnedToHand': case 'addedToHand': out.push(`toHand:${n(e.card)}`); break
       case 'paidToBreakZone': out.push(`paid:${n(e.card)}`); break
       case 'playerDamaged': out.push(`playerDamaged:${e.player}`); break
       case 'exBurstOffered': out.push('burst:offered'); break
