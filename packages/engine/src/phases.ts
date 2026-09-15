@@ -29,6 +29,8 @@ export function startTurn(state: GameState, turn: number, player: PlayerId): [Ga
     { ...s.players[1], putIntoBreakZoneFromFieldThisTurn: [] },
   ] }
   // §9.1 Active Phase
+  // MVP0-SIMPLIFICATION (§15.2.4 Freeze): there is no frozen status, so every dull Character activates here.
+  // §15.2.4.2 says a frozen Forward skips its controller's next Active Phase. Rung J3 adds the status.
   s = { ...s, phase: 'active' }; events.push({ type: 'phaseStarted', phase: 'active' })
   const dulled: CardId[] = []
   s = updatePlayer(s, player, (ps) => ({

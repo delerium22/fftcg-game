@@ -51,6 +51,8 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
   if (state.result) return 'gameOver'
   const ps = state.players[player]
   // Characters are cast in a Main Phase only (§11.4.1); Summons follow the priority holder, checked below.
+  // MVP0-SIMPLIFICATION (§15.2.5 Back Attack): a Character with Back Attack may be cast by the priority holder in
+  // either player's Main or Attack Phase (§15.2.5.2). No pool card prints it; the keyword is never consulted here.
   const summon = ps.hand.includes(card) && defOf(state, card).type === 'summon'
   if (!summon && state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
   if (!ps.hand.includes(card)) return 'notInHand'
