@@ -1,9 +1,18 @@
 # Rung J2 — Back Attack (§15.2.5), with a real card in both decks
 
-> **STATUS: agreed 2026-09-16** under the user's standing instruction ("loop the work until it's implemented, review
+> **STATUS: BUILT, 2026-09-16** (commits 7d942d7..e4ba5e9; the Codex review is deferred to 08:15 by `~/.claude/handoffs/fftcg-game/codex-j2-review.sh` and adjudicated next session). Agreed under the user's standing instruction ("loop the work until it's implemented, review
 > with Codex, go with your recommendations at a crossroads"). Calls are mine and recorded so they can be overturned
 > here. The matrix rows 15.2.5.1–4 are `simplified` today; J2 turns them `tested` and removes the marker in `cast.ts`.
 > Bounded rung: the spec carries its own task list; the Codex review is deferred (quota) like J3's.
+
+## As built (differences from the design below)
+
+- No browser play-through: the mechanism is the same tray-and-window path the K rungs verified for Summons, and
+  the prompt/sheet wording is unit-tested; a play at a seed holding Scarmiglione is a follow-up.
+- J2-A4's second case asserts greedy CASTS the surprise blocker in the `declared` window (it does, at depth 1).
+- The deck change re-pinned: deck-search → 135, card-details → 135, the announcements literal ("Cast Sphene …
+  discard Dragoon as lightning"), the blocker-choice and Reeve sweeps now seek what they assert, and the mirror
+  Billy Bob fixture strips a dealt twin from the hand. Pressable's 28 and payment's 50 survived.
 
 ## The rule
 
