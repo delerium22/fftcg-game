@@ -10,6 +10,19 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-16-rung-j9-timing-matrix.md`
 
+> **BUILT 2026-09-16, commits 5b6ea90..1cf4aac. As built vs as planned** — the goldens below were written from the
+> rules; a throwaway probe printed the engine's actual order before the tests were committed, and these differ:
+> (1) cloud-turn: an activation's events are `activate`, `paid`, `push`, THEN the trigger its placement fires
+> (`trigger:22-068R:chosen`, `push`), not trigger-before-push; (2) ramuh-in-a-window: Ramuh's dull mode CHOOSES
+> Prishe, so her chosen-trigger sits above Ramuh and needs its own pass pair, and the cast is paid with the two
+> Red Mages explicitly (player 1's hand is not empty in the harness); (3) combat-tricks: paying the Princess into
+> the Break Zone is a zone movement Lightning watches, so Lightning triggers off the COST and asks for its target
+> while player 0 holds priority — the scenario keeps that and has Sphene block, Lightning stay; (4) `drew` is one
+> event per draw action with a `count` (`drew:1:2`), and `phaseStarted` IS emitted for `active` and `draw`, so the
+> Layer 1 §9.1.1.2 test asserts the four phases in order inside one apply rather than their absence; (5) the
+> `draw` effect's field is `count`; `abilityDamage` names its `target`; `keywordsOf` returns a Set. Task 2's
+> deliberate stray row was removed as instructed. No `it.fails` was needed: no layer found the engine deviating.
+
 ## Global Constraints
 
 - The rules text is © Square Enix: the matrix paraphrases, never quotes more than a few words. The section index is `docs/rules/cr-3.3-sections.txt`.

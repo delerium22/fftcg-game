@@ -1,6 +1,6 @@
 # Rung J9 — the timing matrix: every timing rule mapped to a test, in three layers
 
-> **STATUS: BUILT, 2026-09-16** (commits 8ff7721..82a768f; Codex plan review adjudicated after the build, see the plan's `.codex-review.md`). The user asked how the order of play, timing, the stack and resolution are
+> **STATUS: BUILT, 2026-09-16** (commits 5b6ea90..1cf4aac; the Codex plan review ran after the build — see the plan's `.codex-review.md` for what it found and what changed). The user asked how the order of play, timing, the stack and resolution are
 > tested, and for tests "that validate how all of these things work separately, and then on top of each
 > other so we know it works". Chosen over J3 First Strike + Freeze, which follows and adds its rows here.
 
