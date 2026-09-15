@@ -73,8 +73,22 @@ export type Phase = 'setup' | 'active' | 'draw' | 'main1' | 'attack' | 'main2' |
  * damage is dealt) — and two are decisions: `declaration` (the turn player attacks or passes to Main Phase 2)
  * and `block` (the defender owes `declareBlock`).
  */
-export type AttackStep = 'preparation' | 'declaration' | 'declared' | 'block' | 'blocked' | 'damage'
-export interface AttackState { step: AttackStep; attackers: CardId[]; blocker: CardId | null }
+export type AttackStep = 'preparation' | 'declaration' | 'declared' | 'block' | 'blocked' | 'firstStrike' | 'damage'
+/** One hit that landed: who dealt it, to which Forward or which player, how much (spec C2-7). Lives here so `AttackState` can hold it. */
+export interface DamageOccurrence {
+  readonly source: CardId
+  readonly sourceController: PlayerId
+  readonly target: CardId | null
+  readonly victim: PlayerId | null
+  readonly amount: number
+}
+/**
+ * `firstStrike` (rung J3, §15.2.3) is a fifth window: the First Strike combatants have dealt, the rest have
+ * not, and nobody may cast or activate in it (§15.2.3.3). `heldDamage` is the first batch's occurrences,
+ * whose triggers are placed only with the second batch's; its presence is also what says the first batch is
+ * done when the party split is owed between the two. Absent outside a split damage step.
+ */
+export interface AttackState { step: AttackStep; attackers: CardId[]; blocker: CardId | null; heldDamage?: readonly DamageOccurrence[] }
 /** Decisions owed by a specific player that are NOT priority actions (§11.1): setup choices, the defender's step actions in the Attack Phase, and the choices an ability suspends on (spec C1-6). */
 export type Pending =
   | { kind: 'chooseFirst'; player: PlayerId }

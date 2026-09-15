@@ -749,7 +749,7 @@ export const ATTACK_STEP_LABEL: Record<string, string> = {
   // Never the words "attack" or "block" (nor "cast", "ability"): the prompt built from these names only the
   // moves the position offers, and G2-A1 reads those words as claims.
   preparation: 'preparation', declaration: 'declaration', declared: 'combat declared',
-  block: 'defence', blocked: 'defence declared', damage: 'damage dealt',
+  block: 'defence', blocked: 'defence declared', firstStrike: 'first strike', damage: 'damage dealt',
 }
 
 /** One line stating what the game is waiting for, derived from `pending` first, then `phase`/`attack.step`. */

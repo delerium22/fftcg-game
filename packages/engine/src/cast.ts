@@ -17,7 +17,7 @@ import { putOntoField, targetCandidates, warnUnimplemented } from './resolve.js'
  */
 export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'lightDark' | 'noTarget'
 
-/** The Attack Phase steps in which priority is held — where a Summon or an action ability may be used (§9.3.1.6–7, J1-D10). */
+/** The Attack Phase steps in which priority is held AND a Summon or an action ability may be used (§9.3.1.6–7, J1-D10). `firstStrike` holds priority but admits only a pass (§15.2.3.3). */
 export const ATTACK_WINDOWS: readonly AttackStep[] = ['preparation', 'declared', 'blocked', 'damage']
 
 /** Is this a moment the priority holder may cast a Summon or use an action ability? Main Phase, or an Attack Phase window. */

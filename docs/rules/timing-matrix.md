@@ -214,7 +214,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.1.1.9.4 | Any number of Forwards | tested | engine/timing-l1-priority#§15.1.1.9.4 |
 | 15.1.1.9.5 | Down to one Forward, it is no longer a party | tested | engine/cr10-attack-windows#a party reduced to one; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 15.1.1.9.6 | Blockable if any member is; the whole party is blocked | tested | engine/cr10-attack#§10.1.3.4 |
-| 15.1.1.9.7 | First Strike damage only if every member has it | simplified | packages/engine/src/attack.ts |
+| 15.1.1.9.7 | First Strike damage only if every member has it | tested | engine/timing-l1-first-strike#§15.1.1.9.7 |
 | 15.1.1.9.8 | Each member checks it may damage the blocker; any break credits them all | tested | engine/cr10-attack#§10.1.4.2.1 |
 | 15.1.1.9.9 | Disbands at the next declaration or when the phase ends | tested | engine/cr10-attack#an unblocked party |
 | 15.1.1.9.10 | Ability damage by a member counts as the party's, sourced to that member | n/a | no pool card reads party damage |
@@ -226,10 +226,10 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.2.2 | May attack the turn it arrives | tested | engine/cr10-attack#a forward controlled since the start of the turn |
 | 15.2.2.3 | May pay a dull-icon cost the turn it arrives | tested | engine/activated-abilities#§11.6.2.2 |
 | 15.2.3 | First Strike | heading |  |
-| 15.2.3.1 | A field ability changing the damage step | simplified | packages/engine/src/attack.ts |
-| 15.2.3.2 | First Strike Forwards deal damage first, then the rest | simplified | packages/engine/src/attack.ts |
-| 15.2.3.3 | A priority window between the two, with no casts; triggers wait for the second | simplified | packages/engine/src/attack.ts |
-| 15.2.3.4 | A party needs First Strike on every member | simplified | packages/engine/src/attack.ts |
+| 15.2.3.1 | A field ability changing the damage step | tested | engine/timing-l1-first-strike#§15.2.3.2 |
+| 15.2.3.2 | First Strike Forwards deal damage first, then the rest | tested | engine/timing-l1-first-strike#§15.2.3.2 |
+| 15.2.3.3 | A priority window between the two, with no casts; triggers wait for the second | tested | engine/timing-l1-first-strike#§15.2.3.3 |
+| 15.2.3.4 | A party needs First Strike on every member | tested | engine/timing-l1-first-strike#§15.2.3.4 |
 | 15.2.4 | Freeze | heading |  |
 | 15.2.4.1 | An ongoing effect applied by Summons and abilities | tested | engine/timing-l1-freeze#§15.2.4.1 |
 | 15.2.4.2 | Frozen Forwards skip their controller's next Active Phase | tested | engine/timing-l1-freeze#§15.2.4.2 |

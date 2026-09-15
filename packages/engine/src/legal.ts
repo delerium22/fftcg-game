@@ -55,6 +55,8 @@ function menuShape(state: GameState, player: PlayerId): { casts: boolean; abilit
       // Declaration is the turn player's decision; a window (§10.1.1.2 and, from slice 5, the rest) admits
       // Summons and action abilities from the priority holder (§9.3.1.6–7).
       if (state.attack?.step === 'declaration') return { casts: false, abilities: false, attack: true, pass: true }
+      // §15.2.3.3 (rung J3): between the two damage batches priority is held, but nothing may be cast or used.
+      if (state.attack?.step === 'firstStrike') return { casts: false, abilities: false, attack: false, pass: true }
       if (instantSpeedAllowed(state)) return { casts: true, abilities: true, attack: false, pass: true }
       return nothing
     default:

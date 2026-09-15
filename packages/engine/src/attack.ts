@@ -1,12 +1,11 @@
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Frame } from './abilities.js'
-import type { AttackState, CardId, GameState } from './state.js'
+import type { AttackState, CardId, DamageOccurrence, GameState } from './state.js'
 import { defOf, findFieldCard, keywordsOf, powerOf, updatePlayer } from './state.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { dealPlayerDamage, runRuleProcesses } from './rules.js'
-import type { DamageOccurrence } from './resolve.js'
 import { enqueueDamageTriggers } from './resolve.js'
 
 const IDLE: AttackState = { step: 'declaration', attackers: [], blocker: null }
@@ -127,6 +126,19 @@ export function exitAttackWindow(state: GameState): [GameState, Event[]] {
       if (attack.attackers.length === 0) return [finishDamageStep(state), [{ type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]
       return beginDamageResolution({ ...state, attack: { ...attack, step: 'damage' }, passes: 0 })
     }
+    case 'firstStrike': {
+      // §15.2.3.3 (rung J3): the pass-only window is over. What is still in battle deals to what is still there
+      // (§10.1.3.2.1, §10.1.3.3); a non-First-Strike blocker facing what is left of a party owes its split now.
+      const fs = firstStrikeSet(state)
+      const attack = survivors(state)
+      const s: GameState = { ...state, attack: { ...attack, step: 'damage' }, passes: 0 }
+      const events: Event[] = [{ type: 'phaseStarted', phase: 'attack', step: 'damage' }]
+      if (attack.blocker !== null && attack.attackers.length > 1 && !fs.has(attack.blocker)) {
+        return [{ ...s, pending: { kind: 'assignPartyDamage', player: opponentOf(turn) } }, events]
+      }
+      const [t, more] = landSecondBatch(s, [])
+      return [t, [...events, ...more]]
+    }
     case 'damage':
       return [finishDamageStep(state), [{ type: 'phaseStarted', phase: 'attack', step: 'declaration' }]]   // §10.1.4.5–6
     default:
@@ -134,15 +146,50 @@ export function exitAttackWindow(state: GameState): [GameState, Event[]] {
   }
 }
 
-/** §10.1.4: the party split is owed (§10.1.4.2.1), or the damage is dealt at once. */
+/**
+ * §15.2.3.2/.4 (rung J3): the combatants that deal damage FIRST — the blocker if it has First Strike, and the
+ * attacking side if it is one Forward with it or a party whose every member has it (§15.1.1.9.7). Read through
+ * `keywordsOf`, so printed, granted and layer keywords all count. Empty outside a blocked battle.
+ */
+export function firstStrikeSet(state: GameState): Set<CardId> {
+  const at = state.attack
+  const out = new Set<CardId>()
+  if (!at || at.blocker === null) return out
+  const has = (id: CardId): boolean => { const fc = findFieldCard(state, id); return fc !== null && keywordsOf(state, fc.card).has('firstStrike') }
+  if (at.attackers.length > 0 && at.attackers.every(has)) for (const a of at.attackers) out.add(a)
+  if (has(at.blocker)) out.add(at.blocker)
+  return out
+}
+
+/** Does First Strike split this damage step in two? Only when SOME combatants have it and some do not. */
+function firstStrikeSplits(state: GameState): boolean {
+  const at = state.attack
+  if (!at || at.blocker === null) return false
+  const fs = firstStrikeSet(state)
+  return fs.size > 0 && fs.size < at.attackers.length + 1
+}
+
+/** §10.1.4: the party split is owed (§10.1.4.2.1), or the damage is dealt at once — in one batch, or two (§15.2.3). */
 function beginDamageResolution(state: GameState): [GameState, Event[]] {
   const at = state.attack!
   const events: Event[] = [{ type: 'phaseStarted', phase: 'attack', step: 'damage' }]
-  if (at.blocker !== null && at.attackers.length > 1) {
+  const split = firstStrikeSplits(state)
+  // The blocker's split over a party is owed when the BLOCKER deals: now, unless First Strike puts it in the
+  // second batch (then `exitAttackWindow` owes it, over what survived the first).
+  const blockerDealsNow = at.blocker !== null && (!split || firstStrikeSet(state).has(at.blocker))
+  if (at.blocker !== null && at.attackers.length > 1 && blockerDealsNow) {
     return [{ ...state, pending: { kind: 'assignPartyDamage', player: opponentOf(state.turnPlayer) } }, events]
   }
-  const [s, more] = resolveDamage({ ...state, pending: null }, [])
+  const [s, more] = split ? landFirstStrike({ ...state, pending: null }, []) : resolveDamage({ ...state, pending: null }, [])
   return [s, [...events, ...more]]
+}
+
+/** The answer to a party split arrives: which batch is it for? */
+function dealAfterSplit(state: GameState, assignments: Assignment[]): [GameState, Event[]] {
+  const at = state.attack!
+  if (at.heldDamage !== undefined) return landSecondBatch(state, assignments)     // the window is over; the blocker deals second
+  if (firstStrikeSplits(state)) return landFirstStrike(state, assignments)         // a First Strike blocker deals first
+  return resolveDamage(state, assignments)
 }
 
 /** All ways to split `total` over `targets` in multiples of 1000, each part ≥ 1000 (targets that receive nothing are omitted), at most `cap` of them. */
@@ -194,7 +241,76 @@ export function partyDamageCheck(state: GameState, player: PlayerId, assignments
 export function applyAssignPartyDamage(state: GameState, player: PlayerId, assignments: Assignment[]): [GameState, Event[]] {
   const why = partyDamageCheck(state, player, assignments)
   if (why) throw new IllegalCommandError(why)
-  return resolveDamage({ ...state, pending: null }, assignments)
+  return dealAfterSplit({ ...state, pending: null }, assignments)
+}
+
+type Hit = { source: CardId; sourceController: PlayerId; target: CardId; amount: number }
+
+/** §10.1.4.2: every attacker deals its power to the blocker; the blocker deals its power to a lone attacker, or its split to a party. */
+function hitsFor(state: GameState, blockerAssignments: Assignment[]): Hit[] {
+  const at = state.attack!
+  if (at.blocker === null) return []
+  const blockerFc = findFieldCard(state, at.blocker)
+  if (!blockerFc) return []
+  // `findFieldCard().owner` is the field array the card sits in, i.e. its CONTROLLER — attackers are the turn
+  // player's, the blocker is the defender's. Captured per hit so a source broken by this same simultaneous
+  // batch still attributes correctly (spec C2-7/C2-8).
+  const hits: Hit[] = []
+  for (const a of at.attackers) {
+    const fc = findFieldCard(state, a)
+    if (fc) hits.push({ source: a, sourceController: fc.owner, target: at.blocker, amount: powerOf(state, fc.card) })
+  }
+  if (at.attackers.length === 1) hits.push({ source: at.blocker, sourceController: blockerFc.owner, target: at.attackers[0] as CardId, amount: powerOf(state, blockerFc.card) })
+  else for (const x of blockerAssignments) hits.push({ source: at.blocker, sourceController: blockerFc.owner, target: x.target, amount: x.amount })
+  return hits
+}
+
+/** Land `hits` on targets still on the field: the damage, its events, and the occurrences for the triggers. */
+function landHits(state: GameState, hits: readonly Hit[]): [GameState, Event[], DamageOccurrence[]] {
+  let s = state
+  const events: Event[] = []
+  const landed: DamageOccurrence[] = []
+  for (const h of hits) {
+    const loc = findFieldCard(s, h.target)
+    if (!loc) continue
+    s = updatePlayer(s, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === h.target ? { ...c, damage: c.damage + h.amount } : c)) }))
+    events.push({ type: 'battleDamage', source: h.source, target: h.target, amount: h.amount })
+    landed.push({ source: h.source, sourceController: h.sourceController, target: h.target, victim: null, amount: h.amount })
+  }
+  return [s, events, landed]
+}
+
+/**
+ * §15.2.3.2–3 (rung J3): the First Strike combatants deal; rule processes run (§11.1.3 — the victim may break
+ * here, which is the point); the occurrences are HELD, not queued, because their triggers wait for the second
+ * batch; and the pass-only window opens with priority to the turn player.
+ */
+function landFirstStrike(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
+  const fs = firstStrikeSet(state)
+  const [hit, events, landed] = landHits(state, hitsFor(state, blockerAssignments).filter((h) => fs.has(h.source)))
+  const [ruled, ruleEvents] = runRuleProcesses(hit)
+  events.push(...ruleEvents)
+  const s: GameState = { ...ruled, attack: { ...ruled.attack!, step: 'firstStrike', heldDamage: landed }, pending: null, priority: ruled.turnPlayer, passes: 0 }
+  events.push({ type: 'phaseStarted', phase: 'attack', step: 'firstStrike' })
+  return [s, events]
+}
+
+/**
+ * After the First Strike window: the combatants still in battle deal to what is still there — a blocker that
+ * left means no battle at all (§10.1.3.3, the attack stays blocked). Then EVERY occurrence — the held first
+ * batch, then this one — is queued together (§15.2.3.3), rule processes run, and the §10.1.4.4 window opens.
+ */
+function landSecondBatch(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
+  const at = state.attack!
+  const fs = firstStrikeSet(state)
+  const hits = at.attackers.length === 0 ? [] : hitsFor(state, blockerAssignments).filter((h) => !fs.has(h.source))
+  const [hit, events, landed] = landHits(state, hits)
+  let s = enqueueDamageTriggers(hit, [...(at.heldDamage ?? []), ...landed])
+  const [ruled, ruleEvents] = runRuleProcesses(s)
+  s = ruled; events.push(...ruleEvents)
+  s = s.result ? finishDamageStep(s) : openDamageWindow(s)
+  if (s.result) events.push({ type: 'gameOver', result: s.result })
+  return [s, events]
 }
 
 /** §10.1.4. `blockerAssignments` is the blocker's damage split for a party; ignored for a single attacker (blocker's full power). */
@@ -204,7 +320,6 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
   const defender = opponentOf(state.turnPlayer)
   const events: Event[] = []
   let s = state
-  // MVP0-SIMPLIFICATION: §15.2.3 First Strike (and §15.1.1.9.7, a party's First Strike) not implemented — all battle damage is simultaneous
   if (at.blocker === null) {
     // §10.1.4.1 — an unblocked party deals ONE point of damage, but every member of it is dealing that damage, so
     // every member's `dealtDamage` clause triggers (spec C2-8). Controllers are captured here, from the field, for
@@ -217,30 +332,12 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
     const [t, e] = dealPlayerDamage(s, defender, party)
     s = t; events.push(...e)
   } else {
-    const blockerFc = findFieldCard(s, at.blocker)
-    if (blockerFc) {
-      // `findFieldCard().owner` is the field array the card sits in, i.e. its CONTROLLER — attackers are the turn
-      // player's, the blocker is the defender's. Captured per hit so a source broken by this same simultaneous
-      // batch still attributes correctly (spec C2-7/C2-8).
-      const hits: { source: CardId; sourceController: PlayerId; target: CardId; amount: number }[] = []
-      for (const a of at.attackers) {
-        const fc = findFieldCard(s, a)
-        if (fc) hits.push({ source: a, sourceController: fc.owner, target: at.blocker, amount: powerOf(s, fc.card) })   // §10.1.4.2 each attacker deals its power to the blocker
-      }
-      if (at.attackers.length === 1) hits.push({ source: at.blocker, sourceController: blockerFc.owner, target: at.attackers[0] as CardId, amount: powerOf(s, blockerFc.card) })
-      else for (const x of blockerAssignments) hits.push({ source: at.blocker, sourceController: blockerFc.owner, target: x.target, amount: x.amount })
-      const landed: DamageOccurrence[] = []
-      for (const h of hits) {
-        const loc = findFieldCard(s, h.target)
-        if (!loc) continue
-        s = updatePlayer(s, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === h.target ? { ...c, damage: c.damage + h.amount } : c)) }))
-        events.push({ type: 'battleDamage', source: h.source, target: h.target, amount: h.amount })
-        landed.push({ source: h.source, sourceController: h.sourceController, target: h.target, victim: null, amount: h.amount })
-      }
-      // §15.2.3 aside, battle damage is simultaneous: all of it lands, THEN every source's `dealtDamage` clause
-      // queues. Draining is `settle`'s job, so the §12.4.5 process below still runs first (spec C2-6).
-      s = enqueueDamageTriggers(s, landed)
-    }
+    // One simultaneous batch (no First Strike, or everyone has it — §15.2.3.2 has no "other Forwards" then): all
+    // of it lands, THEN every source's `dealtDamage` clause queues. Draining is `settle`'s job, so the §12.4.5
+    // process below still runs first (spec C2-6).
+    const [hit, hitEvents, landed] = landHits(s, hitsFor(s, blockerAssignments))
+    s = enqueueDamageTriggers(hit, landed)
+    events.push(...hitEvents)
   }
   const [ruled, ruleEvents] = runRuleProcesses(s)
   s = ruled; events.push(...ruleEvents)
@@ -259,9 +356,10 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
   return [s, events]
 }
 
-/** The §10.1.4.4 window: damage dealt, priority to the turn player, nothing owed. */
+/** The §10.1.4.4 window: damage dealt, priority to the turn player, nothing owed, nothing held. */
 function openDamageWindow(s: GameState): GameState {
-  return { ...s, pending: null, priority: s.turnPlayer, passes: 0 }
+  const at = s.attack   // null in structural fixtures that deal damage outside an attack (cr12-rules)
+  return { ...s, attack: at ? { step: at.step, attackers: at.attackers, blocker: at.blocker } : null, pending: null, priority: s.turnPlayer, passes: 0 }
 }
 
 /**

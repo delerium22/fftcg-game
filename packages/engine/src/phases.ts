@@ -67,7 +67,8 @@ export function applyPass(state: GameState, player: PlayerId): [GameState, Event
   if (state.pending) throw new IllegalCommandError('a decision is pending')
   if (state.priority !== player) throw new IllegalCommandError('you do not hold priority')
   const step = state.attack?.step
-  const isWindow = state.phase === 'main1' || state.phase === 'main2' || (state.phase === 'attack' && step !== undefined && ATTACK_WINDOWS.includes(step))
+  // `firstStrike` is a window for passing (§15.2.3.3, rung J3) though not for instant speed, so it is not in ATTACK_WINDOWS.
+  const isWindow = state.phase === 'main1' || state.phase === 'main2' || (state.phase === 'attack' && step !== undefined && (ATTACK_WINDOWS.includes(step) || step === 'firstStrike'))
   if (state.phase === 'attack' && step !== 'declaration' && !isWindow) throw new IllegalCommandError('cannot pass during this attack step')
   if (isWindow && state.passes === 0) {
     return [{ ...state, passes: 1, priority: opponentOf(player) }, []]

@@ -75,6 +75,8 @@ export function checkInvariants(state: GameState): string[] {
   // Rung J1-D10: `block` is the defender's decision and nothing else; the declaration step carries no combatants.
   if (state.attack?.step === 'block' && !state.result && state.pending?.kind !== 'declareBlock') problems.push('the block step owes no declareBlock')
   if (state.attack?.step === 'declaration' && (state.attack.attackers.length || state.attack.blocker !== null)) problems.push('combatants outside a combat')
+  // Rung J3: the First Strike window sits between two batches of a BLOCKED battle, with the first batch held.
+  if (state.attack?.step === 'firstStrike' && (state.attack.blocker === null || state.attack.heldDamage === undefined || state.pending !== null)) problems.push('a firstStrike step without a blocked battle, a held first batch, or with a decision owed')
   if (state.result && state.pending) problems.push('pending decision after game over')
 
   // --- the resolution agenda (spec C1-A7) ---

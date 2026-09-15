@@ -4,7 +4,8 @@ import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
 import { shuffle } from './rng.js'
 import { EMPTY_RESOLUTION, MAX_RESOLUTION_STEPS, effectAtPath, hasResolutionWork, unimplementedClauseCount } from './abilities.js'
-import type { CardId, FieldCard, GameState, Pending, StackItem } from './state.js'
+import type { CardId, DamageOccurrence, FieldCard, GameState, Pending, StackItem } from './state.js'
+export type { DamageOccurrence } from './state.js'
 import { defOf, findFieldCard, forget, learn, updatePlayer, powerOf, keywordsOf, flagsOf } from './state.js'
 import { matchesDefFilter } from './filters.js'
 export { matchesDefFilter } from './filters.js'
@@ -52,13 +53,6 @@ export function enqueueTrigger(state: GameState, source: CardId, controller: Pla
  * `sourceController` is passed in rather than derived: the source may be about to leave the field, and party
  * attribution is by MEMBERSHIP, not array position (spec C2-8).
  */
-export interface DamageOccurrence {
-  readonly source: CardId
-  readonly sourceController: PlayerId
-  readonly target: CardId | null
-  readonly victim: PlayerId | null
-  readonly amount: number
-}
 
 /**
  * Queue the `dealtDamage` clauses of every damage source in `hits`, in hit order. Damage inside one batch is
