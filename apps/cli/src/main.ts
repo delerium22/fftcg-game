@@ -42,6 +42,11 @@ const has = (name: string) => rest.includes(`--${name}`)
 const deckArg = flag('deck', '')
 const deckPath = deckArg ? resolve(deckArg) : resolve(repoRoot, 'decks/starter-2025-vol2.txt')
 const deck = parseDeckFile(readFileSync(deckPath, 'utf8'))
+// Rung J8 (spec J8-D7): the LB deck (§7.14) beside the main list; `--lb-deck none` plays without one.
+const lbArg = flag('lb-deck', '')
+const lbPath = lbArg === 'none' ? null : lbArg ? resolve(lbArg) : resolve(repoRoot, 'decks/starter-2025-vol2-lb.txt')
+const lbDeck = lbPath === null ? [] : parseDeckFile(readFileSync(lbPath, 'utf8'))
+const lbDecks: [string[], string[]] = [lbDeck, lbDeck]
 const defs = loadCards()
 /**
  * `--seed` is validated as strictly as `--depth` and `--iterations`. It was the one flag that was not, and a
@@ -63,7 +68,7 @@ const usage = [
   '  mirror:   [--seed N] [--pairs N] [--a spec] [--b spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--budget-ms N] [--min-iterations N] [--bootstrap N] [--fast]',
   '            plays every seed twice with the seats swapped; every score is agent A\'s (spec D-A1)',
   '  profile:  [--seed N] [--games N] [--iterations N] [--opponent spec]   (rung D7: where a rollout\'s applies go)',
-  '  common:   [--deck path]',
+  '  common:   [--deck path] [--lb-deck path|none]   (J8: the LB deck, default decks/starter-2025-vol2-lb.txt)',
 ].join('\n')
 
 /** Every flag is validated the same strict way (a bad value is an error, never a silent `NaN`); a throw from
@@ -78,7 +83,7 @@ const flagError = cmd === undefined ? null : unknownFlagError(cmd, rest)
 if (flagError !== null) { console.error(`${flagError}\n\n${usage}`); process.exit(2) }
 
 if (cmd === 'hotseat') {
-  await hotseat({ seed, decks: [deck, deck], defs })
+  await hotseat({ seed, decks: [deck, deck], defs, lbDecks })
 } else if (cmd === 'selfplay' || cmd === 'mirror' || cmd === 'profile') {
   // C7: --depth gets the same 0-2 integer validation as greedy:N, instead of `Number(...)` silently coercing
   // any garbage input (including NaN) into the 0|1|2 type. D1: --iterations likewise, for ismcts:N.
@@ -116,7 +121,7 @@ if (cmd === 'hotseat') {
       withDefaults(parseAgentSpec(flag('p1', 'random')), depth, iterations, rolloutCap, budget),
     ])
     const games = parsed(() => parsePositiveInt(flag('games', '200'), 'games', 1_000_000))
-    const r = selfPlay({ games, seed, decks: [deck, deck], defs, agents, strict: !has('fast') })
+    const r = selfPlay({ games, seed, decks: [deck, deck], defs, lbDecks, agents, strict: !has('fast') })
     console.log(JSON.stringify({ ...r, failures: r.failures.map((f) => ({ seed: f.seed, error: f.error.split('\n')[0] })) }, null, 2))
     for (const f of r.failures) console.error(`seed ${f.seed}:\n${f.error}`)
     process.exit(r.failures.length ? 1 : 0)

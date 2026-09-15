@@ -1,4 +1,4 @@
-import type { Ability, CardId, Command, FieldCard, PlayerView } from '@fftcg/engine'
+import type { Ability, CardId, Command, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
 import { describeAbilityCost, describeAbilityEffect, pickedDeckCards } from '@fftcg/engine'
 
 const PHASE_LABEL: Record<string, string> = { setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase', main1: 'Main Phase 1', attack: 'Attack Phase', main2: 'Main Phase 2', end: 'End Phase' }
@@ -59,6 +59,13 @@ export function askingBecause(v: PlayerView): string | null {
   return effect === null ? null : `  ${cardName(v, frame.source)} — ${effect}`
 }
 
+/** Rung J8 (§7.14, spec J8-D7): a seat's LB deck as `[id] Name (down|UP)` — only when the seat brought one. */
+function lbLine(v: PlayerView, p: PlayerId): string[] {
+  const lb = v.fields[p]!.lbDeck
+  if (!lb.length) return []
+  return [`  LB deck:  ${lb.map((x) => `[${x.id}] ${cardName(v, x.id)} (${x.faceUp ? 'UP' : 'down'})`).join('  ')}`]
+}
+
 export function renderView(v: PlayerView): string {
   const opp = v.me === 0 ? 1 : 0
   const step = v.attack ? ` / ${v.pending?.kind === 'assignPartyDamage' ? 'assign party damage' : v.attack.step}` : ''
@@ -67,9 +74,11 @@ export function renderView(v: PlayerView): string {
     `Opponent P${opp}: deck ${v.fields[opp].deck.length}, hand ${v.fields[opp].handCount}, damage ${v.fields[opp].damageZone.length}/7, break ${v.fields[opp].breakZone.length}`,
     `  Forwards: ${v.fields[opp].forwards.map((c) => fieldCard(v, c)).join('  ') || '-'}`,
     `  Backups:  ${v.fields[opp].backups.map((c) => fieldCard(v, c)).join('  ') || '-'}`,
+    ...lbLine(v, opp),
     `You P${v.me}: deck ${v.fields[v.me].deck.length}, damage ${v.fields[v.me].damageZone.length}/7, break ${v.fields[v.me].breakZone.length}`,
     `  Forwards: ${v.fields[v.me].forwards.map((c) => fieldCard(v, c)).join('  ') || '-'}`,
     `  Backups:  ${v.fields[v.me].backups.map((c) => fieldCard(v, c)).join('  ') || '-'}`,
+    ...lbLine(v, v.me),
     `  Hand (${v.hand.length}): ${v.hand.map((id) => `[${id}] ${cardName(v, id)}`).join('  ')}`,
   ]
   if (v.attack?.attackers.length) lines.push(`  Attacking: ${v.attack.attackers.map((id) => cardName(v, id)).join(' + ')}${v.attack.blocker !== null ? ` blocked by ${cardName(v, v.attack.blocker)}` : ''}`)
@@ -94,7 +103,9 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'castCharacter':
     case 'castSummon': {
       const pay = [...c.payment.dullBackups.map((id) => `dull ${cardName(v, id)}`), ...c.payment.discards.map((d) => `discard ${cardName(v, d.card)} as ${d.element}`)]
-      return `Cast ${cardName(v, c.card)} paying: ${pay.join(', ') || 'nothing'}`
+      // Rung J8: the Limit Break cost — which LB-deck cards turn face up — is part of the payment.
+      const flips = c.payment.lbFlip?.length ? ` turning ${c.payment.lbFlip.map((id) => cardName(v, id)).join(', ')} face up,` : ''
+      return `Cast ${cardName(v, c.card)}${flips} paying: ${pay.join(', ') || 'nothing'}`
     }
     case 'chooseTargets': return c.targets.length ? `Target ${c.targets.map((id) => cardName(v, id)).join(', ')}` : 'Choose no targets'
     // The printed WORDING, not an ordinal. "Choose mode 1" tells a player nothing about what mode 1 does,

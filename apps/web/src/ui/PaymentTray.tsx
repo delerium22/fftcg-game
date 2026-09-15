@@ -15,9 +15,11 @@ const ELEMENT_LABEL: Record<Element, string> = {
  * region (its prompt text), so a screen reader hears every change without a fourth live channel being added,
  * and the tray does not repeat the title beside it.
  */
-export function PaymentTray({ crystals, complete, ask, onAuto, onClear, onCancel, onConfirm, onDeclare }: {
+export function PaymentTray({ crystals, complete, ask, flips, onAuto, onClear, onCancel, onConfirm, onDeclare }: {
   crystals: readonly Crystal[]
   complete: boolean
+  /** Rung J8: the Limit Break cost — how many LB-deck cards must turn face up, and how many are picked. Null when none. */
+  flips?: { need: number; chosen: number } | null | undefined
   /** A two-element discard waiting for its element to be declared (I2-D4), or null. */
   ask: { card: CardId; name: string; options: readonly Element[] } | null
   onAuto: () => void
@@ -29,6 +31,11 @@ export function PaymentTray({ crystals, complete, ask, onAuto, onClear, onCancel
   const paid = paidText(crystals)
   return (
     <div className="tray" data-payment-tray>
+      {flips && flips.need > 0 && (
+        <span className="tray__lb" role="img" aria-label={`Limit Break: ${flips.chosen} of ${flips.need} LB cards turned face up`} data-lb-flips={`${flips.chosen}/${flips.need}`}>
+          {Array.from({ length: flips.need }, (_, i) => <i key={i} className={['lbflip', i < flips.chosen ? 'is-lit' : ''].filter(Boolean).join(' ')} title="Turn an LB-deck card face up" />)}
+        </span>
+      )}
       <span className="tray__crystals" role="img" aria-label={paid}>
         {crystals.map((c, i) => (
           <i

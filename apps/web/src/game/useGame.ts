@@ -3,7 +3,7 @@ import {
   actingPlayer, apply, createGame, forcedDecision, isResponseWindow, legalCommands, viewFor,
   type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
-import { CARD_DEFS, DECKS } from '../deck.js'
+import { CARD_DEFS, DECKS, LB_DECKS } from '../deck.js'
 import { ATTACK_STEP_LABEL, bareName, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type Control, type GameApi, type LogLine } from './types.js'
@@ -179,6 +179,9 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability finds no legal target — nothing happens` }
     case 'dulled': return { kind: 'event', text: `${qualifiedName(v, e.card)} is dulled` }
+    // Rung J8 (§15.2.8): the Limit Break cost, and the return to the LB deck.
+    case 'lbFlipped': return { kind: 'event', text: `${who(v, e.player)} turn${e.player === v.me ? '' : 's'} ${e.cards.map((id) => qualifiedName(v, id)).join(' and ')} face up (Limit Break cost)` }
+    case 'lbReturned': return { kind: 'event', text: `${qualifiedName(v, e.card)} goes back to ${whoDoes(v, e.player, 'your', "the AI's")} LB deck face up` }
     case 'frozen': return { kind: 'event', text: `${qualifiedName(v, e.card)} is frozen — it will not activate next turn` }
     case 'thawed': return { kind: 'event', text: `${qualifiedName(v, e.card)} stays dull — it was frozen` }
     case 'abilityDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
@@ -565,7 +568,7 @@ export function createAiSearch(readState: () => GameState, seed: number, seams: 
   }
 }
 
-const newGame = (seed: number): GameState => createGame({ seed, decks: DECKS, defs: CARD_DEFS })
+const newGame = (seed: number): GameState => createGame({ seed, decks: DECKS, defs: CARD_DEFS, lbDecks: LB_DECKS })
 
 const openingLog = (): LogLine[] => [{ kind: 'phase', text: 'New game — you are P0, the AI is P1' }]
 

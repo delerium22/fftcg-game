@@ -966,6 +966,20 @@ body {
   animation: crystal-light 260ms cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 
+/* Rung J8: the Limit Break cost's pips in the tray — one per LB-deck card to turn face up, lit as picked. */
+.tray__lb { display: inline-flex; gap: 4px; align-items: center; margin-right: 6px; }
+.lbflip {
+  display: inline-block;
+  width: 22px;
+  height: 30px;
+  border-radius: 3px;
+  border: 2px solid var(--ink-3);
+  background: repeating-linear-gradient(135deg, var(--ink-3) 0 3px, transparent 3px 7px);
+  opacity: 0.6;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.lbflip.is-lit { opacity: 1; background: var(--el-earth, #b58a3c); border-color: #fff; transform: scale(1.1); }
+
 @keyframes crystal-light {
   0% { transform: scale(0.9); filter: drop-shadow(0 0 0 transparent); }
   60% { transform: scale(1.25); }

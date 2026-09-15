@@ -5,7 +5,7 @@ import { candidatesFor, commandFor, completedChoice as completedSelection, exten
 import { SelectionTray } from './SelectionTray.js'
 import {
   EMPTY_PAYMENT, candidateSources, completedChoice, crystals, extendable, generatedFor, legalPaymentsOf, needsTray,
-  paidText, requirementFor, withBackup, withDiscard,
+  flipsNeeded, paidText, requirementFor, withBackup, withDiscard, withFlip,
 } from '../game/payment.js'
 import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
@@ -168,6 +168,7 @@ export function boardCardIds(view: PlayerView): Set<CardId> {
   return new Set<CardId>([
     ...view.hand,
     ...([0, 1] as const).flatMap((p) => [...view.fields[p].forwards, ...view.fields[p].backups].map((c) => c.id)),
+    ...([0, 1] as const).flatMap((p) => view.fields[p].lbDeck.map((x) => x.id)),   // rung J8: both LB decks are drawn
   ])
 }
 
@@ -361,9 +362,15 @@ export function Board({ game, onHelp }: {
   const backupsOf = (p: PlayerId): Set<CardId> => new Set(view.fields[p].backups.map((c) => c.id))
 
   /** Is this card a source the tray may take right now — a candidate that is picked, or still addable? */
-  const sourceState = (id: CardId): { role: 'dull' | 'discard' | null; offered: boolean; elements: Element[] } => {
+  const lbOf = (p: PlayerId): Set<CardId> => new Set(view.fields[p].lbDeck.map((x) => x.id))
+  const sourceState = (id: CardId): { role: 'dull' | 'discard' | 'flip' | null; offered: boolean; elements: Element[] } => {
     if (!paying || !candidates) return { role: null, offered: false, elements: [] }
     const sel = paying.selection
+    // Rung J8: an own LB-deck card is a source of a different kind — it turns face up for the Limit Break cost.
+    if (lbOf(HUMAN).has(id)) {
+      if ((sel.lbFlip ?? []).includes(id)) return { role: 'flip', offered: true, elements: [] }
+      return { role: null, offered: candidates.flips.has(id) && extendable(legal, sel, { flip: id }), elements: [] }
+    }
     if (backupsOf(HUMAN).has(id)) {
       if (sel.dullBackups.includes(id)) return { role: 'dull', offered: true, elements: [] }
       return { role: null, offered: candidates.backups.has(id) && extendable(legal, sel, { backup: id }), elements: [] }
@@ -377,7 +384,9 @@ export function Board({ game, onHelp }: {
     const st = sourceState(id)
     if (st.role === 'dull') return 'Picked: dull for 1 CP — press to put back'
     if (st.role === 'discard') return `Picked: discard for 2 ${st.elements[0]} CP — press to put back`
+    if (st.role === 'flip') return 'Picked: turn face up for the Limit Break cost — press to put back'
     if (!st.offered) return undefined
+    if (lbOf(HUMAN).has(id)) return 'Turn face up (Limit Break cost)'
     if (backupsOf(HUMAN).has(id)) return 'Dull for 1 CP'
     return st.elements.length === 1 ? `Discard for 2 ${st.elements[0]} CP` : 'Discard for 2 CP'
   }
@@ -388,7 +397,9 @@ export function Board({ game, onHelp }: {
     const sel = paying.selection
     if (st.role === 'dull') { setPaying({ ...paying, selection: withBackup(sel, id, false), ask: null }); return }
     if (st.role === 'discard') { setPaying({ ...paying, selection: withDiscard(sel, id, null), ask: null }); return }
+    if (st.role === 'flip') { setPaying({ ...paying, selection: withFlip(sel, id, false), ask: null }); return }
     if (!st.offered) return
+    if (lbOf(HUMAN).has(id)) { setPaying({ ...paying, selection: withFlip(sel, id, true), ask: null }); return }
     if (backupsOf(HUMAN).has(id)) { setPaying({ ...paying, selection: withBackup(sel, id, true), ask: null }); return }
     // A two-element card asks which element only when both would still lead somewhere (I2-D4).
     if (st.elements.length === 1) { setPaying({ ...paying, selection: withDiscard(sel, id, st.elements[0] as Element), ask: null }); return }
@@ -400,6 +411,7 @@ export function Board({ game, onHelp }: {
     <PaymentTray
       crystals={lit}
       complete={completed !== null}
+      flips={flipsNeeded(legal) > 0 ? { need: flipsNeeded(legal), chosen: paying.selection.lbFlip?.length ?? 0 } : null}
       ask={paying.ask ? { card: paying.ask.card, name: displayName(view, paying.ask.card), options: paying.ask.options } : null}
       onAuto={() => setPaying({ ...paying, selection: legal[0] ?? EMPTY_PAYMENT, ask: null })}
       onClear={() => setPaying({ ...paying, selection: EMPTY_PAYMENT, ask: null })}
@@ -499,7 +511,7 @@ export function Board({ game, onHelp }: {
       : selecting ? selecting.chosen.includes(id) || extendableWith(view, selecting, id)
       : (choices.byCard.get(id) ?? []).length > 0 || sampledCandidate(id)
   const chosenNow = (id: CardId): boolean => selecting !== null && selecting.chosen.includes(id)
-  const payingRole = (id: CardId): 'dull' | 'discard' | undefined => sourceState(id).role ?? undefined
+  const payingRole = (id: CardId): 'dull' | 'discard' | 'flip' | undefined => sourceState(id).role ?? undefined
 
   const field = (p: PlayerId, kind: 'forwards' | 'backups'): GridItem[] =>
     view.fields[p][kind].map((c) => {
@@ -513,6 +525,26 @@ export function Board({ game, onHelp }: {
         ...(chosenNow(c.id) ? { chosen: true } : {}),
       }
       return gridItem(c.id, props, { selected: sheet === c.id })
+    })
+
+  /** Rung J8: a seat's LB deck (§7.14) — face-down cards castable from it glow like a hand card; face-up ones are spent. */
+  const lbItems = (p: PlayerId): GridItem[] =>
+    view.fields[p].lbDeck.map((x) => {
+      const d = defOf(view, x.id)
+      return gridItem(x.id, {
+        code: d?.code ?? '?',
+        name: displayName(view, x.id),
+        cost: d?.cost ?? 0,
+        elements: d?.elements ?? [],
+        type: d?.type ?? 'forward',
+        power: d?.power ?? null,
+        actionable: glows(x.id),
+        size: 'small',
+        lb: x.faceUp ? 'up' : 'down',
+        ...(d?.text === undefined ? {} : { text: d.text }),
+        ...(actionFor(x.id) === undefined ? {} : { action: actionFor(x.id) }),
+        ...(payingRole(x.id) === undefined ? {} : { paying: payingRole(x.id) }),
+      }, { selected: sheet === x.id })
     })
 
   // Every clickable choice must be reachable, or the game dead-ends: Billy Bob's ETB targets your BREAK ZONE,
@@ -595,6 +627,7 @@ export function Board({ game, onHelp }: {
           onToggle={(kind) => togglePile(AI, kind)}
         />
         {pileRow(AI)}
+        {view.fields[AI].lbDeck.length > 0 && <Zone label="AI LB deck" compact items={lbItems(AI)} onLookAt={look} />}
         <Zone label="AI Backups" compact items={field(AI, 'backups')} onLookAt={look} />
         <Zone label="AI Forwards" items={field(AI, 'forwards')} onLookAt={look} />
       </section>
@@ -615,6 +648,7 @@ export function Board({ game, onHelp }: {
           onToggle={(kind) => togglePile(HUMAN, kind)}
         />
         {pileRow(HUMAN)}
+        {view.fields[HUMAN].lbDeck.length > 0 && <Zone label="Your LB deck" compact items={lbItems(HUMAN)} onLookAt={look} />}
         <Zone label="Your Backups" compact items={field(HUMAN, 'backups')} onLookAt={look} />
         <Zone label="Your Forwards" items={field(HUMAN, 'forwards')} onLookAt={look} />
       </section>

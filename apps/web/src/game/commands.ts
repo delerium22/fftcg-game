@@ -554,8 +554,12 @@ export function describeChoice(v: PlayerView, c: Command, opts: { payment?: bool
     case 'castCharacter':
     case 'castSummon': {
       const pay = [...c.payment.dullBackups.map((id) => `dull ${choiceName(v, id)}`), ...c.payment.discards.map((d) => `discard ${choiceName(v, d.card)} as ${d.element}`)]
-      if (!withPayment) return `Cast ${choiceName(v, c.card)}`
-      return pay.length ? `Cast ${choiceName(v, c.card)} paying: ${pay.join(', ')}` : `Cast ${choiceName(v, c.card)} (free)`
+      // Rung J8: a card cast from the LB deck says so, and names the cards its Limit Break cost turns face up.
+      const fromLb = v.fields[v.me].lbDeck.some((x) => x.id === c.card) || (c.payment.lbFlip?.length ?? 0) > 0
+      const head = fromLb ? `Cast ${choiceName(v, c.card)} from your LB deck` : `Cast ${choiceName(v, c.card)}`
+      if (!withPayment) return head
+      const flips = c.payment.lbFlip?.length ? `, turning ${c.payment.lbFlip.map((id) => choiceName(v, id)).join(' and ')} face up` : ''
+      return pay.length ? `${head}${flips} paying: ${pay.join(', ')}` : `${head}${flips} (free)`
     }
     /*
      * `legalCommands` pre-enumerates whole target SETS — one command per legal combination of `min..max`
@@ -1016,6 +1020,7 @@ function sameIds(a: readonly CardId[], b: readonly CardId[]): boolean {
 /** Payments are sets of sources, not sequences — `legalCommands` and `preferredPayment` build them in different orders. */
 export function samePayment(a: Payment, b: Payment): boolean {
   if (!sameIds(a.dullBackups, b.dullBackups)) return false
+  if (!sameIds(a.lbFlip ?? [], b.lbFlip ?? [])) return false   // rung J8: which LB cards turn face up is part of the payment
   if (a.discards.length !== b.discards.length) return false
   const key = (d: Payment['discards'][number]) => `${d.card}:${d.element}`
   const bKeys = b.discards.map(key).sort()

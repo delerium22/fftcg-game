@@ -36,7 +36,7 @@ export const isPayableChoice = (c: Choice): c is Choice & { command: PayableComm
 export function needsTray(c: Choice): boolean {
   if (!isPayableChoice(c)) return false
   const p = c.command.payment
-  return p.dullBackups.length + p.discards.length > 0 || (c.alternatives?.length ?? 0) > 0
+  return p.dullBackups.length + p.discards.length + (p.lbFlip?.length ?? 0) > 0 || (c.alternatives?.length ?? 0) > 0
 }
 
 /** The cost the tray draws, from the engine — `castRequirement` folds in Odin's reduction, and an activation's
@@ -60,20 +60,23 @@ export function legalPaymentsOf(c: Choice): Payment[] {
 function subsumes(big: Payment, small: Payment): boolean {
   return small.dullBackups.every((b) => big.dullBackups.includes(b))
     && small.discards.every((d) => big.discards.some((o) => o.card === d.card && o.element === d.element))
+    && (small.lbFlip ?? []).every((id) => (big.lbFlip ?? []).includes(id))
 }
 
-export type SourceAdd = { backup: CardId } | { discard: CardId; element: Element }
+/** A CP source — or, rung J8, an LB-deck card to turn face up for a Limit Break cost. */
+export type SourceAdd = { backup: CardId } | { discard: CardId; element: Element } | { flip: CardId }
 
 /** I2-D3: may this source be added — is the result still inside some listed payment? */
 export function extendable(legal: readonly Payment[], sel: Payment, add: SourceAdd): boolean {
-  const next = 'backup' in add ? withBackup(sel, add.backup, true) : withDiscard(sel, add.discard, add.element)
+  const next = 'backup' in add ? withBackup(sel, add.backup, true) : 'flip' in add ? withFlip(sel, add.flip, true) : withDiscard(sel, add.discard, add.element)
   return legal.some((p) => subsumes(p, next))
 }
 
 /** The union of sources across the listed payments — what the board may light as a candidate at all. */
-export function candidateSources(legal: readonly Payment[]): { backups: Set<CardId>; discards: Map<CardId, Element[]> } {
+export function candidateSources(legal: readonly Payment[]): { backups: Set<CardId>; discards: Map<CardId, Element[]>; flips: Set<CardId> } {
   const backups = new Set<CardId>()
   const discards = new Map<CardId, Element[]>()
+  const flips = new Set<CardId>()
   for (const p of legal) {
     for (const b of p.dullBackups) backups.add(b)
     for (const d of p.discards) {
@@ -81,19 +84,34 @@ export function candidateSources(legal: readonly Payment[]): { backups: Set<Card
       if (!els.includes(d.element)) els.push(d.element)
       discards.set(d.card, els)
     }
+    for (const id of p.lbFlip ?? []) flips.add(id)
   }
-  return { backups, discards }
+  return { backups, discards, flips }
 }
+
+const keepFlips = (sel: Payment): Pick<Payment, 'lbFlip'> => (sel.lbFlip && sel.lbFlip.length ? { lbFlip: sel.lbFlip } : {})
 
 export function withBackup(sel: Payment, id: CardId, on: boolean): Payment {
   const without = sel.dullBackups.filter((b) => b !== id)
-  return { dullBackups: on ? [...without, id] : without, discards: sel.discards }
+  return { dullBackups: on ? [...without, id] : without, discards: sel.discards, ...keepFlips(sel) }
 }
 
 /** Set (element given) or clear (null) a hand card's discard. */
 export function withDiscard(sel: Payment, card: CardId, element: Element | null): Payment {
   const without = sel.discards.filter((d) => d.card !== card)
-  return { dullBackups: sel.dullBackups, discards: element === null ? without : [...without, { card, element }] }
+  return { dullBackups: sel.dullBackups, discards: element === null ? without : [...without, { card, element }], ...keepFlips(sel) }
+}
+
+/** Rung J8: add or remove an LB-deck card from the ones the Limit Break cost turns face up. */
+export function withFlip(sel: Payment, id: CardId, on: boolean): Payment {
+  const without = (sel.lbFlip ?? []).filter((x) => x !== id)
+  const lbFlip = on ? [...without, id] : without
+  return { dullBackups: sel.dullBackups, discards: sel.discards, ...(lbFlip.length ? { lbFlip } : {}) }
+}
+
+/** Rung J8: how many LB-deck cards a listed payment turns face up (the same for every listed payment of one cast). */
+export function flipsNeeded(legal: readonly Payment[]): number {
+  return legal.reduce((m, p) => Math.max(m, p.lbFlip?.length ?? 0), 0)
 }
 
 /** The listed choice whose payment IS the selection, or null while it is incomplete. This — never the

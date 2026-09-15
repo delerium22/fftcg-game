@@ -371,6 +371,12 @@
 
 .card.is-paying-discard .card__paying { background: var(--danger); color: #fff; }
 
+/* Rung J8: an LB-deck card picked to turn face up for the Limit Break cost — a gold ring, no flame (it is not lost). */
+.card.is-paying-flip .card__paying { background: #b58a3c; color: #fff; }
+.card.is-paying-flip .card__face,
+.card.is-paying-flip.is-selectable .card__face,
+.card.is-paying-flip.is-selectable:hover .card__face { box-shadow: var(--shadow-lift), 0 0 0 3px #d9a94a, 0 0 18px -4px rgb(217 169 74 / 70%); }
+
 /* A discard-to-pay burns: a red-white pulse, like the card is already on fire (user request, 2026-09-09).
  * Declared AFTER the playable pulse below so it wins on a card that is both offered and taken. */
 .card.is-paying-discard .card__face,

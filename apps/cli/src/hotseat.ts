@@ -42,7 +42,7 @@ function describeEvent(v: PlayerView, e: Event): string | null {
  */
 class InputEnded extends Error {}
 
-export async function hotseat(opts: { seed: number; decks: [string[], string[]]; defs: CardDef[] }, io?: HotseatIo): Promise<void> {
+export async function hotseat(opts: { seed: number; decks: [string[], string[]]; defs: CardDef[]; lbDecks?: [string[], string[]] }, io?: HotseatIo): Promise<void> {
   const rl = io ? null : createInterface({ input: stdin, output: stdout })
   // `question` does not reject on close by itself, so closing has to abort it.
   const ended = new AbortController()

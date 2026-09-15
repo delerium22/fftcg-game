@@ -7,6 +7,8 @@ export interface SelfPlayOptions {
   games: number
   seed: number
   decks: [string[], string[]]
+  /** Rung J8: the LB decks (§7.14); none when absent. */
+  lbDecks?: [string[], string[]]
   defs: CardDef[]
   maxCommands?: number
   agents?: [AgentSpec, AgentSpec]
@@ -115,6 +117,7 @@ export const newGameStats = (): GameStats => ({
 export interface PlayGameOptions {
   seed: number
   decks: [string[], string[]]
+  lbDecks?: [string[], string[]]
   defs: CardDef[]
   agents: readonly [Agent, Agent]
   maxCommands: number
@@ -128,7 +131,7 @@ export interface PlayGameOptions {
  */
 export function playGame(opts: PlayGameOptions, stats: GameStats): { winner: PlayerId | null; turns: number } {
   const { strict } = opts
-  let s = createGame({ seed: opts.seed, decks: opts.decks, defs: opts.defs })
+  let s = createGame({ seed: opts.seed, decks: opts.decks, defs: opts.defs, ...(opts.lbDecks ? { lbDecks: opts.lbDecks } : {}) })
   for (let i = 0; i < opts.maxCommands && !s.result; i++) {
     const p = actingPlayer(s)
     if (p === null) break
@@ -221,7 +224,7 @@ export function selfPlay(opts: SelfPlayOptions): SelfPlayReport {
         makeAgent(specs[0], seed * 2 + 1, opts.decks),
         makeAgent(specs[1], seed * 2 + 2, opts.decks),
       ] as const
-      const { winner, turns: t } = playGame({ seed, decks: opts.decks, defs: opts.defs, agents, maxCommands: max, strict }, stats)
+      const { winner, turns: t } = playGame({ seed, decks: opts.decks, ...(opts.lbDecks ? { lbDecks: opts.lbDecks } : {}), defs: opts.defs, agents, maxCommands: max, strict }, stats)
       report.completed++
       if (winner === null) report.draws++; else report.wins[winner]++
       turns += t

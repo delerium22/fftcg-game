@@ -45,6 +45,8 @@ export interface CardProps {
   dull?: boolean | undefined
   /** §15.2.4 (rung J3): frozen — it will not activate in its controller's next Active Phase. A badge, like the buffs. */
   frozen?: boolean | undefined
+  /** Rung J8 (§7.14): a card of an LB deck — face down (castable from there), or face up (spent). A badge. */
+  lb?: 'down' | 'up' | undefined
   /**
    * "You can act on this" — the lift and rim (spec B-A4's highlight). Since rung I1 EVERY face-up card is a
    * button whose press opens its sheet, so this no longer decides whether the card is pressable, only whether
@@ -57,7 +59,7 @@ export interface CardProps {
    * selected backup renders dull with a badge; a selected hand card gets a danger ring and a badge. Stated in
    * the accessible name too, because a fill is not a channel a screen reader has.
    */
-  paying?: 'dull' | 'discard' | undefined
+  paying?: 'dull' | 'discard' | 'flip' | undefined
   /** Rung J7: picked into the set being built (an attack party, a target set) — press again to put back. */
   chosen?: boolean | undefined
   faceDown?: boolean | undefined
@@ -128,7 +130,7 @@ export interface CardProps {
  * a Backup, but the component's contract allows it — and a +3000 badge on a card with no power is no more
  * meaningful than the sentence, so both stand down together.
  */
-function cardBuffs({ power, powerBonus = 0, granted = [], flags = [], frozen = false }: CardProps): { badge: string; said: string }[] {
+function cardBuffs({ power, powerBonus = 0, granted = [], flags = [], frozen = false, lb }: CardProps): { badge: string; said: string }[] {
   const modifier = powerBonus === 0 || power === null ? []
     : [{
         badge: powerBonus > 0 ? `+${powerBonus}` : `${powerBonus}`,
@@ -141,6 +143,7 @@ function cardBuffs({ power, powerBonus = 0, granted = [], flags = [], frozen = f
     ...granted.map((k) => ({ badge: KEYWORD_LABEL[k], said: `${KEYWORD_LABEL[k]} granted` })),
     ...flags.map((f) => ({ badge: FLAG_LABEL[f], said: FLAG_LABEL[f].toLowerCase() })),
     ...(frozen ? [{ badge: 'Frozen', said: 'frozen — will not activate next turn' }] : []),
+    ...(lb === 'down' ? [{ badge: 'LB', said: 'in the LB deck, face down' }] : lb === 'up' ? [{ badge: 'Spent', said: 'in the LB deck, face up — spent' }] : []),
   ]
 }
 
@@ -161,7 +164,7 @@ export function cardAccessibleName(props: CardProps): string {
     `${name}, cost ${cost}`, elements.join(' and '), type,
     remaining === null ? '' : `power ${remaining} of ${power}`,
     dull ? 'dull' : '', ...cardBuffs(props).map((b) => b.said),
-    paying === 'dull' ? 'will be dulled to pay' : paying === 'discard' ? 'will be discarded to pay' : '',
+    paying === 'dull' ? 'will be dulled to pay' : paying === 'discard' ? 'will be discarded to pay' : paying === 'flip' ? 'will be turned face up to pay the Limit Break cost' : '',
     chosen ? 'chosen for this move' : '',
     action ?? '',
   ].filter(Boolean).join(', ')
@@ -192,7 +195,7 @@ export function Card(props: CardProps): JSX.Element {
   const shownDull = dull || paying === 'dull'
   const className = [
     'card', `card--${size}`, shownDull ? 'is-dull' : '', actionable ? 'is-selectable' : '', selected ? 'is-selected' : '',
-    paying === 'dull' ? 'is-paying-dull' : paying === 'discard' ? 'is-paying-discard' : '', chosen ? 'is-chosen' : '',
+    paying === 'dull' ? 'is-paying-dull' : paying === 'discard' ? 'is-paying-discard' : paying === 'flip' ? 'is-paying-flip' : '', chosen ? 'is-chosen' : '',
   ].filter(Boolean).join(' ')
   const label = cardAccessibleName(props)
 
