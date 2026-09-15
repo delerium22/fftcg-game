@@ -33,8 +33,13 @@ const BURN: Ability = {
   id: 'T-LB-S:summon', trigger: { kind: 'summonResolve' }, text: 'Choose 1 Forward. Deal it 5000 damage.',
   effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'damage', amount: 5000 }] }],
 }
+const BOUNCE: Ability = {
+  id: 'T-BOUNCE:summon', trigger: { kind: 'summonResolve' }, text: 'Choose 1 Forward. Return it to its owner\'s hand.',
+  effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'moveToHand' }] }],
+}
 const DEFS: CardDef[] = [
   ...VANILLA_POOL,
+  makeDef({ code: 'T-BOUNCE', type: 'summon', cost: 0, power: null, hasAbilities: true, abilityClauses: 1, abilities: [BOUNCE] }),
   makeDef({ code: 'T-LB2', cost: 0, power: 5000, limitBreak: 2, generic: false }),
   makeDef({ code: 'T-LB1', cost: 0, power: 3000, limitBreak: 1 }),
   makeDef({ code: 'T-LB-S', type: 'summon', cost: 0, power: null, limitBreak: 1, hasAbilities: true, abilityClauses: 1, abilities: [BURN] }),
@@ -155,6 +160,27 @@ describe('J8 — the return (§15.2.8.4)', () => {
     expect(r.state.players[0].breakZone).not.toContain(summon)
     expect(lb(r.state, 0).find((x) => x.id === summon)?.faceUp).toBe(true)
     expect(r.events).toContainEqual({ type: 'lbReturned', player: 0, card: summon, from: 'breakZone' })
+    ok(r.state)
+  })
+})
+
+describe('J8 — the return from a hidden zone (§15.2.8.4.4)', () => {
+  it('an LB Forward returned to hand is in the LB deck face up when the command returns, never in the hand', () => {
+    let s = game()
+    const [lb2] = lbIds(s, 0, 'T-LB2')
+    // On the field by hand (its cast is proven above); the opponent bounces it with a free Summon from hand.
+    s = { ...s, players: [{ ...s.players[0], lbDeck: s.players[0].lbDeck.filter((x) => x.id !== lb2), forwards: [...s.players[0].forwards, { id: lb2!, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] }] }, s.players[1]] }
+    let bounce: CardId
+    ;[s, bounce] = withHand(s, 1, 'T-BOUNCE')
+    s = apply(s, { type: 'pass', player: 0 }).state                                             // §11.1.6: the opponent may cast
+    let t = apply(s, { type: 'castSummon', player: 1, card: bounce, payment: NO_CP }).state
+    t = apply(t, { type: 'chooseTargets', player: 1, targets: [lb2!] }).state
+    const r = passBoth(t)
+    expect(findFieldCard(r.state, lb2!)).toBeNull()
+    expect(r.state.players[0].hand, 'not in the hand').not.toContain(lb2)
+    expect(lb(r.state, 0).find((x) => x.id === lb2)?.faceUp, 'in the LB deck, face up').toBe(true)
+    expect(r.events.map((e) => e.type), 'the arrival happened (§15.2.8.4.2)').toContain('returnedToHand')
+    expect(r.events).toContainEqual({ type: 'lbReturned', player: 0, card: lb2, from: 'hand' })
     ok(r.state)
   })
 })

@@ -126,6 +126,8 @@ export function trace(events: readonly Event[], names: Record<number, string> = 
       case 'paidToBreakZone': out.push(`paid:${n(e.card)}`); break
       case 'frozen': out.push(`frozen:${n(e.card)}`); break
       case 'thawed': out.push(`thawed:${n(e.card)}`); break
+      case 'lbFlipped': out.push(`lbFlip:${e.cards.map(n).join('+')}`); break       // rung J8, §15.2.8.3.2
+      case 'lbReturned': out.push(`lbReturn:${n(e.card)}:${e.from}`); break     // rung J8, §15.2.8.4.1
       case 'dulled': out.push(`dulled:${n(e.card)}`); break
       case 'playerDamaged': out.push(`playerDamaged:${e.player}`); break
       case 'exBurstOffered': out.push('burst:offered'); break

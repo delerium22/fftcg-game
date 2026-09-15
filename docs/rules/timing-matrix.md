@@ -2,7 +2,7 @@
 
 Rung J9 (spec `docs/superpowers/specs/2026-09-16-rung-j9-timing-matrix.md`). One row per subsection of the
 section index for chapters 9, 10, 11 (11.1, 11.3, 11.4, 11.6, 11.7, 11.8, 11.10, 11.11), 12, and 15.1.1.9,
-15.2.1–15.2.5. Checked by `packages/engine/test/timing-matrix.test.ts`.
+15.2.1–15.2.5, 15.2.8. Checked by `packages/engine/test/timing-matrix.test.ts`.
 
 Status: `heading` (a title with sub-rows), `tested` (cites `pkg/file#fragment` refs), `simplified` (names the
 `packages/*/src` file whose `MVP0-SIMPLIFICATION` marker cites the section, optionally plus refs for what IS tested),
@@ -238,3 +238,15 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.5.2 | Cast with priority in either player's Main or Attack Phase | tested | engine/timing-l1-back-attack#§15.2.5.2 |
 | 15.2.5.3 | Cast as a response | tested | engine/timing-l1-back-attack#§15.2.5.3 |
 | 15.2.5.4 | No stack: cannot be prevented by Summons or abilities | tested | engine/timing-l1-back-attack#§15.2.5.3 |
+| 15.2.8 | Limit Break | heading |  |
+| 15.2.8.1 | A field ability written on the card | tested | engine/limit-break#a face-down LB card is castable in the Main Phase |
+| 15.2.8.2 | "Limit Break -- X" is the LB cost | tested | cards/normalise#Limit Break |
+| 15.2.8.3 | LB cards are cast from the LB deck, under the type's own conditions | tested | engine/limit-break#a face-down LB card is castable in the Main Phase; cards/scenarios/maat-limit-break#L3 maat-limit-break |
+| 15.2.8.3.1 | The LB cost is paid in addition to the base cost | tested | engine/limit-break#a face-down LB card is castable in the Main Phase; cards/scenarios/maat-limit-break#L3 maat-limit-break |
+| 15.2.8.3.2 | Paid by turning X face-down LB-deck cards face up | tested | engine/limit-break#refuses a wrong flip count; engine/limit-break#enumeratePayments crosses CP payments with flip subsets |
+| 15.2.8.4 | On the field, an ordinary Character | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |
+| 15.2.8.4.1 | Moved to hand, Break Zone, main deck or removed: goes there, then to the LB deck face up at once | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |
+| 15.2.8.4.2 | The arrival's triggers still apply | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |
+| 15.2.8.4.3 | A Summon LB card: stack → Break Zone → LB deck face up | tested | engine/limit-break#an LB Summon resolves |
+| 15.2.8.4.4 | Even from a hidden zone (deck, hand) it goes to the LB deck | tested | engine/limit-break#returned to hand is in the LB deck face up |
+| 15.2.8.4.5 | The return is not stacked and admits no replacement effect | tested | engine/limit-break#an LB Forward broken in battle |

@@ -14,7 +14,7 @@ const ROOT = resolve(import.meta.dirname, '../../..')
 const MATRIX = join(ROOT, 'docs/rules/timing-matrix.md')
 const INDEX = join(ROOT, 'docs/rules/cr-3.3-sections.txt')
 /** The chapters and sections the matrix covers (spec J9-D1). A section is in scope when it equals or is under one of these. */
-export const SCOPE = ['9', '10', '11.1', '11.3', '11.4', '11.6', '11.7', '11.8', '11.10', '11.11', '12', '15.1.1.9', '15.2.1', '15.2.2', '15.2.3', '15.2.4', '15.2.5']
+export const SCOPE = ['9', '10', '11.1', '11.3', '11.4', '11.6', '11.7', '11.8', '11.10', '11.11', '12', '15.1.1.9', '15.2.1', '15.2.2', '15.2.3', '15.2.4', '15.2.5', '15.2.8']
 const STATUSES = new Set(['heading', 'tested', 'simplified', 'n/a'])
 const PKG_DIRS: Record<string, string> = { engine: 'packages/engine/test', cards: 'packages/cards/test', web: 'apps/web/test' }
 

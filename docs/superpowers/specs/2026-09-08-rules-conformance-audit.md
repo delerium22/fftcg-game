@@ -44,7 +44,7 @@ unreachable, not skipped).
 | 7.7.5 / 12.4.7 | One Light/Dark | absent | Pool has none. |
 | 7.12 | **The stack** | ok | Rung J1 (2026-09-08): `state.stack`, `passes`; `cr11-stack.test.ts`. The rows once marked ★ below were its consequences. |
 | 7.13 | Removed from play | ok | C7. |
-| 7.14 / 8.1 / 15.2.8 | LB deck, Limit Break | absent | Deliberately deferred (design spec MVP5); deck file is main deck only. |
+| 7.14 / 8.1 / 15.2.8 | LB deck, Limit Break | ok | Rung J8 (2026-09-16): `PlayerState.lbDeck`, `Payment.lbFlip`, the sweep in `rules.ts`; `limit-break.test.ts`, `scenarios/maat-limit-break.test.ts`; `decks/starter-2025-vol2-lb.txt` (Noctis ×2, Maat ×2). Both LB decks are exposed to both seats (open decklists, spec J8-D5). |
 | 8.2 | Setup, first player, mulligan | partial | Mulligan keeps hand order to the bottom (`setup.ts:74`); §8.2.1.4 lets you choose. Unobservable in a shuffled 50-card deck without deck-bottom effects. |
 | 9.1 | Active Phase | ok | `phases.ts`. No Freeze (§15.2.4), so "frozen do not activate" is absent. |
 | 9.2 | Draw Phase, first turn draws one | ok | `cr9-phases.test.ts`. |
@@ -131,7 +131,7 @@ verify by playing.
 | **J5** | ~~`CardDef.job`/`category` from the fetched data; `TargetFilter` grows `job`, `category`, `name`, `power`, `controller`; `matchesFilter` in lockstep; a pool test that every filter axis is exercised.~~ Built 2026-09-08 ([spec](2026-09-08-rung-j5-target-filter-vocabulary.md)): job, category, name, keyword, minPower/maxPower, status, grantedKeyword; `FILTER_AXES` is the lockstep guard. `controller` stays on `TargetSpec`. | The scaling item for "more cards". |
 | **J6** | ~~Continuous effects: a layer computed by `effectivePower`/`keywordsOf` from field abilities in play, with §11.12.4.6 ordering~~ — built 2026-09-08 ([spec](2026-09-08-rung-j6-continuous-effects.md): `modifyPower`/`grantKeyword`/`grantFlag` statics, `flagsOf`, `layer.ts`; ordering deferred as additive-only). Still open: delayed auto-abilities; replacement effects (§11.12.5) — their own spec when a pool card needs them. | The scaling item for "more effect types". Architectural. |
 | **J7** | ~~`legalCommands` combinatorics: candidate cap plus a select-then-confirm pending for target sets, mirroring I2's incremental model.~~ Built 2026-09-08 ([spec](2026-09-08-rung-j7-target-set-selection.md)): `isLegal` + four set checks, a 64-set cap with `capped`, and a browser picker (selection.ts, SelectionTray) — no new pending was needed. | Needed before the pool grows past ~40 cards. |
-| **J8** | Limit Break deck (§7.14, §15.2.8); then Vol. 1 pool. | Last; the design spec's MVP5. |
+| **J8** | ~~Limit Break deck (§7.14, §15.2.8).~~ Built 2026-09-16 ([spec](2026-09-16-rung-j8-limit-break.md)). Then the Vol. 1 pool. | Last; the design spec's MVP5. |
 | **J9** | ~~The timing matrix: every CR timing rule mapped to a test, three layers (primitives, compositions, real-card scenarios), a referee test.~~ Built 2026-09-16 ([spec](2026-09-16-rung-j9-timing-matrix.md)). | Asked for by the user 2026-09-16; J3/J2/J8 add rows to it. |
 
 Not on the ladder, deliberately: Monsters (§5.2.3.1.1, no pool card), Warp/Priming/Crystals/Counters
