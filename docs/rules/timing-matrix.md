@@ -34,16 +34,16 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 9.5 | End Phase | heading |  |
 | 9.5.1 | Processes at the end of the turn, below | heading |  |
 | 9.5.1.1 | "Beginning of the End Phase" / "end of the turn" triggers go on the stack; the turn player gains priority; no Summons or action abilities | simplified | packages/engine/src/phases.ts |
-| 9.5.1.2 | Discard down to the hand size; a special action | tested | engine/cr9-phases#§9.5.1.2 |
+| 9.5.1.2 | Discard down to the hand size; a special action | tested | engine/cr9-phases#§9.5.1.2; cards/scenarios/end-phase#L3 end-phase |
 | 9.5.1.3 | Then, simultaneously: | heading |  |
-| 9.5.1.3.1 | All damage on field cards is removed | tested | engine/cr9-phases#§9.5.1.3 |
+| 9.5.1.3.1 | All damage on field cards is removed | tested | engine/cr9-phases#§9.5.1.3; cards/scenarios/end-phase#L3 end-phase |
 | 9.5.1.3.2 | "Until the end of the turn" effects stop | tested | engine/abilities-engine#§9.5.1.3.2; engine/timing-l2-compositions#§9.5.1.3.2 |
 | 9.5.1.4 | Then rule processes and waiting triggers; the turn player gains priority; after both forfeit, back to 9.5.1.3.1 | simplified | packages/engine/src/phases.ts |
-| 9.5.1.5 | Nothing further: a new turn for the other player | tested | engine/cr9-phases#main1 → attack declaration → main2 |
+| 9.5.1.5 | Nothing further: a new turn for the other player | tested | engine/cr9-phases#main1 → attack declaration → main2; cards/scenarios/end-phase#L3 end-phase |
 | 10 | Attack Phase | heading |  |
 | 10.1 | Carried out as follows | heading |  |
 | 10.1.1 | Attack Preparation Step | heading |  |
-| 10.1.1.1 | "Beginning of the Attack Phase" triggers go on the stack | tested | cards/abilities#At the beginning of the Attack Phase |
+| 10.1.1.1 | "Beginning of the Attack Phase" triggers go on the stack | tested | cards/abilities#At the beginning of the Attack Phase; cards/scenarios/cloud-turn#L3 cloud-turn |
 | 10.1.1.2 | The turn player gains priority; either player may cast a Summon or use an ability | tested | engine/cr11-stack#the non-turn player may activate in the Attack Preparation window |
 | 10.1.2 | Attack Declaration Step | heading |  |
 | 10.1.2.1 | The turn player declares one Forward, or a same-element party | tested | engine/cr10-attack#§10.1.2.1 |
@@ -54,7 +54,7 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 10.1.2.3 | Attack costs are locked at declaration | n/a | no pool card has an attack cost |
 | 10.1.2.4 | The Forward is now attacking | tested | engine/cr10-attack#§10.1.2.2 |
 | 10.1.2.5 | Triggers caused by the attacking Forward go on the stack | n/a | no pool card prints "when attacks"; the AST has no such trigger |
-| 10.1.2.6 | The turn player gains priority (the `declared` window) | tested | engine/cr10-attack-windows#declaring an attack opens the |
+| 10.1.2.6 | The turn player gains priority (the `declared` window) | tested | engine/cr10-attack-windows#declaring an attack opens the; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 10.1.2.7 | No attackers: skip the block and damage steps | tested | engine/cr9-phases#main1 → attack declaration → main2 |
 | 10.1.3 | Block Declaration Step | heading |  |
 | 10.1.3.1 | The defender may block with one Forward, or not | tested | engine/cr10-attack#only the defender may block |
@@ -66,12 +66,12 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 10.1.3.3 | A blocker or attacker removed during the step takes no damage | tested | engine/cr10-attack-windows#§10.1.3.3 |
 | 10.1.3.4 | A party is blocked as one Character | tested | engine/cr10-attack#§10.1.3.4 |
 | 10.1.3.5 | Triggers caused by the block go on the stack | n/a | no pool card prints "when blocks"; the AST has no such trigger |
-| 10.1.3.6 | The turn player gains priority (the `blocked` window) | tested | engine/cr10-attack-windows#J1-A3 |
+| 10.1.3.6 | The turn player gains priority (the `blocked` window) | tested | engine/cr10-attack-windows#J1-A3; cards/scenarios/combat-tricks#L3 combat-tricks |
 | 10.1.4 | Damage Resolution Step | heading |  |
 | 10.1.4.1 | Unblocked: one point of damage to the opponent | tested | engine/cr10-attack#§10.1.4.1 |
 | 10.1.4.2 | Blocked: each deals its power to the other as battle damage | tested | engine/cr10-attack#§10.1.4.2 |
 | 10.1.4.2.1 | Against a party, the blocker splits its damage in multiples of 1000 | tested | engine/cr10-attack#§10.1.4.2.1; engine/party-damage#C2-A6 |
-| 10.1.4.3 | Damage triggers go on the stack | tested | engine/observer-triggers#C2-A4; engine/party-damage#C2-A8 |
+| 10.1.4.3 | Damage triggers go on the stack | tested | engine/observer-triggers#C2-A4; engine/party-damage#C2-A8; cards/scenarios/combat-tricks#L3 combat-tricks |
 | 10.1.4.4 | The turn player gains priority (the `damage` window) | tested | engine/cr10-attack-windows#declaring a block opens the; engine/timing-l2-compositions#L2-d |
 | 10.1.4.5 | The party disbands | tested | engine/cr10-attack#an unblocked party |
 | 10.1.4.6 | Another attack, or Main Phase 2 | tested | engine/timing-l1-priority#§10.1.4.6 |
@@ -88,7 +88,7 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.3.1 | Hand to stack with the cost paid; an illegal cast rewinds | tested | engine/cr11-stack#J1-A2; engine/legal-apply#invariant |
 | 11.3.2 | Declared, revealed, moved to the top of the stack under the caster | tested | engine/cr11-stack#J1-A2 |
 | 11.3.3 | "Choose" needs a legal target or it cannot be cast | tested | engine/cr11-stack#§11.3.3 |
-| 11.3.4 | Modal Summons declare their mode | tested | cards/abilities#20-103H Ramuh |
+| 11.3.4 | Modal Summons declare their mode | tested | cards/abilities#20-103H Ramuh; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 11.3.4.1 | The number of selectable effects is fixed at declaration | n/a | no pool Summon varies its mode count |
 | 11.3.5 | Cost references, alternative and variable costs, fixed at declaration | tested | cards/abilities#13-072R Odin — "If you have received 5 points |
 | 11.3.6 | Effects applying differently to several cards or players | n/a | none in the pool |
@@ -107,7 +107,7 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.4.5 | Effects applying differently | n/a | none in the pool |
 | 11.4.6 | The cost is locked | tested | engine/cr11.4-cast#a Forward enters the field active |
 | 11.4.6.1 | Payment per §11.2 | tested | engine/cr11.4-cast#rejects insufficient or wrong-element payment |
-| 11.4.7 | Enters the field; its ETB triggers go on the stack; the turn player gains priority | tested | engine/cr11-stack#J1-A4 |
+| 11.4.7 | Enters the field; its ETB triggers go on the stack; the turn player gains priority | tested | engine/cr11-stack#J1-A4; cards/scenarios/cloud-turn#L3 cloud-turn |
 | 11.6 | Action Abilities | heading |  |
 | 11.6.1 | An effect for a cost | tested | engine/activated-abilities#C3-A2 |
 | 11.6.2 | Written "(cost): (effect)" | tested | engine/activated-abilities#renders the printed cost |
@@ -161,7 +161,7 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 11.8.12 | Effects applying differently | n/a | none in the pool |
 | 11.8.13 | Conditional auto-abilities check at trigger and at resolution | n/a | none in the pool |
 | 11.8.14 | "You may": placed regardless, decided at resolution | tested | cards/abilities#24-063H Hugh Yurg — "you may search |
-| 11.8.15 | Only when the event actually occurs; a replaced event does not trigger | tested | engine/activated-abilities#a self-break cost is a zone movement but NOT a break |
+| 11.8.15 | Only when the event actually occurs; a replaced event does not trigger | tested | engine/activated-abilities#a self-break cost is a zone movement but NOT a break; cards/scenarios/combat-tricks#L3 combat-tricks |
 | 11.8.16 | Zone movement triggers | tested | engine/observer-triggers#C2-A2 |
 | 11.8.16.1 | Fail when the card did not reach the zone | n/a | none in the pool |
 | 11.8.16.2 | A search whose card does not reach the zone fails | n/a | none in the pool |
@@ -211,7 +211,7 @@ with the pool, with the reason). The `rule` column paraphrases; the rules text i
 | 15.1.1.9.2 | Same element only | tested | engine/cr10-attack#§10.1.2.1 |
 | 15.1.1.9.3 | Only Forwards that could attack alone | tested | engine/cr10-attack#dull forwards and forwards that already attacked |
 | 15.1.1.9.4 | Any number of Forwards | tested | engine/timing-l1-priority#§15.1.1.9.4 |
-| 15.1.1.9.5 | Down to one Forward, it is no longer a party | tested | engine/cr10-attack-windows#a party reduced to one |
+| 15.1.1.9.5 | Down to one Forward, it is no longer a party | tested | engine/cr10-attack-windows#a party reduced to one; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 15.1.1.9.6 | Blockable if any member is; the whole party is blocked | tested | engine/cr10-attack#§10.1.3.4 |
 | 15.1.1.9.7 | First Strike damage only if every member has it | simplified | packages/engine/src/attack.ts |
 | 15.1.1.9.8 | Each member checks it may damage the blocker; any break credits them all | tested | engine/cr10-attack#§10.1.4.2.1 |
