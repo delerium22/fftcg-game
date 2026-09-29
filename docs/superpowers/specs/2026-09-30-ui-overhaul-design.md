@@ -204,7 +204,8 @@ pile node.
   without ever acting on a stale board.
 - **Always available:** pressing a card opens its `CardSheet` for reading (its commit actions are hidden while
   locked), the hover preview, the log, settings, skip, and Concede. U2 adds an always-available Concede in the top
-  bar menu; today Concede exists only in the strip on your own turn.
+  bar menu; today Concede exists only in the strip on your own turn. Concede first collapses the queue (displayed
+  jumps to authoritative), then applies; its game-over step then plays like any other, and the dialog opens after it.
 - **Locked until convergence:** every strip action, the payment and selection trays, `CardSheet` actions, and
   the full-control toggle (turning it off settles windows and commits, so it is gameplay input).
 - **Skip:** click an empty board area, press Space, or press "»". The first skip collapses the current batch
@@ -497,7 +498,7 @@ The flags `?motion=instant` and `?art=off` are production-safe query parameters.
 | **U0** Harness and baseline | Settings store; `--motion-scale`; `?motion=instant`, `?art=off`; Playwright `storageState` sets Instant; the `fixtures.html` entry skeleton; a dev frame/long-task overlay (`?perf=1`); baseline screenshots and a perf trace of today's UI | new `bootstrap.ts` and `settings.ts` wired from `main.tsx`, `art.ts`, `playwright.config.ts`, `vite.config.ts`, new `fixtures.html` | **now** |
 | **U1** Tokens and the card | `tokens.css`, fonts, the icon sprite; the card redesign with the `data-*` state model, generative text-card art and the card back; the fixture gallery covering every card state | new `tokens.css` imported from `main.tsx`, `Card.tsx`, `Card.css`, fixture files (not `styles.css`, which V1-C edits) | **now** |
 | **U2** Board layout | `project(view)` → `BoardModel`, with the Board rendering from it (identical output). The viewport-fit grid, the top bar (hosting V1-C's picker) with an always-available Concede, piles and `ZoneSheet`, the LB fan, damage crystals, the stack column, the centre line, the primary-action button, the log drawer, the hover preview and the settings popover. `Board.tsx` (713 lines) splits into zone components | `Board.tsx`, `PromptStrip`, `EventLog`, `CardDetails`, `styles.css`, new `board/` | after V1-C merges |
-| **U3** Director foundation | Per-apply `PresentationStep`s with redaction and the exhaustive event classification; the director, displayed model, settle beat, convergence gating, skip, speed, Instant draining synchronously, restart and game generation; the coordinator's `whenIdle` gate; the convergence property test. **Every beat 0 ms: the game plays exactly as today** | `useGame.ts`, `coordinator.ts`, `types.ts`, new `presentation/` | after U2 |
+| **U3** Director foundation | Per-apply `PresentationStep`s with redaction and the exhaustive event classification; the director, displayed model, settle beat, convergence gating, skip, speed, Instant draining synchronously, restart and game generation; the coordinator's `whenIdle` gate; the convergence property test. **Every step drains synchronously, as at Instant, until U4 adds durations: the game plays exactly as today, with no timers** | `useGame.ts`, `coordinator.ts`, `types.ts`, new `presentation/` | after U2 |
 | **U4** Core motion | Add `motion`; zone moves (draw, play, break, discard, return, damage); dull and untap; hand fan springs; hover and inspect; turn and phase banners; AI telegraph reveals; the thinking indicator; art preload | presentation, UI | after U3 |
 | **U5** Targeting and payment | Target arrows (SVG Bézier), highlight and dim, CP crystals flowing to the meter, clear confirm and cancel | `SelectionTray`, `PaymentTray`, board | after U4 |
 | **U6** Signature sequences | Combat (lunge, clash, hit-stop, number pops), the damage flip, the EX Burst reveal, break shatter (DOM part), the stack column push and resolve, power punches, the game-over sequence | presentation, UI | after U5 |
@@ -511,7 +512,7 @@ Rungs run one at a time, in this order, so no two rungs edit the same files at o
 
 **Exit criteria for every rung:** `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm test:browser` pass; the
 fixture gallery is updated for any visual change; a play-test at Normal speed; a PR merged by the standing
-self-merge rule. U3 additionally proves the property test and "identical at 0 ms". The user play-tests after U4
+self-merge rule. U3 additionally proves the property test and "identical to today, with no timers". The user play-tests after U4
 and U6, which are the two points where the feel changes most.
 
 ## 12. Acceptance for the whole overhaul
