@@ -455,7 +455,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '20-103H', '20-105C', '22-068R', '22-119R', '23-125R', '24-063H', '27-124S', '27-125S', '27-126S', '27-127S', '9-074C',
       // rung V1-B
       '1-170C', '12-005C', '13-013C', '18-003C', '18-094C', '21-001R', '22-112R', '22-123R', '23-130H', '27-129S', '3-143C',
-      '11-010C', '20-106R', '21-010H', '23-119R', '24-126H',
+      '11-010C', '20-106R', '21-010H', '23-119R', '24-126H', '11-121C', '18-129C', '27-122S', '27-123S', '27-128S',
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
@@ -470,7 +470,8 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '1-170C:summon', '12-005C:summon', '13-013C:etb', '21-001R:etb', '21-001R:only-fire', '22-112R:etb', '3-143C:etb',
       '18-003C:draw', '18-094C:draw', '22-123R:etb', '23-130H:etb', '23-130H:standard-unit', '27-129S:etb', '27-129S:attack',
       '11-010C:pump', '11-010C:burn', '20-106R:etb', '20-106R:damage-3', '21-010H:search', '21-010H:play', '23-119R:etb',
-      '24-126H:etb-fire', '24-126H:etb-water',
+      '24-126H:etb-fire', '24-126H:etb-water', '11-121C:etb', '18-129C:gains', '18-129C:jecht-beam', '27-122S:etb',
+      '27-122S:attack', '27-123S:haste', '27-123S:etb', '27-123S:attack', '27-128S:no-action-abilities',
     ].sort())
   })
 
@@ -2000,6 +2001,8 @@ describe('the button text for an activated clause (found by playing)', () => {
     '11-010C:pump': 'Choose 1 Forward. It gains +1000 power until the end of the turn',
     '11-010C:burn': 'Choose 1 Forward. Deal it 5000 damage',
     '21-010H:play': 'Play 1 Job Warrior or Card Name Warrior of cost 3 or less from your hand onto the field (once per turn)',
+    '18-129C:gains': 'Until the end of the turn, Jecht gains Haste, First Strike and Brave',
+    '18-129C:jecht-beam': 'Choose 1 Forward. Deal it 8000 damage',
     // Sphene keeps its once-per-turn marker: that is not a timing condition the engine gates for you, it is
     // what pressing the button COSTS you for the rest of the turn (Codex MAJOR).
     '27-126S:retrieve': 'Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn. Add it to your hand (once per turn)',
@@ -2051,7 +2054,7 @@ describe('clauses left unimplemented ON PURPOSE (found by playing)', () => {
    * a reason string is prose, and prose cannot be checked (Codex MAJOR — a future entry could hide a real
    * gap behind a long, false explanation). Adding an entry without adding its proof fails here.
    */
-  const PROVEN = ['27-126S']
+  const PROVEN = ['27-126S', '27-128S']
 
   it('nothing is declared inert without a proof in this file', () => {
     expect(Object.keys(INERT_CLAUSES).sort(), 'an inert entry has no proof test — add one, or drop the entry').toEqual([...PROVEN].sort())
@@ -2102,6 +2105,15 @@ describe('clauses left unimplemented ON PURPOSE (found by playing)', () => {
         expect(a.trigger.sourceZone, `${a.id} removes itself from somewhere other than its own Break Zone`).toBe('breakZone')
       }
     }
+  })
+
+  it('PROOF for Charlotte 27-128S (rung V1-B): no Summon of cost 1 exists, so none can choose her side\u2019s Forwards', () => {
+    // "The Forwards you control cannot be chosen by your opponent's Summons of cost 1." The claim is that no such Summon
+    // can be cast in this pool. "Cost 1" is the card's printed cost — Odin's reduction changes what casting it costs,
+    // not its cost — so the pool's Summons are checked by `def.cost`, and there must be Summons to check.
+    const summons = loadCards().filter((d) => d.type === 'summon')
+    expect(summons.length, 'no Summon in the pool, so this proves nothing').toBeGreaterThan(3)
+    expect(summons.filter((d) => d.cost <= 1).map((d) => d.code), "a Summon of cost 1 exists — revisit INERT_CLAUSES['27-128S']").toEqual([])
   })
 
   it('Sphene no longer warns, and a card with a REAL gap still does', () => {

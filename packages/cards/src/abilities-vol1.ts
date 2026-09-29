@@ -432,15 +432,175 @@ const TAIVAS_PLAY: Ability = {
   }],
 }
 
+// ---------------------------------------------------------------------------
+// Specials and statics
+// ---------------------------------------------------------------------------
+
+/**
+ * Jecht's first clause: an action ability with no dull icon, so it is usable the turn he enters and while dull.
+ * "Jecht gains" is `onSource` (rung V1-A4): the text names the card, so there is no choice to make. `[Fire][Water]` is
+ * two CP, one of each.
+ */
+const JECHT_GAINS: Ability = {
+  id: '18-129C:gains',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 2, requiredElements: ['fire', 'water'] } }, yourTurnOnly: true },
+  text: '[Fire][Water]: Until the end of the turn, Jecht gains Haste, First Strike and Brave. You can only use this '
+    + 'ability during your turn.',
+  effects: [{
+    kind: 'onSource',
+    do: [
+      { kind: 'grantKeyword', keyword: 'haste' },
+      { kind: 'grantKeyword', keyword: 'firstStrike' },
+      { kind: 'grantKeyword', keyword: 'brave' },
+    ],
+  }],
+}
+
+/**
+ * Jecht Beam, a SPECIAL ability (§11.7, rung V1-A3): the S icon is `discardSameName` — discard another card named Jecht
+ * from hand — and the dull icon is his own. Not an action ability, so Charlotte's ban does not reach it.
+ *
+ * "Choose 1 Forward" is `controller: 'any'`, Jecht included. Open reading (plan R10): §11.7.5 says a special ability's
+ * source "cannot choose themselves"; whether that removes the source card from "Choose 1 Forward" is not settled here,
+ * and the engine does not exclude it (as for every other "Choose 1 Forward" in the pool).
+ */
+const JECHT_BEAM: Ability = {
+  id: '18-129C:jecht-beam',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, discardSameName: true }, special: { name: 'Jecht Beam' } },
+  text: 'Jecht Beam [S][Dull]: Choose 1 Forward. Deal it 8000 damage.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{ kind: 'damage', amount: 8000 }],
+  }],
+}
+
+/**
+ * Zack's Haste: a continuous `grantKeyword` on Zack alone (`self`, not a name filter — LB Zack 22-112R shares the name,
+ * and this Haste is not his), while the OPPONENT controls 3 or more Forwards, read by the layer each time it is asked.
+ */
+const ZACK_HASTE: Ability = {
+  id: '27-123S:haste',
+  trigger: {
+    kind: 'static',
+    effect: { kind: 'grantKeyword', keyword: 'haste', to: { controller: 'self', self: true }, when: { kind: 'controlsAtLeast', count: 3, controller: 'opponent', filter: { type: 'forward' } } },
+  },
+  text: 'If your opponent controls 3 or more Forwards, Zack gains Haste.',
+  effects: [],   // a static makes something true; it has nothing to run
+}
+
+/**
+ * "deal 1000 damage for each Backup you control to all the Forwards opponent control": untargeted (`forEach`, no
+ * prompt), counted as each hit resolves (spec V1-D7) — every hit of one sweep reads the same count, since breaks are
+ * rule processes between frames. With no Backup the amount is 0 and each hit is skipped: no damage, no event.
+ */
+const ZACK_SWEEP = [{
+  kind: 'forEach',
+  from: { zone: 'forwards', controller: 'opponent' },
+  do: [{ kind: 'damage', amount: { per: { controller: 'self', filter: { type: 'backup' } }, times: 1000 } }],
+}] as const satisfies Ability['effects']
+
+/** "When Zack enters the field or attacks" — one printed clause, two triggers sharing one effect list (plan R2). */
+const ZACK_ETB: Ability = {
+  id: '27-123S:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Zack enters the field or attacks, deal 1000 damage for each Backup you control to all the Forwards opponent control.',
+  effects: ZACK_SWEEP,
+}
+
+const ZACK_ATTACK: Ability = {
+  id: '27-123S:attack',
+  trigger: { kind: 'attacks' },
+  text: ZACK_ETB.text,
+  effects: ZACK_SWEEP,
+}
+
+/**
+ * Wuk Lamat's clause 2, the same two-trigger split as Zack. The Forward is CHOSEN as the clause is placed; "If you control
+ * 5 or more Characters" is read as it resolves (Palom's shape), over Forwards and Backups, Wuk Lamat included.
+ *
+ * Her clause 1 ("If you control 7 or more Characters, Wuk Lamat gains 'If a Forward you control deals damage to a
+ * Forward, the damage increases by 2000 instead.'") is a replacement effect: rung V2 (spec V1-D4). It stays
+ * unimplemented, not inert — it would change play — so she warns about it and `pool-coverage` lists the gap.
+ */
+const WUK_LAMAT_CLAUSE_2 = [{
+  kind: 'chooseTargets', min: 1, max: 1,
+  from: { zone: 'forwards', controller: 'opponent' },
+  then: [{ kind: 'if', when: { kind: 'controlsAtLeast', count: 5, controller: 'self' }, then: [{ kind: 'damage', amount: 7000 }] }],
+}] as const satisfies Ability['effects']
+
+const WUK_LAMAT_ETB: Ability = {
+  id: '27-122S:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Wuk Lamat enters the field or attacks, choose 1 Forward opponent controls. If you control 5 or more Characters, deal it 7000 damage.',
+  effects: WUK_LAMAT_CLAUSE_2,
+}
+
+const WUK_LAMAT_ATTACK: Ability = {
+  id: '27-122S:attack',
+  trigger: { kind: 'attacks' },
+  text: WUK_LAMAT_ETB.text,
+  effects: WUK_LAMAT_CLAUSE_2,
+}
+
+/**
+ * Charlotte's clause 3 (rung V1-A3, V1-D15): a continuous `grantFlag` over the opponent's Forwards, read by
+ * `activationCheck`. An action ability only; a special ability (Jecht Beam) stays usable. Clause 1 (damage −1000) is a
+ * replacement effect for rung V2; clause 2 is inert (`VOL1_INERT`).
+ */
+const CHARLOTTE_BAN: Ability = {
+  id: '27-128S:no-action-abilities',
+  trigger: {
+    kind: 'static',
+    effect: { kind: 'grantFlag', flag: 'cannotUseActionAbilities', to: { controller: 'opponent', filter: { type: 'forward' } } },
+  },
+  text: 'The Forwards opponent controls cannot use action abilities.',
+  effects: [],   // a static makes something true; it has nothing to run
+}
+
+/**
+ * Porom's clause 1. "discard 1 card from your hand" is a select by Porom's controller over their own hand (V1-D9/D11);
+ * `subjectMatches` then reads the discarded card where it now is, in the Break Zone (V1-D6). The Category IV branch
+ * ends in a second hand select. Palom is PICTLOGICA · IV, so she is Category IV; Porom and Leonora are IV too.
+ *
+ * Reading: with an empty hand nothing is discarded, so there is no "discarded card" for either sentence to test, and
+ * nothing is drawn — the select with no candidate skips its `then`. Clause 2 ("the next damage dealt to it is reduced
+ * by 2000") is a replacement effect for rung V2.
+ */
+const POROM_ETB: Ability = {
+  id: '11-121C:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Porom enters the field, discard 1 card from your hand. If the discarded card is not a Category IV card, draw '
+    + '1 card. If the discarded card is a Category IV card, draw 2 cards then discard 1 card from your hand.',
+  effects: [{
+    kind: 'chooseTargets', select: 'self', min: 1, max: 1,
+    from: { zone: 'hand', controller: 'self' },
+    then: [
+      { kind: 'discard' },
+      {
+        kind: 'if', when: { kind: 'subjectMatches', filter: { category: 'IV' } },
+        then: [
+          { kind: 'draw', count: 2 },
+          { kind: 'chooseTargets', select: 'self', min: 1, max: 1, from: { zone: 'hand', controller: 'self' }, then: [{ kind: 'discard' }] },
+        ],
+        else: [{ kind: 'draw', count: 1 }],
+      },
+    ],
+  }],
+}
+
 /** Implemented Vol. 1 clauses by card code, spread into `ABILITIES`. Printed order within each card. */
 export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '1-170C': [FAIRY_SUMMON],
   '3-143C': [LEONORA_ETB],
   '11-010C': [WARRIOR_PUMP, WARRIOR_BURN],
+  // Clause 1 only; clause 2 (the next damage −2000) is rung V2.
+  '11-121C': [POROM_ETB],
   '12-005C': [IFRIT_SUMMON],
   '13-013C': [PALOM_ETB],
   '18-003C': [MACHINIST_DRAW],
   '18-094C': [GEOMANCER_WATER_DRAW],
+  '18-129C': [JECHT_GAINS, JECHT_BEAM],
   '20-106R': [ALPHINAUD_ETB, ALPHINAUD_DAMAGE_3],
   '21-001R': [WARD_ONLY_FIRE, WARD_ETB],
   '21-010H': [TAIVAS_SEARCH, TAIVAS_PLAY],
@@ -449,9 +609,18 @@ export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '23-119R': [VINCENT_ETB],
   '23-130H': [LUSO_LB_ETB, LUSO_LB_STANDARD_UNIT],
   '24-126H': [ULTIMA_WEAPON_FIRE, ULTIMA_WEAPON_WATER],
+  // Clause 1 (the +2000 replacement) is rung V2; clause 2 is the `:etb` and `:attack` pair.
+  '27-122S': [WUK_LAMAT_ETB, WUK_LAMAT_ATTACK],
+  '27-123S': [ZACK_HASTE, ZACK_ETB, ZACK_ATTACK],
+  // Clause 3 only: clause 1 (damage −1000) is rung V2 and clause 2 is inert (`VOL1_INERT`).
+  '27-128S': [CHARLOTTE_BAN],
   '27-129S': [YUNA_ETB, YUNA_ATTACK],
 }
 
 /** Vol. 1 clauses left unimplemented on purpose, spread into `INERT_CLAUSES` (each with its proof in `abilities.test.ts`). */
 export const VOL1_INERT: Record<string, { readonly count: number; readonly why: string }> = {
+  // Charlotte's clause 2, "The Forwards you control cannot be chosen by your opponent's Summons of cost 1." Neither pool
+  // prints a Summon of cost 1 (Vol. 2: Shiva 3, Odin 5, Ramuh 2; Vol. 1: Fairy 2, Ifrit 5), and nothing changes a
+  // card's printed cost (Odin's reduction is of what casting it costs).
+  '27-128S': { count: 1, why: 'no Summon of cost 1 exists in either pool, so no opponent Summon of cost 1 can choose anything' },
 }
