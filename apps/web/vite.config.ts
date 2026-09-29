@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
@@ -20,5 +21,9 @@ export default defineConfig({
     exclude: [...configDefaults.exclude, 'e2e/**'],
   },
   server: { fs: { allow: ['../..'] } },
-  build: { target: 'es2022' },
+  // Two pages: the game, and the card fixture gallery (UI overhaul U0) that the screenshot baseline renders.
+  build: {
+    target: 'es2022',
+    rollupOptions: { input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), fixtures: fileURLToPath(new URL('./fixtures.html', import.meta.url)) } },
+  },
 })
