@@ -4,6 +4,7 @@ import { RandomAgent, candidateCommands, type Agent } from '@fftcg/ai'
 import { loadCards } from '@fftcg/cards'
 import type { CardId, Command, FieldCard, GameState, PlayerView } from '@fftcg/engine'
 import { applyChooseFirst, applyMulligan, createGame } from '@fftcg/engine'
+import type { AgentSpec } from '../src/agents.js'
 import { parseDeckFile } from '../src/deck.js'
 import { mirrorTournament, pairedBootstrapCi, type MirrorReport } from '../src/mirror.js'
 import { newGameStats, playGame, readSearchCounters, selfPlay } from '../src/selfplay.js'
@@ -251,6 +252,15 @@ describe('pairedBootstrapCi', () => {
 const stripTiming = (r: MirrorReport) => ({ ...r, msPerDecision: [0, 0] as [number, number] })
 
 describe('mirrorTournament', () => {
+  it('refuses a different list per seat (rung V1-C, R7)', () => {
+    // A mirror pairs each seed with its seat swap so the seat effect cancels; with a different deck in each seat
+    // the swap moves the DECK too, and the reported seat bias would be a deck bias. A seat-by-deck crossover is a
+    // different tournament, so this one says no rather than reporting a number that means something else.
+    const base = { pairs: 1, seed: 1, defs: loadCards(), agents: [{ kind: 'random' }, { kind: 'random' }] as [AgentSpec, AgentSpec], strict: false }
+    expect(() => mirrorTournament({ ...base, decks: [deck(), vol1()] })).toThrow(/one list for both seats/)
+    expect(() => mirrorTournament({ ...base, decks: decks(), lbDecks: [lbDeck(), vol1Lb()] })).toThrow(/one list for both seats/)
+  })
+
   it('plays every seed twice, once in each seat', () => {
     const r = mirrorTournament({ pairs: 3, seed: 300, decks: decks(), defs: loadCards(), agents: [{ kind: 'random' }, { kind: 'random' }], strict: false, bootstrapSamples: 200 })
     expect(r.games).toBe(6)

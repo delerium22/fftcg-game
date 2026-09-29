@@ -14,7 +14,7 @@ import { hotseat } from './hotseat.js'
 import { mirrorTournament } from './mirror.js'
 import { selfPlay } from './selfplay.js'
 import { deckOrder } from './deckorder.js'
-import { unknownFlagError } from './flags.js'
+import { deckPaths, unknownFlagError } from './flags.js'
 
 // repo root, not process.cwd() — `pnpm --filter @fftcg/cli <script>` runs with cwd set to apps/cli,
 // so the default deck path must be anchored to this file's location rather than the invocation cwd.
@@ -39,14 +39,16 @@ const flag = (name: string, dflt: string) => {
   return v
 }
 const has = (name: string) => rest.includes(`--${name}`)
-const deckArg = flag('deck', '')
-const deckPath = deckArg ? resolve(deckArg) : resolve(repoRoot, 'decks/starter-2025-vol2.txt')
-const deck = parseDeckFile(readFileSync(deckPath, 'utf8'))
-// Rung J8 (spec J8-D7): the LB deck (§7.14) beside the main list; `--lb-deck none` plays without one.
-const lbArg = flag('lb-deck', '')
-const lbPath = lbArg === 'none' ? null : lbArg ? resolve(lbArg) : resolve(repoRoot, 'decks/starter-2025-vol2-lb.txt')
-const lbDeck = lbPath === null ? [] : parseDeckFile(readFileSync(lbPath, 'utf8'))
-const lbDecks: [string[], string[]] = [lbDeck, lbDeck]
+// Rung V1-C: a deck per seat. `--deck`/`--lb-deck` set both seats; `--deck0/--deck1/--lb-deck0/--lb-deck1` one
+// each (see `deckPaths`). The default stays the Vol. 2 mirror. Rung J8 (spec J8-D7): the LB deck (§7.14) beside the
+// main list; `none` plays without one.
+const paths = deckPaths((name) => flag(name, ''), {
+  main: resolve(repoRoot, 'decks/starter-2025-vol2.txt'),
+  lb: resolve(repoRoot, 'decks/starter-2025-vol2-lb.txt'),
+})
+const readDeck = (path: string): string[] => parseDeckFile(readFileSync(resolve(path), 'utf8'))
+const decks: [string[], string[]] = [readDeck(paths.main[0]), readDeck(paths.main[1])]
+const lbDecks: [string[], string[]] = [paths.lb[0] === null ? [] : readDeck(paths.lb[0]), paths.lb[1] === null ? [] : readDeck(paths.lb[1])]
 const defs = loadCards()
 /**
  * `--seed` is validated as strictly as `--depth` and `--iterations`. It was the one flag that was not, and a
@@ -68,7 +70,11 @@ const usage = [
   '  mirror:   [--seed N] [--pairs N] [--a spec] [--b spec] [--depth 0-2] [--iterations N] [--rollout-cap N] [--budget-ms N] [--min-iterations N] [--bootstrap N] [--fast]',
   '            plays every seed twice with the seats swapped; every score is agent A\'s (spec D-A1)',
   '  profile:  [--seed N] [--games N] [--iterations N] [--opponent spec]   (rung D7: where a rollout\'s applies go)',
-  '  common:   [--deck path] [--lb-deck path|none]   (J8: the LB deck, default decks/starter-2025-vol2-lb.txt)',
+  '  decks:    [--deck path] [--lb-deck path|none]   both seats; default the Vol. 2 mirror, decks/starter-2025-vol2.txt',
+  '            and decks/starter-2025-vol2-lb.txt (J8: the LB deck)',
+  '            [--deck0 path] [--deck1 path] [--lb-deck0 path|none] [--lb-deck1 path|none]   one seat each, winning',
+  '            over --deck/--lb-deck (V1-C) — hotseat, selfplay, profile; deckorder takes --deck/--deck0/--deck1',
+  '            mirror takes --deck and --lb-deck only: it plays one list for both seats',
 ].join('\n')
 
 /** Every flag is validated the same strict way (a bad value is an error, never a silent `NaN`); a throw from
@@ -83,7 +89,7 @@ const flagError = cmd === undefined ? null : unknownFlagError(cmd, rest)
 if (flagError !== null) { console.error(`${flagError}\n\n${usage}`); process.exit(2) }
 
 if (cmd === 'hotseat') {
-  await hotseat({ seed, decks: [deck, deck], defs, lbDecks })
+  await hotseat({ seed, decks, defs, lbDecks })
 } else if (cmd === 'selfplay' || cmd === 'mirror' || cmd === 'profile') {
   // C7: --depth gets the same 0-2 integer validation as greedy:N, instead of `Number(...)` silently coercing
   // any garbage input (including NaN) into the 0|1|2 type. D1: --iterations likewise, for ismcts:N.
@@ -111,7 +117,7 @@ if (cmd === 'hotseat') {
     const games = parsed(() => parsePositiveInt(flag('games', '3'), 'games', 10_000))
     // G1b-A0: seat 1's policy. Default greedy:1, which is what every earlier profile measured.
     const opponent = withDefaults(parsed(() => parseAgentSpec(flag('opponent', 'greedy:1'))), depth, iterations, rolloutCap, budget)
-    const r = profileSearch({ games, seed, decks: [deck, deck], lbDecks, defs, iterations, opponent })
+    const r = profileSearch({ games, seed, decks, lbDecks, defs, iterations, opponent })
     console.log(JSON.stringify(r, null, 2))
     process.exit(r.mismatchedDecisions === 0 ? 0 : 1)
   }
@@ -121,7 +127,7 @@ if (cmd === 'hotseat') {
       withDefaults(parseAgentSpec(flag('p1', 'random')), depth, iterations, rolloutCap, budget),
     ])
     const games = parsed(() => parsePositiveInt(flag('games', '200'), 'games', 1_000_000))
-    const r = selfPlay({ games, seed, decks: [deck, deck], defs, lbDecks, agents, strict: !has('fast') })
+    const r = selfPlay({ games, seed, decks, defs, lbDecks, agents, strict: !has('fast') })
     console.log(JSON.stringify({ ...r, failures: r.failures.map((f) => ({ seed: f.seed, error: f.error.split('\n')[0] })) }, null, 2))
     for (const f of r.failures) console.error(`seed ${f.seed}:\n${f.error}`)
     process.exit(r.failures.length ? 1 : 0)
@@ -132,7 +138,7 @@ if (cmd === 'hotseat') {
   ])
   const pairs = parsed(() => parsePositiveInt(flag('pairs', '200'), 'pairs', 1_000_000))
   const bootstrapSamples = parsed(() => parsePositiveInt(flag('bootstrap', '2000'), 'bootstrap', MAX_ITERATIONS))
-  const r = mirrorTournament({ pairs, seed, decks: [deck, deck], lbDecks, defs, agents, strict: !has('fast'), bootstrapSamples })
+  const r = mirrorTournament({ pairs, seed, decks, lbDecks, defs, agents, strict: !has('fast'), bootstrapSamples })
   // `results` is one row per game — useful in a file, noise on a terminal. `JSON.stringify` drops undefined
   // properties, so this is how the summary omits it. The aggregates are the report.
   const summary = { ...r, results: undefined, failures: r.failures.map((f) => ({ seed: f.seed, seatOfA: f.seatOfA, error: f.error.split('\n')[0] })) }
@@ -140,7 +146,7 @@ if (cmd === 'hotseat') {
   for (const f of r.failures) console.error(`seed ${f.seed} (A at seat ${f.seatOfA}):\n${f.error}`)
   process.exit(r.failures.length ? 1 : 0)
 } else if (cmd === 'deckorder') {
-  console.log(deckOrder({ seed, decks: [deck, deck], defs }))
+  console.log(deckOrder({ seed, decks, defs }))
 } else {
   console.error(usage)
   process.exit(2)

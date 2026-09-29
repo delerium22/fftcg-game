@@ -14,12 +14,44 @@
  * Lives in its own module so it can be tested directly; `main.ts` is a script with top-level side effects
  * (it reads a deck off disk and dispatches) and cannot be imported into a test.
  */
+/** Rung V1-C: one deck per seat. A seat flag overrides the shared `--deck`/`--lb-deck` for that seat alone. */
+const SEAT_DECKS = ['deck0', 'deck1'] as const
+const SEAT_LB_DECKS = ['lb-deck0', 'lb-deck1'] as const
+
+// `lb-deck` was READ by main.ts since rung J8 and listed nowhere here, so every `--lb-deck` was refused as unknown.
+// `mirror` takes only the shared flags (rung V1-C, R7): it plays one list for both seats — see `mirrorTournament`.
 export const KNOWN_FLAGS: Record<string, readonly string[]> = {
-  hotseat: ['deck', 'seed'],
-  selfplay: ['deck', 'seed', 'games', 'p0', 'p1', 'depth', 'iterations', 'rollout-cap', 'budget-ms', 'min-iterations', 'fast'],
-  mirror: ['deck', 'seed', 'pairs', 'a', 'b', 'depth', 'iterations', 'rollout-cap', 'budget-ms', 'min-iterations', 'bootstrap', 'fast'],
-  profile: ['deck', 'seed', 'games', 'iterations', 'opponent'],
-  deckorder: ['deck', 'seed'],
+  hotseat: ['deck', 'lb-deck', ...SEAT_DECKS, ...SEAT_LB_DECKS, 'seed'],
+  selfplay: ['deck', 'lb-deck', ...SEAT_DECKS, ...SEAT_LB_DECKS, 'seed', 'games', 'p0', 'p1', 'depth', 'iterations', 'rollout-cap', 'budget-ms', 'min-iterations', 'fast'],
+  mirror: ['deck', 'lb-deck', 'seed', 'pairs', 'a', 'b', 'depth', 'iterations', 'rollout-cap', 'budget-ms', 'min-iterations', 'bootstrap', 'fast'],
+  profile: ['deck', 'lb-deck', ...SEAT_DECKS, ...SEAT_LB_DECKS, 'seed', 'games', 'iterations', 'opponent'],
+  // `deckorder` prints the two main decks and deals no LB deck, so it takes no LB flag.
+  deckorder: ['deck', ...SEAT_DECKS, 'seed'],
+}
+
+/** Each seat's main-deck path, and its LB-deck path or `null` for none (`--lb-deck none`). */
+export interface DeckPaths {
+  main: [string, string]
+  lb: [string | null, string | null]
+}
+
+/**
+ * Which deck file each seat plays (rung V1-C, spec V1-D17).
+ *
+ * `--deck`/`--lb-deck` keep their old meaning, BOTH seats, so every script and recorded run means what it did;
+ * `--deck0/--deck1/--lb-deck0/--lb-deck1` override one seat and win over the shared flag. With nothing given both
+ * seats get `defaults` — the Vol. 2 mirror, deliberately NOT the web app's pair: the CLI is the measuring tool,
+ * and every recorded win rate, gate and weights A/B assumes the mirror.
+ *
+ * `flag` returns `''` for an absent flag, as main.ts's does. Pure, so it can be tested without the script.
+ */
+export function deckPaths(flag: (name: string) => string, defaults: { main: string; lb: string }): DeckPaths {
+  const pick = (seat: string, shared: string, dflt: string): string => flag(seat) || flag(shared) || dflt
+  const lb = (seat: string): string | null => { const v = pick(seat, 'lb-deck', defaults.lb); return v === 'none' ? null : v }
+  return {
+    main: [pick('deck0', 'deck', defaults.main), pick('deck1', 'deck', defaults.main)],
+    lb: [lb('lb-deck0'), lb('lb-deck1')],
+  }
 }
 
 /**

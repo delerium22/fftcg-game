@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { KNOWN_FLAGS, unknownFlagError } from '../src/flags.js'
+import { KNOWN_FLAGS, deckPaths, unknownFlagError } from '../src/flags.js'
 
 /**
  * An unknown flag must be an ERROR, not silence.
@@ -15,18 +15,18 @@ import { KNOWN_FLAGS, unknownFlagError } from '../src/flags.js'
 
 const MAIN = resolve(dirname(fileURLToPath(import.meta.url)), '../src/main.ts')
 
-/** Runs the real CLI and returns its stderr and exit code — the only way to prove main.ts calls any of this. */
-function run(args: string[]): { code: number; err: string } {
+/** Runs the real CLI and returns its stdout, stderr and exit code — the only way to prove main.ts calls any of this. */
+function run(args: string[]): { code: number; err: string; out: string } {
   try {
     // A timeout, because the interesting FAILURE is the CLI accepting the flag and running the tournament
     // anyway. Without it the wired-to-nothing mutant does not fail this test, it HANGS it for forty minutes —
     // which is how the defect behaved in the first place. A test that reproduces the bug by taking as long as
     // the bug did is not a test.
-    execFileSync('node', ['--import', 'tsx', MAIN, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 })
-    return { code: 0, err: '' }
+    const out = execFileSync('node', ['--import', 'tsx', MAIN, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000 })
+    return { code: 0, err: '', out }
   } catch (e) {
-    const x = e as { status?: number; stderr?: string }
-    return { code: x.status ?? -1, err: x.stderr ?? '' }
+    const x = e as { status?: number; stderr?: string; stdout?: string }
+    return { code: x.status ?? -1, err: x.stderr ?? '', out: x.stdout ?? '' }
   }
 }
 
@@ -83,5 +83,65 @@ describe('the real CLI', () => {
     const { code, err } = run(['mirror', '--pairs', '1', '--a', 'random', '--b', 'random', '--fast'])
     expect(err).not.toContain('unknown flag')
     expect(code).toBe(0)
+  })
+})
+
+/**
+ * Rung V1-C (spec V1-D17, plan R6/R7): a deck per seat. `--deck`/`--lb-deck` keep meaning BOTH seats; the seat
+ * flags override one seat each, and a seat flag wins over the shared one. The default stays the Vol. 2 mirror: the
+ * CLI is the measuring tool, and every recorded win rate assumes it.
+ */
+describe('deck flags', () => {
+  const DEFAULTS = { main: 'vol2.txt', lb: 'vol2-lb.txt' }
+  const from = (argv: Record<string, string>) => (name: string): string => argv[name] ?? ''
+
+  it('defaults both seats to the Vol. 2 mirror', () => {
+    expect(deckPaths(from({}), DEFAULTS)).toEqual({ main: ['vol2.txt', 'vol2.txt'], lb: ['vol2-lb.txt', 'vol2-lb.txt'] })
+  })
+
+  it('--deck and --lb-deck set both seats, as they always did', () => {
+    expect(deckPaths(from({ deck: 'a.txt', 'lb-deck': 'none' }), DEFAULTS)).toEqual({ main: ['a.txt', 'a.txt'], lb: [null, null] })
+  })
+
+  it('a seat flag overrides its own seat, and wins over the shared flag', () => {
+    expect(deckPaths(from({ deck: 'a.txt', deck1: 'b.txt', 'lb-deck': 'l.txt', 'lb-deck0': 'none' }), DEFAULTS))
+      .toEqual({ main: ['a.txt', 'b.txt'], lb: [null, 'l.txt'] })
+    expect(deckPaths(from({ deck0: 'c.txt' }), DEFAULTS)).toEqual({ main: ['c.txt', 'vol2.txt'], lb: ['vol2-lb.txt', 'vol2-lb.txt'] })
+  })
+
+  it('--lb-deck is a known flag where an LB deck is read (it was read, and refused, before)', () => {
+    for (const cmd of ['hotseat', 'selfplay', 'mirror', 'profile']) {
+      expect(unknownFlagError(cmd, ['--lb-deck', 'none']), `${cmd} refuses --lb-deck`).toBe(null)
+    }
+  })
+
+  it('mirror takes no seat flag, and the refusal names the commands that do', () => {
+    const msg = unknownFlagError('mirror', ['--deck1', 'x'])
+    expect(msg).toContain('--deck1')
+    expect(msg).toContain('selfplay')
+  })
+
+  const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
+  const VOL1 = resolve(REPO, 'decks/starter-2025-vol1.txt')
+
+  it('the real CLI deals seat 1 the Vol. 1 list with --deck1 (deckorder prints both decks)', () => {
+    const { code, out } = run(['deckorder', '--seed', '1', '--deck1', VOL1])
+    expect(code).toBe(0)
+    const [seat0, seat1] = out.split('Player 1 deck')
+    // 27-123S is Zack, a Vol. 1 exclusive; 27-1xxS below 122 are Vol. 2's.
+    expect(seat0, 'seat 0 lost the default Vol. 2 list').not.toContain('27-123S')
+    expect(seat1, 'seat 1 was not dealt Vol. 1').toContain('27-123S')
+  })
+
+  it('the real CLI plays Vol. 1 against Vol. 2 in selfplay, LB decks included', () => {
+    const { code, err } = run(['selfplay', '--games', '1', '--fast', '--deck1', VOL1, '--lb-deck1', resolve(REPO, 'decks/starter-2025-vol1-lb.txt')])
+    expect(err).toBe('')
+    expect(code).toBe(0)
+  })
+
+  it('the real CLI refuses a seat flag for mirror', () => {
+    const { code, err } = run(['mirror', '--pairs', '1', '--a', 'random', '--b', 'random', '--fast', '--deck1', VOL1])
+    expect(code).toBe(2)
+    expect(err).toContain('unknown flag for mirror: --deck1')
   })
 })

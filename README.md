@@ -16,6 +16,11 @@ damage, EX Burst on damage, and win/loss. The engine (`packages/engine`) and the
 imports, so the whole game — rules, opponent, and card database — runs client-side. There is no
 server.
 
+**Two decks, one per seat** (rung V1-C): the toolbar above the board picks *Your deck* and the *AI deck* from
+Starter Set 2025 Vol. 1 (Fire/Water, Zack) and Vol. 2, and its **New game** button starts that pair — changing a
+deck never ends the game in progress. The default is **you Vol. 2 against the AI Vol. 1**. A game can be named in
+the address bar: `?seed=5&decks=vol1,vol2` (your deck first, then the AI's) deals the same game again on reload.
+
 The browser opponent is the **ISMCTS search**, running in a Web Worker so the board never freezes
 while it thinks (rung D2). It beats the heuristic agent comfortably — the measured figure lives in
 [Measured strength](#ai-opponent) and is stated once, there, because this line used to carry its own copy
@@ -68,6 +73,8 @@ pnpm --filter @fftcg/cli selfplay --games 200 --seed 1 --p0 greedy --p1 random -
 pnpm --filter @fftcg/cli mirror --pairs 60 --a ismcts --b greedy --fast                 # ISMCTS vs greedy, seats swapped
 pnpm --filter @fftcg/cli mirror --pairs 60 --a ismcts:200+damage=25 --b ismcts:200      # one weight against the default
 pnpm --filter @fftcg/cli deckorder --seed 1                            # print a seeded deck order
+pnpm --filter @fftcg/cli selfplay --games 20 --p0 greedy --p1 greedy --fast \
+  --deck1 ../../decks/starter-2025-vol1.txt --lb-deck1 ../../decks/starter-2025-vol1-lb.txt   # Vol. 2 (seat 0) vs Vol. 1 (seat 1)
 pnpm --filter @fftcg/cli run profile --games 3 --seed 1                  # where a rollout's applies go (rung D7)
 pnpm --filter @fftcg/cli run profile --games 3 --seed 1 --opponent ismcts:200   # ...and where damage sits at each leaf
 ```
@@ -87,8 +94,18 @@ Note the `run` in that last one. `profile` collides with pnpm's own built-in `pr
 so a seat advantage cannot masquerade as a strength difference, and reports a **paired-bootstrap
 confidence interval** rather than a bare percentage.
 
-All three CLI commands accept `--seed N` and `--deck <path>` (default deck:
-`decks/starter-2025-vol2.txt`); `selfplay` also accepts:
+Every CLI command accepts `--seed N` and the deck flags (rung V1-C):
+- `--deck <path>` and `--lb-deck <path|none>` set **both seats** (defaults `decks/starter-2025-vol2.txt` and
+  `decks/starter-2025-vol2-lb.txt`: the CLI's default stays the Vol. 2 mirror, because every recorded win rate,
+  gate and weights A/B was measured on it; the browser's default pair is different).
+- `--deck0 <path>`, `--deck1 <path>`, `--lb-deck0 <path|none>`, `--lb-deck1 <path|none>` set **one seat** and win
+  over the shared flag — `hotseat`, `selfplay` and `profile` take all four, `deckorder` takes `--deck0`/`--deck1`
+  (it prints the two main decks).
+- `mirror` takes only `--deck` and `--lb-deck` and refuses a different list per seat: its seat swap cancels the
+  seat effect only when both seats hold the same deck.
+
+A deck path is relative to the directory the command runs in (`apps/cli` under `pnpm --filter`), so pass an
+absolute path or `../../decks/…` there. `selfplay` also accepts:
 - `--games N` — number of games (default 200).
 - `--p0 <spec>`, `--p1 <spec>` — per-seat agent, one of `random` (default), `greedy`, `greedy:N`
   (`N` = 0, 1, or 2; pins that seat's lookahead depth regardless of `--depth`), or `ismcts[:N]`
