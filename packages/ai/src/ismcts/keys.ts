@@ -582,8 +582,10 @@ function frameDigest(view: PlayerView, f: Frame | null): string {
   // order no effect depends on, so it normalises like every other set.
   // `stage` and `declared` (rung J1) are part of the frame's program state: a frame still declaring and one
   // resolving with those targets are different positions.
+  // `origin` (rung V2-A1, plan R9): an EX Burst frame's damage is a different packet (spec V2-D6), and a burst runs
+  // off the stack — two frames differing only in it are different positions. Absent keys as `triggered`, its meaning.
   const declared = (f.declared ?? []).map((d) => `${d.path.join('.')}=${joinRefs(d.targets.map(r))}`).join('|')
-  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.'), f.stage ?? 'resolve', declared, f.modesDeclared ? 'md' : '-'].join('/')
+  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.'), f.stage ?? 'resolve', declared, f.modesDeclared ? 'md' : '-', f.origin ?? 'triggered'].join('/')
 }
 
 /** The stack, top last (rung J1): each item's kind, its card ref, and its frames — a different stack is a different position. */

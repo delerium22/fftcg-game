@@ -700,6 +700,30 @@ describe('observationKey reads Freeze and the First Strike step (J3 second revie
   })
 })
 
+describe('observationKey reads damage packets (rung V2-A1, plan R9)', () => {
+  it('differs in a frame\'s origin — an EX Burst is not a trigger — and keys absent as triggered', () => {
+    const { view } = richView()
+    const active = view.resolution.active!
+    const withOrigin = (origin: 'triggered' | 'activated' | 'exBurst' | undefined): PlayerView => {
+      const { origin: _drop, ...bare } = active
+      void _drop
+      return { ...view, resolution: { ...view.resolution, active: origin === undefined ? bare : { ...bare, origin } } }
+    }
+    expect(observationKey(withOrigin('exBurst'))).not.toBe(observationKey(withOrigin('triggered')))
+    expect(observationKey(withOrigin('activated'))).not.toBe(observationKey(withOrigin('triggered')))
+    expect(observationKey(withOrigin(undefined))).toBe(observationKey(withOrigin('triggered')))
+  })
+
+  it('keys a party\'s held packet by every dealer\'s occurrence, in any order', () => {
+    const { view, ids } = richView()
+    const win = (heldDamage: NonNullable<PlayerView['attack']>['heldDamage'] & object): PlayerView => ({ ...view, attack: { ...view.attack!, step: 'firstStrike', firstStrikers: [ids.a1!, ids.a2!], heldDamage } })
+    const occ = (source: CardId) => ({ source, sourceController: 0 as PlayerId, target: ids.d1!, victim: null, amount: 11000, targetController: 1 as PlayerId })
+    const both = observationKey(win([occ(ids.a1!), occ(ids.a2!)]))
+    expect(observationKey(win([occ(ids.a2!), occ(ids.a1!)])), 'one simultaneous packet: order is not information').toBe(both)
+    expect(observationKey(win([occ(ids.a1!)])), 'a dealer missing from the held packet').not.toBe(both)
+  })
+})
+
 describe('a select over one hand is keyed by its bounds from the other seat (rung V1-A2, spec V1-D11)', () => {
   // Yuna 27-129S's shape: "you may play 1 Forward of cost 3 from your hand onto the field."
   const YUNA: Ability = { id: 'T-YUNA:etb', trigger: { kind: 'enterField' }, text: 'synthetic Yuna',

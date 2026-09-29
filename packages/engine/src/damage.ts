@@ -45,9 +45,10 @@ export interface DamageProvenance { readonly cause: 'summon' | 'ability'; readon
  * What a frame's damage is (plan R5, spec V2-D6). A Summon's frames — cast (a `summon` stack item) or EX Burst — run
  * with the Summon CARD as their source (`cast.ts`), and a Summon is never on the field to trigger anything else, so
  * the source's printed type decides `summon` against `ability`. `Frame.origin === 'exBurst'` (set by
- * `applyChooseExBurst`) marks a burst of either kind.
+ * `applyChooseExBurst`) marks a burst of either kind. Takes only what it reads, so the AI can price a clause it has
+ * no frame for yet.
  */
-export function damageProvenance(state: GameState, frame: Frame): DamageProvenance {
+export function damageProvenance(state: GameState, frame: Pick<Frame, 'source' | 'controller' | 'origin'>): DamageProvenance {
   const cause = defOf(state, frame.source).type === 'summon' ? 'summon' : 'ability'
   return { cause, causeController: frame.controller, ...(frame.origin === 'exBurst' ? { exBurst: true as const } : {}) }
 }
