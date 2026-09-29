@@ -1,0 +1,19 @@
+{
+  "measured": "2026-09-29T23:24:13.338Z",
+  "route": "/?seed=1&decks=vol2,vol2&art=off",
+  "viewport": "1440x900",
+  "cpuThrottle": 4,
+  "gameMs": 25669,
+  "frames": 1409,
+  "frameGapMs": {
+    "p50": 16.699999999999818,
+    "p95": 33.29999999999927,
+    "p99": 66.69999999999891,
+    "max": 116.69999999999999
+  },
+  "longTasks": {
+    "count": 37,
+    "maxMs": 103,
+    "totalMs": 2532
+  }
+}
