@@ -165,10 +165,11 @@ function Seat({ v, p, active, open, onToggle }: {
   )
 }
 
-/** The card ids the board draws in its named zones: both fields, and your hand. */
+/** The card ids the board draws in its named zones: both fields, your hand, and the AI's hand cards you know. */
 export function boardCardIds(view: PlayerView): Set<CardId> {
   return new Set<CardId>([
     ...view.hand,
+    ...view.fields[AI].knownHand,   // rung V1-E: the AI hand row
     ...([0, 1] as const).flatMap((p) => [...view.fields[p].forwards, ...view.fields[p].backups].map((c) => c.id)),
     ...([0, 1] as const).flatMap((p) => view.fields[p].lbDeck.map((x) => x.id)),   // rung J8: both LB decks are drawn
   ])
@@ -541,6 +542,26 @@ export function Board({ game, onHelp }: {
       return gridItem(c.id, props, { selected: sheet === c.id })
     })
 
+  /**
+   * Rung V1-E (R4): the AI's hand cards you were shown — a search's find (§15.1.1.8.1), Miner's reveal, a card returned
+   * from the field — face up. The rest of that hand stays the Seat's count; the label says how many of it you know.
+   */
+  const knownHandItems = (): GridItem[] =>
+    view.fields[AI].knownHand.map((id) => {
+      const d = defOf(view, id)
+      return gridItem(id, {
+        code: d?.code ?? '?',
+        name: displayName(view, id),
+        cost: d?.cost ?? 0,
+        elements: d?.elements ?? [],
+        type: d?.type ?? 'forward',
+        power: d?.power ?? null,
+        actionable: false,
+        size: 'small',
+        ...(d?.text === undefined ? {} : { text: d.text }),
+      }, { selected: sheet === id })
+    })
+
   /** Rung J8: a seat's LB deck (§7.14) — face-down cards castable from it glow like a hand card; face-up ones are spent. */
   const lbItems = (p: PlayerId): GridItem[] =>
     view.fields[p].lbDeck.map((x) => {
@@ -641,6 +662,10 @@ export function Board({ game, onHelp }: {
           onToggle={(kind) => togglePile(AI, kind)}
         />
         {pileRow(AI)}
+        {/* Only while you know one: a row that is always there would move every position on the board (V1-C's note). */}
+        {view.fields[AI].knownHand.length > 0 && (
+          <Zone label={`AI hand — ${view.fields[AI].knownHand.length} of ${view.fields[AI].handCount} known`} compact items={knownHandItems()} onLookAt={look} />
+        )}
         {view.fields[AI].lbDeck.length > 0 && <Zone label="AI LB deck" compact items={lbItems(AI)} onLookAt={look} />}
         <Zone label="AI Backups" compact items={field(AI, 'backups')} onLookAt={look} />
         <Zone label="AI Forwards" items={field(AI, 'forwards')} onLookAt={look} />

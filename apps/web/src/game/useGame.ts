@@ -186,6 +186,12 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // The other half: without this a revealed card is added to a hand with nothing in the log saying so, and
     // for the no-eligible path there is no board change at all to infer it from.
     case 'addedToHand': {
+      // Rung V1-E (R5): a search that REVEALS what it took (§15.1.1.8.1) says so in the same line — there is no separate
+      // reveal line. Bare, as `playedFromDeck` is: "The AI reveals the AI's Porom" when the human holds a twin.
+      if (e.revealed === true) {
+        const shown = v.cards[e.card] !== undefined ? bareName(v, e.card) : 'a card'
+        return { kind: 'event', text: `${who(v, e.player)} reveal${e.player === v.me ? '' : 's'} ${shown} and add${e.player === v.me ? '' : 's'} it to ${whoDoes(v, e.player, 'your', 'its')} hand` }
+      }
       const what = v.cards[e.card] !== undefined ? qualifiedName(v, e.card) : 'a card'
       return { kind: 'event', text: `${who(v, e.player)} add${e.player === v.me ? '' : 's'} ${what} to ${whoDoes(v, e.player, 'your', 'its')} hand` }
     }
