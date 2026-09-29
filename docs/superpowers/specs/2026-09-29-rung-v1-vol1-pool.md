@@ -45,9 +45,9 @@ readings from the plan:
 - Web: the put button reads "Put into the Break Zone: Cloud" (the button shape is `<imperative> <names>`); play reads
   "Play Cloud"; an AI select reads "The AI selects 1 Forward it controls to …", and over its hidden hand "… card from
   its hand …".
-- Known gaps, for V1-B: `declarationNode` (activate.ts) still declares a head `chooseTargets` at activation even when
-  it is a select, so Taivas's `[0]` needs it to skip selects. A frame's `chosen`/`declared` may carry a hand id while
-  a nested prompt waits (R9); no pool card suspends there, and the other seat's key would show it opaque.
+- Known gap, for V1-B: a frame's `chosen`/`declared` may carry a hand id while a nested prompt waits (R9), and the
+  other seat's key would show it opaque. (Porom 11-121C's second select waits with the discarded card bound, which is
+  in the Break Zone by then; V1-B's `porom-discards` pins that the opposing view carries no hand id.)
 - Timing matrix: row 11.3.3 now also cites the select test ("select" is not "choose"). §7.7.4 and §15.1.1.1/.3/.4 have
   no rows (the matrix covers chapters 9–12 and 15.1.1.9); their Layer 1 cases are in `engine/test/selects.test.ts`.
 
@@ -127,6 +127,42 @@ split out ahead of the cards. Deviations and readings from the plan:
 - `onSource` binds a CardId, not an incarnation: a source that leaves and re-enters before resolution would get the
   effect (engine-wide gap — declared targets have it too; no pool card can re-enter while its ability waits). Backlog.
 
+**As built (V1-B), 2026-09-30.** Commits 3cee2d1 (data, deck files, patch, the four EX BURST cards), 170646d (burn),
+5e04ef9 (draw and search), c6054e8 (the field), 8f879b8 (specials and statics), a8b121a (Layer 3 scenarios, matrix),
+3cbeff3 (self-play). The encodings are in `packages/cards/src/abilities-vol1.ts`, spread into the three maps of
+`abilities.ts`. Deviations and readings from the plan and its revisions R1–R10:
+- Data: one fetch wrote 46 cards; the 24 Vol. 2 defs are byte-identical. The patch quotes Materia Hunter's text with its
+  markdown emphasis removed (Zack's `*Haste*` → `Haste`), as `normalise` removes the SE markup.
+- `ABILITY_CLAUSES` counts AST units (R2): Zack 27-123S 3, Wuk Lamat 27-122S 3, Charlotte 3, Yuna 2. `pool-coverage`'s
+  gap table is exact: `{ 27-122S: 1, 27-128S: 1, 11-121C: 1, 13-125R: 2 }`. Charlotte's clause 2 is inert, with its
+  proof beside Sphene's (no Summon of cost 1 in either pool). Yuzuki implements nothing, so its warning has no count.
+- R6 was wrong in one fact: Dragoon 1-147C (Vol. 2) is a FORWARD Job Standard Unit, so "every Standard Unit in both
+  pools is a Backup" is false. LB Luso's watcher keeps `of: 'backup'` (`observesEnterField.of` is one type); its proof
+  is pinned to the Vol. 1 decks, whose Standard Units (Warrior, Machinist, Geomancer) are all Backups, and to "your
+  field". A seat playing Vol. 1's LB deck with Vol. 2's main deck would reach the gap. V1-C must keep each LB deck with
+  its main deck, or `of` needs a type list.
+- Readings: Porom with an empty hand discards nothing and draws nothing (no "discarded card" to test; the select with no
+  candidate skips its `then`). Taivas's play is `min: 1`, `types: ['forward', 'backup']`, `maxCost: 3`; with nothing
+  playable it resolves silently and is spent (R5). LB Luso may choose himself (Light), which finds nothing. Wuk Lamat
+  and Ultima Weapon count themselves among the Characters. Palom's 8000 branch is tested on a synthetic Porom
+  Forward. Jecht Beam targets `controller: 'any'`; §11.7.5's "cannot choose themselves" stays an open reading (R10).
+- A search is private: `lookAtDeck` has no "reveal the taken card" audience, so Leonora, Taivas and LB Luso add the
+  found card to hand unseen by the opponent (§15.1.1.8.1 says reveal it). An MVP0-SIMPLIFICATION on Leonora records it.
+- Ultima Weapon's two ETBs: the engine places one controller's simultaneous triggers so the first-triggered resolves
+  first (the MVP0-SIMPLIFICATION on `collectWatchers`, §11.8.7), so the Fire clause resolves before the Water one.
+- R8: casting LB Zack beside Zack 27-123S is refused (`sameName`); a second Wuk Lamat played by Taivas's `[0]` is
+  allowed onto the field and §12.4.6 puts both copies into the Break Zone (J4's rule), pinned in `taivas-plays`.
+- Harness (R3): `DECK` and `LB_DECK` are read from the Vol. 2 deck files and are identical to before. `makeGame` takes
+  optional LB decks (`luso-searches` casts from a real Vol. 1 LB deck); `trace` gains `put`, `rule`, `activated`,
+  `play`, `look` and `noTarget` lines. Ten scenarios; matrix row 10.1.2.5 cites `zack-sweeps` and `yuna-attacks`,
+  rows 11.7.1, 11.7.10 and 11.7.11 cite `jecht-beam`.
+- Ward's "the AI never proposes one" is checked on `candidateCommands` in `apps/cli/test/selfplay.test.ts`: the cards
+  package cannot import the AI.
+- Known gaps: `describeAbilityCost` renders Warrior's `[Fire][1][Dull]` as `[Fire][Dull]` — with `requiredElements`
+  present it prints only the Element icons, dropping the generic remainder. Strict ISMCTS self-play of Vol. 1 against
+  Vol. 2 (iterations 4) took 87–93 s for two games in the suite, where the Vol. 2 J8 test plays four random/greedy
+  games and two such ISMCTS games in 43 s. Not investigated.
+
 ## Source and the list (V1-D1)
 
 Starter Set 2025 Vol. 1 is Fire/Water, built around Zack: 50 main-deck cards and an 8-card LB deck (official product
@@ -198,7 +234,8 @@ with the usual proof test. Charlotte clause 3 (the action-ability ban) is B.
   `applyDeclareAttack` enqueues one per attacking Forward that has the clause (a party: each member's own). Placed
   at the `declared` window's grant, turn player's first (§11.8.7). This is the declaration trigger vocabulary J1-D10
   deferred; matrix row 10.1.2.5 moves off n/a. "Enters the field or attacks" is two clauses with shared effects,
-  two ids (`:etb`, `:attack`), one printed clause (the clause count reads the card text, V1-D13).
+  two ids (`:etb`, `:attack`), one printed clause. `ABILITY_CLAUSES` counts the two (AST units, V1-B plan R2): a count
+  of the printed text would let the second half hide a real gap on the same card (Wuk Lamat's clause 1).
 - **V1-D6 — conditions.** `StaticCondition` gains `controlsAtLeast { count, controller: 'self' | 'opponent',
   filter?: DefFilter }` (counts field Characters by DEFINITION only, so a static `when` never reads the layer's own
   output; validated at game creation). A continuous static that says "<this card> gains …" uses the new
