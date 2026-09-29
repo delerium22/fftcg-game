@@ -85,7 +85,8 @@ export interface TargetSpec {
  * player decision suspend the frame and raise a `Pending` (spec C1-3/C1-6).
  *
  * `chooseTargets` and `chooseModes` are the only effects that can suspend. `then`/`effects` nest, which
- * is what lets Shantotto raise a mode choice whose chosen branch then raises a target choice.
+ * is what lets Shantotto raise a mode choice whose chosen branch then raises a target choice; an `if` branch
+ * may hold either (rung V1-A1).
  */
 export type Effect =
   /** Choose `min..max` targets, then run `then` once with `chosen` bound to them. min 0 = "up to". */
@@ -139,6 +140,29 @@ export type Effect =
    * printed effect. A no-op when the frame has no trigger event, or the subject is not a card.
    */
   | { readonly kind: 'onSubject'; readonly do: readonly Effect[] }
+  /**
+   * "If <condition>, <then>. Otherwise, <else>." (rung V1-A1, spec V1-D6) — Palom's "if you control a Card Name
+   * Porom Forward, deal it 8000 damage instead". Read at RESOLUTION, not declaration: an `if` is not a choice, so
+   * the declare stage ends at it, and a chooser inside a branch raises its prompt as the item resolves.
+   *
+   * It owns TWO levels of the program counter, like `chooseModes`: the branch (0 = `then`, 1 = `else`), then the
+   * index within it. The branch is fixed when it is first entered; a frame resuming from a prompt inside it never
+   * re-reads the condition, which may no longer hold.
+   */
+  | { readonly kind: 'if'; readonly when: Condition; readonly then: readonly Effect[]; readonly else?: readonly Effect[] }
+
+/**
+ * What an `if` tests (rung V1-A1, spec V1-D6): any static condition, read for the ability's controller, or a fact
+ * about the frame's current subject — Porom's "if the discarded card is Category IV" reads the card just chosen.
+ */
+export type Condition =
+  | StaticCondition
+  /**
+   * The frame's first chosen card matches `filter`, wherever that card now is — field, hand or Break Zone — since a
+   * clause may test the card it has just moved. A `TargetFilter`, read through `matchesFilter` at resolution: an
+   * instance axis here reads the state once, not the layer continuously, so it cannot loop. False with no subject.
+   */
+  | { readonly kind: 'subjectMatches'; readonly filter: TargetFilter }
 
 /**
  * Until-end-of-turn protections that `granted: Keyword[]` cannot express (spec C1-7).
@@ -411,7 +435,7 @@ export interface Ability {
 
 /**
  * A suspended ability in mid-execution. `path` is the program counter: an index per nesting level, so a
- * frame can resume inside `then`/`modes`/`do` after a player answers. `chosen` is the target binding the
+ * frame can resume inside `then`/`modes`/`do`/an `if` branch after a player answers. `chosen` is the target binding the
  * innermost `chooseTargets`/`forEach` established.
  */
 /**
@@ -585,6 +609,12 @@ export function effectAtPath(
       if (k === undefined) return null
       const mode = eff.modes[modes[k] ?? -1]
       return mode ? walk(mode.effects, depth + 2) : null
+    }
+    if (eff.kind === 'if') {
+      // `if` owns TWO levels too: the branch taken (0 = then, 1 = else), then the index within it (rung V1-A1).
+      const k = path[depth + 1]
+      const branch = k === 0 ? eff.then : k === 1 ? eff.else : undefined
+      return branch ? walk(branch, depth + 2) : null
     }
     return null
   }
