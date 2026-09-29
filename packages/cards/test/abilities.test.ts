@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { CardDef, CardId, Event, FieldCard, GameState, PlayerId } from '@fftcg/engine'
-import { actingPlayer, apply as engineApply, applyChooseFirst, drainResolution, hasResolutionWork, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, keywordsOf, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
+import { actingPlayer, activationCheck, apply as engineApply, applyChooseFirst, drainResolution, hasResolutionWork, applyMulligan, backupElements, finishEndPhase, canPay, castRequirement, checkInvariants, createGame, deckPickCandidates, defOf, describeAbilityEffect, knows, warnUnimplemented, viewFor, findFieldCard, generateCp, keywordsOf, legalCommands, powerOf, runRuleProcesses } from '@fftcg/engine'
 import { ABILITIES, ABILITY_CLAUSES, INERT_CLAUSES, loadCards } from '../src/index.js'
 
 /**
@@ -1472,6 +1472,21 @@ describe('27-126S Sphene — "[0]: Choose 1 Forward other than Sphene put in you
     // breaks the invariant it just satisfied.
     expect(done.state.players[0].putIntoBreakZoneFromFieldThisTurn).not.toContain(victim)
     ok(done.state)
+  })
+
+  it('is refused on the OPPONENT\u2019s turn, even holding priority with a legal target (only during your turn)', () => {
+    // Player 1's Sphene and a Forward of theirs broken this turn, in player 0's Main Phase once player 0 passes.
+    let s = makeGame(); let sphene: CardId; let victim: CardId
+    ;[s, sphene] = withField(s, 1, 'forwards', '27-126S')
+    ;[s, victim] = withField(s, 1, 'forwards', '27-124S')
+    const ps = s.players[1]
+    s = setPlayer(s, 1, { ...ps, forwards: ps.forwards.map((c) => (c.id === victim ? { ...c, powerBonus: -99_000 } : c)) })
+    ;[s] = runRuleProcesses(s)
+    expect(s.players[1].putIntoBreakZoneFromFieldThisTurn).toContain(victim)
+    s = apply(s, { type: 'pass', player: 0 }).state
+    expect(s.priority).toBe(1)
+    expect(legalCommands(s, 1).some((c) => c.type === 'activateAbility' && c.source === sphene)).toBe(false)
+    expect(activationCheck(s, 1, sphene, RETRIEVE, [victim])).toMatch(/during your turn/)
   })
 
   it('C10-A2 offers nothing it should not — hand discards, Sphene itself, Backups, previous turns', () => {

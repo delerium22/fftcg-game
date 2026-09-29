@@ -221,6 +221,9 @@ export type AbilityTrigger =
        * never limit anything.
        */
       readonly oncePerTurn?: boolean
+      /** "You can only use this ability during your turn" (Sphene). Since J1 abilities are instant speed, so
+       *  the restriction is the card's own; `activationCheck` enforces it. */
+      readonly yourTurnOnly?: boolean
     }
   /**
    * "When <this> is chosen by a Summon or an ability" — Prishe (spec C11).
