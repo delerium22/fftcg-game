@@ -400,6 +400,9 @@ function verbOf(e: Effect, frame: VerbFrame): Verb | null {
     // object in the middle of the imperative, which the button's `<imperative> <names>` shape cannot say.
     case 'putIntoBreakZone': return { imperative: 'Put into the Break Zone:', purpose: 'to put into the Break Zone' }
     case 'activate': return { imperative: 'Activate', purpose: 'to activate' }
+    case 'discard': return { imperative: 'Discard', purpose: 'to discard' }
+    // "Play" and not "Cast": no cost is paid (§15.1.1.7).
+    case 'playOntoField': return { imperative: 'Play', purpose: 'to play onto the field' }
     case 'addPower': return { imperative: `Give ${signed(e.amount)} power to`, purpose: `to give ${signed(e.amount)} power` }
     case 'grantKeyword': return { imperative: `Give ${KEYWORD_LABEL[e.keyword]} to`, purpose: `to give ${KEYWORD_LABEL[e.keyword]}` }
     case 'grantFlag': return { imperative: 'Protect', purpose: FLAG_PURPOSE[e.flag] }
@@ -536,6 +539,8 @@ function whereIs(v: PlayerView, id: CardId): Where | null {
  * the player can really click even when the filter narrowed it further.
  */
 function candidateNoun(v: PlayerView, ids: readonly CardId[], plural: boolean): string {
+  // Rung V1-A2: a select from your own hand. The board draws no zone for it, so the hand is named outright.
+  if (ids.length > 0 && ids.every((id) => v.hand.includes(id))) return `${plural ? 'cards' : 'card'} in your hand`
   const spots = ids.map((id) => whereIs(v, id))
   const zone = only(new Set(spots.map((s) => s?.zone ?? null)))
   const seat = only(new Set(spots.map((s) => s?.p ?? null)))
@@ -829,7 +834,9 @@ function aiSelects(v: PlayerView): string | null {
   const pending = v.pending
   if (v.result || pending?.kind !== 'chooseTargets' || pending.player === v.me || selectOf(v) === undefined) return null
   const purpose = targetVerb(v, pending)?.purpose
-  const noun = candidateNoun(v, pending.candidates, pending.max !== 1).replace('the AI controls', 'it controls').replace("the AI's", 'its')
+  // A select over the AI's hand reaches this view with no candidates (`viewFor` hides them): say where, never what.
+  const noun = pending.hidden === true ? `${pending.max === 1 ? 'card' : 'cards'} from its hand`
+    : candidateNoun(v, pending.candidates, pending.max !== 1).replace('the AI controls', 'it controls').replace("the AI's", 'its')
   return `The AI selects ${countPhrase(pending.min, pending.max)} ${noun}${purpose ? ` ${purpose}` : ''}`
 }
 

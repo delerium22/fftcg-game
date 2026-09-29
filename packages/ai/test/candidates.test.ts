@@ -512,4 +512,26 @@ describe('candidateCommands: the V1-A2 selects', () => {
     s = arm(s, src, 0, a)
     expect(targetsOf(candidateCommands(s, 0)[0])).toEqual([dull])
   })
+
+  it('discard from your own hand gives up the least valuable card', () => {
+    const a = clause('T-POROM:etb', [{ kind: 'chooseTargets', select: 'self', min: 1, max: 1, from: { zone: 'hand', controller: 'self' }, then: [{ kind: 'discard' }] }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-POROM', a)] }), 0, 0)
+    let src: number, small: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-POROM')
+    ;[s] = withHand(s, 0, 'V-F8')
+    ;[s, small] = withHand(s, 0, 'V-F6')
+    s = arm(s, src, 0, a)
+    expect(targetsOf(candidateCommands(s, 0)[0])).toEqual([small])
+  })
+
+  it('playing from hand is worth the card that enters: "you may" plays the biggest rather than nothing', () => {
+    const a = clause('T-YUNA:etb', [{ kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'forward' } }, then: [{ kind: 'playOntoField' }] }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-YUNA', a)] }), 0, 0)
+    let src: number, big: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-YUNA')
+    ;[s] = withHand(s, 0, 'V-F1')
+    ;[s, big] = withHand(s, 0, 'V-F8')
+    s = arm(s, src, 0, a)
+    expect(targetsOf(candidateCommands(s, 0)[0])).toEqual([big])
+  })
 })

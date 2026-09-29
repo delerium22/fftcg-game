@@ -130,7 +130,15 @@ export type Pending =
    */
   | { kind: 'chooseExBurst'; player: PlayerId; card: CardId; abilityId: string }
   /** `candidates` is the exact legal set the executor computed; `apply` re-checks membership rather than trusting it. */
-  | { kind: 'chooseTargets'; player: PlayerId; min: number; max: number; candidates: readonly CardId[] }
+  | {
+      kind: 'chooseTargets'; player: PlayerId; min: number; max: number; candidates: readonly CardId[]
+      /**
+       * Rung V1-A2 (spec V1-D11): the other seat's projection of a select over cards it cannot see — a hand. `viewFor`
+       * empties `candidates` and sets this; `determinise` rebuilds them from the suspended node against the sampled
+       * hand and keeps the flag, so the search keys it by its bounds alone (`pendingDigest`).
+       */
+      hidden?: true
+    }
   /** `labels` are the printed mode wordings, in listed order; an answer is a set of indices into them. */
   | { kind: 'chooseMode'; player: PlayerId; min: number; max: number; labels: readonly string[] }
   /**

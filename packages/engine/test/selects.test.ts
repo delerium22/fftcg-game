@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Ability, Effect } from '../src/abilities.js'
+import type { Ability, Effect, TargetSpec } from '../src/abilities.js'
 import type { CardDef } from '../src/types.js'
 import type { CardId, FieldCard, GameState } from '../src/state.js'
 import { findFieldCard } from '../src/state.js'
@@ -7,7 +7,7 @@ import { apply } from '../src/apply.js'
 import { legalCommands } from '../src/legal.js'
 import { checkInvariants } from '../src/invariants.js'
 import { validateEffects } from '../src/setup.js'
-import { makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
+import { makeDef, makeGame, VANILLA_POOL, withField, withHand, withHandSize } from './helpers.js'
 
 /**
  * Rung V1-A2 (spec V1-D8..D11): selects, zone movements and hand targets. §11.3.3: "To select something is not
@@ -48,12 +48,24 @@ const WATCH: Ability = { id: 'T-WATCH:draw', trigger: { kind: 'observesZoneChang
 // Fairy 1-170C's shape: "Choose 1 Forward. Activate it."
 const FAIRY = etb('T-FAIRY:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'activate' }] }])
 
+// Yuna 27-129S's shape: "you may play 1 Forward of cost 3 from your hand onto the field."
+const YUNA = etb('T-YUNA:etb', [{ kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'forward', cost: 3 } }, then: [{ kind: 'playOntoField' }] }])
+const PLAY_BACKUP = etb('T-BKPLAY:etb', [{ kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'backup' } }, then: [{ kind: 'playOntoField' }] }])
+// Porom 11-121C's shape: "select 1 card in your hand. Discard it. If it is Category IV, draw 2 cards; otherwise draw 1."
+const POROM = etb('T-POROM:etb', [{ kind: 'chooseTargets', select: 'self', min: 1, max: 1, from: { zone: 'hand', controller: 'self' }, then: [
+  { kind: 'discard' },
+  { kind: 'if', when: { kind: 'subjectMatches', filter: { category: 'IV' } }, then: [{ kind: 'draw', count: 2 }], else: [{ kind: 'draw', count: 1 }] },
+] }])
+
 const DEFS: CardDef[] = [
   ...VANILLA_POOL,
   bearer('T-ALPHBZ', ALPHINAUD),
   bearer('T-WATCH', WATCH),
   bearer('T-FAIRY', FAIRY),
   makeDef({ code: 'T-LB1', cost: 0, power: 3000, limitBreak: 1 }),
+  bearer('T-YUNA', YUNA), bearer('T-BKPLAY', PLAY_BACKUP), bearer('T-POROM', POROM),
+  makeDef({ code: 'T-ETB3', cost: 3, power: 7000, hasAbilities: true, abilityClauses: 1, abilities: [etb('T-ETB3:etb', [{ kind: 'draw', count: 1 }])] }),
+  makeDef({ code: 'T-IV', cost: 2, power: 5000, categories: ['IV'] }),
   bearer('T-ALPH', OPP_SELECT),
   makeDef({ code: 'T-PRISHE', cost: 2, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [PUMP] }),
   summonDef('T-SSEL', SELECT_SUMMON),
@@ -231,5 +243,70 @@ describe('V1-A2 — activate (§15.1.1.1)', () => {
     expect(r.events.some((e) => e.type === 'activatedByAbility')).toBe(false)
     expect(r.events).toContainEqual(expect.objectContaining({ type: 'stackResolved' }))
     ok(r.state)
+  })
+})
+
+describe('V1-A2 — selecting from your own hand', () => {
+  /** Player 0 with an empty hand but for `codes`, then `bearerCode` cast and its clause resolving: the select is owed. */
+  function handSelect(bearerCode: string, codes: string[]): { s: GameState; hand: CardId[] } {
+    let s = withHandSize(makeGame({ defs: DEFS }), 0, 0)
+    const hand: CardId[] = []
+    for (const code of codes) { let id: CardId; [s, id] = withHand(s, 0, code); hand.push(id) }
+    let card: CardId
+    ;[s, card] = withHand(s, 0, bearerCode)
+    s = apply(s, { type: 'castCharacter', player: 0, card, payment: FREE }).state
+    s = pass(pass(s, 0), 1)
+    return { s, hand }
+  }
+
+  it('L1 §15.1.1.7 — play onto the field is not a cast: the Forward enters, its own ETB triggers, and no cast event', () => {
+    const { s, hand } = handSelect('T-YUNA', ['T-ETB3', 'V-F2', 'V-F3'])
+    const [etb3, , f3] = hand as [CardId, CardId, CardId]
+    expect(s.pending, 'only the cost-3 Forwards are candidates').toMatchObject({ kind: 'chooseTargets', player: 0, min: 0, max: 1, candidates: [etb3, f3] })
+    ok(s)
+    const r = apply(s, { type: 'chooseTargets', player: 0, targets: [etb3] })
+    expect(fc(r.state, etb3)).toBeDefined()
+    expect(r.state.players[0].hand).not.toContain(etb3)
+    expect(r.events).toContainEqual({ type: 'playedFromHand', player: 0, card: etb3 })
+    expect(r.events.some((e) => e.type === 'cast' && e.card === etb3)).toBe(false)
+    expect(stackIds(r.state), 'its enters-the-field clause went on the stack').toEqual(['T-ETB3:etb'])
+    ok(r.state)
+  })
+
+  it('L1 §7.7.4 — a sixth Backup played from hand is put into the Break Zone by rule process: its controller picks which', () => {
+    let { s, hand } = handSelect('T-BKPLAY', ['V-B1'])
+    for (let i = 0; i < 5; i++) [s] = withField(s, 0, 'backups', 'V-B3', { status: 'dull' })
+    const r = apply(s, { type: 'chooseTargets', player: 0, targets: [hand[0]!] })
+    expect(r.state.players[0].backups).toHaveLength(6)
+    expect(r.state.pending).toEqual({ kind: 'breakExcessBackups', player: 0, count: 1 })
+    ok(r.state)
+  })
+
+  it('L1 §15.1.1.4 — discard moves the card from hand to the Break Zone, and an if reads it there', () => {
+    for (const [code, draws] of [['T-IV', 2], ['V-F2', 1]] as const) {
+      const { s, hand } = handSelect('T-POROM', [code])
+      const before = s.players[0].hand.length
+      const r = apply(s, { type: 'chooseTargets', player: 0, targets: [hand[0]!] })
+      expect(r.state.players[0].breakZone).toContain(hand[0])
+      expect(r.events).toContainEqual({ type: 'discarded', player: 0, card: hand[0], reason: 'ability' })
+      expect(r.state.players[0].hand.length, code).toBe(before - 1 + draws)
+      ok(r.state)
+    }
+  })
+
+  it('game creation refuses a hand zone that is not your own, a hand zone that is not a select, and a play that could name a Summon', () => {
+    const shaped = (code: string, from: TargetSpec, then: readonly Effect[] = [{ kind: 'discard' }], select?: 'self'): CardDef =>
+      bearer(code, etb(`${code}:etb`, [{ kind: 'chooseTargets', min: 0, max: 1, from, then, ...(select ? { select } : {}) }]))
+    const problems = validateEffects([
+      shaped('T-OPPHAND', { zone: 'hand', controller: 'opponent' }, [{ kind: 'discard' }], 'self'),
+      shaped('T-CHOOSEHAND', { zone: 'hand', controller: 'self' }),
+      shaped('T-PLAYANY', { zone: 'hand', controller: 'self', filter: { cost: 3 } }, [{ kind: 'playOntoField' }], 'self'),
+      shaped('T-PLAYSUMMON', { zone: 'hand', controller: 'self', filter: { types: ['forward', 'summon'] } }, [{ kind: 'playOntoField' }], 'self'),
+    ]).join('; ')
+    expect(problems).toMatch(/T-OPPHAND:etb .*hand.*your own/)
+    expect(problems).toMatch(/T-CHOOSEHAND:etb .*hand.*select/)
+    expect(problems).toMatch(/T-PLAYANY:etb .*Summon/)
+    expect(problems).toMatch(/T-PLAYSUMMON:etb .*Summon/)
+    expect(validateEffects(DEFS)).toEqual([])
   })
 })

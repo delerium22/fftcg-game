@@ -15,8 +15,12 @@ import type { CardId, StackItem } from './state.js'
  *     `CreateGameOptions`.
  */
 
-/** Which pile a target is drawn from. */
-export type TargetZone = 'forwards' | 'backups' | 'breakZone'
+/**
+ * Which pile a target is drawn from. `hand` (rung V1-A2, spec V1-D11) is the controller's OWN hand and only through a
+ * select — Yuna's "play … from your hand", Porom's "discard"; game creation refuses any other use. Its candidates are
+ * hidden from the other seat (`viewFor`) and re-sampled by `determinise`.
+ */
+export type TargetZone = 'forwards' | 'backups' | 'breakZone' | 'hand'
 
 /** Whose cards are eligible. `any` means either player's. */
 export type TargetController = 'self' | 'opponent' | 'any'
@@ -128,6 +132,16 @@ export type Effect =
   | { readonly kind: 'putIntoBreakZone' }
   /** "Activate it" (rung V1-A2, §15.1.1.1): a dull Character turns active; activating an active one is legal and does nothing. */
   | { readonly kind: 'activate' }
+  /** "Discard it" (rung V1-A2, §15.1.1.4): each chosen card still in its owner's hand goes to that player's Break Zone. */
+  | { readonly kind: 'discard' }
+  /**
+   * "Play it onto the field" from hand (rung V1-A2, spec V1-D11) — Yuna, Taivas. Not a cast (§15.1.1.7): no cost, no
+   * `cast` event. The card leaves its owner's hand and enters through `putOntoField`, so its own enters-the-field
+   * clauses and every watcher fire exactly as for Hugh Yurg's search. Field limits are the rule processes' (§7.7.4:
+   * a sixth Backup is put into the Break Zone by §12.4.8), as for every entry by effect. A non-Character is skipped;
+   * game creation refuses a filter that could admit a Summon.
+   */
+  | { readonly kind: 'playOntoField' }
   | { readonly kind: 'addPower'; readonly amount: number }
   | { readonly kind: 'grantKeyword'; readonly keyword: Keyword }
   | { readonly kind: 'grantFlag'; readonly flag: FieldFlag }

@@ -1,4 +1,4 @@
-import { ELEMENTS, matchesDefFilter, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type StackItem, type TriggerEvent } from '@fftcg/engine'
+import { ELEMENTS, effectAtPath, matchesDefFilter, type CardId, type Command, type Element, type FieldCard, type Frame, type Pending, type PlayerId, type PlayerView, type Resolution, type StackItem, type TriggerEvent } from '@fftcg/engine'
 import type { RolloutProfile } from '../greedy.js'
 import type { WeightOverrides } from '../evaluate.js'
 
@@ -607,8 +607,14 @@ function pendingDigest(view: PlayerView, pending: Pending | null): string {
     case 'discardToHandSize':
     case 'breakExcessBackups':
       return `${head}/${pending.count}`
-    case 'chooseTargets':
-      return `${head}/${pending.min}-${pending.max}/${joinRefs(pending.candidates.map(r))}`
+    case 'chooseTargets': {
+      // Rung V1-A2 (spec V1-D11, R3): a select over cards the root cannot see — the other player's hand — is keyed by
+      // its PRINTED bounds alone. The live view carries no candidates (`viewFor`), a determinised one carries sampled
+      // ones whose refs are opaque, and the sampled bounds clamp to how many matched; none of that is observable.
+      const refs = pending.candidates.map(r)
+      if (pending.hidden === true || refs.some(isOpaque)) return `${head}/${printedBounds(view) ?? `${pending.min}-${pending.max}`}/hidden`
+      return `${head}/${pending.min}-${pending.max}/${joinRefs(refs)}`
+    }
     case 'chooseMode':
       // Labels are printed wording, and JSON-quoted so a label containing a separator cannot forge one.
       return `${head}/${pending.min}-${pending.max}/${pending.labels.map((l) => JSON.stringify(l)).join(',')}`
@@ -623,6 +629,15 @@ function pendingDigest(view: PlayerView, pending: Pending | null): string {
     }
     default: { const _exhaustive: never = pending; return _exhaustive }
   }
+}
+
+/** The `min-max` printed on the `chooseTargets` node the active frame is suspended on, or null if it cannot be read. */
+function printedBounds(view: PlayerView): string | null {
+  const f = view.resolution.active
+  const code = f === null ? undefined : view.cards[f.source]?.code
+  const ability = f === null || code === undefined ? undefined : view.defs[code]?.abilities?.find((a) => a.id === f.abilityId)
+  const node = f && ability ? effectAtPath(ability.effects, f.path, f.modes) : null
+  return node?.kind === 'chooseTargets' ? `${node.min}-${node.max}` : null
 }
 
 /**
