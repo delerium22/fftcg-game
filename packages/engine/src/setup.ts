@@ -158,6 +158,14 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
   }
   // An activated ability may open with a select since V1-A3 (R10): `declarationNode` leaves it to resolution.
   for (const d of defs) for (const a of d.abilities ?? []) {
+    // §11.7.1 (rung V1-A3): a special ability is exactly the one that discards a card with the same name. Either half
+    // alone would be wrong — a costless ability escaping Charlotte's ban, or an action ability paying the S's discard.
+    if (a.trigger.kind === 'activated') {
+      const special = a.trigger.special !== undefined
+      const discards = a.trigger.cost.discardSameName === true
+      if (special && !discards) problems.push(`${d.code}: ${a.id} is a special ability without the same-name discard (§11.7.1)`)
+      if (discards && !special) problems.push(`${d.code}: ${a.id} has the same-name discard without being a special ability (§11.7.1)`)
+    }
     if (a.trigger.kind === 'observesEnterField' && resolvesChosen(a.trigger.filter)) problems.push(`${d.code}: ${a.id} uses sameElementAsChosen in a trigger condition`)
     walk(d.code, a.id, a.effects, null, false, false)
   }

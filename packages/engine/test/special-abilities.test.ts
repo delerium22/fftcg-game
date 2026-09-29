@@ -9,6 +9,7 @@ import { apply } from '../src/apply.js'
 import { isLegal, legalCommands } from '../src/legal.js'
 import { activationCheck } from '../src/activate.js'
 import { checkInvariants } from '../src/invariants.js'
+import { validateEffects } from '../src/setup.js'
 import { deckOf, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
 /**
@@ -141,6 +142,13 @@ describe('V1-A3 — a special ability discards a card with the same name (§11.7
     s = { ...s, players: [s.players[0], { ...s.players[1], forwards: [] }] }
     expect(activationCheck(s, 0, jecht, 'T-JECHT:beam', [])).toMatch(/no legal target/)
     expect(beams(s)).toEqual([])
+  })
+
+  it('L1 §11.7.1 — game creation refuses a special ability without the same-name discard, and the discard without the S', () => {
+    const with_ = (trigger: Ability['trigger']): CardDef => makeDef({ code: 'T-S', hasAbilities: true, abilityClauses: 1, abilities: [{ ...beam('T-S'), trigger }] })
+    expect(validateEffects([with_({ kind: 'activated', sourceZone: 'field', cost: { dull: true }, special: { name: 'T Beam' } })]).join()).toMatch(/special ability without/)
+    expect(validateEffects([with_({ kind: 'activated', sourceZone: 'field', cost: { discardSameName: true } })]).join()).toMatch(/same-name discard without/)
+    expect(validateEffects([with_({ kind: 'activated', sourceZone: 'field', cost: BEAM_COST, special: { name: 'T Beam' } })])).toEqual([])
   })
 
   it('names the discard in the printed cost', () => {

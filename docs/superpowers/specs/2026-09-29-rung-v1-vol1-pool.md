@@ -93,7 +93,11 @@ readings from the plan and its revisions R1–R10:
 - Known gaps: R7 — `evaluate.ts` has no term for the ban (an AI tuning gap; a weight would change measured win rates).
   R8 — the activation preflight with an empty payment may count the same-name card as a hand target; no pool card
   combines a special ability with a hand target. The AI's `targetDelta` prices a `grantFlag` effect only for
-  `cannotBeBroken`, as before.
+  `cannotBeBroken`, as before. `hasAnyActivation` can say yes for a special ability whose only same-name copy is also
+  its only CP source while `legalCommands` lists nothing (Jecht Beam has no CP cost). `resolveChosenFilter` overwrites
+  an `elementIn` already on the same filter (no card has both).
+- Game creation also refuses `special` without `discardSameName` and the reverse (§11.7.1): either half alone would
+  escape the ban for free or pay the S's discard while banned. Added after the plan, in a follow-up commit.
 
 ## Source and the list (V1-D1)
 
