@@ -17,6 +17,7 @@ import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event, StackRef } from './events.js'
 import { IllegalCommandError } from './errors.js'
+import { applyDamagePacket, damageProvenance, type DamageProvenance } from './damage.js'
 
 /**
  * The ability executor (spec C1-3). No card-specific code lives here: this is an interpreter for the `Effect`
@@ -281,6 +282,8 @@ interface Ctx {
   picks: number[]
   /** What fired this clause, for `onSubject` and narration; null for self-triggers (spec C2-5). */
   triggerEvent: TriggerEvent | null
+  /** What this frame's damage counts as — a Summon's or an ability's, EX Burst or not (rung V2-A1, plan R5). */
+  provenance: DamageProvenance
   /** The path the frame was suspended at; execution rejoins it instead of replaying the effects already run. */
   resume: readonly number[]
   suspend: Pending | null
@@ -565,13 +568,15 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       // no event and no damage trigger, since a card that deals 0 damage has not dealt damage.
       const amount = amountOf(ctx.state, ctx.controller, eff.amount)
       if (amount <= 0) return
+      // Rung V2-A1 (spec V2-D1): one packet per chosen target, in chosen order, through the one application point.
+      // A target that is not a Forward on the field is not applied — only Forwards carry damage. `forEach` re-enters
+      // this case once per card, so it is routed here too.
       const hits: DamageOccurrence[] = []
       for (const id of ctx.chosen) {
-        const loc = findFieldCard(ctx.state, id)
-        if (!loc || loc.zone !== 'forwards') continue   // only Forwards carry damage
-        ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, damage: c.damage + amount }))
-        ctx.events.push({ type: 'abilityDamage', source: ctx.source, target: id, original: amount, amount, trace: [] })
-        hits.push({ source: ctx.source, sourceController: ctx.controller, target: id, victim: null, amount, targetController: loc.owner })
+        const r = applyDamagePacket(ctx.state, { target: id, amount, dealers: [{ source: ctx.source, sourceController: ctx.controller }], ...ctx.provenance })
+        ctx.state = r.state
+        ctx.events.push(...r.events)
+        hits.push(...r.occurrences)
       }
       ctx.state = enqueueDamageTriggers(ctx.state, hits)   // ability damage triggers exactly as combat damage does (spec C2-7)
       // §12.4.5 turns this into a break; `settle` runs the rule processes, which honour `cannotBeBroken`. Because
@@ -726,7 +731,7 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
     // gains +2000 power" is an `addPower` over the binding, and the binding is Prishe herself.
     chosen: frame.chosen.length ? [...frame.chosen] : frame.triggerEvent?.kind === 'chosen' ? [frame.triggerEvent.card] : [],
     modes: [...frame.modes], picks: [...(frame.picks ?? [])],
-    triggerEvent: frame.triggerEvent,
+    triggerEvent: frame.triggerEvent, provenance: damageProvenance(state, frame),
     resume: frame.path, suspend: null, steps: state.resolution.steps,
     stage, declared: (frame.declared ?? []).map((d) => ({ path: [...d.path], targets: [...d.targets] })),
     modesDeclared: frame.modesDeclared ?? false, cancelled: false, done: false,

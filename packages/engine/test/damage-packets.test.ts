@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { Frame } from '../src/abilities.js'
+import type { Ability, Effect, Frame } from '../src/abilities.js'
+import type { CardId, GameState } from '../src/state.js'
+import type { Event } from '../src/events.js'
 import type { DamagePacket } from '../src/damage.js'
 import { applyDamagePacket, damageProvenance, previewDamagePacket } from '../src/damage.js'
-import { findFieldCard } from '../src/state.js'
-import { makeGame, withField, withHand } from './helpers.js'
+import { defOf, findFieldCard } from '../src/state.js'
+import { drainResolution, enqueueTrigger } from '../src/resolve.js'
+import { checkInvariants } from '../src/invariants.js'
+import { applyNow, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
 /**
  * Rung V2-A1 (spec V2-D1, plan R2–R5): every damage to a Forward is a PACKET applied at one point. These pin the pure
@@ -114,5 +118,59 @@ describe('damageProvenance (rung V2-A1, plan R5, spec V2-D6)', () => {
   })
   it('an action ability → ability, controlled by whoever activated it', () => {
     expect(damageProvenance(s, frame(backup, 0, 'activated'))).toEqual({ cause: 'ability', causeController: 0 })
+  })
+})
+
+describe('ability damage through the applier (rung V2-A1, plan R9 exact order)', () => {
+  const DEALT: Ability = { id: 'T-SRC:dealt', trigger: { kind: 'dealtDamage', to: 'forward', whose: 'any' }, text: 'synthetic', effects: [] }
+  const setup = (effects: readonly Effect[]): { s: GameState; src: CardId } => {
+    const ability: Ability = { id: 'T-SRC:etb', trigger: { kind: 'enterField' }, text: 'synthetic', effects }
+    let s = makeGame({ defs: [...VANILLA_POOL, makeDef({ code: 'T-SRC', power: 1000, hasAbilities: true, abilityClauses: 2, abilities: [ability, DEALT] })] })
+    let src: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-SRC')
+    return { s, src }
+  }
+  const fire = (s: GameState, src: CardId): [GameState, Event[]] => drainResolution(enqueueTrigger(s, src, 0, defOf(s, src).abilities![0]!))
+  const kinds = (events: readonly Event[]): string[] => events.flatMap((e) =>
+    e.type === 'abilityDamage' ? [`damage:${e.target}`] : e.type === 'broken' ? [`broken:${e.card}`] : e.type === 'abilityTriggered' && e.abilityId === DEALT.id ? [`trigger:${e.abilityId}`] : [])
+
+  it('forEach: one packet per card in field order; every packet lands before the §12.4.5 process and before any trigger', () => {
+    let { s, src } = setup([{ kind: 'forEach', from: { zone: 'forwards', controller: 'opponent' }, do: [{ kind: 'damage', amount: 5000 }] }])
+    let f1: CardId, f2: CardId, f3: CardId
+    ;[s, f1] = withField(s, 1, 'forwards', 'V-F1')   // 3000: breaks
+    ;[s, f2] = withField(s, 1, 'forwards', 'V-F8')   // 9000: survives
+    ;[s, f3] = withField(s, 1, 'forwards', 'V-F2')   // 5000: breaks
+    const [t, events] = fire(s, src)
+    expect(kinds(events)).toEqual([
+      `damage:${f1}`, `damage:${f2}`, `damage:${f3}`, `broken:${f1}`, `broken:${f3}`,
+      'trigger:T-SRC:dealt', 'trigger:T-SRC:dealt', 'trigger:T-SRC:dealt',
+    ])
+    expect(findFieldCard(t, f2)?.card.damage).toBe(5000)
+    expect(checkInvariants(t)).toEqual([])
+  })
+
+  it('a target that left before its damage: no packet lands, no event, no dealt-damage trigger', () => {
+    // "Break it, then deal it 3000": by the damage the chosen Forward is in the Break Zone.
+    let { s, src } = setup([{ kind: 'forEach', from: { zone: 'forwards', controller: 'opponent' }, do: [{ kind: 'breakCard' }, { kind: 'damage', amount: 3000 }] }])
+    let f: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8')
+    const [t, events] = fire(s, src)
+    expect(t.players[1].breakZone).toContain(f)
+    expect(events.some((e) => e.type === 'abilityDamage')).toBe(false)
+    expect(events.some((e) => e.type === 'abilityTriggered' && e.abilityId === 'T-SRC:dealt')).toBe(false)
+  })
+
+  it('several chosen targets: one packet each, in chosen order, each an abilityDamage from the one source', () => {
+    let { s, src } = setup([{ kind: 'chooseTargets', min: 2, max: 2, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 2000 }] }])
+    let f1: CardId, f2: CardId
+    ;[s, f1] = withField(s, 1, 'forwards', 'V-F8')
+    ;[s, f2] = withField(s, 1, 'forwards', 'V-F7')
+    const [held] = fire(s, src)
+    expect(held.pending?.kind).toBe('chooseTargets')
+    const { events } = applyNow(held, { type: 'chooseTargets', player: 0, targets: [f2, f1] })
+    expect(events.filter((e) => e.type === 'abilityDamage')).toEqual([
+      { type: 'abilityDamage', source: src, target: f2, original: 2000, amount: 2000, trace: [] },
+      { type: 'abilityDamage', source: src, target: f1, original: 2000, amount: 2000, trace: [] },
+    ])
   })
 })
