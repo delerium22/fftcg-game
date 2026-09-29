@@ -184,8 +184,9 @@ split out ahead of the cards. Deviations and readings from the plan:
   test measures one full tab lap.
 - The opening log line is now "New game — you play Starter Vol. 2, the AI plays Starter Vol. 1" (was "you are P0…").
   `App` parses `?seed=` and `?decks=` once, in a lazy initialiser; a malformed `?seed=` used to warn on every render.
-- Who makes the first-player choice depends on the seed alone, not the decks (seeds 2, 4, 5, 7 give it to the AI for
-  every pair). The default-pair e2e uses seed 5 and plays on to the AI's MULLIGAN: its first-player choice is made
+- Who makes the first-player choice depends on the seed, not on which decks: `createGame` draws it after shuffling
+  both main decks, and a shuffle's RNG use depends on the list's LENGTH, which is 50 for both (seeds 2, 4, 5, 7 give it
+  to the AI; a finder agreed for three of the four pairs). The default-pair e2e uses seed 5 and plays on to the AI's MULLIGAN: its first-player choice is made
   before the deal, when no visible card can test a list, so a swapped worker list passed that far (checked by mutation).
 - CLI: `deckPaths` in `flags.ts`; the default stays the Vol. 2 mirror (V1-D17 as amended). `deckorder` takes
   `--deck0/--deck1` but no LB flag (it prints main decks only). `mirror` takes only `--deck`/`--lb-deck`, and
