@@ -7,6 +7,7 @@ import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { dealPlayerDamage, runRuleProcesses } from './rules.js'
 import { dispatchTrigger, enqueueDamageTriggers } from './resolve.js'
+import { applyDamagePacket, type DamageDealer, type DamagePacket } from './damage.js'
 
 const IDLE: AttackState = { step: 'declaration', attackers: [], blocker: null }
 type Assignment = { target: CardId; amount: number }
@@ -252,38 +253,62 @@ export function applyAssignPartyDamage(state: GameState, player: PlayerId, assig
   return dealAfterSplit({ ...state, pending: null }, assignments)
 }
 
-type Hit = { source: CardId; sourceController: PlayerId; target: CardId; amount: number }
+/** Which damage a call lands: the whole step at once, or one of the two First Strike batches (§15.2.3.2). */
+type Batch = 'all' | 'first' | 'second'
 
-/** §10.1.4.2: every attacker deals its power to the blocker; the blocker deals its power to a lone attacker, or its split to a party. */
-function hitsFor(state: GameState, blockerAssignments: Assignment[]): Hit[] {
+/**
+ * §10.1.4.2 as damage packets (rung V2-A1, spec V2-D1): the attacking side deals ONE packet to the blocker — a blocked
+ * party's damage is one total with every member a dealer (§15.1.1.9.8), and a party reduced to one Forward is no
+ * longer a party (§15.1.1.9.5), which `at.attackers` already reflects — then the blocker deals one packet to a lone
+ * attacker, or one per split target. The attacker packet comes first, as the hits always did.
+ *
+ * The First Strike batch is chosen at PARTY level before any packet is built (plan R6, §15.1.1.9.7, §15.2.3.4): the
+ * attacking side is in the first batch only if EVERY attacker has First Strike, so a mixed party deals nothing early.
+ * `findFieldCard().owner` is the field the card sits in, i.e. its CONTROLLER, captured per dealer so a source broken
+ * by this same simultaneous batch still attributes correctly (spec C2-7/C2-8).
+ *
+ * MVP0-SIMPLIFICATION (§15.1.1.9.8, rung V2-A1 plan R1/R2): every surviving member is a dealer — no pool card stops a
+ * Forward dealing damage, so the per-member legality check is vacuous — and a break by the total is not credited to the
+ * members (the §12.4.5 attribution gap in damage.ts). The one total itself is implemented.
+ */
+function packetsFor(state: GameState, blockerAssignments: Assignment[], batch: Batch): DamagePacket[] {
   const at = state.attack!
   if (at.blocker === null) return []
   const blockerFc = findFieldCard(state, at.blocker)
   if (!blockerFc) return []
-  // `findFieldCard().owner` is the field array the card sits in, i.e. its CONTROLLER — attackers are the turn
-  // player's, the blocker is the defender's. Captured per hit so a source broken by this same simultaneous
-  // batch still attributes correctly (spec C2-7/C2-8).
-  const hits: Hit[] = []
+  const fs = fixedFirstStrikers(state)
+  const dealsNow = (first: boolean): boolean => batch === 'all' || (batch === 'first') === first
+  const packets: DamagePacket[] = []
+  const dealers: DamageDealer[] = []
+  let total = 0
   for (const a of at.attackers) {
     const fc = findFieldCard(state, a)
-    if (fc) hits.push({ source: a, sourceController: fc.owner, target: at.blocker, amount: powerOf(state, fc.card) })
+    if (!fc) continue
+    dealers.push({ source: a, sourceController: fc.owner })
+    total += powerOf(state, fc.card)
   }
-  if (at.attackers.length === 1) hits.push({ source: at.blocker, sourceController: blockerFc.owner, target: at.attackers[0] as CardId, amount: powerOf(state, blockerFc.card) })
-  else for (const x of blockerAssignments) hits.push({ source: at.blocker, sourceController: blockerFc.owner, target: x.target, amount: x.amount })
-  return hits
+  if (dealers.length > 0 && dealsNow(at.attackers.every((a) => fs.has(a)))) {
+    packets.push({ target: at.blocker, dealers, amount: total, cause: 'battle', causeController: (dealers[0] as DamageDealer).sourceController })
+  }
+  if (dealsNow(fs.has(at.blocker))) {
+    const blocker: DamageDealer = { source: at.blocker, sourceController: blockerFc.owner }
+    const hit = (target: CardId, amount: number): DamagePacket => ({ target, dealers: [blocker], amount, cause: 'battle', causeController: blockerFc.owner })
+    if (at.attackers.length === 1) packets.push(hit(at.attackers[0] as CardId, powerOf(state, blockerFc.card)))
+    else for (const x of blockerAssignments) packets.push(hit(x.target, x.amount))
+  }
+  return packets
 }
 
-/** Land `hits` on targets still on the field: the damage, its events, and the occurrences for the triggers. */
-function landHits(state: GameState, hits: readonly Hit[]): [GameState, Event[], DamageOccurrence[]] {
+/** Land `packets` in order through the one application point: the damage, its events, and the occurrences for the triggers. */
+function landPackets(state: GameState, packets: readonly DamagePacket[]): [GameState, Event[], DamageOccurrence[]] {
   let s = state
   const events: Event[] = []
   const landed: DamageOccurrence[] = []
-  for (const h of hits) {
-    const loc = findFieldCard(s, h.target)
-    if (!loc) continue
-    s = updatePlayer(s, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === h.target ? { ...c, damage: c.damage + h.amount } : c)) }))
-    events.push({ type: 'battleDamage', target: h.target, dealers: [h.source], original: h.amount, amount: h.amount, trace: [] })
-    landed.push({ source: h.source, sourceController: h.sourceController, target: h.target, victim: null, amount: h.amount, targetController: loc.owner })
+  for (const p of packets) {
+    const r = applyDamagePacket(s, p)
+    s = r.state
+    events.push(...r.events)
+    landed.push(...r.occurrences)
   }
   return [s, events, landed]
 }
@@ -294,8 +319,7 @@ function landHits(state: GameState, hits: readonly Hit[]): [GameState, Event[], 
  * batch; and the First Strike window opens with priority to the turn player.
  */
 function landFirstStrike(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
-  const fs = fixedFirstStrikers(state)
-  const [hit, events, landed] = landHits(state, hitsFor(state, blockerAssignments).filter((h) => fs.has(h.source)))
+  const [hit, events, landed] = landPackets(state, packetsFor(state, blockerAssignments, 'first'))
   // Battle damage to Forwards cannot end the game or owe a §12.4.8 decision, so `ruled.result`/`pending` need no
   // guard here (unlike `resolveDamage`, whose player damage can).
   const [ruled, ruleEvents] = runRuleProcesses(hit)
@@ -309,12 +333,12 @@ function landFirstStrike(state: GameState, blockerAssignments: Assignment[]): [G
  * After the First Strike window: the combatants still in battle deal to what is still there — a blocker that
  * left means no battle at all (§10.1.3.3, the attack stays blocked). Then EVERY occurrence — the held first
  * batch, then this one — is queued together (§15.2.3.3), rule processes run, and the §10.1.4.4 window opens.
+ * The held occurrences are the first batch's packets AS APPLIED (rung V2-A1, plan R6): they are queued for their
+ * triggers once, here, and never applied again; this batch builds packets of its own.
  */
 function landSecondBatch(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
   const at = state.attack!
-  const fs = fixedFirstStrikers(state)
-  const hits = at.attackers.length === 0 ? [] : hitsFor(state, blockerAssignments).filter((h) => !fs.has(h.source))
-  const [hit, events, landed] = landHits(state, hits)
+  const [hit, events, landed] = landPackets(state, at.attackers.length === 0 ? [] : packetsFor(state, blockerAssignments, 'second'))
   let s = enqueueDamageTriggers(hit, [...(at.heldDamage ?? []), ...landed])
   const [ruled, ruleEvents] = runRuleProcesses(s)
   s = ruled; events.push(...ruleEvents)
@@ -345,7 +369,7 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
     // One simultaneous batch (no First Strike, or everyone has it — §15.2.3.2 has no "other Forwards" then): all
     // of it lands, THEN every source's `dealtDamage` clause queues. Draining is `settle`'s job, so the §12.4.5
     // process below still runs first (spec C2-6).
-    const [hit, hitEvents, landed] = landHits(s, hitsFor(s, blockerAssignments))
+    const [hit, hitEvents, landed] = landPackets(s, packetsFor(s, blockerAssignments, 'all'))
     s = enqueueDamageTriggers(hit, landed)
     events.push(...hitEvents)
   }

@@ -159,8 +159,8 @@ describe('§10.1.3–10.1.4 block and damage', () => {
     s = blockWith(s, b).state
     expect(legalPartyDamageAssignments(s)).toEqual([[]])
     const [t, events] = applyAssignPartyDamage(s, 1, [])
-    expect(events).toContainEqual({ type: 'battleDamage', target: b, dealers: [a1], original: 3000, amount: 3000, trace: [] })
-    expect(events).toContainEqual({ type: 'battleDamage', target: b, dealers: [a2], original: 5000, amount: 5000, trace: [] })
+    // One packet: a blocked party's damage to the blocker is one total with every member a dealer (§15.1.1.9.8, rung V2-A1).
+    expect(events.filter((e) => e.type === 'battleDamage')).toEqual([{ type: 'battleDamage', target: b, dealers: [a1, a2], original: 8000, amount: 8000, trace: [] }])
     expect(events).toContainEqual({ type: 'broken', card: b })
     expect(t.players[1].forwards.find((c) => c.id === b)).toBeUndefined()
     expect(t.players[1].breakZone).toContain(b)

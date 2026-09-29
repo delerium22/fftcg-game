@@ -175,7 +175,7 @@ describe('L1 §15.2.3 — First Strike splits the damage step', () => {
     expect(split.state.attack?.step).toBe('damage')
     expect(trace([...r.events, ...w.events, ...split.events], names)).toEqual([
       'step:declared', 'step:block', 'step:blocked', 'step:damage',
-      'battle:a0>b:5000', 'battle:a1>b:6000', 'step:firstStrike',
+      'battle:a0+a1>b:11000', 'step:firstStrike',   // one packet: a blocked party's damage is one total (§15.1.1.9.8, rung V2-A1)
       'step:damage', 'battle:b>a0:5000', 'battle:b>a1:8000', 'broken:a0', 'broken:a1',
     ])
     ok(split.state)
@@ -290,6 +290,54 @@ describe('L1 §15.2.3 — First Strike splits the damage step', () => {
     expect(trace(resolved.events, names)).toEqual(['drew:0:1'])
     const w = passBoth(resolved.state)
     expect(w.state.attack?.step).toBe('damage')
+    ok(w.state)
+  })
+
+  // Rung V2-A1 (spec V2-D1, plan R6): battle damage as packets. A blocked party's damage to the blocker is ONE total
+  // with every member a dealer (§15.1.1.9.8); the First Strike batch is chosen at party level before any packet is built.
+  const stackedFrames = (st: GameState) => st.stack.flatMap((i) => (i.kind === 'ability' ? [i.frame] : []))
+
+  it('V2-A1 §15.1.1.9.8 — a blocked party deals the blocker ONE packet; each member\'s dealt-damage clause triggers once, as a source of the whole', () => {
+    const { s, attackers, blocker, names } = board(['T-WATCH', 'T-WATCH'], 'T-BIG')   // 7000 + 7000 into 13000
+    const r = intoDamage(s, attackers, blocker)
+    expect(r.state.pending).toEqual({ kind: 'assignPartyDamage', player: 1 })
+    const split = apply(r.state, { type: 'assignPartyDamage', player: 1, assignments: [{ target: attackers[0]!, amount: 6000 }, { target: attackers[1]!, amount: 7000 }] })
+    expect(split.events.filter((e) => e.type === 'battleDamage')[0]).toEqual({ type: 'battleDamage', target: blocker, dealers: attackers, original: 14000, amount: 14000, trace: [] })
+    expect(trace(split.events, names).filter((x) => x.startsWith('battle:') || x.startsWith('broken:'))).toEqual(['battle:a0+a1>b:14000', 'battle:b>a0:6000', 'battle:b>a1:7000', 'broken:a1', 'broken:b'])
+    // One frame per member, each sourced to its member and carrying the packet's total.
+    expect(stackedFrames(split.state).map((f) => [f.abilityId, f.source, f.triggerEvent?.kind === 'damage' ? f.triggerEvent.amount : null]).sort())
+      .toEqual([['T-WATCH:draw', attackers[0], 14000], ['T-WATCH:draw', attackers[1], 14000]].sort())
+    ok(split.state)
+  })
+
+  it('V2-A1 plan R6 — an all-First-Strike party into a surviving blocker: ONE held packet, never re-applied; each member triggers exactly once', () => {
+    const { s, attackers, blocker, names } = board(['T-FS-WATCH', 'T-FS-WATCH'], 'T-BIG')   // 6000 + 6000 into 13000
+    const r = intoDamage(s, attackers, blocker)
+    expect(r.state.attack?.step).toBe('firstStrike')
+    expect(dmg(r.state, blocker)).toBe(12000)
+    // The held occurrences are the packet AS APPLIED: one per dealer, the final total, the damaged side captured.
+    expect(r.state.attack?.heldDamage).toEqual(attackers.map((a) => ({ source: a, sourceController: 0, target: blocker, victim: null, amount: 12000, targetController: 1 })))
+    const w = passBoth(r.state)
+    expect(w.state.pending).toEqual({ kind: 'assignPartyDamage', player: 1 })
+    const split = apply(w.state, { type: 'assignPartyDamage', player: 1, assignments: [{ target: attackers[0]!, amount: 6000 }, { target: attackers[1]!, amount: 7000 }] })
+    expect(dmg(split.state, blocker), 'the held batch is not applied a second time').toBe(12000)
+    const all = trace([...r.events, ...w.events, ...split.events], names)
+    expect(all.filter((x) => x.startsWith('battle:'))).toEqual(['battle:a0+a1>b:12000', 'battle:b>a0:6000', 'battle:b>a1:7000'])
+    expect(all.filter((x) => x === 'trigger:T-FS-WATCH:draw')).toHaveLength(2)
+    ok(split.state)
+  })
+
+  it('V2-A1 §15.1.1.9.7 — a MIXED party deals nothing early: behind a First Strike blocker it deals one packet in the second batch', () => {
+    const { s, attackers, blocker, names } = board(['T-FS6', 'V-F2'], 'T-FS5')   // 6000 (First Strike) + 5000 into a 5000 First Strike blocker
+    const r = intoDamage(s, attackers, blocker)
+    expect(r.state.pending, 'only the blocker deals first, so its split is owed now').toEqual({ kind: 'assignPartyDamage', player: 1 })
+    const split = apply(r.state, { type: 'assignPartyDamage', player: 1, assignments: [{ target: attackers[0]!, amount: 1000 }, { target: attackers[1]!, amount: 4000 }] })
+    expect(split.state.attack?.step).toBe('firstStrike')
+    const w = passBoth(split.state)
+    expect(trace([...split.events, ...w.events], names)).toEqual([
+      'battle:b>a0:1000', 'battle:b>a1:4000', 'step:firstStrike',
+      'step:damage', 'battle:a0+a1>b:11000', 'broken:b',
+    ])
     ok(w.state)
   })
 

@@ -203,7 +203,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 12.4.2 | Drawing from an empty deck loses | tested | engine/cr9-phases#§3.1.2 |
 | 12.4.3 | Damage beyond the deck loses | tested | engine/cr12-rules#§3.1.3 |
 | 12.4.4 | Zero or less power: to the owner's Break Zone | tested | engine/cr12-rules#§12.4.4 |
-| 12.4.5 | Damage at or above power breaks; the damage source is credited | tested | engine/cr12-rules#§12.4.5; engine/observer-triggers#C2-A5 |
+| 12.4.5 | Damage at or above power breaks; the damage source is credited (the break is tested; the credit is not recorded — no pool card reads it, rung V2-A1 R1) | simplified | packages/engine/src/damage.ts; engine/cr12-rules#§12.4.5; engine/observer-triggers#C2-A5 |
 | 12.4.6 | Two same-name non-generic Characters: both to the Break Zone | tested | engine/cr12-field-limits#J4-A1 |
 | 12.4.7 | Two Light/Dark Characters: all to the Break Zone | tested | engine/cr12-field-limits#J4-A2 |
 | 12.4.8 | Six Backups: down to five | tested | engine/cr12-field-limits#J4-A3 |
@@ -215,7 +215,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.1.1.9.5 | Down to one Forward, it is no longer a party (untested: a party shrinking to one INSIDE the First Strike window, which needs a trigger that breaks a Forward — none in the pool) | tested | engine/cr10-attack-windows#a party reduced to one; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 15.1.1.9.6 | Blockable if any member is; the whole party is blocked | tested | engine/cr10-attack#§10.1.3.4 |
 | 15.1.1.9.7 | First Strike damage only if every member has it | tested | engine/timing-l1-first-strike#§15.1.1.9.7 |
-| 15.1.1.9.8 | Each member checks it may damage the blocker; any break credits them all | tested | engine/cr10-attack#§10.1.4.2.1 |
+| 15.1.1.9.8 | Each member checks it may damage the blocker; the damage is one total; any break credits them all (the total is tested; the check is vacuous in the pool and the credit is not recorded — rung V2-A1) | simplified | packages/engine/src/attack.ts; engine/cr10-attack#§10.1.4.2.1; engine/timing-l1-first-strike#V2-A1 §15.1.1.9.8 |
 | 15.1.1.9.9 | Disbands at the next declaration or when the phase ends | tested | engine/cr10-attack#an unblocked party |
 | 15.1.1.9.10 | Ability damage by a member counts as the party's, sourced to that member | n/a | no pool card reads party damage |
 | 15.2.1 | Brave | heading |  |
