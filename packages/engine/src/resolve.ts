@@ -251,8 +251,14 @@ interface Ctx {
   steps: number
   /** Rung J1-D3. Declaring (choices only, as the item goes on the stack) or resolving. */
   stage: 'declare' | 'resolve'
-  /** Targets declared at placement, by node path; read at resolution and re-validated (§11.11.2). */
+  /**
+   * Targets declared at placement, by node path; read at resolution and re-validated (§11.11.2). A choice answered
+   * AT resolution (a chooser under an `if`) is recorded here too, so its node can rebind its own targets when a
+   * deeper prompt resumes; the §11.11.2 check reads this list only as a frame starts resolving, before any.
+   */
   declared: { path: number[]; targets: CardId[] }[]
+  /** The answer the frame resumed with — the targets of the node the prompt was raised at. */
+  answer: readonly CardId[]
   modesDeclared: boolean
   /** Declaration met a choice with no legal answer (§11.8.4), or resolution found every declared target gone (§11.11.2). */
   cancelled: boolean
@@ -336,9 +342,17 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
   switch (eff.kind) {
     case 'chooseTargets': {
       if (answered) {
-        // A prompt at THIS node was just answered. Declaring: record it and go on declaring inside `then`.
-        if (ctx.stage === 'declare') ctx.declared.push({ path: [...ctx.path], targets: [...ctx.chosen] })
+        // On the resume spine. Either the prompt was raised at THIS node (the spine enters its `then` and stops:
+        // `applyChooseTargets` appended one level) and the answer is recorded, or a DEEPER prompt was answered and
+        // this node rebinds its own recorded targets — the answer belongs to the inner node, and an effect after
+        // the inner one in this `then` must act on this node's targets (V1-A1 review M1).
+        const here = ctx.resume.length === depth + 2
+        const own = here ? [...ctx.answer] : ctx.declared.find((d) => samePath(d.path, ctx.path))?.targets ?? [...ctx.chosen]
+        if (here) ctx.declared.push({ path: [...ctx.path], targets: [...own] })
+        const outer = ctx.chosen
+        ctx.chosen = [...own]
         runEffects(ctx, eff.then, depth + 1, true)
+        if (!ctx.suspend) ctx.chosen = outer
         return
       }
       // Resolving a node that was declared at placement: no prompt. Its targets are re-validated against the
@@ -349,8 +363,10 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)
         const valid = pre.targets.filter((t) => candidates.includes(t))
         if (valid.length === 0) return
+        const outer = ctx.chosen
         ctx.chosen = valid
         runEffects(ctx, eff.then, depth + 1, false)
+        if (!ctx.suspend) ctx.chosen = outer
         return
       }
       const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)
@@ -582,6 +598,7 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
     resume: frame.path, suspend: null, steps: state.resolution.steps,
     stage, declared: (frame.declared ?? []).map((d) => ({ path: [...d.path], targets: [...d.targets] })),
     modesDeclared: frame.modesDeclared ?? false, cancelled: false, done: false,
+    answer: [...frame.chosen],
   }
   // §11.11.2: an item that chose targets, every one of which has since become illegal, is cancelled whole.
   // With at least one still legal it applies to those (per node, in `runEffect`). Checked only when the frame

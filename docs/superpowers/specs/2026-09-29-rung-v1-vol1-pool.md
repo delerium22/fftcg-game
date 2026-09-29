@@ -111,7 +111,7 @@ with the usual proof test. Charlotte clause 3 (the action-ability ban) is B.
 - **V1-D8 — `putIntoBreakZone` effect.** A zone movement from the field, not a break (§15.1.1.3.2: a break is by
   damage or an effect that says "break"): no `broken` event; watchers of field→Break Zone fire with reason
   `ability`; `cannotBeBroken` does not stop it; the LB sweep applies (§15.2.8.4.1).
-- **V1-D9 — "your opponent selects".** `chooseTargets.chooser?: 'opponent'`. §11.3.3: "To select something is not
+- **V1-D9 — "your opponent selects".** `chooseTargets.select?: 'self' | 'opponent'` (named `select` in V1-A2; every "you may put/play/discard" is a select too). §11.3.3: "To select something is not
   equivalent to to choose something". So a select raises the pending on the OPPONENT of the effect's controller,
   does not dispatch `observesChosen` (Prishe), ignores "cannot be chosen", and never makes a Summon uncastable for
   lack of targets (§11.3.3 applies to "chooses"). An empty candidate set is a no-op.
