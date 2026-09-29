@@ -207,6 +207,8 @@ export function targetCandidates(state: GameState, source: CardId, controller: P
     const ps = state.players[p]
     const ids = spec.zone === 'breakZone' ? ps.breakZone
       : spec.zone === 'hand' ? ps.hand   // rung V1-A2: own hand only, through a select (validated at game creation)
+      // Rung V1-A4: "Character" on the field (§5.2.3.1.1.1) is a Forward or a Backup; Forwards first, a fixed order.
+      : spec.zone === 'characters' ? [...ps.forwards, ...ps.backups].map((c) => c.id)
       : (spec.zone === 'forwards' ? ps.forwards : ps.backups).map((c) => c.id)
     for (const id of ids) if (matchesFilter(state, source, id, spec.filter)) out.push(id)
   }

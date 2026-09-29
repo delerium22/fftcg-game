@@ -548,10 +548,13 @@ function candidateNoun(v: PlayerView, ids: readonly CardId[], plural: boolean): 
   const zone = only(new Set(spots.map((s) => s?.zone ?? null)))
   const seat = only(new Set(spots.map((s) => s?.p ?? null)))
   if (zone === 'breakZone') return `${plural ? 'cards' : 'card'} in ${seat === null ? 'a' : seat === v.me ? 'your' : "the AI's"} Break Zone`
+  // Rung V1-A4: Forwards and Backups together are "Characters" (§5.2.3.1.1.1) — LB Luso's "Character you control".
+  const onField = spots.length > 0 && spots.every((s) => s !== null && s.zone !== 'breakZone')
   const noun = zone === 'forwards' ? (plural ? 'Forwards' : 'Forward')
     : zone === 'backups' ? (plural ? 'Backups' : 'Backup')
+    : onField ? (plural ? 'Characters' : 'Character')
     : plural ? 'cards' : 'card'
-  if (seat === null || zone === null) return noun
+  if (seat === null || (zone === null && !onField)) return noun
   return `${noun} ${seat === v.me ? 'you control' : 'the AI controls'}`
 }
 

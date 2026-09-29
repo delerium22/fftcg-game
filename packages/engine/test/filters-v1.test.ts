@@ -73,6 +73,9 @@ const DEFS: CardDef[] = [
   makeDef({ code: 'T-SUW', elements: ['water'], cost: 2, power: 5000, job: 'Standard Unit' }),
   makeDef({ code: 'T-SUF', elements: ['fire'], cost: 2, power: 5000, job: 'Standard Unit' }),
   makeDef({ code: 'T-SUWF', type: 'backup', elements: ['wind', 'water'], cost: 2, power: null, job: 'Standard Unit' }),
+  // Rung V1-A4: LB Luso as printed — "choose 1 Character you control" — and a plain Water Backup for it to choose.
+  makeDef({ code: 'T-LUSOC', elements: ['fire'], cost: 0, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [etb('T-LUSOC:etb', [{ ...(search(1) as Extract<Effect, { kind: 'chooseTargets' }>), from: { zone: 'characters', controller: 'self', filter: { excludeSource: true } } }])] }),
+  makeDef({ code: 'T-WATB', type: 'backup', elements: ['water'], cost: 2, power: null }),
 ]
 const DECK = deckOf(['T-SUW', 'T-SUF', 'T-SUWF', ...VANILLA_POOL.map((d) => d.code)])
 
@@ -176,5 +179,40 @@ describe('V1-A3 — game creation admits sameElementAsChosen only where the exec
     expect(validateContinuousStatics([scoped({ anyOf: [{ name: 'A' }, { job: 'B' }] })])).toEqual([])
     expect(validateContinuousStatics([scoped({ anyOf: [{ name: 'A' }, { minPower: 5000 }] })]).join()).toMatch(/minPower/)
     expect(validateContinuousStatics([scoped({ sameElementAsChosen: true })]).join()).toMatch(/sameElementAsChosen/)
+  })
+})
+
+describe('V1-A4 — the characters zone: a player\'s Forwards, then Backups', () => {
+  it('L1 §5.2.3.1.1.1 — "choose 1 Character you control" offers your Forwards and Backups, and none of the opponent\'s', () => {
+    let s = makeGame({ defs: DEFS, decks: [DECK, DECK] })
+    let fwd: CardId, bkp: CardId, luso: CardId
+    ;[s, bkp] = withField(s, 0, 'backups', 'T-WATB')
+    ;[s, fwd] = withField(s, 0, 'forwards', 'T-WAT')
+    ;[s] = withField(s, 1, 'forwards', 'T-WAT')
+    ;[s] = withField(s, 1, 'backups', 'T-WATB')
+    ;[s, luso] = withHand(s, 0, 'T-LUSOC')
+    s = apply(s, { type: 'castCharacter', player: 0, card: luso, payment: FREE }).state
+    const pending = s.pending
+    if (pending?.kind !== 'chooseTargets') throw new Error(`expected a target choice, got ${pending?.kind}`)
+    // Every one of the controller's Characters but the source (`excludeSource`), Forwards first.
+    const own = s.players[0]
+    expect(pending.candidates).toEqual([...own.forwards.map((c) => c.id).filter((id) => id !== luso), ...own.backups.map((c) => c.id)])
+    expect(pending.candidates).toContain(fwd)
+    expect(pending.candidates).toContain(bkp)
+    const theirs = [...s.players[1].forwards, ...s.players[1].backups].map((c) => c.id)
+    expect(pending.candidates.some((id) => theirs.includes(id))).toBe(false)
+  })
+
+  it('L1 §5.2.1.1 — with a Water BACKUP chosen, the search reads the Backup\'s Element (Review Focus 2)', () => {
+    let s = makeGame({ defs: DEFS, decks: [DECK, DECK] })
+    let bkp: CardId, luso: CardId
+    ;[s, bkp] = withField(s, 0, 'backups', 'T-WATB')
+    ;[s, luso] = withHand(s, 0, 'T-LUSOC')
+    s = apply(s, { type: 'castCharacter', player: 0, card: luso, payment: FREE }).state
+    s = apply(s, { type: 'chooseTargets', player: 0, targets: [bkp] }).state
+    s = pass(pass(s, 0), 1)
+    const pending = s.pending
+    if (pending?.kind !== 'chooseFromDeck') throw new Error(`expected a deck choice, got ${pending?.kind}`)
+    expect(pending.filter).toEqual({ job: 'Standard Unit', elementIn: ['water'] })
   })
 })

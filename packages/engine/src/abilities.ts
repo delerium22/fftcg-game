@@ -18,9 +18,10 @@ import type { CardId, StackItem } from './state.js'
 /**
  * Which pile a target is drawn from. `hand` (rung V1-A2, spec V1-D11) is the controller's OWN hand and only through a
  * select — Yuna's "play … from your hand", Porom's "discard"; game creation refuses any other use. Its candidates are
- * hidden from the other seat (`viewFor`) and re-sampled by `determinise`.
+ * hidden from the other seat (`viewFor`) and re-sampled by `determinise`. `characters` (rung V1-A4) is a player's field
+ * Characters (§5.2.3.1.1.1) — their Forwards, then their Backups — LB Luso's "choose 1 Character you control".
  */
-export type TargetZone = 'forwards' | 'backups' | 'breakZone' | 'hand'
+export type TargetZone = 'forwards' | 'backups' | 'breakZone' | 'hand' | 'characters'
 
 /** Whose cards are eligible. `any` means either player's. */
 export type TargetController = 'self' | 'opponent' | 'any'
