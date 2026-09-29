@@ -30,16 +30,15 @@ describe('the card pool', () => {
    * Rung V1-B (review M6): the clauses ENCODED with a known deviation from the rules, one line each, naming the rung that
    * finishes it. The gap table above counts what is missing; this names what is present but simplified, so the pool gate
    * does not overstate completeness. Exact both ways against the source: every encoding whose doc comment carries an
-   * `MVP0-SIMPLIFICATION` marker naming a rung V1-<letter> is listed here, and nothing else — an entry that no longer
+   * `MVP0-SIMPLIFICATION` marker naming rung V1-E or V1-F is listed here, and nothing else — an entry that no longer
    * applies must go, with its marker. Rung V1-D finished Ultima Weapon (§11.8.13), Vincent (the reflexive clause) and Ward
-   * (§11.2.2.3) and moved the three searches to rung V1-E. Yuna's (the older spec C9 one) still names V1-D, which did not
-   * take it: no rung is scheduled for it yet.
+   * (§11.2.2.3), moved the three searches to rung V1-E and Yuna's bottom order (the older spec C9 one) to rung V1-F.
    */
   const SIMPLIFIED: Record<string, string> = {
     '3-143C': 'Leonora: the search does not reveal the found card (§15.1.1.8.1) — rung V1-E',
     '21-010H': 'Taivas: the search does not reveal the found card (§15.1.1.8.1) — rung V1-E',
     '23-130H': 'LB Luso: the search does not reveal the found card (§15.1.1.8.1) — rung V1-E',
-    '27-129S': 'Yuna: the looked-at cards go to the bottom in a fixed order, not the controller\u2019s (spec C9) — rung V1-D',
+    '27-129S': 'Yuna: the looked-at cards go to the bottom in a fixed order, not the controller\u2019s (spec C9) — rung V1-F',
   }
 
   it('lists every simplified encoding, exactly: the table and the source markers agree (review M6)', () => {
@@ -47,14 +46,14 @@ describe('the card pool', () => {
     const marked = new Set<string>()
     for (const f of ['abilities.ts', 'abilities-vol1.ts']) {
       const src = readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
-      for (const m of src.matchAll(MARKED)) if (/MVP0-SIMPLIFICATION/.test(m[1]!) && /rung V1-[A-Z]\b/.test(m[1]!)) marked.add(m[2]!)
+      for (const m of src.matchAll(MARKED)) if (/MVP0-SIMPLIFICATION/.test(m[1]!) && /rung V1-[EF]\b/.test(m[1]!)) marked.add(m[2]!)
     }
     expect(marked.size, 'no marker found at all — the pattern has drifted').toBeGreaterThan(0)
     expect(Object.keys(SIMPLIFIED).sort(), 'a simplified encoding without a table entry, or an entry without its marker').toEqual([...marked].sort())
     const pool = new Set(loadCards().map((d) => d.code))
     for (const [code, why] of Object.entries(SIMPLIFIED)) {
       expect(pool.has(code), code).toBe(true)
-      expect(why, code).toMatch(/rung V1-[A-Z]$/)
+      expect(why, code).toMatch(/rung V1-[EF]$/)
     }
   })
 

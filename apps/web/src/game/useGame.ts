@@ -190,9 +190,11 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       return { kind: 'event', text: `${who(v, e.player)} add${e.player === v.me ? '' : 's'} ${what} to ${whoDoes(v, e.player, 'your', 'its')} hand` }
     }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability finds no legal target — nothing happens` }
-    // Rung V1-D (R4): an item removed from the stack unresolved. The §11.8.4 and §11.11.2 cases were silent here before;
-    // a conditional auto-ability's failed re-check (§11.11.3) has no other line at all.
+    // Rung V1-D (R4): an item removed from the stack unresolved. The §11.8.4 and §11.11.2 cases already have their line —
+    // the engine emits `abilityNoLegalTarget` with them ("finds no legal target") — so only a conditional auto-ability's
+    // failed re-check (§11.11.3), which has no other line at all, is narrated here: one line per cancelled item.
     case 'stackCancelled': {
+      if (e.reason !== 'condition') return null
       const what = e.item.kind === 'summon' ? qualifiedName(v, e.item.card) : `${qualifiedName(v, e.item.source)}'s ability`
       return { kind: 'event', text: `${what} is removed from the stack — ${STACK_CANCELLED_WHY[e.reason]}` }
     }
@@ -445,7 +447,7 @@ const BREAK_ZONE_WHY: Record<Extract<Event, { type: 'putIntoBreakZone' }>['reaso
   ability: 'by an ability',
 }
 
-/** Why an item left the stack unresolved (rung V1-D), in the player's words. */
+/** Why an item left the stack unresolved (rung V1-D), in the player's words. Only `condition` is narrated (see `describeEvent`). */
 const STACK_CANCELLED_WHY: Record<Extract<Event, { type: 'stackCancelled' }>['reason'], string> = {
   noTargetAtPlacement: 'it had no legal target as it was put on',   // §11.8.4
   targetsGone: 'every target it chose is gone',                     // §11.11.2

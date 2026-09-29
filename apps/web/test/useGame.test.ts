@@ -656,13 +656,16 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
     expect(text({ type: 'playedFromHand', player: AI, card: anyCard })).toBe('The AI plays Ramuh onto the field from its hand')
   })
 
-  it('says why an item left the stack unresolved (rung V1-D, R4)', () => {
-    const text = (e: Parameters<typeof describeEvent>[1]): string => describeEvent(view, e)?.text ?? ''
+  it('gives one line per item that left the stack unresolved (rung V1-D, R4)', () => {
     const ability = { kind: 'ability', source: anyCard, abilityId: DULL_TWO.id } as const
-    expect(text({ type: 'stackCancelled', item: ability, reason: 'condition' })).toBe("Ramuh's ability is removed from the stack — its condition no longer holds")
-    expect(text({ type: 'stackCancelled', item: ability, reason: 'targetsGone' })).toBe("Ramuh's ability is removed from the stack — every target it chose is gone")
-    expect(text({ type: 'stackCancelled', item: { kind: 'summon', card: RAMUH }, reason: 'noTargetAtPlacement' }))
-      .toBe('Ramuh is removed from the stack — it had no legal target as it was put on')
+    const lines = (reason: 'condition' | 'targetsGone' | 'noTargetAtPlacement'): string[] => eventLines(view, [
+      // The engine pairs a target cancellation with `abilityNoLegalTarget`; a condition cancellation comes alone.
+      ...(reason === 'condition' ? [] : [{ type: 'abilityNoLegalTarget' as const, card: anyCard, abilityId: DULL_TWO.id, controller: HUMAN }]),
+      { type: 'stackCancelled', item: ability, reason },
+    ]).map((l) => l.text)
+    expect(lines('condition')).toEqual(["Ramuh's ability is removed from the stack — its condition no longer holds"])
+    expect(lines('targetsGone')).toEqual(["Ramuh's ability finds no legal target — nothing happens"])
+    expect(lines('noTargetAtPlacement')).toEqual(["Ramuh's ability finds no legal target — nothing happens"])
   })
 
   it('still names a card an ability moved from a public zone into a hidden hand', () => {
