@@ -173,3 +173,58 @@ describe('21-001R Ward — "You can only pay with Fire CP to cast Ward." and "EX
     expect(() => apply(s, { type: 'castCharacter', player: 0, card: ward, payment: { dullBackups: [...fire, water[0]!], discards: [] } })).toThrow()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Burn: Palom, LB Zack (Ifrit and Ward are above, with the EX BURST cards)
+// ---------------------------------------------------------------------------
+
+describe('13-013C Palom — "When Palom enters the field, choose 1 Forward. Deal it 4000 damage. If you control a Card Name Porom Forward, deal it 8000 damage instead."', () => {
+  /** A Porom FORWARD, which neither pool prints (the only Porom is the Backup 11-121C): the 8000 branch is tested synthetically (spec V1-D3). */
+  const POROM_FORWARD = 'T-POROM-F'
+  const withPoromForward = (s: GameState): GameState => ({
+    ...s, defs: { ...s.defs, [POROM_FORWARD]: { ...def('11-121C'), code: POROM_FORWARD, type: 'forward', power: 5000, abilities: [], abilityClauses: 0 } },
+  })
+
+  function castPalom(s0: GameState) {
+    let s = s0; let victim: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', '20-106R')   // Alphinaud, 6000 — survives 4000, not 8000
+    const r = cast(s, '13-013C', [FIRE_BACKUP, FIRE_BACKUP])
+    expect(r.state.pending).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0, min: 1, max: 1 }))
+    return { t: apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] }).state, victim }
+  }
+
+  it('deals 4000 without a Porom Forward — the Porom BACKUP does not count', () => {
+    let s = makeGame()
+    ;[s] = withField(s, 0, 'backups', '11-121C')
+    const { t, victim } = castPalom(s)
+    expect(fc(t, victim)?.damage).toBe(4000)
+    ok(t)
+  })
+
+  it('deals 8000 instead while its controller controls a Card Name Porom Forward', () => {
+    let s = withPoromForward(makeGame())
+    ;[s] = withField(s, 0, 'forwards', POROM_FORWARD)
+    const { t, victim } = castPalom(s)
+    expect(fc(t, victim), '8000 ≥ 6000: §12.4.5').toBeUndefined()
+  })
+
+  it('an OPPONENT’s Porom Forward does not count ("you control")', () => {
+    let s = withPoromForward(makeGame())
+    ;[s] = withField(s, 1, 'forwards', POROM_FORWARD)
+    const { t, victim } = castPalom(s)
+    expect(fc(t, victim)?.damage).toBe(4000)
+  })
+})
+
+describe('22-112R Zack — "Limit Break -- 1", "When Zack enters the field, choose 1 Forward. Deal it 3000 damage."', () => {
+  it('parses to LB 1 with one clause; on entering it deals 3000 to the chosen Forward on either side', () => {
+    const d = def('22-112R')
+    expect([d.limitBreak, d.abilityClauses, (d.abilities ?? []).map((a) => a.id)]).toEqual([1, 1, ['22-112R:etb']])
+    let s = makeGame(); let victim: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', '27-125S')   // Luso 27-125S, 3000
+    const r = cast(s, '22-112R', Array<string>(3).fill(FIRE_BACKUP))
+    const t = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] }).state
+    expect(fc(t, victim)).toBeUndefined()
+    ok(t)
+  })
+})

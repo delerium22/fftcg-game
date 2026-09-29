@@ -24,8 +24,8 @@ describe('the card pool', () => {
    * an unimplemented clause nobody declared, and a gap SMALLER is a landed clause whose entry was not updated.
    */
   const EXPECTED_GAPS: Record<string, number> = {
-    '27-122S': 3, '27-123S': 3, '27-128S': 3, '27-129S': 2, '11-010C': 2, '11-121C': 2, '13-013C': 1, '13-125R': 2,
-    '18-003C': 1, '18-094C': 1, '18-129C': 2, '20-106R': 2, '21-010H': 2, '22-112R': 1, '22-123R': 1, '23-119R': 1,
+    '27-122S': 3, '27-123S': 3, '27-128S': 3, '27-129S': 2, '11-010C': 2, '11-121C': 2, '13-125R': 2,
+    '18-003C': 1, '18-094C': 1, '18-129C': 2, '20-106R': 2, '21-010H': 2, '22-123R': 1, '23-119R': 1,
     '23-130H': 2, '24-126H': 2,
   }
 
