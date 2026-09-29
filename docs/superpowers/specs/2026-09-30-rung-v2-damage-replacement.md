@@ -2,6 +2,8 @@
 
 > **STATUS: DESIGN, 2026-09-30.** Under the user's standing instruction (loop, recommended option at a crossroads, CR
 > letter, split large mechanics into their own PRs). Decisions marked V2-D are mine and recorded to be overturned here.
+> **V2-A1 built 2026-09-30** (the packet refactor; see "As built (V2-A1)" below). V2-A2 and V2-B are not started, and
+> the pool-coverage gap table is unchanged (V2-D10).
 
 ## The clauses
 
@@ -82,6 +84,43 @@ cannot break Garland") that damage reduced to 0 is not damage.
   damage aggregated per §15.1.1.9.8 (the one intended behaviour change, with tests); First Strike held packets.
 - **V2-A2** — replacement effects (D2, D3, D5, D6, D7), the order pending, shields, AI, web — synthetic tests.
 - **V2-B** — the five clauses on the real cards, the gap table emptied, Layer 3 scenarios, strict self-play.
+
+## As built (V2-A1)
+
+Commits 9ecc616 (event schema and every consumer), 289592f (`damage.ts`), 6222bc5 (ability damage), c51cfe9 (battle
+packets, the one rules change, the matrix), 3c4e485 (AI, keys, invariants). Plan `2026-09-30-rung-v2a1-damage-packets.md`
+with its revisions R1–R10. Differences from the design above, and readings:
+- Order: the event schema landed BEFORE `damage.ts` (R8 had it after) — the applier emits the new events and cannot
+  compile against the old shape. Each commit is green.
+- The packet (R2): `DamagePacket { target, dealers, amount, cause, causeController, exBurst? }` — `dealers`, not
+  `contributors`, are the members that can legally deal; every member, in this pool. `applyDamagePacket` returns
+  `{ state, applied, final, trace, occurrences, events }` (R3); `previewDamagePacket` returns `{ applied, final }`.
+  `final === amount` and `trace` is empty in A1. No zero-final branch and no replacement seam (R9): the resolve
+  `damage` effect keeps its `amount <= 0` early return, and the applier marks whatever it is handed.
+- Events (R4): `battleDamage { target, dealers, original, amount, trace }`; `abilityDamage` keeps its single
+  `source` and gains `original`/`trace`; `DamageTraceStep { by, before, after }` is declared for V2-A2 to shape.
+  `damageReducedToZero` is `{ target, dealers, original, trace }` — the spec's shape plus `dealers`, so its line can
+  name who dealt it; declared and narrated (web and CLI, unit-tested on hand-built events), emitted from V2-A2.
+- Provenance (R5): `damageProvenance` reads the source's printed type — a Summon's frames, cast or burst, run with
+  the Summon card as source (`cast.ts`) — plus `Frame.origin === 'exBurst'`. It is unit-tested on frames for all five
+  cases; no event carries `cause`, so the resolve wiring (`Ctx.provenance`) is not observable until V2-A2 reads it.
+- The one rules change (§15.1.1.9.8): a blocked party deals its blocker ONE packet, dealers in declaration order,
+  so each member's dealt-damage occurrence (and its trigger's `TriggerEvent.amount`) carries the TOTAL. Visible in
+  the web's cause line ("Luso dealt 12000 damage to …" for a party) and in the ISMCTS key of a queued trigger.
+- First Strike (R6): the batch is chosen at party level before packets are built; held occurrences are the applied
+  packet and are queued once, never re-applied.
+- Narration: web and CLI say one line per packet ("A and B deal 8000 damage to X"); the CLI now narrates ability
+  damage too, worded "X takes N damage from Y's ability" so its combat-line test still reads combat.
+- Matrix (R1): rows 12.4.5 and 15.1.1.9.8 are `simplified` — the §12.4.5 breaker credit is not recorded (marker in
+  `damage.ts`), and §15.1.1.9.8's per-member check is vacuous in the pool and its credit unrecorded (marker in
+  `attack.ts`). A real attribution ledger is backlog.
+- The R7 oracle (not in the repo): 247 seeded games — random (Vol. 2 mirror, Vol. 1 v Vol. 2 both seat orders, with
+  LB decks), greedy v random, greedy mirrors, ISMCTS (8 iterations) mirrors and v greedy — recording winner, end
+  cause, turns, command count, a hash of the command sequence, and a hash of every post-command state. Before (base
+  c229731) against after (3c4e485): 0 differences in winner/cause/turns/commands/command sequence; 27 games differ
+  in the full state hash, all with a blocked party, and 0 differ once damage-occurrence amounts (held occurrences
+  and damage trigger events) are blanked. The scenario goldens' board assertions are unchanged; only the party
+  trace lines changed (combat-tricks).
 
 ## Tests (acceptance)
 
