@@ -474,6 +474,10 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       // determinisation taken from this point. A search that did not expose first could not be answered by
       // index at all — the position would name a different card in every world.
       const audience: PlayerId[] = eff.audience === 'all' ? [0, 1] : [ctx.controller]
+      // A PRIVATE look re-hides what it exposed (rung V1-E review H1): its controller may take or rearrange among these
+      // cards unseen, so the opponent can no longer say where any of them is — and a slot it still knew would tell it
+      // what was taken, by elimination, or name the take in hand. `revealTaken` re-teaches the taken card afterwards.
+      if (eff.audience === 'self') ctx.state = forget(ctx.state, exposed)
       ctx.state = learn(ctx.state, audience, exposed)
       ctx.events.push({ type: 'deckExposed', player: ctx.controller, count: exposed.length, audience: eff.audience, cards: exposed, scope: eff.count === 'all' ? 'deck' : 'top' })
 

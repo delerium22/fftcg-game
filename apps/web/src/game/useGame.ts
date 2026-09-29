@@ -192,7 +192,7 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
         const shown = v.cards[e.card] !== undefined ? bareName(v, e.card) : 'a card'
         return { kind: 'event', text: `${who(v, e.player)} reveal${e.player === v.me ? '' : 's'} ${shown} and add${e.player === v.me ? '' : 's'} it to ${whoDoes(v, e.player, 'your', 'its')} hand` }
       }
-      const what = v.cards[e.card] !== undefined ? qualifiedName(v, e.card) : 'a card'
+      const what = (AFTER_CARDS.get(v) ?? v.cards)[e.card] !== undefined ? qualifiedName(v, e.card) : 'a card'
       return { kind: 'event', text: `${who(v, e.player)} add${e.player === v.me ? '' : 's'} ${what} to ${whoDoes(v, e.player, 'your', 'its')} hand` }
     }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability finds no legal target — nothing happens` }
@@ -386,13 +386,24 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
 }
 
 /**
+ * The AFTER view's own cards, for a `narrator` view (rung V1-E review H1). A card taken into a hand unrevealed is named
+ * only if the view after the move still carries it: one the human saw only BEFORE — a deck slot a private look has
+ * since taken from — would otherwise be named by the merge below. Keyed by the merged view, which nothing mutates.
+ */
+const AFTER_CARDS = new WeakMap<PlayerView, PlayerView['cards']>()
+
+/**
  * The view a command's events are narrated from: the state AFTER it, plus the cards that were public BEFORE.
  * An ability can move a card out of a public zone into a hidden one — Billy Bob returns a Forward from the
  * Break Zone to its owner's HAND — and `#51 returns to the AI's hand` is a worse log line than naming a card
  * whose identity the player could read off the table a moment ago. Nothing hidden before can enter this union,
  * so B-A3 still holds: `before` is itself a human view.
  */
-export const narrator = (before: PlayerView, after: PlayerView): PlayerView => ({ ...after, cards: { ...before.cards, ...after.cards } })
+export const narrator = (before: PlayerView, after: PlayerView): PlayerView => {
+  const view = { ...after, cards: { ...before.cards, ...after.cards } }
+  AFTER_CARDS.set(view, after.cards)
+  return view
+}
 
 /**
  * Narrate and apply one already-chosen command. Split out of `stepAi` because the browser's opponent no longer
@@ -402,7 +413,7 @@ export const narrator = (before: PlayerView, after: PlayerView): PlayerView => (
  */
 function narrateApply(
   state: GameState, legal: readonly Command[], command: Command, control: Control = 'full',
-): { state: GameState; lines: LogLine[] } {
+): { state: GameState; lines: LogLine[]; events: Event[] } {
   // Rung J7-D1: legality is the engine's predicate, not membership in a list that may be a capped sample.
   const refused = isLegal(state, command)
   if (refused !== null) throw new Error(`agent chose an illegal command: ${command.type} (${refused})`)
@@ -430,7 +441,7 @@ function narrateApply(
   // card it had just put onto the field. Pre-command view, post-command cards: the cards union is the only
   // part that has to look forward, so a cast can still name the card it just made public.
   const label = describeChoice({ ...before, cards: view.cards }, command)
-  return { state: result.state, lines: [moveLine(AI, label), ...lines] }
+  return { state: result.state, lines: [moveLine(AI, label), ...lines], events: result.events }
 }
 
 /**
@@ -465,19 +476,20 @@ export const moveLine = (actor: PlayerId, label: string): LogLine =>
 
 /**
  * Apply exactly ONE command for whoever is currently acting, chosen by `agent`, and return the resulting state
- * with the lines it produced. Pure and React-free so the whole driver is testable headlessly (spec B-A7).
+ * with the lines it produced. Pure and React-free so the whole driver is testable headlessly (spec B-A7). The
+ * events come back too (rung V1-E review M1), so a test can say what the human was actually shown.
  */
-export function stepAi(state: GameState, agent: Agent): { state: GameState; lines: LogLine[] } {
+export function stepAi(state: GameState, agent: Agent): { state: GameState; lines: LogLine[]; events: Event[] } {
   const closed = settleForcedWindows(state)
   const settled = closed.state
   const opening = closed.events.length ? eventLines(viewFor(settled, HUMAN), closed.events, state.resolution.queue) : []
   const p = actingPlayer(settled)
   // Closing a window may hand the decision to the OTHER seat; that seat's move is not this agent's to make.
-  if (p === null || (settled !== state && p !== actingPlayer(state))) return { state: settled, lines: opening }
+  if (p === null || (settled !== state && p !== actingPlayer(state))) return { state: settled, lines: opening, events: closed.events }
   const actorView = viewFor(settled, p)
   const legal = legalCommands(settled, p)
   const r = narrateApply(settled, legal, agent.decide(actorView, legal))
-  return { state: r.state, lines: [...opening, ...r.lines] }
+  return { state: r.state, lines: [...opening, ...r.lines], events: [...closed.events, ...r.events] }
 }
 
 /**
