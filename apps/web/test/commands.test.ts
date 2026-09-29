@@ -943,3 +943,50 @@ describe('the window prompt names what may be cast (rung J2)', () => {
     expect(promptFor(top, legal)).toMatch(/ is on the stack — cast a card or pass$/)
   })
 })
+
+describe('an if names the branch that will run (rung V1-A1)', () => {
+  // Palom's shape, with "a Card Name Cloud you control" as the condition so the fixture can satisfy it.
+  const cloudName = (v: PlayerView) => (v.defs[CLOUD] as CardDef).name
+  const palom = (name: string): Ability => ({
+    id: 'test:palom', trigger: { kind: 'enterField' }, text: 'Choose 1 Forward opponent controls. If you control Cloud, deal it 8000 damage. Otherwise, deal it 4000 damage.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' },
+      then: [{ kind: 'if', when: { kind: 'controlsAtLeast', count: 1, controller: 'self', filter: { name } }, then: [{ kind: 'damage', amount: 8000 }], else: [{ kind: 'damage', amount: 4000 }] }] }],
+  })
+  const palomView = (mine: boolean): PlayerView => {
+    const base = viewFor(dealtGame(1), HUMAN)
+    const v = dullView(palom(cloudName(base)), [SPHENE])
+    if (mine) v.fields[HUMAN].forwards = [fieldCard(instance(v, 950, CLOUD))]
+    return v
+  }
+
+  it('reads the condition for the frame: 8000 with the named card, 4000 without, on the prompt and the button', () => {
+    expect(promptFor(palomView(true), [])).toBe('Noel: choose 1 Forward the AI controls to deal 8000 damage to')
+    expect(describeChoice(palomView(true), targets([901]))).toBe('Deal 8000 damage to Sphene')
+    expect(promptFor(palomView(false), [])).toBe('Noel: choose 1 Forward the AI controls to deal 4000 damage to')
+    expect(describeChoice(palomView(false), targets([901]))).toBe('Deal 4000 damage to Sphene')
+  })
+
+  it('subjectMatches: the button reads the picked card; the prompt, before any pick, names the then branch', () => {
+    const byName: Ability = {
+      id: 'test:subject', trigger: { kind: 'enterField' }, text: 'Choose 1 Forward opponent controls. If it is Cloud, break it. Otherwise, dull it.',
+      effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' },
+        then: [{ kind: 'if', when: { kind: 'subjectMatches', filter: { name: cloudName(viewFor(dealtGame(1), HUMAN)) } }, then: [{ kind: 'breakCard' }], else: [{ kind: 'dull' }] }] }],
+    }
+    const v = dullView(byName, [CLOUD, SPHENE])
+    expect(promptFor(v, [])).toBe('Noel: choose 1 Forward the AI controls to break')
+    expect(describeChoice(v, targets([901]))).toBe('Break Cloud')
+    expect(describeChoice(v, targets([902]))).toBe('Dull Sphene')
+  })
+
+  it('with no frame (an activation button), names the printed then branch', () => {
+    const v = viewFor(dealtGame(1), HUMAN)
+    const princess = instance(v, 930, '19-052C')
+    const foe = instance(v, 931, SPHENE, AI)
+    const clause = (v.defs['19-052C'] as CardDef).abilities!.find((a) => a.id === '19-052C:remove')!
+    const iffy: Ability = { ...clause, effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' },
+      then: [{ kind: 'if', when: { kind: 'damageReceived', atLeast: 7 }, then: [{ kind: 'damage', amount: 8000 }], else: [{ kind: 'damage', amount: 4000 }] }] }] }
+    v.defs['19-052C'] = { ...(v.defs['19-052C'] as CardDef), abilities: (v.defs['19-052C'] as CardDef).abilities!.map((a) => (a.id === clause.id ? iffy : a)) }
+    const label = describeChoice(v, { type: 'activateAbility', player: HUMAN, source: princess, abilityId: clause.id, payment: { dullBackups: [], discards: [] }, targets: [foe] }, { payment: false })
+    expect(label).toBe("Undead Princess's remove from the game: Deal 8000 damage to Sphene")
+  })
+})

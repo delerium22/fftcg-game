@@ -1,4 +1,4 @@
-import type { Ability, AbilityTrigger, Effect, Frame, TargetFilter, TargetSpec, TriggerEvent, TriggerWhose } from './abilities.js'
+import type { Ability, AbilityTrigger, Condition, Effect, Frame, TargetFilter, TargetSpec, TriggerEvent, TriggerWhose } from './abilities.js'
 // Type-only, so it is erased at compile time and creates no runtime cycle with rules.ts (which imports this module).
 import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
@@ -9,6 +9,7 @@ export type { DamageOccurrence } from './state.js'
 import { defOf, findFieldCard, forget, learn, updatePlayer, powerOf, keywordsOf, flagsOf } from './state.js'
 import { matchesDefFilter } from './filters.js'
 export { matchesDefFilter } from './filters.js'
+import { staticApplies } from './layer.js'
 import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event, StackRef } from './events.js'
@@ -154,6 +155,22 @@ function matchesFilter(state: GameState, source: CardId, id: CardId, filter: Tar
 }
 
 /**
+ * Whether an `if`'s condition holds now (rung V1-A1, spec V1-D6). Here rather than in layer.ts because
+ * `subjectMatches` needs `matchesFilter`, which lives in this module; every static condition is delegated to the
+ * layer's `staticApplies`, so an `if` and a static `when` can never read the same condition two ways.
+ *
+ * `chosen` is the frame's binding at the `if` node; `subjectMatches` reads its first card. A null source (no
+ * caller passes one today) excludes nothing: `-1` names no card, so `excludeSource`/`excludeSourceName` pass.
+ */
+export function conditionHolds(ctx: { state: GameState; source: CardId | null; controller: PlayerId }, when: Condition, chosen: readonly CardId[]): boolean {
+  if (when.kind === 'subjectMatches') {
+    const subject = chosen[0]
+    return subject !== undefined && matchesFilter(ctx.state, ctx.source ?? -1, subject, when.filter)
+  }
+  return staticApplies(ctx, when)
+}
+
+/**
  * The legal targets of one `TargetSpec`, in a fixed player-0-then-1 order so a live state and its
  * determinisation enumerate the same candidates in the same order (spec C1-A6).
  */
@@ -214,7 +231,10 @@ interface Ctx {
   source: CardId
   controller: PlayerId
   abilityId: string
-  /** Program counter, one index per nesting level. `chooseModes` owns TWO levels: mode ordinal, then effect index. */
+  /**
+   * Program counter, one index per nesting level. `chooseModes` owns TWO levels: mode ordinal, then effect index;
+   * `if` owns two as well: the branch taken (0 = then, 1 = else), then the effect index (rung V1-A1).
+   */
   path: number[]
   chosen: CardId[]
   modes: number[]
@@ -358,6 +378,16 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       }
       if (eff.modes.length === 0 || eff.min > eff.modes.length) { noLegalTarget(ctx); return }
       ctx.suspend = { kind: 'chooseMode', player: ctx.controller, min: eff.min, max: Math.min(eff.max, eff.modes.length), labels: eff.modes.map((m) => m.label) }
+      return
+    }
+    case 'if': {
+      // Answered: a prompt inside the branch was raised and answered, so the branch was fixed then — never re-read
+      // the condition, which may no longer hold (rung V1-A1). Otherwise it is read now, at resolution.
+      const branch = answered ? (ctx.resume[depth + 1] ?? 0)
+        : (conditionHolds({ state: ctx.state, source: ctx.source, controller: ctx.controller }, eff.when, ctx.chosen) ? 0 : 1)
+      const effects = branch === 0 ? eff.then : (eff.else ?? [])
+      ctx.path = [...ctx.path.slice(0, depth + 1), branch]
+      runEffects(ctx, effects, depth + 2, answered)
       return
     }
     case 'lookAtDeck': {

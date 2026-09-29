@@ -1,5 +1,5 @@
 import {
-  HAND_SIZE_LIMIT, abilityCpRequirement, castBlocker, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, flagsOf, keywordsOf, pickedDeckCards, seedRng,
+  HAND_SIZE_LIMIT, abilityCpRequirement, castBlocker, conditionHolds, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, flagsOf, keywordsOf, pickedDeckCards, seedRng,
   type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameResult, type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
   type ZoneTransitionReason, type CastBlocker, type StackItem, type AttackStep } from '@fftcg/engine'
@@ -353,11 +353,28 @@ function caused(v: PlayerView, text: string): string {
 }
 
 /**
+ * The frame a verb is read for, when there is one (rung V1-A1): an `if` names the branch that will actually run,
+ * read on `stateShim(v)` for the frame's controller with `chosen` as the subject. Null where no frame is known —
+ * an activation's button — and there an `if` names its printed `then` branch.
+ */
+type VerbFrame = { readonly state: GameState; readonly source: CardId; readonly controller: PlayerId; readonly chosen: readonly CardId[] } | null
+type Verb = { imperative: string; purpose: string }
+
+/**
+ * The branch of an `if` to describe. A `subjectMatches` with no card picked yet (the prompt, before any click) is
+ * not readable — the subject IS the pick — so it too names the `then` branch, as the no-frame form does.
+ */
+function describedBranch(e: Extract<Effect, { kind: 'if' }>, frame: VerbFrame): readonly Effect[] {
+  if (frame === null || (e.when.kind === 'subjectMatches' && frame.chosen.length === 0)) return e.then
+  return conditionHolds(frame, e.when, frame.chosen) ? e.then : (e.else ?? [])
+}
+
+/**
  * What a clause does to the cards it picks, as an imperative for the button ("Dull") and a purpose clause for
  * the prompt ("to dull"). Read off the AST rather than hard-coded per card, so a clause the cards lane adds
  * tomorrow gets a real label with no change here.
  */
-function verbOf(e: Effect): { imperative: string; purpose: string } | null {
+function verbOf(e: Effect, frame: VerbFrame): Verb | null {
   switch (e.kind) {
     case 'dull': return { imperative: 'Dull', purpose: 'to dull' }
     case 'freeze': return { imperative: 'Freeze', purpose: 'to freeze' }
@@ -367,6 +384,8 @@ function verbOf(e: Effect): { imperative: string; purpose: string } | null {
     case 'grantKeyword': return { imperative: `Give ${KEYWORD_LABEL[e.keyword]} to`, purpose: `to give ${KEYWORD_LABEL[e.keyword]}` }
     case 'grantFlag': return { imperative: 'Protect', purpose: FLAG_PURPOSE[e.flag] }
     case 'moveToHand': return { imperative: 'Return', purpose: 'to return to hand' }
+    // Rung V1-A1: what the branch that will run does — Palom's "deal it 8000 damage" only when the condition holds.
+    case 'if': return joinVerbs(describedBranch(e, frame).map((x) => verbOf(x, frame)))
     // chooseTargets/chooseModes/forEach describe a choice of their own, not what THIS one does to its picks.
     default: return null
   }
@@ -378,7 +397,7 @@ function verbOf(e: Effect): { imperative: string; purpose: string } | null {
  * unambiguous — Shantotto and Ramuh both print several `1 Forward` clauses, so guessing between them would put
  * the wrong verb on the button.
  */
-function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTargets' }>): { imperative: string; purpose: string } | null {
+function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTargets' }>, chosen: readonly CardId[] = []): Verb | null {
   const active = activeAbility(v)
   if (!active) return null
   const found: Extract<Effect, { kind: 'chooseTargets' }>[] = []
@@ -390,13 +409,14 @@ function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTarg
         walk(e.then)
       } else if (e.kind === 'chooseModes') for (const m of e.modes) walk(m.effects)
       else if (e.kind === 'forEach') walk(e.do)
+      else if (e.kind === 'if') { walk(e.then); walk(e.else ?? []) }
     }
   }
   const exact = effectAtPath(active.ability.effects, active.frame.path, active.frame.modes)
   let node: Extract<Effect, { kind: 'chooseTargets' }> | null = exact?.kind === 'chooseTargets' ? exact : null
   if (!node) { walk(active.ability.effects); node = found.length === 1 ? found[0] ?? null : null }
   if (!node) return null
-  return nodeVerb(node)
+  return nodeVerb(node, { state: stateShim(v), source: active.frame.source, controller: active.frame.controller, chosen })
 }
 
 /**
@@ -406,14 +426,18 @@ function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTarg
  */
 function clauseTargetVerb(clause: Ability): { imperative: string; purpose: string } | null {
   const nodes = clause.effects.filter((e): e is Extract<Effect, { kind: 'chooseTargets' }> => e.kind === 'chooseTargets')
-  return nodes.length === 1 ? nodeVerb(nodes[0]!) : null
+  return nodes.length === 1 ? nodeVerb(nodes[0]!, null) : null
 }
 
-function nodeVerb(node: Extract<Effect, { kind: 'chooseTargets' }>): { imperative: string; purpose: string } | null {
+function nodeVerb(node: Extract<Effect, { kind: 'chooseTargets' }>, frame: VerbFrame): Verb | null {
   // EVERY effect the choice applies, not just the first. Hugh Yurg's clause is "+2000 power AND Brave", and
   // naming only the power made the prompt understate what the player was deciding — Brave is the half that
   // changes whether the Forward dulls to attack, so a player picking purely on power is picking blind.
-  const verbs = node.then.map(verbOf).filter((w): w is { imperative: string; purpose: string } => w !== null)
+  return joinVerbs(node.then.map((e) => verbOf(e, frame)))
+}
+
+function joinVerbs(parts: readonly (Verb | null)[]): Verb | null {
+  const verbs = parts.filter((w): w is Verb => w !== null)
   if (!verbs.length) return null
   return {
     imperative: joinImperatives(verbs.map((w) => w.imperative)),
@@ -570,7 +594,7 @@ export function describeChoice(v: PlayerView, c: Command, opts: { payment?: bool
      */
     case 'chooseTargets': {
       if (!c.targets.length) return 'Choose no targets'
-      const verb = v.pending?.kind === 'chooseTargets' ? targetVerb(v, v.pending) : null
+      const verb = v.pending?.kind === 'chooseTargets' ? targetVerb(v, v.pending, c.targets) : null
       return `${verb?.imperative ?? 'Target'} ${listNames(v, c.targets)}`
     }
     /**

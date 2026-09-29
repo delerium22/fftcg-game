@@ -394,3 +394,43 @@ describe('candidateCommands: the party-damage assignment (rung K1)', () => {
     for (const c of cands) expect(legalCommands(s, 1)).toContainEqual(c)
   })
 })
+
+/**
+ * Rung V1-A1. An `if` is priced by the branch that would run NOW — the condition read for the frame's controller,
+ * with the candidate bound as the subject — never as 0 and never as both branches.
+ */
+describe('candidateCommands: the V1-A1 shapes', () => {
+  const MARK = makeDef({ code: 'T-MARK', type: 'backup', power: null, cost: 1 })
+  const marked = { kind: 'controlsAtLeast', count: 1, controller: 'self', filter: { name: 'T-MARK' } } as const
+
+  it('if: a Palom-shaped 8000-or-4000 clause kills the 7000 Forward only when the condition holds', () => {
+    const a = clause('T-PALOM:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' },
+      then: [{ kind: 'if', when: marked, then: [{ kind: 'damage', amount: 8000 }], else: [{ kind: 'damage', amount: 4000 }] }] }])
+    for (const withMark of [false, true]) {
+      let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, MARK, bearer('T-PALOM', a)] }), 0, 0)
+      let src: number, big: number, small: number
+      ;[s, src] = withField(s, 0, 'forwards', 'T-PALOM')
+      ;[s, big] = withField(s, 1, 'forwards', 'V-F5')     // 7000: only 8000 breaks it
+      ;[s, small] = withField(s, 1, 'forwards', 'V-F1')   // 3000: either branch breaks it
+      if (withMark) [s] = withField(s, 0, 'backups', 'T-MARK')
+      s = arm(s, src, 0, a)
+      expect(targetsOf(candidateCommands(s, 0)[0]), withMark ? 'the 8000 branch kills the bigger card' : 'the 4000 branch only chips the 7000').toEqual([withMark ? big : small])
+    }
+  })
+
+  it('if inside a mode: the mode is worth its live branch — a break when the condition holds, nothing when it does not', () => {
+    const a = clause('T-MODAL:etb', [{ kind: 'chooseModes', min: 1, max: 1, modes: [
+      { label: 'If marked, break one', effects: [{ kind: 'if', when: marked, then: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'breakCard' }] }] }] },
+      { label: 'Dull one', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] },
+    ] }])
+    for (const withMark of [false, true]) {
+      let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, MARK, bearer('T-MODAL', a)] }), 0, 0)
+      let src: number
+      ;[s, src] = withField(s, 0, 'forwards', 'T-MODAL')
+      ;[s] = withField(s, 1, 'forwards', 'V-F8')
+      if (withMark) [s] = withField(s, 0, 'backups', 'T-MARK')
+      s = arm(s, src, 0, a)
+      expect(modesOf(candidateCommands(s, 0)[0])).toEqual([withMark ? 0 : 1])
+    }
+  })
+})
