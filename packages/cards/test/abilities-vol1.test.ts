@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { CardId, Event, FieldCard, GameState } from '@fftcg/engine'
-import { activationCheck, checkInvariants, deckPickCandidates, findFieldCard, keywordsOf, legalCommands, powerOf, viewFor } from '@fftcg/engine'
+import { activationCheck, checkInvariants, deckPickCandidates, describeAbilityCost, findFieldCard, keywordsOf, legalCommands, powerOf, viewFor } from '@fftcg/engine'
 import { VOL1_ABILITIES, VOL1_CLAUSES } from '../src/abilities-vol1.js'
-import { DEFS, FIRE_BACKUP, LIGHTNING_BACKUP, WATER_BACKUP, applyNow, endPhase, makeGame, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
+import { DEFS, FIRE_BACKUP, LIGHTNING_BACKUP, WATER_BACKUP, applyNow, deckFile, endPhase, makeGame, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
 
 /**
  * Rung V1-B: the Starter Set 2025 Vol. 1 cards (spec 2026-09-29-rung-v1-vol1-pool.md, V1-D1/D3/D4), tested against the
@@ -68,6 +68,29 @@ describe('the Vol. 1 card data (spec V1-D1)', () => {
       expect(d.categories?.length, `${code} has no category`).toBeGreaterThan(0)
     }
     expect(Object.keys(VOL1_CLAUSES).sort(), 'every Vol. 1 card declares its clause count').toEqual(Object.keys(PRINTED).sort())
+  })
+
+  it('carries exactly the printed categories of each card', () => {
+    const CATEGORIES: Record<string, string[]> = {
+      '27-122S': ['XIV'], '27-123S': ['VII'], '27-128S': ['FFBE'], '27-129S': ['X'], '1-170C': ['FFT'], '3-143C': ['IV'],
+      '11-010C': ['I'], '11-121C': ['IV'], '12-005C': ['FFEX'], '13-013C': ['PICTLOGICA', 'IV'], '13-125R': ['TYPE-0'],
+      '18-003C': ['FFEX'], '18-094C': ['XI'], '18-129C': ['DFF', 'X'], '20-106R': ['XIV'], '21-001R': ['VIII'],
+      '21-010H': ['FFBE'], '22-112R': ['VII'], '22-123R': ['FFCC'], '23-119R': ['VII'], '23-130H': ['FFTA2'], '24-126H': ['X'],
+    }
+    expect(Object.keys(CATEGORIES).sort()).toEqual(Object.keys(PRINTED).sort())
+    for (const [code, categories] of Object.entries(CATEGORIES)) expect(def(code).categories, code).toEqual(categories)
+  })
+
+  it('the deck files hold exactly the spec V1-D1 list: 50 main-deck cards and 8 LB cards', () => {
+    const counts = (codes: string[]) => codes.reduce<Record<string, number>>((m, c) => ({ ...m, [c]: (m[c] ?? 0) + 1 }), {})
+    const THREE = ['27-122S', '27-123S', '27-128S', '27-129S', '1-170C', '3-143C', '11-010C', '11-121C', '12-005C', '13-013C',
+      '13-125R', '18-003C', '18-094C', '18-129C', '21-001R', '21-010H']
+    const main = deckFile('starter-2025-vol1.txt')
+    expect(counts(main)).toEqual({ ...Object.fromEntries(THREE.map((c) => [c, 3])), '20-106R': 2 })
+    expect(main).toHaveLength(50)
+    const lb = deckFile('starter-2025-vol1-lb.txt')
+    expect(counts(lb)).toEqual({ '22-112R': 2, '22-123R': 2, '23-119R': 1, '23-130H': 1, '24-126H': 2 })
+    expect(lb).toHaveLength(8)
   })
 
   it('the four exclusives are non-generic, carry their job and category, and are patched rather than fetched', () => {
@@ -400,6 +423,12 @@ describe('11-010C Warrior — "[Dull], put Warrior into the Break Zone: Choose 1
 })
 
 describe('11-010C Warrior — "[Fire][1][Dull], put Warrior into the Break Zone: Choose 1 Forward. Deal it 5000 damage."', () => {
+  it('renders its cost as printed, the generic [1] included', () => {
+    const burn = def('11-010C').abilities!.find((a) => a.id === '11-010C:burn')!
+    if (burn.trigger.kind !== 'activated') throw new Error('not activated')
+    expect(describeAbilityCost(burn.trigger.cost)).toBe('[Fire][1][Dull], put into the Break Zone')
+  })
+
   it('costs a Fire CP and one more, never its own dull; deals 5000', () => {
     let s = makeGame(); let src: CardId; let victim: CardId
     ;[s, src] = withField(s, 0, 'backups', '11-010C')

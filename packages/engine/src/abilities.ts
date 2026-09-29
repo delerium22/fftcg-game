@@ -654,8 +654,12 @@ export function describeAbilityCost(cost: AbilityCost, sourceName?: string): str
   let icons = ''
   if (cost.cp) {
     const els = cost.cp.requiredElements ?? []
-    // A required Element prints as its own icon; a generic cost prints as the number.
-    icons += els.length ? els.map((e) => `[${e[0]?.toUpperCase()}${e.slice(1)}]`).join('') : `[${cost.cp.amount}]`
+    // A required Element prints as its own icon; a generic cost prints as the number. Both at once print both, the
+    // Elements first: Warrior 11-010C's `[Fire][1]` is two CP, one of them Fire (rung V1-B review).
+    const generic = cost.cp.amount - els.length
+    icons += els.length
+      ? els.map((e) => `[${e[0]?.toUpperCase()}${e.slice(1)}]`).join('') + (generic > 0 ? `[${generic}]` : '')
+      : `[${cost.cp.amount}]`
   }
   if (cost.dull) icons += '[Dull]'
   const prose: string[] = []

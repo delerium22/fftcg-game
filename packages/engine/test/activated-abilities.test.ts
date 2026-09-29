@@ -341,5 +341,8 @@ describe('activations are enumerated and labelled', () => {
     expect(describeAbilityCost({ cp: { amount: 2 }, dull: true, selfToBreakZone: true })).toBe('[2][Dull], put into the Break Zone')
     expect(describeAbilityCost({ selfToBreakZone: true })).toBe('put into the Break Zone')
     expect(describeAbilityCost({ cp: { amount: 0 } })).toBe('[0]')
+    // Rung V1-B review: required Elements and a generic remainder print together — Warrior 11-010C's "[Fire][1][Dull]".
+    expect(describeAbilityCost({ cp: { amount: 2, requiredElements: ['fire'] }, dull: true, selfToBreakZone: true })).toBe('[Fire][1][Dull], put into the Break Zone')
+    expect(describeAbilityCost({ cp: { amount: 2, requiredElements: ['fire', 'water'] } }), 'no remainder: Jecht 18-129C').toBe('[Fire][Water]')
   })
 })
