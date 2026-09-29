@@ -43,8 +43,14 @@ import { IllegalCommandError } from './errors.js'
 // Queueing
 // ---------------------------------------------------------------------------
 
-/** Push a triggered clause onto the agenda. The frame starts at path `[]` — the top of `ability.effects`. */
+/**
+ * Push a triggered clause onto the agenda. The frame starts at path `[]` — the top of `ability.effects`.
+ *
+ * The single choke point every dispatcher funnels through, so it is where a conditional auto-ability's condition is
+ * read as the event happens (§11.8.13, rung V1-D): unmet, the clause does not trigger — no frame, no event.
+ */
 export function enqueueTrigger(state: GameState, source: CardId, controller: PlayerId, ability: Ability, triggerEvent: TriggerEvent | null = null): GameState {
+  if (ability.triggerIf && !staticApplies({ state, source, controller }, ability.triggerIf)) return state
   const frame: Frame = { abilityId: ability.id, source, controller, path: [], chosen: [], modes: [], triggerEvent }
   return { ...state, resolution: { ...state.resolution, queue: [...state.resolution.queue, frame] } }
 }
@@ -682,7 +688,10 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
   }
 }
 
-interface FrameResult { state: GameState; events: Event[]; pending: Pending | null; frame: Frame; steps: number; cancelled: boolean }
+/** Why a resolving item was removed unresolved (rung V1-D): every declared target gone (§11.11.2), or a conditional auto-ability's condition no longer met (§11.11.3). */
+type CancelReason = 'targetsGone' | 'condition'
+
+interface FrameResult { state: GameState; events: Event[]; pending: Pending | null; frame: Frame; steps: number; cancelled: boolean; cancelReason?: CancelReason }
 
 function runFrame(state: GameState, frame: Frame): FrameResult {
   const ability = abilityOf(state, frame)
@@ -702,6 +711,12 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
     modesDeclared: frame.modesDeclared ?? false, cancelled: false, done: false,
     answer: [...frame.chosen],
   }
+  // §11.11.3 (rung V1-D): a conditional auto-ability re-checks its condition as it STARTS resolving — before §11.11.2,
+  // and gated only on that, so it applies whether or not the clause declared anything. Unmet: removed, nothing done.
+  if (stage === 'resolve' && frame.path.length === 0 && ability.triggerIf
+    && !staticApplies({ state, source: frame.source, controller: frame.controller }, ability.triggerIf)) {
+    return { ...base, cancelled: true, cancelReason: 'condition', frame: { ...frame, stage } }
+  }
   // §11.11.2: an item that chose targets, every one of which has since become illegal, is cancelled whole.
   // With at least one still legal it applies to those (per node, in `runEffect`). Checked only when the frame
   // STARTS resolving — a frame resuming from a prompt has already begun.
@@ -714,7 +729,7 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
     })
     if (!anyValid) {
       noLegalTarget(ctx)
-      return { ...base, events: ctx.events, cancelled: true, frame: { ...frame, stage } }
+      return { ...base, events: ctx.events, cancelled: true, cancelReason: 'targetsGone', frame: { ...frame, stage } }
     }
   }
   runEffects(ctx, ability.effects, 0, frame.path.length > 0)
@@ -830,8 +845,8 @@ function summonToBreakZone(state: GameState, card: CardId): GameState {
   return updatePlayer(state, owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, card] }))
 }
 
-/** The top item is finished: pop it, and hand priority back to the turn player (§11.1.5). */
-function finishTopItem(state: GameState, cancelled: boolean, events: Event[]): GameState {
+/** The top item is finished: pop it, and hand priority back to the turn player (§11.1.5). `cancelled` says why it did nothing, or false. */
+function finishTopItem(state: GameState, cancelled: CancelReason | false, events: Event[]): GameState {
   const top = state.stack[state.stack.length - 1]
   if (!top) return { ...state, resolution: { ...state.resolution, active: null, resolvingFrame: null } }
   let s: GameState = { ...state, stack: state.stack.slice(0, -1), resolution: { ...state.resolution, active: null, resolvingFrame: null }, priority: state.turnPlayer, passes: 0 }
@@ -839,7 +854,7 @@ function finishTopItem(state: GameState, cancelled: boolean, events: Event[]): G
     s = summonToBreakZone(s, top.card)
     if (top.frames.length === 0) events.push({ type: 'summonResolvedNoEffect', card: top.card })
   }
-  events.push(cancelled ? { type: 'stackCancelled', item: stackRefOf(top), reason: 'targetsGone' } : { type: 'stackResolved', item: stackRefOf(top) })
+  events.push(cancelled ? { type: 'stackCancelled', item: stackRefOf(top), reason: cancelled } : { type: 'stackResolved', item: stackRefOf(top) })
   return s
 }
 
@@ -886,7 +901,7 @@ function completeActive(state: GameState, r: FrameResult, events: Event[]): Game
   const idx = s.resolution.resolvingFrame
   const top = s.stack[s.stack.length - 1]
   if (idx === null || !top) return s
-  if (r.cancelled) return finishTopItem(s, true, events)
+  if (r.cancelled) return finishTopItem(s, r.cancelReason ?? 'targetsGone', events)
   const frames = top.kind === 'summon' ? top.frames : [top.frame]
   const next = frames[idx + 1]
   if (next) return { ...s, resolution: { ...s.resolution, active: { ...next, stage: 'resolve', path: [], chosen: [] }, resolvingFrame: idx + 1 } }

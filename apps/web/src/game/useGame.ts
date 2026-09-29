@@ -188,6 +188,12 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       return { kind: 'event', text: `${who(v, e.player)} add${e.player === v.me ? '' : 's'} ${what} to ${whoDoes(v, e.player, 'your', 'its')} hand` }
     }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability finds no legal target — nothing happens` }
+    // Rung V1-D (R4): an item removed from the stack unresolved. The §11.8.4 and §11.11.2 cases were silent here before;
+    // a conditional auto-ability's failed re-check (§11.11.3) has no other line at all.
+    case 'stackCancelled': {
+      const what = e.item.kind === 'summon' ? qualifiedName(v, e.item.card) : `${qualifiedName(v, e.item.source)}'s ability`
+      return { kind: 'event', text: `${what} is removed from the stack — ${STACK_CANCELLED_WHY[e.reason]}` }
+    }
     case 'dulled': return { kind: 'event', text: `${qualifiedName(v, e.card)} is dulled` }
     case 'activatedByAbility': return { kind: 'event', text: `${qualifiedName(v, e.card)} is activated` }
     // Rung J8 (§15.2.8): the Limit Break cost, and the return to the LB deck.
@@ -435,6 +441,13 @@ const BREAK_ZONE_WHY: Record<Extract<Event, { type: 'putIntoBreakZone' }>['reaso
   zeroPower: '0 power', sameName: 'two of the same name', lightDark: 'a second Light or Dark card', backupLimit: 'more than five Backups',
   // Rung V1-A2: an effect that says "put into the Break Zone" (§15.1.1.3.2) — not a rule process, and not a break.
   ability: 'by an ability',
+}
+
+/** Why an item left the stack unresolved (rung V1-D), in the player's words. */
+const STACK_CANCELLED_WHY: Record<Extract<Event, { type: 'stackCancelled' }>['reason'], string> = {
+  noTargetAtPlacement: 'it had no legal target as it was put on',   // §11.8.4
+  targetsGone: 'every target it chose is gone',                     // §11.11.2
+  condition: 'its condition no longer holds',                       // §11.11.3
 }
 
 export const moveLine = (actor: PlayerId, label: string): LogLine =>
