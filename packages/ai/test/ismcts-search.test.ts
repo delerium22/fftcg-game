@@ -12,7 +12,7 @@ import {
   type SearchEdge, type SearchNode, type SearchTree,
 } from '../src/ismcts/search.js'
 import { IsmctsAgent } from '../src/ismcts/agent.js'
-import { DEFAULT_DECK, VANILLA_POOL, attackInto, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, attackInto, deckOf, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -212,6 +212,28 @@ describe('searchView', () => {
       s = apply(s, (agents[actor] as GreedyAgent).decide(viewFor(s, actor), [])).state
     }
     expect(compared).toBeGreaterThan(100)
+  })
+
+  it('agrees over a self-play trace in which searches reveal what they take (rung V1-E, Review Focus 2)', () => {
+    // Leonora's shape on a cheap Backup, in both decks: a private search whose taken card is revealed and stays known in
+    // hand. Synthetic because this package does not depend on the card pool; the trace must actually reach a known hand
+    // card, or this compares nothing the rung added.
+    const SEARCH = clause('T-SRCH:etb', [{ kind: 'lookAtDeck', count: 'all', audience: 'self', take: { min: 0, max: 1, filter: { name: 'V-F8' } }, to: 'hand', rest: 'shuffle', revealTaken: true }])
+    const defs = [...VANILLA_POOL, bearer('T-SRCH', SEARCH)]
+    const deck = deckOf(defs.map((d) => d.code))
+    let s = createGame({ seed: 3, decks: [deck, deck], defs })
+    const agents = [new GreedyAgent({ seed: 1, decks: [deck, deck] }), new GreedyAgent({ seed: 2, decks: [deck, deck] })]
+    let known = 0
+    for (let i = 0; i < 160 && !s.result; i++) {
+      const actor = actingPlayer(s) as PlayerId
+      for (const p of [0, 1] as const) {
+        expect(searchView(s, p)).toEqual(viewFor(s, p))
+        expect(observationKey(searchView(s, p))).toBe(observationKey(viewFor(s, p)))
+        known += viewFor(s, p).fields[p === 0 ? 1 : 0].knownHand.length
+      }
+      s = apply(s, (agents[actor] as GreedyAgent).decide(viewFor(s, actor), [])).state
+    }
+    expect(known, 'no state of the trace held a revealed card in hand').toBeGreaterThan(0)
   })
 })
 
