@@ -125,10 +125,12 @@ describe('the deck picker (rung V1-C)', () => {
       choose: (_c: Choice) => {}, restart: (d?: DeckPair) => { restarts.push(d) }, decks: ['vol2', 'vol1'],
     }
     mount(createElement(Board, { game: api }))
+    const again = (): HTMLButtonElement | undefined => [...document.querySelectorAll<HTMLButtonElement>('dialog.banner button')].find((b) => b.textContent?.startsWith('Play again'))
+    // The button names the pair it will deal, so a selection changed during the game is not dealt silently.
+    expect(again()?.textContent).toBe('Play again (Vol. 2 vs Vol. 1)')
     choose('AI deck', 'vol2')
-    const again = [...document.querySelectorAll<HTMLButtonElement>('dialog.banner button')].find((b) => b.textContent === 'Play again')
-    expect(again, 'no Play again button').toBeDefined()
-    click(again!)
+    expect(again()?.textContent).toBe('Play again (Vol. 2 vs Vol. 2)')
+    click(again()!)
     expect(restarts).toEqual([['vol2', 'vol2']])
   })
 

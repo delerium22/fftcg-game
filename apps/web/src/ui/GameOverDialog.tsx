@@ -19,10 +19,13 @@ import { HUMAN } from '../game/types.js'
  * the dialog inert for focus, pointer, commands and accessibility exposure), including for controls this rung
  * never enumerated. Letting the test environment pick the production mechanism is the tail wagging the dog.
  */
-export function GameOverDialog({ result, me, onRestart }: {
+export function GameOverDialog({ result, me, onRestart, pair }: {
   result: GameResult
   me: PlayerId
   onRestart: () => void
+  /** Rung V1-C: the pair "Play again" will deal, named on the button ("Vol. 2 vs Vol. 1") so a selection changed
+   *  in the toolbar during the game is not dealt silently. Absent where no pair is known. */
+  pair?: string | undefined
 }): JSX.Element {
   const ref = useRef<HTMLDialogElement | null>(null)
   const titleId = useId()
@@ -58,7 +61,7 @@ export function GameOverDialog({ result, me, onRestart }: {
     >
       <h2 id={titleId} className="banner__title" data-dialog-title tabIndex={-1}>{title}</h2>
       <p id={reasonId} className="banner__reason">{reason}</p>
-      <button className="btn btn--primary" onClick={onRestart}>Play again</button>
+      <button className="btn btn--primary" onClick={onRestart}>{pair === undefined ? 'Play again' : `Play again (${pair})`}</button>
     </dialog>
   )
 }

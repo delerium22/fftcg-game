@@ -39,16 +39,6 @@ const flag = (name: string, dflt: string) => {
   return v
 }
 const has = (name: string) => rest.includes(`--${name}`)
-// Rung V1-C: a deck per seat. `--deck`/`--lb-deck` set both seats; `--deck0/--deck1/--lb-deck0/--lb-deck1` one
-// each (see `deckPaths`). The default stays the Vol. 2 mirror. Rung J8 (spec J8-D7): the LB deck (§7.14) beside the
-// main list; `none` plays without one.
-const paths = deckPaths((name) => flag(name, ''), {
-  main: resolve(repoRoot, 'decks/starter-2025-vol2.txt'),
-  lb: resolve(repoRoot, 'decks/starter-2025-vol2-lb.txt'),
-})
-const readDeck = (path: string): string[] => parseDeckFile(readFileSync(resolve(path), 'utf8'))
-const decks: [string[], string[]] = [readDeck(paths.main[0]), readDeck(paths.main[1])]
-const lbDecks: [string[], string[]] = [paths.lb[0] === null ? [] : readDeck(paths.lb[0]), paths.lb[1] === null ? [] : readDeck(paths.lb[1])]
 const defs = loadCards()
 /**
  * `--seed` is validated as strictly as `--depth` and `--iterations`. It was the one flag that was not, and a
@@ -87,6 +77,19 @@ function parsed<T>(f: () => T): T {
 // minutes that bought this.
 const flagError = cmd === undefined ? null : unknownFlagError(cmd, rest)
 if (flagError !== null) { console.error(`${flagError}\n\n${usage}`); process.exit(2) }
+
+// After the flag check, never before: a flag this command does not take must be named as such, not surface as a
+// missing file when its value happens to be a bad path (V1-C review).
+// Rung V1-C: a deck per seat. `--deck`/`--lb-deck` set both seats; `--deck0/--deck1/--lb-deck0/--lb-deck1` one
+// each (see `deckPaths`). The default stays the Vol. 2 mirror. Rung J8 (spec J8-D7): the LB deck (§7.14) beside the
+// main list; `none` plays without one.
+const paths = deckPaths((name) => flag(name, ''), {
+  main: resolve(repoRoot, 'decks/starter-2025-vol2.txt'),
+  lb: resolve(repoRoot, 'decks/starter-2025-vol2-lb.txt'),
+})
+const readDeck = (path: string): string[] => parseDeckFile(readFileSync(resolve(path), 'utf8'))
+const decks: [string[], string[]] = [readDeck(paths.main[0]), readDeck(paths.main[1])]
+const lbDecks: [string[], string[]] = [paths.lb[0] === null ? [] : readDeck(paths.lb[0]), paths.lb[1] === null ? [] : readDeck(paths.lb[1])]
 
 if (cmd === 'hotseat') {
   await hotseat({ seed, decks, defs, lbDecks })

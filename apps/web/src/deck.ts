@@ -58,6 +58,9 @@ export const isDeckKey = (s: string): s is DeckKey => (DECK_KEYS as readonly str
 export const DEFAULT_DECKS: DeckPair = ['vol2', 'vol1']
 export const MIRROR_DECKS: DeckPair = ['vol2', 'vol2']
 
+/** "Vol. 2 vs Vol. 1" — your deck first. Both buttons that start a game name the pair with it. */
+export const pairLabel = (pair: DeckPair): string => `${DECK_CHOICES[pair[0]].label} vs ${DECK_CHOICES[pair[1]].label}`
+
 /** The per-seat main and LB lists a pair deals — the one place a key becomes a list. */
 export function deckLists(pair: DeckPair): { decks: [string[], string[]]; lbDecks: [string[], string[]] } {
   const [you, ai] = [DECK_CHOICES[pair[0]], DECK_CHOICES[pair[1]]]
