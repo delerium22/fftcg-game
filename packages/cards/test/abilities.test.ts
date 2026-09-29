@@ -470,6 +470,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '1-170C:summon', '12-005C:summon', '13-013C:etb', '21-001R:etb', '21-001R:only-fire', '22-112R:etb', '3-143C:etb',
       '18-003C:draw', '18-094C:draw', '22-123R:etb', '23-130H:etb', '23-130H:standard-unit', '27-129S:etb', '27-129S:attack',
       '11-010C:pump', '11-010C:burn', '20-106R:etb', '20-106R:damage-3', '21-010H:search', '21-010H:play', '23-119R:etb',
+      '23-119R:when-you-do-so',   // rung V1-D: the reflexive clause
       '24-126H:etb-fire', '24-126H:etb-water', '11-121C:etb', '18-129C:gains', '18-129C:jecht-beam', '27-122S:etb',
       '27-122S:attack', '27-123S:haste', '27-123S:etb', '27-123S:attack', '27-128S:no-action-abilities',
     ].sort())

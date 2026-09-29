@@ -531,7 +531,7 @@ describe('24-126H Ultima Weapon — its two enters-the-field clauses, each with 
   it('both clauses trigger; the Fire one declares its target as it is placed, and resolves first — the §11.8.7 fixed-order simplification', () => {
     let s = makeGame(); let victim: CardId
     ;[s, victim] = withField(s, 1, 'forwards', '27-127S')
-    const { t } = castUltima(s, 3)
+    const { t } = castUltima(s, 2)   // 3 Water Backups + Ultima Weapon: the Water clause triggers (§11.8.13)
     expect(t.pending, 'clause 1 chooses its Forward at placement').toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0 }))
     const placed = step([], t, { type: 'chooseTargets', player: 0, targets: [victim] })
     // MVP0-SIMPLIFICATION (§11.8.7): the controller should order their simultaneous triggers; the engine fixes the
@@ -575,6 +575,32 @@ describe('24-126H Ultima Weapon — its two enters-the-field clauses, each with 
       }
     }
   })
+
+  it('Water is a conditional auto-ability (§11.8.13): with 3 Water Characters it does not even trigger', () => {
+    let s = makeGame()
+    ;[s] = withField(s, 1, 'forwards', '27-127S')
+    const { log } = castUltima(s, 3)
+    const triggered = log.filter((e) => e.type === 'abilityTriggered').map((e) => e.type === 'abilityTriggered' && e.abilityId)
+    expect(triggered).toEqual(['24-126H:etb-fire'])
+  })
+
+  it('Water re-checks as it resolves (§11.11.3): a Water Character gone by then removes it from the stack', () => {
+    let s = makeGame(); let a: CardId; let b: CardId
+    ;[s, a] = withField(s, 1, 'forwards', '27-127S')
+    ;[s, b] = withField(s, 1, 'forwards', '22-068R')
+    const { t, uw } = castUltima(s, 1)   // 4 Water Backups + Ultima Weapon = 5 Water Characters
+    const log: Event[] = []
+    let u = step(log, t, { type: 'chooseTargets', player: 0, targets: [a] })
+    expect(u.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon'))).toEqual(['24-126H:etb-water', '24-126H:etb-fire'])
+    // Two Water Backups leave while the clauses wait — modelled on the state, as responses would: 3 Water Characters.
+    const gone = u.players[0].backups.filter((c) => def(u.cards[c.id]!.code).elements.includes('water')).slice(0, 2).map((c) => c.id)
+    u = setPlayer(u, 0, { ...u.players[0], backups: u.players[0].backups.filter((c) => !gone.includes(c.id)), breakZone: [...u.players[0].breakZone, ...gone] })
+    for (let i = 0; i < 2; i++) { u = step(log, u, { type: 'pass', player: 0 }); u = step(log, u, { type: 'pass', player: 1 }) }
+    expect(log).toContainEqual({ type: 'stackCancelled', item: { kind: 'ability', source: uw, abilityId: '24-126H:etb-water' }, reason: 'condition' })
+    expect(u.pending, 'no select').toBeNull()
+    expect(fc(u, b)).toBeDefined()
+    ok(u)
+  })
 })
 
 describe('23-119R Vincent — "When Vincent enters the field, you may put 1 Fire Backup you control into the Break Zone. When you do so, …"', () => {
@@ -585,27 +611,34 @@ describe('23-119R Vincent — "When Vincent enters the field, you may put 1 Fire
     return { r, victim }
   }
 
-  it('prints First Strike as a keyword and one clause', () => {
+  it('prints First Strike as a keyword and one clause, encoded as two AST units: the put and its "When you do so" (rung V1-D)', () => {
     const d = def('23-119R')
-    expect([d.limitBreak, d.keywords, d.abilityClauses, (d.abilities ?? []).map((a) => a.id)]).toEqual([2, ['firstStrike'], 1, ['23-119R:etb']])
+    expect([d.limitBreak, d.keywords, d.abilityClauses, (d.abilities ?? []).map((a) => a.id)]).toEqual([2, ['firstStrike'], 2, ['23-119R:etb', '23-119R:when-you-do-so']])
+    // The two texts are the printed clause, split where "When you do so" begins.
+    expect((d.abilities ?? []).map((a) => a.text).join(' ')).toBe('When Vincent enters the field, you may put 1 Fire Backup you control into the Break Zone. '
+      + 'When you do so, choose 1 Forward opponent controls. Deal it 9000 damage.')
+    expect(d.abilities?.[1]?.trigger).toEqual({ kind: 'reflexive' })
   })
 
-  it('putting a Fire Backup raises the 9000 damage choice over the opponent\u2019s Forwards', () => {
+  it('putting a Fire Backup triggers the "When you do so" clause, which declares the 9000 damage choice as it is placed', () => {
     const { r, victim } = castVincent(makeGame())
     expect(r.state.pending).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0, min: 0, max: 1 }))
     if (r.state.pending?.kind !== 'chooseTargets') throw new Error('unreachable')
     const backup = r.state.pending.candidates[0]!
     const put = apply(r.state, { type: 'chooseTargets', player: 0, targets: [backup] })
     expect(put.state.players[0].breakZone).toContain(backup)
+    expect(put.events).toContainEqual(expect.objectContaining({ type: 'abilityTriggered', abilityId: '23-119R:when-you-do-so' }))
+    expect(put.state.resolution.active?.abilityId).toBe('23-119R:when-you-do-so')
     expect(put.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [victim] })
     const done = apply(put.state, { type: 'chooseTargets', player: 0, targets: [victim] })
     expect(fc(done.state, victim)).toBeUndefined()
     ok(done.state)
   })
 
-  it('declining puts nothing and asks nothing more (onlyIfChosen)', () => {
+  it('declining puts nothing, triggers nothing and asks nothing more (onlyIfChosen)', () => {
     const { r, victim } = castVincent(makeGame())
     const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [] })
+    expect(done.events.some((e) => e.type === 'abilityTriggered')).toBe(false)
     expect(done.state.pending).toBeNull()
     expect(fc(done.state, victim)?.damage).toBe(0)
     expect(done.state.players[0].backups).toHaveLength(5)
