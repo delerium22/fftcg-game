@@ -181,6 +181,7 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     }
     case 'abilityNoLegalTarget': return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability finds no legal target — nothing happens` }
     case 'dulled': return { kind: 'event', text: `${qualifiedName(v, e.card)} is dulled` }
+    case 'activatedByAbility': return { kind: 'event', text: `${qualifiedName(v, e.card)} is activated` }
     // Rung J8 (§15.2.8): the Limit Break cost, and the return to the LB deck.
     case 'lbFlipped': return { kind: 'event', text: `${who(v, e.player)} turn${e.player === v.me ? '' : 's'} ${e.cards.map((id) => qualifiedName(v, id)).join(' and ')} face up (Limit Break cost)` }
     case 'lbReturned': return { kind: 'event', text: `${qualifiedName(v, e.card)} goes back to ${whoDoes(v, e.player, 'your', "the AI's")} LB deck face up` }
@@ -325,8 +326,9 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
         break
       }
       case 'broken':
-      case 'brokenByAbility':
-      case 'putIntoBreakZone': zoneHits.push({ card: e.card, controller: holderOf(v, e.card), reason: 'ability', used: false }); break
+      case 'brokenByAbility': zoneHits.push({ card: e.card, controller: holderOf(v, e.card), reason: 'ability', used: false }); break
+      // Rung V1-A2: an effect's put is tagged apart from a break, as the engine's transition is, so the cause reads true.
+      case 'putIntoBreakZone': zoneHits.push({ card: e.card, controller: holderOf(v, e.card), reason: e.reason === 'ability' ? 'putByAbility' : 'ability', used: false }); break
       // C3: paying a cost moves a card the same way a break does, so an observer of the MOVEMENT fires on it
       // and the log needs the same cause available — tagged, so it is not narrated as a break.
       case 'paidToBreakZone': zoneHits.push({ card: e.card, controller: e.player, reason: 'cost', used: false }); break
@@ -419,9 +421,11 @@ function narrateApply(
  * the AI chose to go second — but read as one voice they contradict each other, and the outcome line names the
  * beneficiary rather than the chooser, so nothing on screen said who had decided.
  */
-/** Why a rule process put a card into the Break Zone (§12.4.4, §12.4.6–8), in the player's words. */
-const BREAK_ZONE_WHY: Record<'zeroPower' | 'sameName' | 'lightDark' | 'backupLimit', string> = {
+/** Why a rule process — or an effect (rung V1-A2) — put a card into the Break Zone (§12.4.4, §12.4.6–8), in the player's words. */
+const BREAK_ZONE_WHY: Record<Extract<Event, { type: 'putIntoBreakZone' }>['reason'], string> = {
   zeroPower: '0 power', sameName: 'two of the same name', lightDark: 'a second Light or Dark card', backupLimit: 'more than five Backups',
+  // Rung V1-A2: an effect that says "put into the Break Zone" (§15.1.1.3.2) — not a rule process, and not a break.
+  ability: 'by an ability',
 }
 
 export const moveLine = (actor: PlayerId, label: string): LogLine =>

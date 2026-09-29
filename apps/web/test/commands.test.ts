@@ -201,6 +201,7 @@ describe('preferredChoices', () => {
 // ---------------------------------------------------------------------------
 
 const NOEL = '16-092C', CLOUD = '27-124S', SPHENE = '27-126S', BILLY = '18-124C', REEVE = '20-105C'
+const CLOUD_NAME = (): string => (CARD_DEFS.find((d) => d.code === CLOUD) as CardDef).name
 const GEOMANCER = '18-064C'   // '[Earth], discard Geomancer: Draw 1 card' — the clause that exposed the label defect
 
 const fieldCard = (id: CardId, over: Partial<FieldCard> = {}): FieldCard =>
@@ -1053,5 +1054,30 @@ describe('a select says "select", and the AI selecting is named while the human 
     const v = dullView(DULL_EXACTLY_1, [CLOUD])
     v.pending = { ...(v.pending as Extract<Pending, { kind: 'chooseTargets' }>), player: AI }
     expect(promptFor(v, [])).toBe('Waiting for the opponent…')
+  })
+})
+
+describe('put into the Break Zone and activate have their own words (rung V1-A2)', () => {
+  const put: Ability = { id: 'test:put', trigger: { kind: 'enterField' }, text: 'Choose 1 Forward opponent controls. Put it into the Break Zone.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'putIntoBreakZone' }] }] }
+  const wake: Ability = { id: 'test:wake', trigger: { kind: 'enterField' }, text: 'Choose 1 Forward. Activate it.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'activate' }] }] }
+
+  it('the prompt and the button say "put into the Break Zone", never "break"', () => {
+    expect(promptFor(dullView(put, [CLOUD]), [])).toBe('Noel: choose 1 Forward the AI controls to put into the Break Zone')
+    expect(describeChoice(dullView(put, [CLOUD]), targets([901]))).toBe(`Put into the Break Zone: ${CLOUD_NAME()}`)
+  })
+
+  it('the prompt and the button say "activate"', () => {
+    expect(promptFor(dullView(wake, [CLOUD]), [])).toBe('Noel: choose 1 Forward the AI controls to activate')
+    expect(describeChoice(dullView(wake, [CLOUD]), targets([901]))).toBe(`Activate ${CLOUD_NAME()}`)
+  })
+
+  it('a watcher fired by a put, not a break, says so', () => {
+    const v = suspendedView(DULL_EXACTLY_1, NOEL)
+    const theirs = instance(v, 909, CLOUD, AI)
+    v.fields[AI].breakZone = [theirs]
+    expect(describeTriggerCause(v, { kind: 'zoneChange', card: theirs, controller: AI, reason: 'putByAbility' })).toBe(`the AI's ${CLOUD_NAME()} was put into the Break Zone`)
+    expect(describeTriggerCause(v, { kind: 'zoneChange', card: theirs, controller: AI, reason: 'ability' })).toBe(`the AI's ${CLOUD_NAME()} was broken`)
   })
 })

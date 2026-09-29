@@ -648,6 +648,9 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
     expect(text({ type: 'breakPrevented', card: anyCard, flag: 'cannotBeBroken' })).toContain('survives')
     expect(text({ type: 'returnedToHand', player: HUMAN, card: anyCard })).toContain('returns to your hand')
     expect(text({ type: 'returnedToHand', player: AI, card: anyCard })).toContain("returns to the AI's hand")
+    // Rung V1-A2: a put is not a break, and an effect's activation is not the Active Phase.
+    expect(text({ type: 'putIntoBreakZone', card: anyCard, reason: 'ability' })).toBe('Ramuh is put into the Break Zone (by an ability)')
+    expect(text({ type: 'activatedByAbility', card: anyCard })).toBe('Ramuh is activated')
   })
 
   it('still names a card an ability moved from a public zone into a hidden hand', () => {

@@ -546,6 +546,37 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       ctx.state = enqueueZoneChangeTriggers(pre, ctx.state, moved)
       return
     }
+    case 'putIntoBreakZone': {
+      // The transition path `breakCard` uses — watchers read PRE-move, the arrival recorded, the LB sweep between
+      // frames — minus the two things that make it a break (§15.1.1.3.2): `cannotBeBroken` does not stop it, and
+      // there is no `broken`/`brokenByAbility` event (rung V1-A2, spec V1-D8).
+      const pre = ctx.state
+      const moved: ZoneTransition[] = []
+      for (const id of ctx.chosen) {
+        const loc = findFieldCard(ctx.state, id)
+        if (!loc) continue
+        const owner = ctx.state.cards[id]?.owner ?? loc.owner   // §15.1.1.3.1: its OWNER's Break Zone
+        moved.push({
+          card: id, controller: loc.owner, owner,
+          from: loc.zone === 'backups' ? 'backups' : 'forwards', to: 'breakZone', reason: 'putByAbility',
+          cause: ctx.source, causeController: ctx.controller, snapshot: loc.card,
+        })
+        ctx.state = updatePlayer(removeFromField(ctx.state, id), owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, id] }))
+        ctx.events.push({ type: 'putIntoBreakZone', card: id, reason: 'ability' })
+      }
+      ctx.state = enqueueZoneChangeTriggers(pre, ctx.state, moved)
+      return
+    }
+    case 'activate':
+      // §15.1.1.1: dull → active. Activating an active Character is legal and changes nothing, so it says nothing,
+      // as `dull` says nothing for a dull one. Freeze is untouched: it governs the Active Phase, not this.
+      for (const id of ctx.chosen) {
+        const loc = findFieldCard(ctx.state, id)
+        if (!loc || loc.card.status === 'active') continue
+        ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, status: 'active' }))
+        ctx.events.push({ type: 'activatedByAbility', card: id })
+      }
+      return
     case 'addPower':
       for (const id of ctx.chosen) {
         if (!findFieldCard(ctx.state, id)) continue

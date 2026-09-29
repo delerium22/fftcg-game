@@ -490,4 +490,26 @@ describe('candidateCommands: the V1-A2 selects', () => {
     // Priced as the CASTER's best pick, the select would tie the damage mode and win on index.
     expect(modesOf(candidateCommands(s, 0)[0])).toEqual([1])
   })
+
+  it('put into the Break Zone ignores cannotBeBroken, so the protected 9000 Forward is the one to take', () => {
+    const a = clause('T-PUT:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'putIntoBreakZone' }] }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-PUT', a)] }), 0, 0)
+    let src: number, big: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-PUT')
+    ;[s] = withField(s, 1, 'forwards', 'V-F1')
+    ;[s, big] = withField(s, 1, 'forwards', 'V-F8', { flags: ['cannotBeBroken'] })
+    s = arm(s, src, 0, a)
+    expect(targetsOf(candidateCommands(s, 0)[0])).toEqual([big])
+  })
+
+  it('activate is worth something only on a dull Forward: the dull one of your two is activated', () => {
+    const a = clause('T-ACT:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'activate' }] }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-ACT', a)] }), 0, 0)
+    let src: number, dull: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-ACT')
+    ;[s] = withField(s, 0, 'forwards', 'V-F8')
+    ;[s, dull] = withField(s, 0, 'forwards', 'V-F2', { status: 'dull' })
+    s = arm(s, src, 0, a)
+    expect(targetsOf(candidateCommands(s, 0)[0])).toEqual([dull])
+  })
 })

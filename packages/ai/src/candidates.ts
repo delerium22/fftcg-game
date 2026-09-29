@@ -154,6 +154,14 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
       case 'breakCard':
         if (loc && !flagsOf(state, loc.card).has('cannotBeBroken')) d -= cardValue(def) + power / 1000
         break
+      // A break's worth with no exemption (rung V1-A2): "put into the Break Zone" is not a break (§15.1.1.3.2).
+      case 'putIntoBreakZone':
+        if (loc) d -= cardValue(def) + power / 1000
+        break
+      // The inverse of `dull` (§15.1.1.1): a dull Forward can attack or block again; an active one gains nothing.
+      case 'activate':
+        if (loc && status === 'dull') { d += power / 1000 + 1; status = 'active' }
+        break
       case 'moveToHand':
         // From the field this is removal (that side loses a body and keeps the card); from the Break Zone it is
         // retrieval — pure gain, priced by the card itself. `cardValue` is what makes C2-9's "Character"

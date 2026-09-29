@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Ability, Effect } from '../src/abilities.js'
 import type { CardDef } from '../src/types.js'
-import type { CardId, GameState } from '../src/state.js'
+import type { CardId, FieldCard, GameState } from '../src/state.js'
 import { findFieldCard } from '../src/state.js'
 import { apply } from '../src/apply.js'
 import { legalCommands } from '../src/legal.js'
@@ -40,8 +40,20 @@ const WHEN_YOU_DO = etb('T-VINC:etb', [{ kind: 'chooseTargets', select: 'self', 
   { kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] },
 ] }])
 
+// Alphinaud 20-106R as printed: "your opponent selects 1 dull Forward they control. Put it into the Break Zone."
+const ALPHINAUD = etb('T-ALPHBZ:etb', [{ kind: 'chooseTargets', select: 'opponent', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent', filter: { status: 'dull' } }, then: [{ kind: 'putIntoBreakZone' }] }])
+// Lightning's shape: "When a Forward opponent controls is put from the field into the Break Zone, draw 1 card."
+const WATCH: Ability = { id: 'T-WATCH:draw', trigger: { kind: 'observesZoneChange', from: 'field', to: 'breakZone', whose: 'opponent', of: 'forward' },
+  text: 'synthetic watcher', effects: [{ kind: 'draw', count: 1 }] }
+// Fairy 1-170C's shape: "Choose 1 Forward. Activate it."
+const FAIRY = etb('T-FAIRY:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'activate' }] }])
+
 const DEFS: CardDef[] = [
   ...VANILLA_POOL,
+  bearer('T-ALPHBZ', ALPHINAUD),
+  bearer('T-WATCH', WATCH),
+  bearer('T-FAIRY', FAIRY),
+  makeDef({ code: 'T-LB1', cost: 0, power: 3000, limitBreak: 1 }),
   bearer('T-ALPH', OPP_SELECT),
   makeDef({ code: 'T-PRISHE', cost: 2, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [PUMP] }),
   summonDef('T-SSEL', SELECT_SUMMON),
@@ -154,5 +166,70 @@ describe('V1-A2 — game creation checks the select flags wherever they are nest
     expect(problems).toMatch(/T-BAD1:etb has an unknown select anyone/)
     expect(problems).toMatch(/T-BAD2:etb has an `onlyIfChosen` that is not true/)
     expect(validateEffects(DEFS)).toEqual([])
+  })
+})
+
+describe('V1-A2 — put into the Break Zone is a zone movement, not a break (§15.1.1.3.2)', () => {
+  function alphinaud(victimCode: string, over: Partial<FieldCard> = {}): { s: GameState; victim: CardId } {
+    let s = makeGame({ defs: DEFS })
+    let victim: CardId, card: CardId
+    ;[s] = withField(s, 0, 'forwards', 'T-WATCH')
+    ;[s, victim] = withField(s, 1, 'forwards', victimCode, { status: 'dull', ...over })
+    ;[s, card] = withHand(s, 0, 'T-ALPHBZ')
+    s = apply(s, { type: 'castCharacter', player: 0, card, payment: FREE }).state
+    s = pass(pass(s, 0), 1)
+    expect(s.pending).toMatchObject({ kind: 'chooseTargets', player: 1, candidates: [victim] })
+    return { s, victim }
+  }
+
+  it('L1 §15.1.1.3.2 — a cannotBeBroken Forward still goes; no broken event; a field-to-Break-Zone watcher triggers', () => {
+    const { s, victim } = alphinaud('V-F7', { flags: ['cannotBeBroken'] })
+    const r = apply(s, { type: 'chooseTargets', player: 1, targets: [victim] })
+    expect(fc(r.state, victim)).toBeUndefined()
+    expect(r.state.players[1].breakZone).toContain(victim)
+    expect(r.state.players[1].putIntoBreakZoneFromFieldThisTurn).toContain(victim)
+    expect(r.events).toContainEqual({ type: 'putIntoBreakZone', card: victim, reason: 'ability' })
+    expect(r.events.some((e) => e.type === 'broken' || e.type === 'brokenByAbility' || e.type === 'breakPrevented')).toBe(false)
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'abilityTriggered', abilityId: 'T-WATCH:draw',
+      cause: expect.objectContaining({ kind: 'zoneChange', card: victim, reason: 'putByAbility' }) }))
+    ok(r.state)
+  })
+
+  it('L1 §15.2.8.4 — an LB Forward put into the Break Zone goes on to its LB deck face up', () => {
+    const { s, victim } = alphinaud('T-LB1')
+    const r = apply(s, { type: 'chooseTargets', player: 1, targets: [victim] })
+    expect(r.state.players[1].breakZone).not.toContain(victim)
+    expect(r.state.players[1].lbDeck).toContainEqual({ id: victim, faceUp: true })
+    expect(r.events).toContainEqual({ type: 'lbReturned', player: 1, card: victim, from: 'breakZone' })
+    ok(r.state)
+  })
+})
+
+describe('V1-A2 — activate (§15.1.1.1)', () => {
+  function fairy(status: 'active' | 'dull'): { s: GameState; target: CardId } {
+    let s = makeGame({ defs: DEFS })
+    let target: CardId, card: CardId
+    ;[s, target] = withField(s, 1, 'forwards', 'V-F2', { status })
+    ;[s, card] = withHand(s, 0, 'T-FAIRY')
+    s = apply(s, { type: 'castCharacter', player: 0, card, payment: FREE }).state
+    s = apply(s, { type: 'chooseTargets', player: 0, targets: [target] }).state
+    return { s, target }
+  }
+
+  it('L1 §15.1.1.1.1 — activating a dull Forward turns it active', () => {
+    const { s, target } = fairy('dull')
+    const r = apply(pass(s, 0), { type: 'pass', player: 1 })
+    expect(fc(r.state, target)?.status).toBe('active')
+    expect(r.events).toContainEqual({ type: 'activatedByAbility', card: target })
+    ok(r.state)
+  })
+
+  it('L1 §15.1.1.1.2 — activating an active Forward is legal and changes nothing', () => {
+    const { s, target } = fairy('active')
+    const r = apply(pass(s, 0), { type: 'pass', player: 1 })
+    expect(fc(r.state, target)?.status).toBe('active')
+    expect(r.events.some((e) => e.type === 'activatedByAbility')).toBe(false)
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'stackResolved' }))
+    ok(r.state)
   })
 })

@@ -79,7 +79,8 @@ export type Event =
   | { type: 'exBurstUsed'; player: PlayerId; card: CardId; abilityId: string }
   | { type: 'exBurstDeclined'; player: PlayerId; card: CardId; abilityId: string }
   | { type: 'broken'; card: CardId }                                   // §12.4.5 damage ≥ power
-  | { type: 'putIntoBreakZone'; card: CardId; reason: 'zeroPower' | 'sameName' | 'lightDark' | 'backupLimit' }     // §12.4.4, §12.4.6–8 (rung J4)
+  /** §12.4.4, §12.4.6–8 (rung J4); `ability` is an effect that says "put into the Break Zone" (rung V1-A2, §15.1.1.3.2) — not a break. */
+  | { type: 'putIntoBreakZone'; card: CardId; reason: 'zeroPower' | 'sameName' | 'lightDark' | 'backupLimit' | 'ability' }
   // --- ability resolution (spec C1-3) ---
   /** Emitted when a triggered clause is PLACED (rung J1-D13). `cause` is the frame's own trigger event, so the log never has to reconstruct it from event order. */
   | { type: 'abilityTriggered'; player: PlayerId; card: CardId; abilityId: string; cause?: TriggerEvent | null }
@@ -88,6 +89,11 @@ export type Event =
    *  its own loss, and a narrator that says "your ability" needs the same answer (Codex MAJOR). */
   | { type: 'abilityNoLegalTarget'; card: CardId; abilityId: string; controller: PlayerId }
   | { type: 'dulled'; card: CardId }
+  /**
+   * An effect activated a dull Character (rung V1-A2, §15.1.1.1). Not `activated`, which is the Active Phase's
+   * whole-field untap (§9.1) and names a player; the log must not say a turn began.
+   */
+  | { type: 'activatedByAbility'; card: CardId }
   /** §15.2.4 (rung J3): the card will not activate in its controller's next Active Phase. */
   | { type: 'frozen'; card: CardId }
   /** That Active Phase came: the card was left as it was and the status cleared. */
