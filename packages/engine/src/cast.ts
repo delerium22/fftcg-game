@@ -70,6 +70,9 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
   if (!instant && state.phase !== 'main1' && state.phase !== 'main2') return 'phase'
   if (!available) return ps.lbDeck.some((x) => x.id === card) ? 'lbSpent' : 'notInHand'   // face up in the LB deck: spent (§15.2.8.3)
   const def = defOf(state, card)
+  // §15.2.8.3.2: the LB cost is X OTHER face-down cards of the LB deck; fewer left means the card cannot be cast.
+  // Asked in the Summon branch too, which returns early (J8 second review H1).
+  const lbShort = inLbDeck && ps.lbDeck.filter((x) => !x.faceUp && x.id !== card).length < (def.limitBreak ?? 0)
   if (def.type !== 'summon' && instant) {
     // §15.2.5.2–3: a Back Attack Character is cast by the PRIORITY HOLDER, either player, in a Main Phase or an
     // Attack Phase window — as a response, so the stack may be non-empty — including the First Strike window
@@ -82,6 +85,7 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
     if (!instantSpeedAllowed(state)) return 'phase'
     if (state.priority !== player) return 'priority'
     if (state.pending) return 'pending'
+    if (lbShort) return 'lbCost'
     // §11.3.3: castable only if every choice it makes as it is cast can be made.
     for (const a of def.abilities ?? []) {
       if (a.trigger.kind === 'summonResolve' && !canDeclare(state, card, player, a.effects)) return 'noTarget'
@@ -94,8 +98,7 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
     if (state.pending) return 'pending'
     if (state.stack.length > 0) return 'stackNotEmpty'
   }
-  // §15.2.8.3.2: the LB cost is X OTHER face-down cards of the LB deck; fewer left means the card cannot be cast.
-  if (inLbDeck && ps.lbDeck.filter((x) => !x.faceUp && x.id !== card).length < (def.limitBreak ?? 0)) return 'lbCost'
+  if (lbShort) return 'lbCost'
   if (def.type === 'monster') return 'monster'   // MVP0-SIMPLIFICATION: Monster-type cards are entirely out of scope (pool has none); §7.7 Monster-specific casting rules are unimplemented
   // §7.7.3–5: an ACTION that would exceed a field limit is prohibited — the cast is refused. An EFFECT that
   // exceeds one is allowed and the §12.4.6–8 rule processes repair the field (rung J4, rules.ts).

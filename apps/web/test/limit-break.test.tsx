@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { apply, isLegal, legalCommands, viewFor, type CardDef, type CardId, type GameState, type Payment } from '@fftcg/engine'
 import { endPhase, makeDef, makeGame, withField, withHandSize, VANILLA_POOL } from '../../../packages/engine/test/helpers.js'
 import { CARD_DEFS, DECKS, LB_DECKS } from '../src/deck.js'
-import { buildChoiceSet, describeChoice, paymentAlternatives, preferredChoices, samePayment } from '../src/game/commands.js'
+import { buildChoiceSet, castBlockerText, describeChoice, paymentAlternatives, preferredChoices, samePayment } from '../src/game/commands.js'
 import { completedChoice, extendable, flipCandidates, flipsNeeded, legalPaymentsOf, needsTray, withBackup, withFlip } from '../src/game/payment.js'
 import { describeEvent } from '../src/game/useGame.js'
 import { HUMAN } from '../src/game/types.js'
@@ -40,6 +40,30 @@ describe('the LB deck in the browser (J8-A5)', () => {
       expect(s.players[p].lbDeck.map((x) => s.cards[x.id]!.code)).toEqual(['23-125R', '23-125R', '22-119R', '22-119R'])
       expect(s.players[p].lbDeck.every((x) => !x.faceUp)).toBe(true)
     }
+  })
+
+  it('the card sheet explains an LB card that cannot be cast: the last face-down one, and a spent one (J8 second review L2)', () => {
+    const { s, lb2, maats } = position()
+    // Flip every other card face up: Noctis is spent, and the last face-down Maat has nothing left to flip.
+    const lb = s.players[HUMAN].lbDeck.map((x) => (x.id === maats[2] ? x : { ...x, faceUp: true }))
+    const t: GameState = { ...s, players: [{ ...s.players[HUMAN], lbDeck: lb }, s.players[1]] }
+    const v = viewFor(t, HUMAN)
+    expect(castBlockerText(v, maats[2]!, false)).toBe('Not enough face-down cards left in your LB deck for its Limit Break cost')
+    expect(castBlockerText(v, lb2, false)).toBe('Spent — a face-up LB card is not cast again')
+    expect(castBlockerText(viewFor(t, 1), lb2, false), "the opponent's LB row has no sheet refusals").toBeNull()
+  })
+
+  it('Auto casts with the PREFERRED flips, not the canonical subset: Maat flips a twin Maat, not Noctis (J8 second review M1)', () => {
+    const { s, lb2, maats } = position()
+    const v = viewFor(s, HUMAN)
+    const legal = legalCommands(s, HUMAN)
+    const canonical = legal.find((c) => c.type === 'castCharacter' && c.card === maats[0])
+    expect(canonical?.type === 'castCharacter' && canonical.payment.lbFlip, 'the canonical subset is the first face-down other: Noctis').toEqual([lb2])
+    const auto = preferredChoices(v, legal).find((c) => c.type === 'castCharacter' && c.card === maats[0])
+    const flip = auto?.type === 'castCharacter' ? auto.payment.lbFlip ?? [] : []
+    expect(flip).toHaveLength(1)
+    expect(maats, 'a twin is worth least to keep').toContain(flip[0])
+    expect(isLegal(s, auto!)).toBeNull()
   })
 
   it('a cast from the LB deck is a choice on the LB card, and its move line names the deck and the flips', () => {

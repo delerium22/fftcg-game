@@ -30,7 +30,9 @@ export function validateLbDeck(defs: Record<string, CardDef>, codes: string[]): 
   const counts = new Map<string, number>()
   for (const c of codes) {
     if (!defs[c]) { problems.push(`unknown card code ${c}`); continue }
-    if (defs[c]?.limitBreak === undefined) problems.push(`${c} has no Limit Break and may not be in an LB deck (§8.1.3)`)
+    const x = defs[c]?.limitBreak
+    if (x === undefined) problems.push(`${c} has no Limit Break and may not be in an LB deck (§8.1.3)`)
+    else if (!Number.isInteger(x) || x < 1) problems.push(`${c} has LB cost ${String(x)}; it must be a whole number above 0 (§15.2.8.2)`)   // J8 second review L3
     counts.set(c, (counts.get(c) ?? 0) + 1)
   }
   for (const [c, n] of counts) if (n > 3) problems.push(`${c} appears ${n} times; max 3 copies (§8.1.1.2)`)

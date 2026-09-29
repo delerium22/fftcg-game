@@ -698,7 +698,9 @@ const CAST_BLOCKER_TEXT: Record<CastBlocker, string> = {
   lightDark: 'You already control a Light or Dark card',
 }
 export function castBlockerText(v: PlayerView, card: CardId, castable: boolean): string | null {
-  if (castable || !v.hand.includes(card)) return null
+  // J8 second review L2: the viewer's OWN LB deck is cast from too, so its refusals (`lbCost`, `lbSpent`) are shown.
+  const own = v.hand.includes(card) || v.fields[v.me].lbDeck.some((x) => x.id === card)
+  if (castable || !own) return null
   const why = castBlocker(stateShim(v), v.me, card)
   if (why === null) return 'Not enough CP'
   // J2 review L2: the `phase` refusal follows the CARD. A Summon or a Back Attack Character (§15.2.5) is cast in a
@@ -1135,8 +1137,11 @@ export function preferredChoices(v: PlayerView, legal: Command[]): Command[] {
     const key = payableKey(c)
     const preferred = preferredFor(shim, v, c)
     if (!preferred) continue
-    const match = payable.find((o) => payableKey(o) === key && samePayment(o.payment, preferred))
-    if (match) keep.set(key, match)
+    // J8 second review M1: `legalCommands` lists ONE canonical flip subset per CP payment, so the preferred payment
+    // is matched on its CP sources alone, and its own flips (any X face-down others are legal, §15.2.8.3.2) kept.
+    const cpOnly = (p: Payment): Payment => ({ dullBackups: p.dullBackups, discards: p.discards })
+    const match = payable.find((o) => payableKey(o) === key && samePayment(cpOnly(o.payment), cpOnly(preferred)))
+    if (match) keep.set(key, preferred.lbFlip === undefined ? match : { ...match, payment: { ...match.payment, lbFlip: preferred.lbFlip } })
   }
   const seen = new Set<string>()
   const out: Command[] = []

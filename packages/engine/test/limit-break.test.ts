@@ -66,6 +66,11 @@ describe('J8 — the LB deck is a zone (§7.14, §8.1)', () => {
     const defs = Object.fromEntries(DEFS.map((d) => [d.code, d]))
     expect(validateLbDeck(defs, Array(9).fill('T-LB1'))).toContainEqual(expect.stringContaining('eight'))
     expect(validateLbDeck(defs, ['T-LB1', 'T-LB1', 'T-LB1', 'T-LB1'])).toContainEqual(expect.stringContaining('3 copies'))
+    // §15.2.8.2: X is a whole number above 0 (J8 second review L3).
+    for (const x of [0, -1, 1.5, Number.NaN]) {
+      const bad = { ...defs, 'T-BAD': makeDef({ code: 'T-BAD', limitBreak: x }) }
+      expect(validateLbDeck(bad, ['T-BAD']), String(x)).toContainEqual(expect.stringContaining('§15.2.8.2'))
+    }
     expect(validateLbDeck(defs, ['V-F1'])).toContainEqual(expect.stringContaining('Limit Break'))
     expect(validateLbDeck(defs, LB)).toEqual([])
     expect(validateDeck(defs, [...DEFAULT_DECK.slice(1), 'T-LB1'])).toContainEqual(expect.stringContaining('Limit Break'))
@@ -121,6 +126,40 @@ describe('J8 — casting from the LB deck (§15.2.8.3)', () => {
     expect(over.players[0].breakZone).not.toContain(summon)
     expect(lb(over, 0).find((x) => x.id === summon)?.faceUp, '§15.2.8.4.3 holds at game over too').toBe(true)
     ok(over)
+  })
+
+  it('an LB Summon with too few face-down others is refused everywhere — castBlocker, legalCommands, isLegal (J8 second review H1)', () => {
+    let s = quiet(makeGame({ defs: DEFS, lbDecks: [['T-LB-S'], LB] }))   // LB 1, and no other card to flip
+    const [summon] = lbIds(s, 0, 'T-LB-S')
+    let victim: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', 'V-F2')
+    expect(castBlocker(s, 0, summon!)).toBe('lbCost')
+    expect(legalCommands(s, 0).some((c) => c.type === 'castSummon'), 'no zero-flip cast is offered').toBe(false)
+    expect(isLegal(s, { type: 'castSummon', player: 0, card: summon!, payment: NO_CP })).not.toBeNull()
+    void victim
+  })
+
+  it('a Summon still DECLARING its targets at a concede goes to its zone: an LB Summon to the LB deck face up, with its lbReturned event (J8 second review H2/M2)', () => {
+    let s = game()
+    let victim: CardId, plain: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', 'V-F2')
+    const [summon] = lbIds(s, 0, 'T-LB-S')
+    const [flip] = lbIds(s, 0, 'T-LB1')
+    const t = apply(s, { type: 'castSummon', player: 0, card: summon!, payment: { ...NO_CP, lbFlip: [flip!] } }).state
+    expect(t.pending?.kind, 'declaring: the card is in no zone but resolution.placing').toBe('chooseTargets')
+    const over = apply(t, { type: 'concede', player: 1 })
+    expect(lb(over.state, 0).find((x) => x.id === summon)?.faceUp).toBe(true)
+    expect(over.events.map((e) => e.type)).toEqual(['lbReturned', 'gameOver'])
+    ok(over.state)
+    // A plain Summon in the same spot goes to the Break Zone.
+    ;[s, plain] = withHand(game(), 0, 'T-BOUNCE')
+    ;[s] = withField(s, 1, 'forwards', 'V-F2')
+    const u = apply(s, { type: 'castSummon', player: 0, card: plain, payment: NO_CP }).state
+    expect(u.pending?.kind).toBe('chooseTargets')
+    const done = apply(u, { type: 'concede', player: 0 }).state
+    expect(done.players[0].breakZone).toContain(plain)
+    ok(done)
+    void victim
   })
 
   it('enumeratePayments lists one canonical flip subset per CP payment; a hand card never carries lbFlip', () => {
