@@ -29,12 +29,21 @@ export function markArtMissing(code: string): void {
   missing.add(code)
 }
 
-/** True once this code's art is known absent; `<Card>` then renders the text card without an `<img>`. */
-export function isArtMissing(code: string): boolean {
-  return missing.has(code)
+/** `?art=off` (UI overhaul U0): every card renders as its text card, with no `<img>` and so no request at all. */
+let disabled = false
+
+/** Turn art off for this page load. Used by `bootstrap` for `?art=off`, which the screenshot baselines rely on. */
+export function disableArt(): void {
+  disabled = true
 }
 
-/** Test seam — the cache is module-global and would otherwise leak between cases. */
+/** True once this code's art is known absent, or art is off; `<Card>` then renders the text card without an `<img>`. */
+export function isArtMissing(code: string): boolean {
+  return disabled || missing.has(code)
+}
+
+/** Test seam — the cache and the off switch are module-global and would otherwise leak between cases. */
 export function resetMissingArt(): void {
   missing.clear()
+  disabled = false
 }

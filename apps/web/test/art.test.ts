@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { artUrl, isArtMissing, markArtMissing, resetMissingArt } from '../src/game/art'
+import { artUrl, disableArt, isArtMissing, markArtMissing, resetMissingArt } from '../src/game/art'
 import { DECK_FILE, cdnUrl, planFetches, retryAfterMs } from '../scripts/fetch-images'
 
 // Every assertion below is offline by construction: the planner is pure and nothing here calls `fetch`.
@@ -89,5 +89,22 @@ describe('retryAfterMs', () => {
 
   it('returns null for absent or unparseable headers', () => {
     for (const bad of [null, undefined, '', '   ', 'soon']) expect(retryAfterMs(bad, now)).toBeNull()
+  })
+})
+
+describe('?art=off (U0)', () => {
+  beforeEach(() => { resetMissingArt() })
+
+  it('reports every code missing, so <Card> never renders an <img> (Review Focus 5)', () => {
+    expect(isArtMissing('12-120C')).toBe(false)
+    disableArt()
+    expect(isArtMissing('12-120C')).toBe(true)
+    expect(isArtMissing('27-124S')).toBe(true)
+  })
+
+  it('is undone by the test seam', () => {
+    disableArt()
+    resetMissingArt()
+    expect(isArtMissing('12-120C')).toBe(false)
   })
 })
