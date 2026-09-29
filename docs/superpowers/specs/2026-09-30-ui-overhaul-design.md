@@ -552,6 +552,16 @@ multiplayer stay possible later.
 | Accessibility regressions | The existing a11y tests are a gate; live regions follow the displayed view |
 | Asset licensing | OFL fonts, synthesised sound, our own card back; Square Enix art stays local and git-ignored |
 
+## As built
+
+- **U0** (branch `feat/u0-harness`, plan `docs/superpowers/plans/2026-09-30-rung-u0-harness.md`): `settings.ts`,
+  `bootstrap.ts` wired from `main.tsx`, the `?motion=instant`, `?art=off` and `?perf=1` flags, the fixture gallery
+  (`fixtures.html`) with its screenshot baseline, the browser suite at Instant, and the recorded baseline in
+  `docs/superpowers/measurements/u0/`. At 4× CPU throttling today's UI shows 37 long tasks (worst 103 ms) and frame
+  gaps of p95 33.3 ms, p99 66.7 ms and worst 116.7 ms, all from React re-rendering the board. The section 9 budget is
+  therefore relative to that. Deviations: code comments say "spec section N" rather than a section sign, because
+  `rules-citations` checks every section sign under `apps/` against the Comprehensive Rules.
+
 ## Questions for your review
 
 These are the calls taken on your behalf that most change what you'll see and play. Everything else in
