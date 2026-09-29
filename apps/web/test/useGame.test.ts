@@ -299,6 +299,32 @@ describe("the narrator is wired to the events the ENGINE really emits (rung C9)"
     }
   }
 
+  // Rung V1-E (R5): a search that REVEALS what it takes. Vol. 2 has no such search, so these games are Vol. 1 mirrors.
+  const revealed: Event[] = []
+  {
+    const { decks, lbDecks } = deckLists(['vol1', 'vol1'])
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      let state = createGame({ seed, decks, lbDecks, defs: CARD_DEFS })
+      for (let i = 0; i < 400 && !state.result; i++) {
+        const p = actingPlayer(state)
+        if (p === null) break
+        const cmd = new GreedyAgent({ seed: seed + i, decks, depth: 1 }).decide(viewFor(state, p), legalCommands(state, p))
+        const r = apply(state, cmd)
+        for (const e of r.events) if (e.type === 'addedToHand' && e.revealed === true) revealed.push(e)
+        state = r.state
+      }
+    }
+  }
+
+  it('emits a REVEALED addedToHand in a Vol. 1 game, and the narrator says so (rung V1-E, R5)', () => {
+    expect(revealed.length, 'no Vol. 1 game revealed a searched card — this assertion proves nothing without one').toBeGreaterThan(0)
+    const v = viewFor(newGame(1), HUMAN)
+    for (const e of revealed) {
+      const line = describeEvent(v, e)
+      expect(line?.text, 'the narrator dropped a real revealed addedToHand').toMatch(/^(You reveal|The AI reveals) .+ and adds? it to (your|its) hand$/)
+    }
+  })
+
   for (const type of ['deckExposed', 'addedToHand', 'playedFromDeck'] as const) {
     it(`emits ${type}, and the narrator turns the REAL one into a line`, () => {
       const events = seen.get(type)
@@ -448,6 +474,17 @@ describe('a look and a reveal in the log (rung C9)', () => {
     expect(v.cards[theirs]).toBeUndefined()
     expect(describeEvent(v, { type: 'addedToHand', player: AI, card: theirs })?.text)
       .toBe('The AI adds a card to its hand')
+  })
+
+  it('says a search REVEALED what it took — one line, naming the card for both seats (rung V1-E, R5)', () => {
+    const theirs = base.players[AI].hand[0]!
+    const v = viewFor(learn(base, [HUMAN, AI], [theirs]), HUMAN)
+    expect(describeEvent(v, { type: 'addedToHand', player: AI, card: theirs, revealed: true })?.text)
+      .toBe(`The AI reveals ${v.defs[base.cards[theirs]!.code]!.name} and adds it to its hand`)
+    const mine = base.players[HUMAN].hand[0]!
+    const own = viewFor(learn(base, [HUMAN, AI], [mine]), HUMAN)
+    expect(describeEvent(own, { type: 'addedToHand', player: HUMAN, card: mine, revealed: true })?.text)
+      .toBe(`You reveal ${own.defs[base.cards[mine]!.code]!.name} and add it to your hand`)
   })
 })
 
