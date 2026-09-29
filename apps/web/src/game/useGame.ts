@@ -68,6 +68,9 @@ const KEYWORD_LABEL: Record<Keyword, string> = { haste: 'Haste', brave: 'Brave',
 const FLAG_LABEL: Record<FieldFlag, string> = {
   cannotBeBroken: 'cannot be broken this turn',
   cannotBeReturnedByOpponent: "cannot be returned to its owner's hand by the opponent this turn",
+  // Rung V1-A3: only Charlotte's continuous static carries it today, and a static emits no `flagGranted`; worded for the
+  // day an effect grants it until the end of the turn.
+  cannotUseActionAbilities: 'cannot use action abilities this turn',
 }
 
 /**

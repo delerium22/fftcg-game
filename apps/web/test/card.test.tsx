@@ -99,3 +99,10 @@ describe('Card', () => {
     expect(out).not.toContain('27-124S')
   })
 })
+
+describe('the action-ability ban shows on the card (rung V1-A3, spec V1-D15)', () => {
+  it('a Forward under Charlotte carries a "No action abilities" badge', () => {
+    const out = html({ ...cloud, flags: ['cannotUseActionAbilities'] })
+    expect(out).toContain('No action abilities')
+  })
+})

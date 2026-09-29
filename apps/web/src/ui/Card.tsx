@@ -4,7 +4,8 @@ import { artUrl, isArtMissing, markArtMissing } from '../game/art.js'
 import './Card.css'
 
 const KEYWORD_LABEL: Record<Keyword, string> = { haste: 'Haste', brave: 'Brave', firstStrike: 'First Strike', backAttack: 'Back Attack' }
-const FLAG_LABEL: Record<FieldFlag, string> = { cannotBeBroken: 'Unbreakable', cannotBeReturnedByOpponent: 'Unreturnable' }
+// `cannotUseActionAbilities` (rung V1-A3): Charlotte's ban. "Action", not "abilities": a special ability stays usable.
+const FLAG_LABEL: Record<FieldFlag, string> = { cannotBeBroken: 'Unbreakable', cannotBeReturnedByOpponent: 'Unreturnable', cannotUseActionAbilities: 'No action abilities' }
 
 /*
  * Until-end-of-turn modifiers ride as badges over the art. They are styled inline rather than in Card.css

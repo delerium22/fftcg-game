@@ -15,6 +15,8 @@ const KEYWORD_LABEL: Record<Keyword, string> = { haste: 'Haste', brave: 'Brave',
 const FLAG_PURPOSE: Record<FieldFlag, string> = {
   cannotBeBroken: 'to protect from being broken',
   cannotBeReturnedByOpponent: "to protect from the opponent's return effects",
+  // Rung V1-A3: a restriction, not a protection — `targetVerb` says "Restrict" for it.
+  cannotUseActionAbilities: 'from using action abilities',
 }
 const signed = (n: number): string => (n >= 0 ? `+${n}` : `${n}`)
 const only = <T,>(s: Set<T>): T | null => (s.size === 1 ? ([...s][0] as T) : null)
@@ -405,7 +407,7 @@ function verbOf(e: Effect, frame: VerbFrame): Verb | null {
     case 'playOntoField': return { imperative: 'Play', purpose: 'to play onto the field' }
     case 'addPower': return { imperative: `Give ${signed(e.amount)} power to`, purpose: `to give ${signed(e.amount)} power` }
     case 'grantKeyword': return { imperative: `Give ${KEYWORD_LABEL[e.keyword]} to`, purpose: `to give ${KEYWORD_LABEL[e.keyword]}` }
-    case 'grantFlag': return { imperative: 'Protect', purpose: FLAG_PURPOSE[e.flag] }
+    case 'grantFlag': return { imperative: e.flag === 'cannotUseActionAbilities' ? 'Restrict' : 'Protect', purpose: FLAG_PURPOSE[e.flag] }
     case 'moveToHand': return { imperative: 'Return', purpose: 'to return to hand' }
     // Rung V1-A1: what the branch that will run does — Palom's "deal it 8000 damage" only when the condition holds.
     case 'if': return joinVerbs(describedBranch(e, frame).map((x) => verbOf(x, frame)))
