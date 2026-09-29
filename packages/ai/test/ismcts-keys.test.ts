@@ -675,3 +675,25 @@ describe('observationKey reads the stack and the forfeit count (rung J1-A9)', ()
     expect(observationKey(declared), 'declared targets').not.toBe(observationKey(one))
   })
 })
+
+describe('observationKey reads Freeze and the First Strike step (J3 second review)', () => {
+  it('differs when a Forward is frozen, and keys absent and false alike', () => {
+    const { view } = richView()
+    const key = observationKey(view)
+    const f0 = view.fields[0]
+    const setFrozen = (frozen: boolean): PlayerView => ({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, frozen } : c)) }, view.fields[1]] })
+    expect(observationKey(setFrozen(true)), 'frozen').not.toBe(key)
+    expect(observationKey(setFrozen(false)), 'false is absent').toBe(key)
+  })
+
+  it('differs in the fixed First Strike set and in the held first batch', () => {
+    const { view, ids } = richView()
+    const at = view.attack!
+    const win = (a: Partial<NonNullable<PlayerView['attack']>>): PlayerView => ({ ...view, attack: { ...at, step: 'firstStrike', ...a } })
+    const base = win({ firstStrikers: [ids.a1!], heldDamage: [] })
+    expect(observationKey(win({ firstStrikers: [ids.a2!], heldDamage: [] })), 'which combatant struck first').not.toBe(observationKey(base))
+    const held = win({ firstStrikers: [ids.a1!], heldDamage: [{ source: ids.a1!, sourceController: 0, target: ids.d1!, victim: null, amount: 5000 }] })
+    expect(observationKey(held), 'a held occurrence').not.toBe(observationKey(base))
+    expect(observationKey(held), 'canonical').toBe(observationKey(win({ firstStrikers: [ids.a1!], heldDamage: [{ source: ids.a1!, sourceController: 0, target: ids.d1!, victim: null, amount: 5000 }] })))
+  })
+})

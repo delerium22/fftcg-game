@@ -127,7 +127,7 @@ export function exitAttackWindow(state: GameState): [GameState, Event[]] {
       return beginDamageResolution({ ...state, attack: { ...attack, step: 'damage' }, passes: 0 })
     }
     case 'firstStrike': {
-      // §15.2.3.3 (rung J3): the pass-only window is over. What is still in battle deals to what is still there
+      // §15.2.3.3 (rung J3): the First Strike window is over. What is still in battle deals to what is still there
       // (§10.1.3.2.1, §10.1.3.3); a non-First-Strike blocker facing what is left of a party owes its split now.
       const fs = fixedFirstStrikers(state)
       const attack = survivors(state)
@@ -280,7 +280,7 @@ function landHits(state: GameState, hits: readonly Hit[]): [GameState, Event[], 
     if (!loc) continue
     s = updatePlayer(s, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === h.target ? { ...c, damage: c.damage + h.amount } : c)) }))
     events.push({ type: 'battleDamage', source: h.source, target: h.target, amount: h.amount })
-    landed.push({ source: h.source, sourceController: h.sourceController, target: h.target, victim: null, amount: h.amount })
+    landed.push({ source: h.source, sourceController: h.sourceController, target: h.target, victim: null, amount: h.amount, targetController: loc.owner })
   }
   return [s, events, landed]
 }
@@ -288,7 +288,7 @@ function landHits(state: GameState, hits: readonly Hit[]): [GameState, Event[], 
 /**
  * §15.2.3.2–3 (rung J3): the First Strike combatants deal; rule processes run (§11.1.3 — the victim may break
  * here, which is the point); the occurrences are HELD, not queued, because their triggers wait for the second
- * batch; and the pass-only window opens with priority to the turn player.
+ * batch; and the First Strike window opens with priority to the turn player.
  */
 function landFirstStrike(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
   const fs = fixedFirstStrikers(state)

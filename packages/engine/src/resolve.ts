@@ -81,12 +81,13 @@ export function enqueueDamageTriggers(state: GameState, hits: readonly DamageOcc
 
 /**
  * Is the damaged side the one the clause names, relative to the SOURCE's controller (spec C2-10)?
- * For damage to a Forward the side is that Forward's controller, looked up while it is still on the field —
- * the pool's only `to: 'forward'` clause is unrestricted (`whose: 'any'`), so this is guarded, not exercised.
+ * For damage to a Forward the side is that Forward's controller as the hit landed (`targetController`) — a held
+ * First Strike occurrence's target may be gone by now. The pool's only `to: 'forward'` clause is unrestricted
+ * (`whose: 'any'`), so this is guarded, not exercised.
  */
 function damagedSideMatches(state: GameState, whose: TriggerWhose, h: DamageOccurrence): boolean {
   if (whose === 'any') return true
-  const damaged = h.victim !== null ? h.victim : h.target === null ? null : findFieldCard(state, h.target)?.owner ?? null
+  const damaged = h.victim !== null ? h.victim : h.targetController ?? (h.target === null ? null : findFieldCard(state, h.target)?.owner ?? null)
   if (damaged === null) return true   // nothing attributable to compare against
   return whose === 'self' ? damaged === h.sourceController : damaged === opponentOf(h.sourceController)
 }
@@ -449,7 +450,7 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         if (!loc || loc.zone !== 'forwards') continue   // only Forwards carry damage
         ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, damage: c.damage + eff.amount }))
         ctx.events.push({ type: 'abilityDamage', source: ctx.source, target: id, amount: eff.amount })
-        hits.push({ source: ctx.source, sourceController: ctx.controller, target: id, victim: null, amount: eff.amount })
+        hits.push({ source: ctx.source, sourceController: ctx.controller, target: id, victim: null, amount: eff.amount, targetController: loc.owner })
       }
       ctx.state = enqueueDamageTriggers(ctx.state, hits)   // ability damage triggers exactly as combat damage does (spec C2-7)
       // §12.4.5 turns this into a break; `settle` runs the rule processes, which honour `cannotBeBroken`. Because

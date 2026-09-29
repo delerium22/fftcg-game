@@ -30,3 +30,39 @@ hypotheses; each accept and reject below is backed by the code.
   message; pinning seeds trades a timeout for a re-pin on every deck change. Deferred to the next deck edit.
 
 **Disagreed with the reviewer on (0).**
+
+## Second pass — Codex (adjudicated 2026-09-29)
+
+Codex (gpt-5.6-sol, xhigh, read-only) reviewed the tree at 07:54 on 2026-09-16, BEFORE the fix commit 963eed6
+(08:31), so some findings are already fixed. Each accept and reject below is backed by the code or by the CR 3.3
+text (`fftcg-comprules-v3.3.pdf`). Fixes are on branch `fix/j3-codex-second-pass`.
+
+**Already fixed by 963eed6 (3):** H1 (the First Strike set recomputed over survivors — `attack.firstStrikers`);
+M2's first half (Shiva's freeze priced on the status the dull leaves); L3 (thaw narration for an active card).
+
+**Accepted (5):**
+- H2 — a Back Attack Character is castable in the First Strike window. §15.2.3.3 bars "Summons or ... action or
+  special abilities"; a Character cast is a special ACTION (§9.3.1.5), and a special ability is the S-icon kind
+  (§11.7). Spec J2-D2's exclusion was an intent reading against the letter; the letter is followed (user decision,
+  2026-09-29). `backAttackAllowed` (`cast.ts`) admits the window; `menuShape` lists casts there and `castBlocker`
+  still refuses Summons and every other Character. Test inverted (timing-l1-back-attack, §15.2.3.3 case: cast,
+  the window stays open, the turn player gains priority). J2-D2, J3-D2 step 4 and matrix row 15.2.3.3 updated.
+- H3 — `observationKey` omitted `frozen`, `attack.firstStrikers` and `attack.heldDamage`. All three are now keyed,
+  each appended only when present, so every other position keys exactly as before (no measured tree changes).
+  Two key tests (red before).
+- M1 — a held occurrence whose target broke in the first batch lost its side, and `damagedSideMatches` fell
+  through to `true`, so a `whose: 'self'` clause fired on an opponent's Forward. `DamageOccurrence.targetController`
+  is recorded as the hit lands (combat and ability damage). L1 case with `self` and `opponent` clauses (red
+  before). Latent in the pool: its only `to: 'forward'` clause is `whose: 'any'`.
+- M3 — the post-window party split had no case: an all-First-Strike party into a 13000 blocker that survives now
+  owes the split only after the window (green on first run; coverage only). The "combatant leaves before the
+  second batch" half stays as first-pass L4 (no pool trigger breaks a Forward in the window).
+- L4 — Summoner's card-data test pins `generic: false`. The same-name limit itself is covered generically.
+
+**Rejected / deferred (4):**
+- M2 second half — `evaluate` has no term for a frozen card. Adding a weight changes every measured win rate, so
+  it is a tuning change with a measurement, not a review fix. Deferred to the AI tuning backlog.
+- L1 — `frozen` stays optional: state.ts documents absent-as-false by design, and there is no behavioural
+  difference. The new key treats absent and false alike (tested).
+- L2 — invariant consistency: first-pass L5 already constrains `heldDamage` placement; the rest has no failing case.
+- L5 — the seed searches: first-pass L9 deferred this to the next deck edit (the Vol. 1 pool rung).

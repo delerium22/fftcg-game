@@ -519,6 +519,9 @@ function fieldDigest(view: PlayerView, p: PlayerId): string {
     // SORTED: `usedThisTurn` is semantically a set (spec C10-1), and two positions that differ only in the
     // order two abilities were spent are the same information set. Unsorted, they would split the tree.
     [...c.usedThisTurn].sort(cmpStr).join('+'),
+    // §15.2.4 (J3 second review): a frozen card skips its next activation. Appended only when set, so every
+    // unfrozen card keys exactly as before and absent/false (`frozen` is optional) cannot split a node.
+    ...(c.frozen === true ? ['fz'] : []),
   ].join('/')
   // Break Zone entries carry an eligibility BIT beside the code, positionally (spec C10-2). By code alone,
   // two copies of one card in the Break Zone digest identically while only one is retrievable — and `z0:0`
@@ -622,6 +625,19 @@ function pendingDigest(view: PlayerView, pending: Pending | null): string {
   }
 }
 
+/**
+ * Rung J3 (second review): the fixed First Strike set and the held first batch are program state — two positions
+ * that differ in either deal differently in the second batch or place different triggers. Empty outside a split
+ * damage step, so every other attack keys exactly as before. Occurrences are sorted: they land simultaneously.
+ */
+function firstStrikeDigest(view: PlayerView, at: NonNullable<PlayerView['attack']>): string {
+  const r = (id: CardId): CardRef => cardRef(view, id, view.me)
+  const fs = at.firstStrikers === undefined ? '' : `/fs[${joinRefs(at.firstStrikers.map(r))}]`
+  const held = at.heldDamage === undefined ? '' : `/held[${at.heldDamage
+    .map((h) => `${r(h.source)}>${h.target === null ? `p${h.victim ?? '-'}` : r(h.target)}:${h.amount}`).sort(cmpStr).join(',')}]`
+  return fs + held
+}
+
 export function observationKey(view: PlayerView): ObservationKey {
   const r = (id: CardId): CardRef => cardRef(view, id, view.me)
   const at = view.attack
@@ -643,7 +659,7 @@ export function observationKey(view: PlayerView): ObservationKey {
     // Rung J8: which LB cards are spent is observable (both decks are public, spec D5) and changes what may be cast.
     `LB0:${lbDigest(view, 0)}`,
     `LB1:${lbDigest(view, 1)}`,
-    `atk:${at === null ? '-' : `${at.step}/${joinRefs(at.attackers.map(r))}/${at.blocker === null ? '-' : r(at.blocker)}`}`,
+    `atk:${at === null ? '-' : `${at.step}/${joinRefs(at.attackers.map(r))}/${at.blocker === null ? '-' : r(at.blocker)}${firstStrikeDigest(view, at)}`}`,
     `pend:${pendingDigest(view, view.pending)}`,
     `res:${resolutionDigest(view, view.resolution)}`,
     // Rung J1. Whether the next pass resolves the top item or merely hands priority over is `passes`; what

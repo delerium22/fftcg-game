@@ -24,6 +24,8 @@ const WATCH_OWN_DAMAGE: Ability = {
   effects: [{ kind: 'draw', count: 1 }],
 }
 const BLOCKER_WATCH: Ability = { ...WATCH_OWN_DAMAGE, id: 'T-WATCH:draw' }
+const WATCH_SELF: Ability = { id: 'T-FS-SELF:draw', trigger: { kind: 'dealtDamage', to: 'forward', whose: 'self' }, text: 'When this deals damage to a Forward you control, draw 1 card.', effects: [{ kind: 'draw', count: 1 }] }
+const WATCH_OPP: Ability = { id: 'T-FS-OPP:draw', trigger: { kind: 'dealtDamage', to: 'forward', whose: 'opponent' }, text: 'When this deals damage to a Forward opponent controls, draw 1 card.', effects: [{ kind: 'draw', count: 1 }] }
 const WATCH_OPP_BREAK: Ability = {
   id: 'T-OBS:draw', trigger: { kind: 'observesZoneChange', from: 'field', to: 'breakZone', whose: 'opponent', of: 'forward' },
   text: 'When a Forward opponent controls is put from the field into the Break Zone, draw 1 card.',
@@ -47,6 +49,9 @@ const DEFS: CardDef[] = [
   makeDef({ code: 'T-OBS', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [WATCH_OPP_BREAK] }),
   makeDef({ code: 'T-SUMMON', type: 'summon', cost: 0, power: null, hasAbilities: true, abilityClauses: 1, abilities: [NOOP_SUMMON] }),
   makeDef({ code: 'T-PUMP', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [PUMP] }),
+  makeDef({ code: 'T-BIG', cost: 0, power: 13000 }),
+  makeDef({ code: 'T-FS-SELF', cost: 0, power: 6000, keywords: ['firstStrike'], hasAbilities: true, abilityClauses: 1, abilities: [WATCH_SELF] }),
+  makeDef({ code: 'T-FS-OPP', cost: 0, power: 6000, keywords: ['firstStrike'], hasAbilities: true, abilityClauses: 1, abilities: [WATCH_OPP] }),
 ]
 
 function trace(events: readonly Event[], names: Record<number, string>): string[] {
@@ -156,6 +161,26 @@ describe('L1 §15.2.3 — First Strike splits the damage step', () => {
     ok(w.state)
   })
 
+  it('L1 §10.1.4.2.1 — an all-First-Strike party into a plain blocker that survives: the split is owed only after the window, over the survivors', () => {
+    // J3 Codex second pass M3: the post-window split (`exitAttackWindow` → `landSecondBatch`) had no case.
+    const { s, attackers, blocker, names } = board(['T-FS5', 'T-FS6'], 'T-BIG')   // 5000 + 6000 into 13000
+    const r = intoDamage(s, attackers, blocker)
+    expect(r.state.pending, 'the blocker deals second: nothing is owed before the window').toBeNull()
+    expect(r.state.attack?.step).toBe('firstStrike')
+    expect(dmg(r.state, blocker)).toBe(11000)
+    const w = passBoth(r.state)
+    expect(w.state.pending, 'the window is over: the blocker now owes its split').toEqual({ kind: 'assignPartyDamage', player: 1 })
+    const split = apply(w.state, { type: 'assignPartyDamage', player: 1, assignments: [{ target: attackers[0]!, amount: 5000 }, { target: attackers[1]!, amount: 8000 }] })
+    expect(gone(split.state, attackers[0]!)).toBe(true); expect(gone(split.state, attackers[1]!)).toBe(true)
+    expect(split.state.attack?.step).toBe('damage')
+    expect(trace([...r.events, ...w.events, ...split.events], names)).toEqual([
+      'step:declared', 'step:block', 'step:blocked', 'step:damage',
+      'battle:a0>b:5000', 'battle:a1>b:6000', 'step:firstStrike',
+      'step:damage', 'battle:b>a0:5000', 'battle:b>a1:8000', 'broken:a0', 'broken:a1',
+    ])
+    ok(split.state)
+  })
+
   it('L1 §10.1.4.2.1 — a party with a First Strike BLOCKER: the blocker splits its damage before the window; the survivors deal after it', () => {
     const { s, attackers, blocker, names } = board(['V-F2', 'V-F2'], 'T-FS6')   // 5000 + 5000 into a 6000 First Strike blocker
     const r = intoDamage(s, attackers, blocker)
@@ -194,7 +219,7 @@ describe('L1 §15.2.3 — First Strike splits the damage step', () => {
     ok(w.state)
   })
 
-  it('L1 §15.2.3.3 — the window admits only pass: a castable Summon and a live activation are refused; forcedPass reports it; isResponseWindow is true', () => {
+  it('L1 §15.2.3.3 — the window bars Summons and abilities: a castable Summon and a live activation are refused; forcedPass reports it; isResponseWindow is true', () => {
     let { s, attackers, blocker } = board(['T-FS6'], 'V-F3')
     let princess: CardId
     ;[s, princess] = withField(s, 0, 'forwards', 'T-PUMP')
@@ -234,6 +259,19 @@ describe('L1 §15.2.3 — First Strike splits the damage step', () => {
     ])
     expect(done.state.stack).toEqual([])
     ok(done.state)
+  })
+
+  it('L1 §15.2.3.3 — a held trigger matches the side of a victim the first batch broke', () => {
+    // J3 Codex second pass M1: by the time the held occurrence is placed its target is gone, so the side was
+    // looked up in vain and every `whose` clause fired. The side is now recorded as the hit lands.
+    for (const [code, fires] of [['T-FS-SELF', false], ['T-FS-OPP', true]] as const) {
+      const { s, attackers, blocker } = board([code], 'V-F2')   // 6000 First Strike into 5000: it breaks in the first batch
+      const r = intoDamage(s, attackers, blocker)
+      expect(gone(r.state, blocker)).toBe(true)
+      const w = passBoth(r.state)
+      expect(w.state.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon')), code).toEqual(fires ? [`${code}:draw`] : [])
+      ok(w.state)
+    }
   })
 
   it('L1 §15.2.3.3 §11.8.7 — a zone-change trigger fired by the first batch’s break IS placed in the First Strike window and resolves there; only casts and activations are barred', () => {

@@ -2146,9 +2146,9 @@ describe('1-038R Shiva — "EX BURST Choose 1 Forward. Dull it and Freeze it."',
 })
 
 describe('1-040C Summoner — a vanilla ice Backup', () => {
-  it('prints nothing, has no abilities, and produces ice CP', () => {
+  it('prints nothing, has no abilities, is non-generic (§12.4.6: one per field), and produces ice CP', () => {
     const d = DEFS.find((x) => x.code === '1-040C')!
-    expect([d.type, d.elements, d.cost, d.hasAbilities, d.abilities ?? []]).toEqual(['backup', ['ice'], 1, false, []])
+    expect([d.type, d.elements, d.cost, d.hasAbilities, d.abilities ?? [], d.generic]).toEqual(['backup', ['ice'], 1, false, [], false])
     const [s, ids] = withCp(makeGame(), 0, ['1-040C'])
     expect(backupElements(s, ids[0]!)).toContain('ice')
   })
