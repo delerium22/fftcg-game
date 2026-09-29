@@ -7,6 +7,25 @@
 > printed**. Calls marked D are mine and recorded so they can be overturned here. Architectural: new trigger, effect,
 > condition, filter and cost kinds; a second deck; per-seat decks through the web app, the CLI and the AI.
 
+**As built (V1-A1), 2026-09-29.** Commits a1bf005 (`attacks` trigger, matrix row 10.1.2.5 tested), 083dc72
+(`controlsAtLeast`, `StaticScope.self`), 7dee0a4 (`if`, `subjectMatches`), e106436 (counted damage). Deviations and
+readings from the plan:
+- `conditionHolds` is in `resolve.ts` (R1). `countControlled` and `amountOf` are in `layer.ts` and re-exported from
+  `resolve.ts`, not through an `export *` of `layer.ts` in the index, which would export `staticApplies` twice (cp.ts
+  already re-exports it).
+- `subjectMatches.filter` is a `TargetFilter`, read once at resolution through `matchesFilter` (Task 3's interface).
+  The definition-only rule (V1-D6, R5) binds `controlsAtLeast` and `per`, which the layer and the sweep count.
+- Game creation checks every static carrying a `when` (`costReduction` included), and also refuses an unknown
+  condition controller and a `self` that is not `true`.
+- A chooser under an `if` raises its prompt at RESOLUTION (declaration ends at the `if`), so it has no declared
+  targets for §11.11.2 to re-check and no §11.8.4 cancellation at placement.
+- A damage amount that comes to 0 or less skips the effect entirely (no event, no damage trigger). That also covers a
+  printed 0, which no pool card has.
+- Web: before any pick, a `subjectMatches` branch cannot be read, so the prompt names the `then` branch; the target
+  buttons read the picked card. With no frame (an activation button) a counted amount reads "1000 damage for each
+  Backup you control".
+- Task 4's commit also changes the web wording (R9), though its subject names only engine and ai.
+
 ## Source and the list (V1-D1)
 
 Starter Set 2025 Vol. 1 is Fire/Water, built around Zack: 50 main-deck cards and an 8-card LB deck (official product
