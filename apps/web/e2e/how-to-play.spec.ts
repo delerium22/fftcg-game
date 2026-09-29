@@ -13,7 +13,7 @@ test.use({ storageState: { cookies: [], origins: [] } })
 test('a first-time player meets the rules sheet, and it is modal (H1-A1)', async ({ page }) => {
   // Seed 1 hands the human the first decision, so a strip button exists to reach once the sheet closes.
   // Who chooses first is the seed's call in about half of games, and a free seed would make this flaky.
-  await page.goto('/?seed=1')
+  await page.goto('/?seed=1&decks=vol2,vol2')
   const dialog = page.getByRole('dialog', { name: 'How to play' })
   await expect(dialog).toBeVisible()
   // Focus starts on the heading, so a screen reader hears what this is before what it can do.
@@ -36,7 +36,7 @@ test('a first-time player meets the rules sheet, and it is modal (H1-A1)', async
   for (let i = 0; i < 3; i++) {
     await page.keyboard.press('Tab')
     const onBoard = await page.evaluate(() =>
-      !!document.activeElement?.closest('.table__seat, .table__hand, .table__prompt, .table__rail'))
+      !!document.activeElement?.closest('.table__seat, .table__hand, .table__prompt, .table__rail, .table__toolbar'))
     expect(onBoard, `Tab ${i + 1} escaped the rules sheet onto the board`).toBe(false)
   }
 
@@ -63,7 +63,7 @@ test('the rail button reopens it, and Escape closes it (H1-A2)', async ({ page }
 })
 
 test('a card\'s text reads at 15px in full ink once you point at it (H1-A4)', async ({ page }) => {
-  await page.goto('/?seed=21')
+  await page.goto('/?seed=21&decks=vol2,vol2')
   await page.getByRole('button', { name: 'Play', exact: true }).click()
   // Reach a hand: whoever chooses first, the human eventually holds five cards at the mulligan.
   const chooseFirst = page.getByRole('button', { name: 'Take the first turn' })

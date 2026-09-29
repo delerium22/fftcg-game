@@ -22,7 +22,7 @@ test('seed 28: every hand card names what pressing it does', async ({ page }) =>
   // until rung J1 moved the AI's opening choice). Found by a finder over the app's own choice set: the HUMAN
   // chooses first, and turn 1's hand is five sole casts plus one Geomancer. The AI's mulligan is the one AI
   // decision on the way, hence the longer wait.
-  await page.goto('/?seed=28')
+  await page.goto('/?seed=28&decks=vol2,vol2')
   await page.getByRole('button', { name: 'Take the first turn', exact: true }).click()
   await page.getByRole('button', { name: /Keep hand/ }).click()
   await expect(page.locator('.prompt__text'), 'the pinned route no longer reaches Main Phase 1')
@@ -52,7 +52,7 @@ test('seed 28: every hand card names what pressing it does', async ({ page }) =>
 test('seed 50: the sheet offers the cast, and the tray lists the cost', async ({ page }) => {
   // Seed 50: the HUMAN decides who goes first, so no AI search stands between the page and Main Phase 1
   // (see payment.spec.ts for why seeds 11 and 202 drifted).
-  await page.goto('/?seed=50')
+  await page.goto('/?seed=50&decks=vol2,vol2')
   await page.getByRole('button', { name: /Take the first turn/ }).click()
   await page.getByRole('button', { name: /Keep hand/ }).click()
 
