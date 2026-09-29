@@ -21,3 +21,4 @@ export * from './resolve.js'   // Rung C1: the executor
 export * from './draw.js'       // Rung C3: drawing, importable from both phases and resolution
 export * from './activate.js'   // Rung C3: activated abilities
 export * from './determinise.js'
+export * from './damage.js'     // Rung V2-A1: damage packets, one application point
