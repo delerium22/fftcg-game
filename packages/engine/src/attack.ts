@@ -6,7 +6,7 @@ import { defOf, findFieldCard, keywordsOf, powerOf, updatePlayer } from './state
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { dealPlayerDamage, runRuleProcesses } from './rules.js'
-import { enqueueDamageTriggers } from './resolve.js'
+import { dispatchTrigger, enqueueDamageTriggers } from './resolve.js'
 
 const IDLE: AttackState = { step: 'declaration', attackers: [], blocker: null }
 type Assignment = { target: CardId; amount: number }
@@ -63,6 +63,9 @@ export function applyDeclareAttack(state: GameState, player: PlayerId, attackers
   // Rung J1-D10: the attack is declared; a WINDOW opens for the turn player (§10.1.2.6), and the block is
   // owed only once both players forfeit (`exitAttackWindow`).
   s = { ...s, attack: { step: 'declared', attackers: ordered, blocker: null }, pending: null, priority: player, passes: 0 }
+  // §10.1.2.5 (rung V1-A1): each attacker's "when this attacks" clauses trigger now. Queued, not run: `settle`
+  // places them on the stack before the §10.1.2.6 grant, exactly as an ETB is placed after a cast.
+  for (const id of ordered) s = dispatchTrigger(s, defOf(s, id), id, player, 'attacks')
   return [s, [{ type: 'attackDeclared', player, attackers: ordered }, { type: 'phaseStarted', phase: 'attack', step: 'declared' }]]
 }
 
