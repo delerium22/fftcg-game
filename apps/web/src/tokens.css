@@ -1,0 +1,65 @@
+/*
+ * Crystal Arena design tokens (UI overhaul spec section 5, D10). Loaded AFTER styles.css, so the element hues here
+ * replace the older ones everywhere they are used (pips, frames, gems). The board chrome keeps its own tokens until
+ * U2 restyles it. Durations and easings are mirrored in motion.ts; test/tokens.test.ts keeps the two equal.
+ */
+:root {
+  /* the stage: deep indigo to violet */
+  --stage-0: #07081a;
+  --stage-1: #0d0f2a;
+  --stage-2: #15173d;
+  --stage-3: #221f55;
+
+  /* accents: cyan means "you can act", gold means emphasis and "yours" */
+  --accent-act: #5de4ff;
+  --accent-act-glow: rgb(93 228 255 / 55%);
+  --accent-gold: #ffc94d;
+  --accent-gold-glow: rgb(255 201 77 / 50%);
+  --danger-hot: #ff4d6d;
+  --gain: #3ee08f;
+
+  /* card states */
+  --state-targetable: var(--accent-act);
+  --state-selected: var(--accent-gold);
+  --state-invalid: #6a6f99;
+  --state-opponent: #ff7a59;
+
+  /* elements, re-saturated */
+  --el-fire: #ff5a36;
+  --el-ice: #5fd0ff;
+  --el-wind: #3ee08f;
+  --el-earth: #f0b232;
+  --el-lightning: #b86bff;
+  --el-water: #3d8bff;
+  --el-light: #fff1b8;
+  --el-dark: #8c7bd1;
+
+  /* type */
+  --font-display: 'Barlow Condensed', 'Avenir Next Condensed', 'Roboto Condensed', sans-serif;
+  --font-body: 'Barlow', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+
+  /* elevation */
+  --z-board: 0;
+  --z-hand: 10;
+  --z-stack: 20;
+  --z-flight: 30;
+  --z-fx: 40;
+  --z-inspect: 50;
+  --z-banner: 60;
+  --z-dialog: 70;
+  --shadow-1: 0 2px 6px rgb(0 0 0 / 45%);
+  --shadow-2: 0 8px 18px rgb(0 0 0 / 55%);
+  --shadow-3: 0 18px 40px rgb(0 0 0 / 65%);
+
+  /* motion (spec section 7): every duration scales with the speed setting, and Instant is 0 */
+  --dur-instant: calc(70ms * var(--motion-scale, 1));
+  --dur-fast: calc(140ms * var(--motion-scale, 1));
+  --dur-base: calc(220ms * var(--motion-scale, 1));
+  --dur-move: calc(320ms * var(--motion-scale, 1));
+  --dur-reveal: calc(450ms * var(--motion-scale, 1));
+  --dur-dramatic: calc(800ms * var(--motion-scale, 1));
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
