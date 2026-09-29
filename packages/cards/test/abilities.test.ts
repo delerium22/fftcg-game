@@ -455,6 +455,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '20-103H', '20-105C', '22-068R', '22-119R', '23-125R', '24-063H', '27-124S', '27-125S', '27-126S', '27-127S', '9-074C',
       // rung V1-B
       '1-170C', '12-005C', '13-013C', '18-003C', '18-094C', '21-001R', '22-112R', '22-123R', '23-130H', '27-129S', '3-143C',
+      '11-010C', '20-106R', '21-010H', '23-119R', '24-126H',
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
@@ -468,6 +469,8 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       // rung V1-B
       '1-170C:summon', '12-005C:summon', '13-013C:etb', '21-001R:etb', '21-001R:only-fire', '22-112R:etb', '3-143C:etb',
       '18-003C:draw', '18-094C:draw', '22-123R:etb', '23-130H:etb', '23-130H:standard-unit', '27-129S:etb', '27-129S:attack',
+      '11-010C:pump', '11-010C:burn', '20-106R:etb', '20-106R:damage-3', '21-010H:search', '21-010H:play', '23-119R:etb',
+      '24-126H:etb-fire', '24-126H:etb-water',
     ].sort())
   })
 
@@ -1994,6 +1997,9 @@ describe('the button text for an activated clause (found by playing)', () => {
     '20-074C:draw': 'Draw 1 card',
     '18-003C:draw': 'Draw 1 card',   // rung V1-B
     '18-094C:draw': 'Draw 1 card',
+    '11-010C:pump': 'Choose 1 Forward. It gains +1000 power until the end of the turn',
+    '11-010C:burn': 'Choose 1 Forward. Deal it 5000 damage',
+    '21-010H:play': 'Play 1 Job Warrior or Card Name Warrior of cost 3 or less from your hand onto the field (once per turn)',
     // Sphene keeps its once-per-turn marker: that is not a timing condition the engine gates for you, it is
     // what pressing the button COSTS you for the rest of the turn (Codex MAJOR).
     '27-126S:retrieve': 'Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn. Add it to your hand (once per turn)',

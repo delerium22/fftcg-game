@@ -267,18 +267,188 @@ const LUSO_LB_STANDARD_UNIT: Ability = {
   effects: [{ kind: 'onSource', do: [{ kind: 'addPower', amount: 4000 }] }],
 }
 
+// ---------------------------------------------------------------------------
+// The field
+// ---------------------------------------------------------------------------
+
+/**
+ * Warrior's two action abilities: Noel's and Undead Princess's self-break shape. Both print the dull icon, so both need
+ * an active Warrior that has been on the field since the turn began (§11.6.2.2), and "Choose 1 Forward" is either side.
+ */
+const WARRIOR_PUMP: Ability = {
+  id: '11-010C:pump',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, selfToBreakZone: true } },
+  text: '[Dull], put Warrior into the Break Zone: Choose 1 Forward. It gains +1000 power until the end of the turn.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{ kind: 'addPower', amount: 1000 }],
+  }],
+}
+
+/**
+ * `[Fire][1]` is TWO CP, one of them Fire: `amount` counts every CP and `requiredElements` names the ones that must be
+ * a given Element (Red Mage 1-121C's shape plus a generic one). The Warrior's own dull pays the `[Dull]`, never a CP.
+ */
+const WARRIOR_BURN: Ability = {
+  id: '11-010C:burn',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 2, requiredElements: ['fire'] }, dull: true, selfToBreakZone: true } },
+  text: '[Fire][1][Dull], put Warrior into the Break Zone: Choose 1 Forward. Deal it 5000 damage.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{ kind: 'damage', amount: 5000 }],
+  }],
+}
+
+/**
+ * Alphinaud's ETB. "your opponent selects" is a select made by the controller's OPPONENT (spec V1-D9): not a choice
+ * (§11.3.3), so it is not declared at placement, never fires "when chosen", and over no dull Forward does nothing at all
+ * — no prompt and no "no legal target". `from` stays relative to Alphinaud's controller: the opponent's own Forwards.
+ * "Put it into the Break Zone" is not a break (§15.1.1.3.2): `cannotBeBroken` does not stop it.
+ */
+const ALPHINAUD_ETB: Ability = {
+  id: '20-106R:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Alphinaud enters the field, your opponent selects 1 dull Forward they control. Put it into the Break Zone.',
+  effects: [{
+    kind: 'chooseTargets', select: 'opponent', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'opponent', filter: { status: 'dull' } },
+    then: [{ kind: 'putIntoBreakZone' }],
+  }],
+}
+
+/**
+ * "Damage 3 --" is the printed shorthand for "if you have received 3 points of damage or more": a continuous
+ * `modifyPower` on Alphinaud alone (`self`), with the existing `damageReceived` condition, read for his controller.
+ */
+const ALPHINAUD_DAMAGE_3: Ability = {
+  id: '20-106R:damage-3',
+  trigger: { kind: 'static', effect: { kind: 'modifyPower', amount: 2000, to: { controller: 'self', self: true }, when: { kind: 'damageReceived', atLeast: 3 } } },
+  text: 'Damage 3 -- Alphinaud gains +2000 power.',
+  effects: [],   // a static makes something true; it has nothing to run
+}
+
+/**
+ * Ultima Weapon's two ETBs, two printed clauses with two different shapes:
+ *
+ * - Clause 1 CHOOSES first and tests afterwards: the Forward is declared as the clause is placed on the stack, and the
+ *   `if` is read as it resolves. Below 4 Fire Characters the choice was still made (a Prishe chosen still pumps) and
+ *   nothing is dealt.
+ * - Clause 2 tests first: "if you control 4 or more Water Characters, your opponent selects". The select sits under
+ *   the `if`, made by the opponent at resolution, over their own Forwards (Alphinaud's shape without "dull").
+ *
+ * "Fire Characters" is `controlsAtLeast` with an `element` filter over Forwards and Backups; a Fire/Water card counts
+ * for both, Ultima Weapon itself included — it is on the field when its own ETBs resolve.
+ */
+const ULTIMA_WEAPON_FIRE: Ability = {
+  id: '24-126H:etb-fire',
+  trigger: { kind: 'enterField' },
+  text: 'When Ultima Weapon enters the field, choose 1 Forward. If you control 4 or more Fire Characters, deal it 9000 damage.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{
+      kind: 'if', when: { kind: 'controlsAtLeast', count: 4, controller: 'self', filter: { element: 'fire' } },
+      then: [{ kind: 'damage', amount: 9000 }],
+    }],
+  }],
+}
+
+const ULTIMA_WEAPON_WATER: Ability = {
+  id: '24-126H:etb-water',
+  trigger: { kind: 'enterField' },
+  text: 'When Ultima Weapon enters the field, if you control 4 or more Water Characters, your opponent selects 1 Forward '
+    + 'they control. Put it into the Break Zone.',
+  effects: [{
+    kind: 'if', when: { kind: 'controlsAtLeast', count: 4, controller: 'self', filter: { element: 'water' } },
+    then: [{
+      kind: 'chooseTargets', select: 'opponent', min: 1, max: 1,
+      from: { zone: 'forwards', controller: 'opponent' },
+      then: [{ kind: 'putIntoBreakZone' }],
+    }],
+  }],
+}
+
+/**
+ * LB Vincent's ETB. "you may put 1 Fire Backup you control" is a select by the controller, `min: 0`; "When you do so" is
+ * `onlyIfChosen` (spec V1-D10): declining skips the rest, including the damage choice. The damage target is then a
+ * CHOICE made as the same ability resolves — see the MVP0-SIMPLIFICATION on `onlyIfChosen` (§11.8): the printed
+ * reflexive trigger is not a separate stack item. First Strike is a keyword line, not a clause.
+ */
+const VINCENT_ETB: Ability = {
+  id: '23-119R:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Vincent enters the field, you may put 1 Fire Backup you control into the Break Zone. When you do so, choose '
+    + '1 Forward opponent controls. Deal it 9000 damage.',
+  effects: [{
+    kind: 'chooseTargets', select: 'self', onlyIfChosen: true, min: 0, max: 1,
+    from: { zone: 'backups', controller: 'self', filter: { element: 'fire' } },
+    then: [
+      { kind: 'putIntoBreakZone' },
+      {
+        kind: 'chooseTargets', min: 1, max: 1,
+        from: { zone: 'forwards', controller: 'opponent' },
+        then: [{ kind: 'damage', amount: 9000 }],
+      },
+    ],
+  }],
+}
+
+/** "Job Warrior or Card Name Warrior" — Taivas's two clauses share it. A multi-job card matches on any of its jobs (V1-D12). */
+const WARRIOR_OR_WARRIOR = [{ job: 'Warrior' }, { name: 'Warrior' }] as const
+
+/**
+ * Taivas's ETB search: Leonora's shape. With no cost limit, a second Taivas is findable (Job Warrior) — the printed text
+ * allows it.
+ */
+const TAIVAS_SEARCH: Ability = {
+  id: '21-010H:search',
+  trigger: { kind: 'enterField' },
+  text: 'When Taivas enters the field, you may search for 1 Job Warrior or Card Name Warrior and add it to your hand.',
+  effects: [{
+    kind: 'lookAtDeck', count: 'all', audience: 'self',
+    take: { min: 0, max: 1, filter: { anyOf: WARRIOR_OR_WARRIOR } },
+    to: 'hand', rest: 'shuffle',
+  }],
+}
+
+/**
+ * Taivas's `[0]`: Sphene's `[0]` activation (`yourTurnOnly`, `oncePerTurn`) over Yuna's play-from-hand select. "Play 1"
+ * is mandatory, so `min: 1`; a select with nothing to select does nothing, so the ability may be activated with no
+ * Warrior in hand and still spends its once-per-turn (plan R5). The select is made at resolution: the activation
+ * declares no target (rung V1-A3's `declarationNode` fix). `types: ['forward', 'backup']` keeps Summons out, which game
+ * creation requires of a `playOntoField` binding (no Warrior Summon exists; the filter says so rather than relying on it).
+ */
+const TAIVAS_PLAY: Ability = {
+  id: '21-010H:play',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 0 } }, oncePerTurn: true, yourTurnOnly: true },
+  text: '[0]: Play 1 Job Warrior or Card Name Warrior of cost 3 or less from your hand onto the field. You can only use '
+    + 'this ability during your turn and only once per turn.',
+  effects: [{
+    kind: 'chooseTargets', select: 'self', min: 1, max: 1,
+    from: { zone: 'hand', controller: 'self', filter: { types: ['forward', 'backup'], maxCost: 3, anyOf: WARRIOR_OR_WARRIOR } },
+    then: [{ kind: 'playOntoField' }],
+  }],
+}
+
 /** Implemented Vol. 1 clauses by card code, spread into `ABILITIES`. Printed order within each card. */
 export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '1-170C': [FAIRY_SUMMON],
   '3-143C': [LEONORA_ETB],
+  '11-010C': [WARRIOR_PUMP, WARRIOR_BURN],
   '12-005C': [IFRIT_SUMMON],
   '13-013C': [PALOM_ETB],
   '18-003C': [MACHINIST_DRAW],
   '18-094C': [GEOMANCER_WATER_DRAW],
+  '20-106R': [ALPHINAUD_ETB, ALPHINAUD_DAMAGE_3],
   '21-001R': [WARD_ONLY_FIRE, WARD_ETB],
+  '21-010H': [TAIVAS_SEARCH, TAIVAS_PLAY],
   '22-112R': [ZACK_LB_ETB],
   '22-123R': [LEO_ETB],
+  '23-119R': [VINCENT_ETB],
   '23-130H': [LUSO_LB_ETB, LUSO_LB_STANDARD_UNIT],
+  '24-126H': [ULTIMA_WEAPON_FIRE, ULTIMA_WEAPON_WATER],
   '27-129S': [YUNA_ETB, YUNA_ATTACK],
 }
 
