@@ -4,31 +4,34 @@ Recorded 2026-09-30 on an Apple M4 Pro (24 GB), Playwright 1.62.1 Chromium, from
 re-run the same spec and compare against these files.
 
 ```bash
-FFTCG_BASELINE=1 pnpm test:browser baseline
+FFTCG_BASELINE=1 pnpm test:browser baseline --workers=1
 ```
 
 The spec is `apps/web/e2e/baseline.spec.ts`. It is skipped unless `FFTCG_BASELINE=1` is set, because it records
-rather than asserts: the AI's search is time-boxed, so positions and timings differ from run to run. Every image uses
-`?art=off`, so no card art reaches the repository.
+rather than asserts: the AI's search is time-boxed, so positions and timings differ from run to run. Its tests run
+serially, so the performance games never share the machine with the screenshot games. Every image uses `?art=off`,
+and an art guard checks before each screenshot that no card art was shown or requested.
 
-## Performance: a full game at 4× CPU throttling
+## Performance: three full games at 4× CPU throttling
 
-Route `/?seed=1&decks=vol2,vol2&art=off`, viewport 1440×900, Instant speed (the suite's storage state), driven to the
-game-over dialog by `playToTheEnd`. Raw numbers are in `perf-baseline.json`.
+Route `/?seed=1&decks=vol2,vol2&art=off`, viewport 1440×900, Instant speed (the suite's storage state), each game
+driven to the game-over dialog by `playToTheEnd`. Raw numbers per game are in `perf-baseline.json`.
 
-| Measure | Value |
-|---|---|
-| Game length (wall clock) | 25.7 s |
-| Animation frames observed | 1,409 |
-| Frame gap, median | 16.7 ms |
-| Frame gap, 95th percentile | 33.3 ms |
-| Frame gap, 99th percentile | 66.7 ms |
-| Worst frame gap | 116.7 ms |
-| Long tasks (≥ 50 ms) | 37, worst 103 ms, 2,532 ms in total |
+| Measure | Game 1 | Game 2 | Game 3 | **Median** |
+|---|---|---|---|---|
+| Game length (wall clock) | 27.4 s | 27.4 s | 25.0 s | **27.4 s** |
+| Animation frames | 1,512 | 1,526 | 1,407 | — |
+| Frame gap, 95th percentile | 33.3 ms | 16.8 ms | 16.8 ms | **16.8 ms** |
+| Frame gap, 99th percentile | 50.1 ms | 50.0 ms | 50.0 ms | **50.0 ms** |
+| Worst frame gap | 133.3 ms | 100.0 ms | 83.4 ms | **100.0 ms** |
+| Long tasks (≥ 50 ms) | 41 | 32 | 18 | **32** |
+| Worst long task | 106 ms | 111 ms | 102 ms | — |
 
 Today's UI already produces frames over 50 ms at 4× throttling, all from React re-rendering the board, since nothing
-animates yet. The overhaul's budget (spec section 9) is therefore relative. The presentation layer must add no frame
-over 50 ms of its own, and the long-task count must stay within 2 of the 37 recorded here.
+animates yet. The long-task count varies from 18 to 41 between games because each game is different. A budget of
+"within 2" would be inside that noise, so the budget (spec section 9) compares medians over this same three-game
+protocol. The median long-task count stays at or below 40 (32 × 1.25). The median 99th-percentile frame gap stays at
+or below 67 ms (50 ms plus one frame at 60 Hz).
 
 ## Screenshots: the board at turn 3
 

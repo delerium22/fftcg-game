@@ -85,3 +85,17 @@ describe('applySettings', () => {
     expect(root.dataset['effects']).toBe('reduced')
   })
 })
+
+describe('when touching localStorage itself throws (Review Focus 1, U0 review)', () => {
+  it('loads the defaults and reports a failed save, with no storage passed in', () => {
+    const own = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new DOMException('blocked', 'SecurityError') } })
+    try {
+      expect(loadSettings()).toEqual(DEFAULT_SETTINGS)
+      expect(saveSettings(DEFAULT_SETTINGS)).toBe(false)
+    } finally {
+      if (own) Object.defineProperty(globalThis, 'localStorage', own)
+      else Reflect.deleteProperty(globalThis, 'localStorage')
+    }
+  })
+})
