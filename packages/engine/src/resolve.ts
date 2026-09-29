@@ -510,6 +510,17 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       ctx.chosen = saved
       return
     }
+    case 'onSource': {
+      // "<this card> gains …" (rung V1-A4): the ability's own card, named by the printed text — not a choice, so no
+      // "when chosen" watcher sees it. `onSubject`'s shape, so `do` may not suspend (game creation refuses it too).
+      // A source that has left the field (§11.11.7) is bound anyway: the field effects skip a card not on the field.
+      const saved = ctx.chosen
+      ctx.chosen = [ctx.source]
+      runEffects(ctx, eff.do, depth + 1, false)
+      if (ctx.suspend) throw new Error(`ability ${ctx.abilityId}: onSource.do must not contain a suspending effect`)
+      ctx.chosen = saved
+      return
+    }
     case 'dull':
       for (const id of ctx.chosen) {
         const loc = findFieldCard(ctx.state, id)

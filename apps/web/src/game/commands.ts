@@ -411,7 +411,8 @@ function verbOf(e: Effect, frame: VerbFrame): Verb | null {
     case 'moveToHand': return { imperative: 'Return', purpose: 'to return to hand' }
     // Rung V1-A1: what the branch that will run does — Palom's "deal it 8000 damage" only when the condition holds.
     case 'if': return joinVerbs(describedBranch(e, frame).map((x) => verbOf(x, frame)))
-    // chooseTargets/chooseModes/forEach describe a choice of their own, not what THIS one does to its picks.
+    // chooseTargets/chooseModes/forEach describe a choice of their own, not what THIS one does to its picks; onSubject
+    // and onSource (V1-A4) act on a card the text names, whatever is picked.
     default: return null
   }
 }
@@ -441,7 +442,7 @@ function targetNode(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTarg
         if (e.min === pending.min && e.max >= pending.max) found.push(e)
         walk(e.then)
       } else if (e.kind === 'chooseModes') for (const m of e.modes) walk(m.effects)
-      else if (e.kind === 'forEach') walk(e.do)
+      else if (e.kind === 'forEach' || e.kind === 'onSource') walk(e.do)
       else if (e.kind === 'if') { walk(e.then); walk(e.else ?? []) }
     }
   }

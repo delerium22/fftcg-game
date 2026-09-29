@@ -578,3 +578,48 @@ describe('V1-A3 review — special abilities and resolved filters in the policy'
     expect(candidateCommands(s, 0).some((c) => c.type === 'chooseMode')).toBe(true)
   })
 })
+
+describe('candidateCommands: the V1-A4 onSource', () => {
+  const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
+    const q = s.players[p]
+    return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame].map((id) => s.cards[id]!.code)
+  }) as [string[], string[]]
+  const GRANT: readonly Effect[] = [{ kind: 'addPower', amount: 2000 }, { kind: 'grantKeyword', keyword: 'brave' }]
+  const onSource: Effect = { kind: 'onSource', do: GRANT }
+  const onChosen: Effect = { kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: GRANT }
+
+  /** Arm a one-of-two mode clause on a lone Forward and return the policy's first mode answer. */
+  const firstMode = (modes: readonly (readonly Effect[])[]): readonly number[] => {
+    const a = clause('T-SRCMODE:etb', [{ kind: 'chooseModes', min: 1, max: 1, modes: modes.map((effects, i) => ({ label: `mode ${i}`, effects })) }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-SRCMODE', a)] }), 0, 0)
+    let src: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-SRCMODE')
+    s = arm(s, src, 0, a)
+    expect(s.pending?.kind).toBe('chooseMode')
+    return modesOf(candidateCommands(s, 0)[0])
+  }
+
+  it('a self-grant is priced, never 0: it outranks a mode worth nothing even listed second (Review Focus 3)', () => {
+    expect(firstMode([[{ kind: 'draw', count: 1 }], [onSource]])).toEqual([1])
+  })
+
+  it('a self-grant is worth what the same grant on a chosen own Forward is: each keeps first place in either order', () => {
+    // A tie keeps the lower index, so first place in BOTH orders means neither outranks the other.
+    expect(firstMode([[onSource], [onChosen]])).toEqual([0])
+    expect(firstMode([[onChosen], [onSource]])).toEqual([0])
+  })
+
+  it('the greedy agent activates "[0]: this card gains +2000 power and Brave" rather than passing, when the source can attack', () => {
+    const pump: Ability = { id: 'T-JECHT0:act', trigger: { kind: 'activated', sourceZone: 'field', cost: {} }, text: '[0]: this card gains +2000 power and Brave until the end of the turn.', effects: [onSource] }
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-JECHT0', pump)] }), 0, 0)
+    let src: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-JECHT0')   // entered on an earlier turn: it can attack
+    const f = s.players[0].forwards.find((c) => c.id === src)
+    expect(f?.status === 'active' && f.enteredTurn !== s.turn, 'active, and not summoning-sick').toBe(true)
+    const agent = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 0 })
+    const d = agent.decide(viewFor(s, 0), legalCommands(s, 0))
+    expect(d).toMatchObject({ type: 'activateAbility', source: src, abilityId: 'T-JECHT0:act' })
+    const score = (type: Command['type']) => agent.lastScores.find((x) => x.command.type === type)?.score
+    expect(score('activateAbility')).toBeGreaterThan(score('pass') as number)
+  })
+})
