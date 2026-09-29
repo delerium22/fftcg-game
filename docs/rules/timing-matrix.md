@@ -88,7 +88,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 11.3 | Casting a Summon | heading |  |
 | 11.3.1 | Hand to stack with the cost paid; an illegal cast rewinds | tested | engine/cr11-stack#J1-A2; engine/legal-apply#invariant |
 | 11.3.2 | Declared, revealed, moved to the top of the stack under the caster | tested | engine/cr11-stack#J1-A2 |
-| 11.3.3 | "Choose" needs a legal target or it cannot be cast | tested | engine/cr11-stack#§11.3.3 |
+| 11.3.3 | "Choose" needs a legal target or it cannot be cast; "select" is not "choose" | tested | engine/cr11-stack#§11.3.3; engine/selects#a Summon whose only node is a select |
 | 11.3.4 | Modal Summons declare their mode | tested | cards/abilities#20-103H Ramuh; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 11.3.4.1 | The number of selectable effects is fixed at declaration | n/a | no pool Summon varies its mode count |
 | 11.3.5 | A cost that references other information is fixed when referenced (Odin reads the damage count); alternative and variable costs | tested | cards/abilities#13-072R Odin — "If you have received 5 points |
