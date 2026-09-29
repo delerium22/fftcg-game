@@ -73,13 +73,15 @@ function playUntil(seed: number, human: 'hold' | 'castMiner', stop: (s: GameStat
   return null
 }
 
-function search(human: 'hold' | 'castMiner', stop: (s: GameState) => boolean): GameState | null {
-  for (let seed = 1; seed <= 12; seed++) {
+function search(human: 'hold' | 'castMiner', stop: (s: GameState) => boolean, seeds: readonly number[] = SEEDS): GameState | null {
+  for (const seed of seeds) {
     const found = playUntil(seed, human, stop)
     if (found) return found
   }
   return null
 }
+
+const SEEDS = Array.from({ length: 12 }, (_, i) => i + 1)
 
 function duplicateCodeIn(hand: readonly CardId[], s: GameState): string | undefined {
   const codes = hand.map((id) => s.cards[id]?.code)
@@ -112,9 +114,13 @@ beforeAll(() => {
   // first version of this fixture stopping at the earliest asymmetric pair — turn 3, no pending, the two cards
   // reachable only as payment, which the UI does not expose as card subjects. So the search now demands a
   // discard pending too, which is where the player actually picks between them. Reachable on seed 1.
+  //
+  // Rung V1-E: the AI now remembers the card Miner revealed into the human's hand, so it plays seed 8 — the one
+  // seed of 1–12 that reached this position — differently, and the position moved out of that range. Seed 87 is the
+  // first of 13–90 to reach it; named directly, because walking 80 seeds would cost the file ~40 s.
   MINER_ASYMMETRY = search('castMiner', (s) =>
     s.pending?.kind === 'discardToHandSize' && s.pending.player === HUMAN
-    && asymmetricPair(s) !== null)
+    && asymmetricPair(s) !== null, [...SEEDS, 87])
 })
 
 describe('two cards of the same code', () => {

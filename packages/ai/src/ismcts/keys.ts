@@ -30,7 +30,9 @@ import type { WeightOverrides } from '../evaluate.js'
  *    player actually distinguishes. Two copies of one code are interchangeable, which is why the counter is
  *    by code and not by id.
  *  - `?`     — a hidden card with no canonical identity (an opponent hand card the root player cannot name).
- *    A key containing `?` must never be used to pool statistics; see `isOpaque`.
+ *    A key containing `?` must never be used to pool statistics; see `isOpaque`. An opponent hand card the root
+ *    DOES know (revealed, rung V1-E) is still `?` here: no pool select picks from the other player's hand, so no
+ *    action names one; the observation key carries it instead (`fieldDigest`'s `hd`).
  */
 export type CardRef = string
 
@@ -543,8 +545,13 @@ function fieldDigest(view: PlayerView, p: PlayerId): string {
   // root alone knows and the same card the OPPONENT also knows digested identically — two positions the root
   // can plainly tell apart, and which imply different things about what the opponent will do next.
   const slot = (sl: { card: CardId | null; knownBy: number }): string => `${sl.card !== null ? code(sl.card) : '?'}${sl.knownBy}`
+  // The hand cards this viewer knows (rung V1-E, E-D3), by code and sorted — a hand is unordered, and the known ones
+  // are pinned by `determinise`, so the codes are the same in every world. Appended only when there are any, so every
+  // position without one keys exactly as before. No mask: the owner always knows their own hand, and the viewer
+  // knows these by construction.
+  const known = f.knownHand.map(code).sort(cmpStr)
   return [
-    `dk[${f.deck.map(slot).join(',')}]`, `hd${f.handCount}`,
+    `dk[${f.deck.map(slot).join(',')}]`, `hd${f.handCount}${known.length ? `[${known.join(',')}]` : ''}`,
     `fw[${f.forwards.map(card).join(',')}]`, `bk[${f.backups.map(card).join(',')}]`,
     `dz[${f.damageZone.map(code).join(',')}]`, `bz[${f.breakZone.map((id) => bzEntry(id, p)).join(',')}]`,
     // Removed cards are public and permanent; two states differing in what has left the game are different.

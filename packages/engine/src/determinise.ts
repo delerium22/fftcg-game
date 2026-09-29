@@ -24,7 +24,7 @@ function removeVisible(multiset: string[], codes: string[], p: PlayerId): string
   return left
 }
 
-/** Rebuild a full GameState consistent with `view`: visible cards keep their ids; the opponent's hand and both decks are sampled from each player's unseen deck-list multiset. Returns the state and the advanced rng. */
+/** Rebuild a full GameState consistent with `view`: visible cards keep their ids; the opponent's hand (but for the cards the viewer knows, rung V1-E) and both decks are sampled from each player's unseen deck-list multiset. Returns the state and the advanced rng. */
 export function determinise({ view, decks, rng }: DeterminiseOptions): [GameState, Rng] {
   const cards: Record<CardId, CardInstance> = { ...view.cards }
   // Rebuilt rather than copied: sampled cards get fresh ids, so the view's mask cannot carry over unchanged.
@@ -47,7 +47,9 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
     // keeps its id — leaving it out would deal its code back into the unseen multiset, a 51-card game.
     const placing = view.resolution.placing?.item
     const onStack = [...view.stack, ...(placing ? [placing] : [])].flatMap((item) => (item.kind === 'summon' && view.cards[item.card]?.owner === p ? [item.card] : []))
-    const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...f.removedFromGame, ...knownDeck, ...onStack, ...f.lbDeck.map((x) => x.id), ...(p === view.me ? view.hand : [])]
+    // Rung V1-E (E-D2): the other player's hand cards this viewer knows are pinned the same way — real ids, their
+    // `knownBy` carried over with `view.knownBy`, their codes out of the unseen multiset. Empty for the viewer's seat.
+    const visibleIds = [...f.forwards.map((c) => c.id), ...f.backups.map((c) => c.id), ...f.damageZone, ...f.breakZone, ...f.removedFromGame, ...knownDeck, ...onStack, ...f.lbDeck.map((x) => x.id), ...(p === view.me ? view.hand : f.knownHand)]
     // Rung J8: LB cards are never in the main-deck list, so their codes are not subtracted from the unseen multiset.
     const visibleCodes = visibleIds.map((id) => { const c = view.cards[id]; if (!c) throw new Error(`view lacks visible card ${id}`); return c.code }).filter((code) => view.defs[code]?.limitBreak === undefined)
     const unseen = removeVisible(decks[p], visibleCodes, p)
@@ -80,7 +82,11 @@ export function determinise({ view, decks, rng }: DeterminiseOptions): [GameStat
       return filled
     }
     if (p === view.me) { hand = view.hand; deck = fill(order) }
-    else { hand = order.slice(0, f.handCount).map(mint); deck = fill(order.slice(f.handCount)) }
+    else {
+      const sampled = f.handCount - f.knownHand.length
+      hand = [...f.knownHand, ...order.slice(0, sampled).map(mint)]
+      deck = fill(order.slice(sampled))
+    }
     if (deck.length !== f.deck.length || hand.length !== f.handCount) throw new Error(`deck list for player ${p} is inconsistent with the view (unseen ${unseen.length}, expected hand ${f.handCount} + deck ${f.deck.length})`)
     players.push({ deck, hand, lbDeck: [...f.lbDeck], forwards: f.forwards, backups: f.backups, damageZone: f.damageZone, breakZone: f.breakZone, removedFromGame: f.removedFromGame, putIntoBreakZoneFromFieldThisTurn: [...f.putIntoBreakZoneFromFieldThisTurn], mulliganDecided: view.mulliganDecided[p] })
   }

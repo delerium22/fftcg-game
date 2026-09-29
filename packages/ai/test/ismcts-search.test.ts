@@ -182,6 +182,14 @@ describe('searchView', () => {
     const other = learn({ ...s, knownBy: {} }, [0], s.players[0].deck.slice(4, 7) as CardId[])
     expect(observationKey(searchView(s, 0))).not.toBe(observationKey(searchView(other, 0)))
     expect(observationKey(searchView(s, 0))).toBe(observationKey(viewFor(s, 0)))
+
+    // Rung V1-E: a card in seat 1's hand that seat 0 KNOWS (revealed, then kept) — the zone this rung surfaced.
+    const kept = s.players[1].hand[0] as CardId
+    s = learn(s, [0, 1], [kept])
+    for (const p of [0, 1] as const) expect(searchView(s, p)).toEqual(viewFor(s, p))
+    expect(searchView(s, 0).fields[1].knownHand).toEqual([kept])
+    expect(searchView(s, 0).cards[kept], 'the other seat cannot name a card revealed to it').toBeDefined()
+    expect(observationKey(searchView(s, 0))).toBe(observationKey(viewFor(s, 0)))
   })
 
   it('produces byte-identical keys to viewFor across a self-play trace', () => {

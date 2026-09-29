@@ -38,6 +38,20 @@ describe('render — a deck look or search (rung C9)', () => {
   })
 })
 
+describe('render — the opponent hand cards you know (rung V1-E)', () => {
+  it('names them beside the count, and prints the bare count when there are none', () => {
+    let s = createGame({ seed: 1, decks: [deck, deck], defs: loadCards() })
+    const p = actingPlayer(s)!
+    s = apply(s, { type: 'chooseFirst', player: p, goFirst: true }).state
+    s = apply(s, { type: 'mulligan', player: p, redraw: false }).state
+    s = apply(s, { type: 'mulligan', player: p === 0 ? 1 : 0, redraw: false }).state
+    expect(renderView(viewFor(s, 0))).toMatch(/hand 5, damage/)
+    const kept = s.players[1].hand[0]!
+    const v = viewFor({ ...s, knownBy: { [kept]: 3 } }, 0)
+    expect(renderView(v)).toContain(`hand 5 (known: [${kept}] ${v.defs[v.cards[kept]!.code]!.name}`)
+  })
+})
+
 describe('render', () => {
   it('renders a board and describes commands with card names', () => {
     let s = createGame({ seed: 1, decks: [deck, deck], defs: loadCards() })
