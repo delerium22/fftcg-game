@@ -146,9 +146,9 @@ with the usual proof test. Charlotte clause 3 (the action-ability ban) is B.
   information: the opposing view must not see their ids or codes (same treatment as `chooseFromDeck`). A `discard`
   effect moves the subject from hand to Break Zone. `putOntoField` accepts a hand subject ("play onto the field" is
   not a cast: no cost, no cast event, the enters-field triggers fire; field limits and same-name apply, §7.7).
-- **V1-D12 — filters.** `anyOf: TargetFilter[]`. Multi-job: `CardDef.job` stays one string; the job filter matches
-  when the filter's job is one of `job.split(' · ')` (Wuk Lamat's patch says `"Princess · Warrior"`, the SE
-  endpoint's format for multi-job cards — confirm in V1-B). `sameElementAsChosen: true` matches a card sharing an
+- **V1-D12 — filters.** `anyOf: DefFilter[]`. Multi-job: `CardDef.job` stays one string; the job filter matches
+  when the filter's job is one of `job.split('/')` (the SE endpoint writes multi-job cards as `"Warrior/Rebel"`;
+  Wuk Lamat's patch says `"Princess/Warrior"`). `sameElementAsChosen: true` matches a card sharing an
   element with the frame's first chosen card.
 - **V1-D13 — special abilities (§11.7).** `activated.special?: { name: string }` with cost `discardSameName: 1`
   (discard a card with the same name from hand). The action-ability ban does not reach a special ability

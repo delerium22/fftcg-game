@@ -92,10 +92,21 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
           // which would name a hidden card on the stack for the whole of its wait.
           if (e.from.zone === 'hand' && e.from.controller !== 'self') problems.push(`${code}: ${id} targets a hand that is not your own`)
           if (e.from.zone === 'hand' && e.select !== 'self') problems.push(`${code}: ${id} targets a hand without being a select by its controller`)
+          // V1-A2 review M2: while a picked HAND card is still in hand, a nested prompt would leave its id in the frame's
+          // `chosen`/`declared` — public on the stack, and card ids name codes (they are minted in decklist order).
+          // So a prompt under a hand select must come after the card has left (Porom discards first).
+          if (e.from.zone === 'hand') {
+            for (const t of e.then) {
+              if (t.kind === 'discard' || t.kind === 'playOntoField') break
+              if (suspends(t)) { problems.push(`${code}: ${id} prompts while a hand pick is still in hand`); break }
+            }
+          }
           walk(code, id, e.then, e.from)
           break
         case 'chooseModes': for (const m of e.modes) walk(code, id, m.effects, bound); break
-        case 'forEach': walk(code, id, e.do, e.from); break
+        case 'forEach':
+          if (e.from.zone === 'hand') problems.push(`${code}: ${id} iterates over a hand, which is private`)
+          walk(code, id, e.do, e.from); break
         case 'onSubject': walk(code, id, e.do, null); break
         case 'if': walk(code, id, e.then, bound); walk(code, id, e.else ?? [], bound); break
         // Rung V1-A2 (R2): only a Character is played onto a field, so the binding's filter must rule a Summon out.
@@ -112,8 +123,24 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
       }
     }
   }
-  for (const d of defs) for (const a of d.abilities ?? []) walk(d.code, a.id, a.effects, null)
+  for (const d of defs) for (const a of d.abilities ?? []) {
+    // V1-A2 review M1: `declarationNode` would declare a head select at activation (naming hand ids on the stack and
+    // gating activation on candidates). Refused until V1-A3 teaches it that a select is made at resolution.
+    const head = a.effects[0]
+    if (a.trigger.kind === 'activated' && head?.kind === 'chooseTargets' && head.select !== undefined) problems.push(`${d.code}: ${a.id} opens an activated ability with a select, not yet supported`)
+    walk(d.code, a.id, a.effects, null)
+  }
   return problems
+}
+
+/** Can this effect (or anything nested in it) raise a prompt? */
+function suspends(e: Effect): boolean {
+  switch (e.kind) {
+    case 'chooseTargets': case 'chooseModes': case 'lookAtDeck': return true
+    case 'forEach': case 'onSubject': return e.do.some(suspends)
+    case 'if': return e.then.some(suspends) || (e.else ?? []).some(suspends)
+    default: return false
+  }
 }
 
 export function createGame(opts: CreateGameOptions): GameState {
