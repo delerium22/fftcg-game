@@ -181,6 +181,25 @@ describe('V1-A2 — game creation checks the select flags wherever they are nest
   })
 })
 
+describe('V1-A2 review — hidden hand ids never reach the stack', () => {
+  const handPick = (then: readonly Effect[]): Effect => ({ kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'forward' } }, then })
+  const choose: Effect = { kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }
+  it('refuses a prompt under a hand select while the pick is still in hand, and allows one after it has left', () => {
+    const leaky = etb('T-LEAK:etb', [handPick([choose, { kind: 'playOntoField' }])])
+    const porom = etb('T-POROM:etb', [handPick([{ kind: 'discard' }, choose])])
+    const problems = validateEffects([bearer('T-LEAK', leaky), bearer('T-POROM', porom)]).join('; ')
+    expect(problems).toMatch(/T-LEAK:etb prompts while a hand pick is still in hand/)
+    expect(problems).not.toMatch(/T-POROM/)
+  })
+  it('refuses a forEach over a hand, and an activated ability that opens with a select (until V1-A3)', () => {
+    const each = etb('T-EACH:etb', [{ kind: 'forEach', from: { zone: 'hand', controller: 'self' }, do: [{ kind: 'discard' }] }])
+    const act: Ability = { id: 'T-ACT:play', trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 0 } } }, text: 'synthetic', effects: [handPick([{ kind: 'playOntoField' }])] }
+    const problems = validateEffects([bearer('T-EACH', each), bearer('T-ACT', act)]).join('; ')
+    expect(problems).toMatch(/T-EACH:etb iterates over a hand/)
+    expect(problems).toMatch(/T-ACT:play opens an activated ability with a select/)
+  })
+})
+
 describe('V1-A2 — put into the Break Zone is a zone movement, not a break (§15.1.1.3.2)', () => {
   function alphinaud(victimCode: string, over: Partial<FieldCard> = {}): { s: GameState; victim: CardId } {
     let s = makeGame({ defs: DEFS })
