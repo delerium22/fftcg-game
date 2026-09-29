@@ -8,7 +8,7 @@ import {
 } from '@fftcg/engine'
 import { GreedyAgent, type Agent, type SearchDiagnostics, type SearchResult } from '@fftcg/ai'
 import { withAbilities } from '@fftcg/cards'
-import { CARD_DEFS, DECKS } from '../src/deck.js'
+import { CARD_DEFS, DECK_CHOICES, DECKS, deckLists, MIRROR_DECKS, type DeckPair } from '../src/deck.js'
 import { buildChoiceSet, describeChoice, preferredChoices, sameCommand } from '../src/game/commands.js'
 import { AI, HUMAN, type ChoiceSet, type GameApi, type LogLine } from '../src/game/types.js'
 import { Board, clickableChoices, orphanTargetIds } from '../src/ui/Board.js'
@@ -18,7 +18,7 @@ import {
 } from '../src/game/search/coordinator.js'
 import type { WorkerRequestMessage, WorkerResponseMessage, WorkerSearchRequest } from '../src/game/search/protocol.js'
 import {
-  AI_STEP_MS, aiHandlers, aiIsThinking, createAiSearch, describeEvent, eventLines, moveLine, narrator, stepAi, useGame,
+  AI_STEP_MS, aiHandlers, aiIsThinking, createAiSearch, createWebGame, describeEvent, eventLines, moveLine, narrator, settleWindows, stepAi, useGame,
   type AiSearch, type AiSink,
 } from '../src/game/useGame.js'
 import { withField } from '../../../packages/engine/test/helpers.js'
@@ -1260,7 +1260,7 @@ function aiHarness(seed: number, factory?: SearchTransportFactory): AiHarness {
   return {
     clock, transports, lines, commits,
     handlers: aiHandlers(sink),
-    search: createAiSearch(() => current, seed, { clock, createTransport }),
+    search: createAiSearch(() => current, seed, { decks: DECKS, seams: { clock, createTransport } }),
     state: () => current,
     setState: (next) => { current = next },
     fallbacks: () => lines.filter((l) => l.kind === 'warning' && l.text.includes(FALLBACK_WARNING)),
@@ -1408,7 +1408,7 @@ describe('"The AI is thinking" is derived from the state, never stored beside it
     let api: GameApi | null = null
 
     function Probe(): null {
-      const game = useGame(SEED, { clock, createTransport })
+      const game = useGame(SEED, { decks: MIRROR_DECKS, seams: { clock, createTransport } })
       // Concede is legal in every position, the AI's turn included, so it is not a LIVE human choice.
       seen.push({ thinking: game.aiThinking, human: game.choices.all.filter((c) => c.command.type !== 'concede').length })
       api = game
@@ -1532,7 +1532,7 @@ describe('every move line says WHO made the move (not just what colour it is)', 
     expect(humanFirst, 'no seed under 60 opens with the human on the clock').toBeGreaterThan(0)
 
     let api: GameApi | null = null
-    function Probe(): null { api = useGame(humanFirst, { clock, createTransport }); return null }
+    function Probe(): null { api = useGame(humanFirst, { decks: MIRROR_DECKS, seams: { clock, createTransport } }); return null }
 
     const host = document.createElement('div')
     document.body.appendChild(host)
@@ -1733,5 +1733,99 @@ describe('a mirror match names both sides of a trade (found by playing)', () => 
     v.hand = [...v.hand, inHand]
     expect(v.hand, 'the hand twin is not in hand, so the exclusion is untested').toContain(inHand)
     expect(eventLines(v, [{ type: 'broken', card: onTable }])[0]?.text).toBe('Billy Bob is broken')
+  })
+})
+
+describe('a new game with another pair of decks (rung V1-C, R4)', () => {
+  // The pair is part of a game's identity (C-D2), so a restart that changes it has to change EVERYTHING that
+  // holds a list: the dealt game, the worker's declared lists, the Greedy fallback's, and the log's opening line.
+  // Anything left on the old pair plays a different game from the one on the board — and with composition-
+  // distinct lists that is not a weaker AI, it is a determinisation that samples cards that cannot exist.
+  const OLD: DeckPair = ['vol2', 'vol2']
+  // The default pair: the AI's list CHANGES (Vol. 2 to Vol. 1), so an AI left on the old lists cannot even account
+  // for its own hand.
+  const NEW: DeckPair = ['vol2', 'vol1']
+  const aiFirst = (seed: number, pair: DeckPair): boolean => createWebGame(seed, pair).pending?.player === AI
+  // `restart` deals the NEXT seed, so both games must open on the AI's decision for both to reach the worker.
+  const SEED_PAIR = ((): number => {
+    for (let s = 1; s < 200; s++) if (aiFirst(s, OLD) && aiFirst(s + 1, NEW)) return s
+    return -1
+  })()
+
+  function mount(factory: SearchTransportFactory): { clock: TestClock; api: () => GameApi; unmount: () => void } {
+    const clock = new TestClock()
+    let api: GameApi | null = null
+    function Probe(): null { api = useGame(SEED_PAIR, { decks: OLD, seams: { clock, createTransport: factory } }); return null }
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => { root.render(createElement(Probe)) })
+    return { clock, api: () => api!, unmount: () => { act(() => { root.unmount() }); host.remove() } }
+  }
+  const codes = (v: PlayerView, ids: readonly CardId[]): string[] => ids.map((id) => v.cards[id]!.code).sort()
+
+  it('finds a seed whose two games both open on the AI', () => {
+    expect(SEED_PAIR, 'no seed under 200 opens both games on the AI').toBeGreaterThan(0)
+  })
+
+  it('terminates the old worker, drops its late reply, and gives the new one the new lists', () => {
+    const transports: TestTransport[] = []
+    const m = mount((h) => { const t = new TestTransport(h); transports.push(t); return t })
+    const old = transports[0]!
+    expect(old.sent[0]).toMatchObject({ type: 'init', decks: deckLists(OLD).decks })
+    const stale = old.searches[0]!
+    expect(m.api().log.map((l) => l.text)).toEqual(['New game — you play Starter Vol. 2, the AI plays Starter Vol. 2'])
+
+    act(() => { m.api().restart(NEW) })
+    expect(old.terminations, 'the old game\'s worker outlived it').toBe(1)
+    // The reply was already on its way. It answers a position of a game that no longer exists.
+    act(() => { old.handlers.message(resultMessage(createWebGame(SEED_PAIR, OLD), stale.requestId)) })
+    act(() => { m.clock.advance(10 * AI_STEP_MS) })
+    expect(m.api().log.map((l) => l.text), 'a reply from the old game was committed to the new one')
+      .toEqual(['New game — you play Starter Vol. 2, the AI plays Starter Vol. 1'])
+
+    const fresh = transports[1]
+    expect(fresh, 'the new game never asked a worker').toBeDefined()
+    expect(fresh!.sent[0]).toMatchObject({ type: 'init', decks: deckLists(NEW).decks })
+
+    // The new game itself: both LB decks are public (J8-D5), so the view can check each seat's.
+    const v = m.api().view
+    expect(codes(v, v.fields[HUMAN].lbDeck.map((x) => x.id))).toEqual([...DECK_CHOICES.vol2.lb].sort())
+    expect(codes(v, v.fields[AI].lbDeck.map((x) => x.id))).toEqual([...DECK_CHOICES.vol1.lb].sort())
+    m.unmount()
+  })
+
+  it('the Greedy fallback plays the new game with the new lists', () => {
+    // The first game gets a worker; the second cannot start one, so Greedy answers its first decision.
+    let calls = 0
+    const m = mount((h) => {
+      if (++calls > 1) throw new Error('no worker for the second game')
+      return new TestTransport(h)
+    })
+    act(() => { m.api().restart(NEW) })
+    // A shadow of the new game played by Greedy with the NEW lists — the coordinator keeps one Greedy per game,
+    // seeded with the game's seed, so this agent answers every AI decision exactly as the fallback should. The
+    // human side takes the first non-concede choice, applied to both. Every step, the hook's view must match.
+    let shadow = createWebGame(SEED_PAIR + 1, NEW)
+    const greedy = new GreedyAgent({ seed: SEED_PAIR + 1, decks: deckLists(NEW).decks, depth: 1 })
+    let aiMoves = 0
+    for (let i = 0; i < 80 && aiMoves < 8 && !shadow.result; i++) {
+      if (actingPlayer(shadow) === AI) {
+        const move = greedy.decide(viewFor(shadow, AI), legalCommands(shadow, AI))
+        shadow = settleWindows(apply(shadow, move).state, { control: 'smart' }).state
+        act(() => { m.clock.advance(AI_STEP_MS) })
+        aiMoves++
+      } else {
+        const next = m.api().choices.all.find((c) => c.command.type !== 'concede')
+        if (!next) break
+        shadow = settleWindows(apply(shadow, next.command).state, { control: 'smart' }).state
+        act(() => { m.api().choose(next) })
+      }
+      expect(m.api().view, `the hook left the new-lists Greedy's game at step ${i}`).toEqual(viewFor(shadow, HUMAN))
+    }
+    expect(aiMoves, 'the AI made too few moves for its hand to matter').toBe(8)
+    expect(shadow.phase, 'the walk never left the setup, where no list is consulted').not.toBe('setup')
+    expect(m.api().log.filter((l) => l.kind === 'warning').map((l) => l.text)).toEqual([expect.stringContaining('no worker for the second game')])
+    m.unmount()
   })
 })

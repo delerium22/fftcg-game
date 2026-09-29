@@ -1,4 +1,5 @@
 import type { CardId, Command, PlayerId, PlayerView } from '@fftcg/engine'
+import type { DeckPair } from '../deck.js'
 
 /** Spec B4: the human always holds seat 0, `GreedyAgent` seat 1. */
 export const HUMAN: PlayerId = 0
@@ -63,11 +64,14 @@ export interface GameApi {
   aiThinking: boolean
   /** Apply one of `choices.all`. Throws if the command is not currently legal. */
   choose(choice: Choice): void
-  /** Start a new game with a fresh seed. */
-  restart(): void
+  /** Start a new game with a fresh seed, dealt from `decks` (rung V1-C) — the pair just played when absent. */
+  restart(decks?: DeckPair): void
   /** Rung K5: while on, every response window of the human's is shown; off (Smart, the default) shows only the
    *  ones worth holding for. Off after a restart. Optional so the many test fixtures that build a `GameApi` by
    *  hand need not know about the toggle. */
   fullControl?: boolean
   setFullControl?: (on: boolean) => void
+  /** Rung V1-C: the ACTIVE game's pair, `[you, the AI]`. Optional for the same reason as `fullControl`: a
+   *  hand-built fixture without it renders no deck picker, and keeps the controls it was written against. */
+  decks?: DeckPair
 }

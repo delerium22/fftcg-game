@@ -16,7 +16,8 @@ import type { PlayerView } from '@fftcg/engine'
  */
 export interface WorkerInit {
   readonly type: 'init'
-  /** Both players' publicly declared lists — the open-decklist assumption `determinise` documents. */
+  /** Both players' publicly declared lists, seat 0 first — one per seat since rung V1-C, so a swapped pair samples
+   *  cards that cannot exist. The open-decklist assumption `determinise` documents. */
   readonly decks: readonly [readonly string[], readonly string[]]
   readonly rolloutCommandCap: number
   readonly explorationC: number

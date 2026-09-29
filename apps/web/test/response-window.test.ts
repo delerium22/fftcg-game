@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { actingPlayer, apply, createGame, forcedDecision, forcedPass, isResponseWindow, legalCommands, type CardId, type GameState } from '@fftcg/engine'
 import { VANILLA_POOL, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../../packages/engine/test/helpers.js'
 import { GreedyAgent } from '@fftcg/ai'
-import { CARD_DEFS, DECKS } from '../src/deck.js'
+import { CARD_DEFS, DECKS, MIRROR_DECKS } from '../src/deck.js'
 import { aiHandlers, settleForcedWindows, settleWindows, stepAi, useGame } from '../src/game/useGame.js'
 import { AI, HUMAN, type GameApi } from '../src/game/types.js'
 
@@ -81,7 +81,7 @@ describe('a pass-only window is closed in the same step (J1-A12)', () => {
     const published: { window: boolean; live: string[] }[] = []
     const ref: { api: GameApi | null } = { api: null }
     function Probe(): null {
-      const game = useGame(seed)
+      const game = useGame(seed, { decks: MIRROR_DECKS })
       ref.api = game
       published.push({ window: isResponseWindow(game.view), live: game.choices.all.filter((c) => c.command.type !== 'concede').map((c) => c.command.type) })
       return null

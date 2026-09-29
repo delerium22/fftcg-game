@@ -35,7 +35,8 @@ export function bareName(v: PlayerView, id: CardId): string {
  * The card's name, qualified with whose it is when another VISIBLE card of the same name belongs to the
  * other player.
  *
- * Both seats play the same deck, so a mirror is the normal case, not an exotic one. Found by playing twice
+ * Both seats can play the same deck — the Vol. 2 mirror, and since rung V1-C either list against itself — so a
+ * twin across the table is an ordinary case, not an exotic one. Found by playing twice
  * over. The first time it was a choice — "Give Haste to Shantotto" with a Shantotto on each side. The second
  * time was worse, because it was combat:
  *

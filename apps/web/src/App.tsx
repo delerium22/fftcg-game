@@ -1,4 +1,5 @@
 import { useState, type JSX } from 'react'
+import { isDeckKey, type DeckPair } from './deck.js'
 import { hasSeenIntro } from './game/intro.js'
 import { useGame } from './game/useGame.js'
 import { Board } from './ui/Board.js'
@@ -27,8 +28,26 @@ export function seedFromLocation(search: string): number | undefined {
   return undefined
 }
 
+/**
+ * The pair from `?decks=<you>,<ai>` (rung V1-C), or `undefined` for the default. The same bargain as `?seed=`: the
+ * URL that reproduces a game has to name its decks too, because the pair is part of the game (C-D2) — and a
+ * malformed value starts the default pair and says so, rather than failing the page.
+ */
+export function decksFromLocation(search: string): DeckPair | undefined {
+  const raw = new URLSearchParams(search).get('decks')
+  if (raw === null) return undefined
+  const keys = raw.split(',')
+  const [you, ai] = keys
+  if (keys.length === 2 && you !== undefined && ai !== undefined && isDeckKey(you) && isDeckKey(ai)) return [you, ai]
+  console.warn(`Ignoring ?decks=${raw}: expected two of vol1, vol2 as <your deck>,<the AI's deck>. Starting the default pair.`)
+  return undefined
+}
+
 export function App(): JSX.Element {
-  const game = useGame(seedFromLocation(window.location.search))
+  // Read once, lazily: the location is a fact about the page load. Parsing it in the render body re-ran both
+  // parsers — and re-printed their warnings — every time the board changed.
+  const [initial] = useState(() => ({ seed: seedFromLocation(window.location.search), decks: decksFromLocation(window.location.search) }))
+  const game = useGame(initial.seed, initial.decks === undefined ? {} : { decks: initial.decks })
   // Rung H1: the rules sheet, once per browser (a lazy initialiser, so storage is read once, not per render).
   // Mounted only while open — a native `<dialog>` that is closed is still in the DOM and still announced.
   const [help, setHelp] = useState(() => !hasSeenIntro())
