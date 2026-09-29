@@ -2,9 +2,9 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import { learn, legalCommands, viewFor, type CardId, type GameState } from '@fftcg/engine'
-import { makeGame } from '../../../packages/engine/test/helpers.js'
+import { makeGame, withHand } from '../../../packages/engine/test/helpers.js'
 import { CARD_DEFS, DECKS } from '../src/deck.js'
-import { buildChoiceSet, preferredChoices } from '../src/game/commands.js'
+import { buildChoiceSet, occurrenceOf, preferredChoices } from '../src/game/commands.js'
 import { AI, HUMAN, type Choice, type GameApi } from '../src/game/types.js'
 import { Board, boardCardIds } from '../src/ui/Board.js'
 
@@ -58,5 +58,19 @@ describe('the AI hand row (rung V1-E, R4)', () => {
     const v = viewFor(learn(base, [HUMAN, AI], [known]), HUMAN)
     expect(boardCardIds(v).has(known)).toBe(true)
     expect(boardCardIds(viewFor(base, HUMAN)).has(known)).toBe(false)
+  })
+
+  it('numbers two known cards of one name "(1)" and "(2)", on the row and for the log (review L1)', () => {
+    const code = base.cards[base.players[AI].hand[0]!]!.code
+    const [one, a] = withHand(base, AI, code)
+    const [two, b] = withHand(one, AI, code)
+    const s = learn(two, [HUMAN, AI], [a, b])
+    const v = viewFor(s, HUMAN)
+    expect([occurrenceOf(v, a), occurrenceOf(v, b)]).toEqual([1, 2])
+    render(s)
+    const name = CARD_DEFS.find((d) => d.code === code)!.name
+    const said = (id: CardId): string => knownRow()!.querySelector(`[data-card-id="${id}"]`)!.textContent ?? ''
+    expect(said(a)).toContain(`${name} (1)`)
+    expect(said(b)).toContain(`${name} (2)`)
   })
 })

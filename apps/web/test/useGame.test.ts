@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
-  actingPlayer, apply, applyChooseFirst, createGame, knows, learn, legalCommands, viewFor,
+  actingPlayer, apply, applyChooseFirst, createGame, drainResolution, enqueueTrigger, learn, legalCommands, viewFor,
   type Ability, type CardDef, type CardId, type Command, type Event, type FieldCard, type Frame, type GameState, type PlayerId, type PlayerView,
 } from '@fftcg/engine'
 import { GreedyAgent, type Agent, type SearchDiagnostics, type SearchResult } from '@fftcg/ai'
@@ -21,22 +21,49 @@ import {
   AI_STEP_MS, aiHandlers, aiIsThinking, createAiSearch, createWebGame, describeEvent, eventLines, moveLine, narrator, settleWindows, stepAi, useGame,
   type AiSearch, type AiSink,
 } from '../src/game/useGame.js'
-import { withField } from '../../../packages/engine/test/helpers.js'
+import { makeGame, withField } from '../../../packages/engine/test/helpers.js'
 
 const newGame = (seed: number, defs: CardDef[] = CARD_DEFS): GameState => createGame({ seed, decks: DECKS, defs })
 
 /**
- * Spec B-A3, asserted rather than inspected: nothing the AI holds in hand may reach the human's view — but for the
- * cards the human was shown (rung V1-E: Miner's reveal, a search's, a card returned from the field), which the view
- * names in `knownHand` and nowhere else.
+ * The AI hand cards the human was SHOWN, worked out from the events alone (rung V1-E review M1) — never from the
+ * engine's knowledge bits, which are what `assertNoAiHandLeak` checks. A card is shown when a search revealed it as
+ * it was taken (`addedToHand` with `revealed`), when it returned to the hand from a public zone (`returnedToHand`), or
+ * when a look revealed it to both (`deckExposed`, audience `all`) and it was then taken or drawn — unless a PRIVATE
+ * look exposed it in between, after which its controller may have moved it unseen.
  */
-function assertNoAiHandLeak(state: GameState, view: PlayerView): void {
+class ShownToHuman {
+  private readonly revealedInDeck = new Set<CardId>()
+  readonly inAiHand = new Set<CardId>()
+  see(before: GameState, events: readonly Event[], after: GameState): void {
+    for (const e of events) {
+      if (e.type === 'deckExposed' && e.player === AI) for (const id of e.cards) {
+        if (e.audience === 'all') this.revealedInDeck.add(id)
+        else this.revealedInDeck.delete(id)
+      }
+      if (e.type === 'addedToHand' && e.player === AI && (e.revealed === true || this.revealedInDeck.has(e.card))) this.inAiHand.add(e.card)
+      if (e.type === 'returnedToHand' && e.player === AI) this.inAiHand.add(e.card)
+    }
+    if (events.some((e) => e.type === 'drew' && e.player === AI)) {
+      for (const id of after.players[AI].hand) {
+        if (!before.players[AI].hand.includes(id) && before.players[AI].deck.includes(id) && this.revealedInDeck.has(id)) this.inAiHand.add(id)
+      }
+    }
+  }
+}
+
+/**
+ * Spec B-A3, asserted rather than inspected: nothing the AI holds in hand may reach the human's view — but for the
+ * cards the human was shown (rung V1-E), which the view names in `knownHand` and nowhere else. "Shown" is justified by
+ * the events the human saw (`ShownToHuman`), not by the knowledge bit the view is built from (review M1).
+ */
+function assertNoAiHandLeak(state: GameState, view: PlayerView, shown: ShownToHuman): void {
   for (const id of state.players[AI].hand) {
-    if (knows(state, HUMAN, id)) expect(view.fields[AI].knownHand).toContain(id)
+    if (view.fields[AI].knownHand.includes(id)) expect(shown.inAiHand.has(id), `AI hand card ${id} is named to the human, who was never shown it`).toBe(true)
     else expect(view.cards[id]).toBeUndefined()
     expect(view.hand).not.toContain(id)
   }
-  expect(view.fields[AI].knownHand.every((id) => knows(state, HUMAN, id))).toBe(true)
+  expect(view.fields[AI].knownHand.every((id) => state.players[AI].hand.includes(id))).toBe(true)
 }
 
 interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; commandTypes: Set<Command['type']>; orphanStates: number; leaks: string[]; deckChoices: number; deckLabels: { text: string; allPublic: boolean }[] }
@@ -125,10 +152,11 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
   const leaks: string[] = []
   const deckLabels: { text: string; allPublic: boolean }[] = []
   let deckChoices = 0
+  const shown = new ShownToHuman()
   // 12000, not 4000: rung J1's windows (four per attack, two per phase) roughly triple the command count.
   for (let step = 0; step < 12000 && !state.result; step++) {
     const view = viewFor(state, HUMAN)
-    assertNoAiHandLeak(state, view)
+    assertNoAiHandLeak(state, view, shown)
     if (actingPlayer(state) === AI) {
       const before = state
       // Spec B-A3 held to the LOG, not just to the view: whatever the AI is about to do, none of the lines it
@@ -151,6 +179,7 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
       }
       const secret = leakableNames(viewFor(before, HUMAN), viewFor(stepped.state, HUMAN), before)
       for (const line of stepped.lines) for (const n of secret) if (line.text.includes(n)) leaks.push(`${line.text} — names ${n}`)
+      shown.see(state, stepped.events, stepped.state)
       state = stepped.state
       log.push(...stepped.lines)
       continue
@@ -173,6 +202,7 @@ function playFullGame(seed: number, pick: Policy = () => 0, defs: CardDef[] = CA
     // hook feeds it: the C2 cause is threaded across the whole batch, so narrating one event at a time here
     // would have silently tested a different log from the one the browser shows.
     log.push(...eventLines(narrator(view, viewFor(result.state, HUMAN)), result.events, state.resolution.queue))
+    shown.see(state, result.events, result.state)
     state = result.state
     humanMoves++
   }
@@ -584,14 +614,42 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
 })
 
 describe('viewFor hides the AI hand throughout (B-A3)', () => {
+  it('holds when the AI privately takes a card the human was shown in its deck earlier (V1-E review H1, M1)', () => {
+    // Deck [C, A, B]: a Miner-shape reveal shows C and A to both and puts them under; a PRIVATE look at all three takes
+    // A. The human saw A revealed, but not taken — the AI may have rearranged or taken any of the three unseen.
+    const TWO: Ability = { id: 'T-TWO:etb', trigger: { kind: 'enterField' }, text: 'synthetic reveal, then a private look', effects: [
+      { kind: 'lookAtDeck', count: 2, audience: 'all', take: { min: 0, max: 0 }, to: 'hand', rest: 'bottom' },
+      { kind: 'lookAtDeck', count: 3, audience: 'self', take: { min: 1, max: 1 }, to: 'hand', rest: 'bottom' },
+    ] }
+    const defs = [...CARD_DEFS, { ...(CARD_DEFS[0] as CardDef), code: 'T-TWO', name: 'Two Looks', type: 'backup' as const, power: null, hasAbilities: true, abilityClauses: 1, abilities: [TWO] }]
+    let s = makeGame({ seed: 1, decks: DECKS, defs })   // past the mulligans
+    const ai = s.players[AI]
+    const [c, a, b] = ai.deck.slice(0, 3) as [CardId, CardId, CardId]
+    s = { ...s, players: [s.players[HUMAN], { ...ai, deck: [c, a, b] }] }
+    let src: CardId
+    ;[s, src] = withField(s, AI, 'backups', 'T-TWO')
+    const shown = new ShownToHuman()
+    const [asked, first] = drainResolution(enqueueTrigger(s, src, AI, TWO))
+    shown.see(s, first, asked)
+    expect(asked.pending?.kind).toBe('chooseFromDeck')
+    const second = apply(asked, { type: 'chooseFromDeck', player: AI, picks: [] })
+    shown.see(asked, second.events, second.state)
+    expect(second.state.players[AI].deck).toEqual([b, c, a])
+    const took = apply(second.state, { type: 'chooseFromDeck', player: AI, picks: [2] })
+    shown.see(second.state, took.events, took.state)
+    expect(took.state.players[AI].hand).toContain(a)
+    assertNoAiHandLeak(took.state, viewFor(took.state, HUMAN), shown)
+  })
+
   it('never exposes an AI hand card id to the human view', () => {
     let state = newGame(2)
     const agent = new GreedyAgent({ seed: 2, decks: DECKS, depth: 1 })
     let checked = 0
     let sawAiHand = false
+    const shown = new ShownToHuman()
     for (let step = 0; step < 2000 && !state.result; step++) {
       const view = viewFor(state, HUMAN)
-      assertNoAiHandLeak(state, view)
+      assertNoAiHandLeak(state, view, shown)
       const visible = new Set<CardId>(Object.keys(view.cards).map(Number))
       for (const id of state.players[AI].deck) expect(visible.has(id)).toBe(false)
       checked++
@@ -599,11 +657,13 @@ describe('viewFor hides the AI hand throughout (B-A3)', () => {
       // this depend on how the trace happened to end: C10 shifted the greedy line and left the AI hand-empty
       // at the final state, failing a test about leaks for reasons that had nothing to do with leaks.
       if (state.players[AI].hand.length > 0) sawAiHand = true
-      if (actingPlayer(state) === AI) { state = stepAi(state, agent).state; continue }
+      if (actingPlayer(state) === AI) { const stepped = stepAi(state, agent); shown.see(state, stepped.events, stepped.state); state = stepped.state; continue }
       const legal = legalCommands(state, HUMAN)
       const next = legal.find((c) => c.type !== 'concede')
       if (!next) break
-      state = apply(state, next).state
+      const r = apply(state, next)
+      shown.see(state, r.events, r.state)
+      state = r.state
     }
     expect(checked).toBeGreaterThan(20)
     expect(sawAiHand, 'the AI never held a card, so the leak check proved nothing').toBe(true)
@@ -720,6 +780,19 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
     const after = viewFor(newGame(1, ABILITY_DEFS), HUMAN)
     expect(describeEvent(after, { type: 'returnedToHand', player: AI, card: gone })?.text).toContain(`#${gone}`)
     expect(describeEvent(narrator(before, after), { type: 'returnedToHand', player: AI, card: gone })?.text).toContain('Cloud')
+  })
+
+  it('does NOT name a card taken into a hidden hand that only the BEFORE view could see (V1-E review H1)', () => {
+    // A card the human knew in the AI's deck, then taken privately: after the take it is hidden, and the unrevealed
+    // `addedToHand` must not borrow its name from the view before the move.
+    const before = viewFor(newGame(1, ABILITY_DEFS), HUMAN)
+    const taken: CardId = 52
+    before.cards[taken] = { id: taken, code: '27-124S', owner: AI }
+    const after = viewFor(newGame(1, ABILITY_DEFS), HUMAN)
+    expect(describeEvent(narrator(before, after), { type: 'addedToHand', player: AI, card: taken })?.text).toBe('The AI adds a card to its hand')
+    // ...while one the AFTER view carries is named, as before.
+    const kept = { ...after, cards: { ...after.cards, [taken]: { id: taken, code: '27-124S', owner: AI } } }
+    expect(describeEvent(narrator(before, kept), { type: 'addedToHand', player: AI, card: taken })?.text).toContain('Cloud')
   })
 
   it('collapses a multi-line printed clause onto one log line', () => {

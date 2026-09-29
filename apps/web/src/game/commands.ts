@@ -148,9 +148,10 @@ export const ownedCard = (v: PlayerView, owner: PlayerId, id: CardId): string =>
 const visibleDeck = (v: PlayerView, p: PlayerId): CardId[] =>
   v.fields[p].deck.flatMap((slot) => (slot.card === null ? [] : [slot.card]))
 
-/** The zones the player can point at on the board: their hand, and either field. */
+/** The zones the player can point at on the board: their hand, either field, and the other hand's known row (rung V1-E). */
 function shownZoneOf(v: PlayerView, id: CardId, owner: PlayerId): CardId[] | null {
   if (v.hand.includes(id)) return v.hand
+  if (v.fields[owner].knownHand.includes(id)) return v.fields[owner].knownHand
   const field = [...v.fields[owner].forwards, ...v.fields[owner].backups]
   return field.some((c) => c.id === id) ? field.map((c) => c.id) : null
 }

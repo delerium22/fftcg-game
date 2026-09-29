@@ -225,3 +225,46 @@ describe('deck-slot knowledge surfaces when the card is drawn (V1-E, R6)', () =>
     expect(viewFor(s, 1).fields[0].knownHand).toEqual([])
   })
 })
+
+describe('a private look re-hides the positions it exposed (V1-E review H1)', () => {
+  /**
+   * Deck [C, A, B]: a Miner-shape reveal shows C and A to both and sends them under → [B, C, A]; then a PRIVATE look at
+   * all three takes A. The controller may rearrange or take among them unseen, so the opponent can no longer say where
+   * C or A is — and must not learn A in hand, directly or by eliminating the slots it still knew.
+   */
+  function revealThenPrivateTake(): { s: GameState; events: Event[]; c: CardId; a: CardId; b: CardId } {
+    const both = etb('T-TWO:etb', [
+      { kind: 'lookAtDeck', count: 2, audience: 'all', take: { min: 0, max: 0 }, to: 'hand', rest: 'bottom' },
+      { kind: 'lookAtDeck', count: 3, audience: 'self', take: { min: 1, max: 1 }, to: 'hand', rest: 'bottom' },
+    ])
+    let c = -1, a = -1, b = -1
+    let { s } = resolve(both, 0, [], (x) => {
+      const ps = x.players[0]
+      ;[c, a, b] = ps.deck.slice(0, 3) as [CardId, CardId, CardId]
+      const players: GameState['players'] = [{ ...ps, deck: [c, a, b] }, x.players[1]]
+      return { ...x, players }
+    })
+    expect(s.players[0].deck, 'the reveal did not put C and A under B').toEqual([b, c, a])
+    expect(s.pending?.kind, 'the private look did not ask').toBe('chooseFromDeck')
+    const r = apply(s, { type: 'chooseFromDeck', player: 0, picks: [2] })
+    s = r.state
+    expect(s.players[0].hand).toContain(a)
+    return { s, events: r.events, c, a, b }
+  }
+
+  it('the taken card does not surface to the opponent, and its line does not name it', () => {
+    const { s, events, a } = revealThenPrivateTake()
+    expect(viewFor(s, 1).fields[0].knownHand).toEqual([])
+    expect(viewFor(s, 1).cards[a]).toBeUndefined()
+    expect(events).toContainEqual({ type: 'addedToHand', player: 0, card: a })
+    expect(knows(s, 0, a), 'the controller forgot what it took').toBe(true)
+  })
+
+  it('no deck slot stays known to the opponent, so the take cannot be read by elimination', () => {
+    const { s, c, b } = revealThenPrivateTake()
+    expect(viewFor(s, 1).fields[0].deck.every((slot) => slot.card === null)).toBe(true)
+    expect(knows(s, 1, c)).toBe(false)
+    // The controller still knows the positions it looked at: they are its own.
+    expect(knows(s, 0, c) && knows(s, 0, b)).toBe(true)
+  })
+})
