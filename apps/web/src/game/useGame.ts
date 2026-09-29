@@ -3,7 +3,7 @@ import {
   actingPlayer, actionMenu, apply, canAffordCast, createGame, defOf, forcedDecision, isResponseWindow, legalCommands, viewFor,
   type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldCard, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta, observesType } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
-import { CARD_DEFS, DECKS, LB_DECKS } from '../deck.js'
+import { CARD_DEFS, DECK_CHOICES, DEFAULT_DECKS, deckLists, type DeckPair } from '../deck.js'
 import { ATTACK_STEP_LABEL, bareName, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
 import { SearchCoordinator, type SearchCoordinatorOptions, type SearchRequestHandlers } from './search/coordinator.js'
 import { AI, HUMAN, type Choice, type Control, type GameApi, type LogLine } from './types.js'
@@ -553,12 +553,15 @@ export function aiHandlers(sink: AiSink): SearchRequestHandlers {
 /** Test seams. The hook passes none of them; the browser gets a real worker and a real clock. */
 export type SearchSeams = Pick<SearchCoordinatorOptions, 'createTransport' | 'clock' | 'iterations'>
 
+/** Both seats' declared main-deck lists, seat 0 first — what `determinise` samples each seat's hidden cards from. */
+export type DeckLists = readonly [readonly string[], readonly string[]]
+
 export interface AiSearch {
   request(state: GameState, handlers: SearchRequestHandlers): void
   /** Effect cleanup, and any commit the coordinator did not itself make. Synchronous, per D2-4. */
   invalidate(): void
-  /** A new game under `seed`. */
-  restart(seed: number): void
+  /** A new game under `seed`, dealt from `decks` — the current lists when absent. */
+  restart(seed: number, decks?: DeckLists): void
   dispose(): void
 }
 
@@ -571,24 +574,36 @@ export interface AiSearch {
  * down without re-rendering — a one-shot construction in the render body would leave the second mount holding
  * a terminated worker and no AI at all.
  */
-export function createAiSearch(readState: () => GameState, seed: number, seams: SearchSeams = {}): AiSearch {
+export function createAiSearch(
+  readState: () => GameState, seed: number, opts: { decks: DeckLists; seams?: SearchSeams },
+): AiSearch {
   let gameSeed = seed
+  // Rung V1-C: the lists are per GAME, like the seed (C-D2). The worker's `init` and the Greedy fallback both read
+  // them from the coordinator's options, so rebuilding the coordinator is what moves all of them to a new pair.
+  let decks = opts.decks
   let coordinator: SearchCoordinator | null = null
   const drop = (): void => { coordinator?.dispose(); coordinator = null }
   const live = (): SearchCoordinator => (coordinator ??= new SearchCoordinator({
-    decks: DECKS, gameSeed, readState, stepMs: AI_STEP_MS, budget: SEARCH_BUDGET, ...seams,
+    decks, gameSeed, readState, stepMs: AI_STEP_MS, budget: SEARCH_BUDGET, ...opts.seams,
   }))
   return {
     request: (state, handlers) => { live().request(state, handlers) },
     invalidate: () => { coordinator?.invalidate() },
-    restart: (next) => { gameSeed = next; drop() },
+    restart: (next, nextDecks) => { gameSeed = next; decks = nextDecks ?? decks; drop() },
     dispose: drop,
   }
 }
 
-const newGame = (seed: number): GameState => createGame({ seed, decks: DECKS, defs: CARD_DEFS, lbDecks: LB_DECKS })
+/**
+ * The game the web app deals: `pair` is `[you, the AI]`, seat 0 then seat 1, each seat with its own main and LB
+ * deck (rung V1-C). Exported so tests deal exactly the game the hook does, rather than a copy of it.
+ */
+export const createWebGame = (seed: number, pair: DeckPair): GameState =>
+  createGame({ seed, defs: CARD_DEFS, ...deckLists(pair) })
 
-const openingLog = (): LogLine[] => [{ kind: 'phase', text: 'New game — you are P0, the AI is P1' }]
+/** C-D2: the pair is part of the game's identity, so the log says which decks it is before anything else. */
+const openingLog = (pair: DeckPair): LogLine[] =>
+  [{ kind: 'phase', text: `New game — you play ${DECK_CHOICES[pair[0]].name}, the AI plays ${DECK_CHOICES[pair[1]].name}` }]
 
 /**
  * Is the game waiting on the AI? This is the ONE definition — the prompt strip's "thinking" line, the inert
@@ -598,19 +613,23 @@ const openingLog = (): LogLine[] => [{ kind: 'phase', text: 'New game — you ar
  */
 export const aiIsThinking = (state: GameState): boolean => actingPlayer(state) === AI
 
-export function useGame(seed?: number, seams?: SearchSeams): GameApi {
+export function useGame(seed?: number, opts: { decks?: DeckPair; seams?: SearchSeams } = {}): GameApi {
   const seedRef = useRef<number>(seed ?? Date.now() % 2_147_483_647)
+  // Rung V1-C (R2): the ACTIVE game's pair. Separate from whatever a picker currently shows, and changed only by
+  // `restart` — a select that moved mid-game must not touch the game being played or the worker searching it.
+  const [decks, setDecks] = useState<DeckPair>(() => opts.decks ?? DEFAULT_DECKS)
+  const decksRef = useRef<DeckPair>(decks)
   // The same seam `createAiSearch` already takes, lifted one level so the HOOK can be rendered in a test with
   // a clock and transport under the test's control. Production passes nothing and gets a real worker.
-  const seamsRef = useRef<SearchSeams>(seams ?? {})
+  const seamsRef = useRef<SearchSeams>(opts.seams ?? {})
   // Spec B3: the ground truth lives here and only `viewFor(state, HUMAN)` ever leaves the hook. `stateRef` is
   // the authority `choose` reads, so two clicks inside one render can't both apply to the same stale state.
-  const [state, setState] = useState<GameState>(() => newGame(seedRef.current))
+  const [state, setState] = useState<GameState>(() => createWebGame(seedRef.current, decksRef.current))
   const stateRef = useRef<GameState>(state)
   const searchRef = useRef<AiSearch | null>(null)
   // Lazy for the same reason the game itself is: `useRef(createAiSearch(...))` would build one every render.
-  searchRef.current ??= createAiSearch(() => stateRef.current, seedRef.current, seamsRef.current)
-  const [log, setLog] = useState<LogLine[]>(openingLog)
+  searchRef.current ??= createAiSearch(() => stateRef.current, seedRef.current, { decks: deckLists(decksRef.current).decks, seams: seamsRef.current })
+  const [log, setLog] = useState<LogLine[]>(() => openingLog(decksRef.current))
 
   const commit = useCallback((next: GameState, lines: LogLine[]) => {
     stateRef.current = next
@@ -676,18 +695,23 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
     commit(settled.state, lines)
   }, [commit])
 
-  const restart = useCallback((): void => {
+  const restart = useCallback((nextDecks?: DeckPair): void => {
     // K4-D5: the toggle is "for now", not a preference.
     fullControlRef.current = false
     setFullControlState(false)
     // A fresh but reproducible seed: `useGame(seed)` stays deterministic across restarts, which tests rely on.
     const next = ++seedRef.current
-    const game = newGame(next)
+    // Rung V1-C: the pair the caller chose, or the one just played. This is the only place the active pair moves.
+    const pair = nextDecks ?? decksRef.current
+    decksRef.current = pair
+    setDecks(pair)
+    const game = createWebGame(next, pair)
     stateRef.current = game
-    // D2-3: a new coordinator, so the committed-decision index the search seed is derived from restarts at 0.
-    searchRef.current?.restart(next)
+    // D2-3: a new coordinator, so the committed-decision index the search seed is derived from restarts at 0 —
+    // and, since V1-C, so the worker and the Greedy fallback are handed the new game's lists.
+    searchRef.current?.restart(next, deckLists(pair).decks)
     setState(game)
-    setLog(openingLog())
+    setLog(openingLog(pair))
   }, [])
 
   // Spec B7 + D2: one AI move per decision, searched off the main thread. Re-running on every `state` change is
@@ -714,5 +738,5 @@ export function useGame(seed?: number, seams?: SearchSeams): GameApi {
   // exactly that window). Computing it here, from the same `state` the choices came from, makes the two
   // disagreeing impossible rather than merely unlikely, and fixes the mirror case for free: the strip no
   // longer shows a stale human prompt for a render after the AI takes over.
-  return { view, choices, log, aiThinking: aiIsThinking(state), choose, restart, fullControl, setFullControl }
+  return { view, choices, log, aiThinking: aiIsThinking(state), choose, restart, fullControl, setFullControl, decks }
 }

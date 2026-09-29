@@ -118,7 +118,7 @@ describe('the box the browser actually ships (F4)', () => {
   it('is posted by createAiSearch, at the value in SEARCH_BUDGET', () => {
     const t = recordingTransport()
     const state = aiToMove()
-    const search = createAiSearch(() => state, 4, { createTransport: t.factory })
+    const search = createAiSearch(() => state, 4, { decks: DECKS, seams: { createTransport: t.factory } })
     search.request(state, { onCommand: () => true, onWarning: () => {} })
 
     const init = t.posts.find((m): m is WorkerInit => m.type === 'init')

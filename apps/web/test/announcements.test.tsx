@@ -139,7 +139,7 @@ describe('what the AI did is announced', () => {
     }
     expect(actingPlayer(s), 'never reached a position where the AI acts, so this asserts nothing').toBe(AI)
 
-    const opening: LogLine[] = [{ kind: 'event', text: 'New game — you are P0, the AI is P1' }]
+    const opening: LogLine[] = [{ kind: 'event', text: 'New game — you play Starter Vol. 2, the AI plays Starter Vol. 2' }]
     render(s, opening)
     const region = document.querySelector<HTMLElement>('.log__lines')
     expect(region, 'the log is not rendered').not.toBe(null)
@@ -176,7 +176,7 @@ describe('what the AI did is announced', () => {
     expect(document.querySelector('.log__lines'), 'the log region was replaced, so an append announces nothing').toBe(region)
     const texts = [...region!.querySelectorAll('p')].map((p) => p.textContent)
     expect(texts, 'the AI’s line is not inside the log region').toContain(aiLine)
-    expect(texts, 'the earlier narration was dropped').toContain('New game — you are P0, the AI is P1')
+    expect(texts, 'the earlier narration was dropped').toContain('New game — you play Starter Vol. 2, the AI plays Starter Vol. 2')
   })
 
   it('goes polite → off → polite across one mounted board', () => {
