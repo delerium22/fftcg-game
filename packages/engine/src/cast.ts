@@ -5,7 +5,7 @@ import { MAX_BACKUPS, defOf, updatePlayer } from './state.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
-import { canPay, castRequirement, generateCp, pay } from './cp.js'
+import { canPay, castRequirement, generateCp, pay, payShortfall } from './cp.js'
 import { controlsLightOrDark } from './rules.js'
 import { putOntoField, targetCandidates, warnUnimplemented } from './resolve.js'
 
@@ -170,9 +170,8 @@ function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: P
   if (payment.sameName !== undefined) throw new IllegalCommandError(CAST_SAME_NAME)
   const req = castRequirement(state, card, player)
   const cp = generateCp(state, player, payment, req.excluded)
-  if (!canPay(req.amount, req.requiredElements, cp)) {
-    throw new IllegalCommandError(`payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}`)
-  }
+  // `req` carries `onlyElement` (rung V1-A3): Ward's "only Fire CP" is refused here as `isLegal` refuses it.
+  if (!canPay(req, cp)) throw new IllegalCommandError(payShortfall(req))
   const lbWhy = lbFlipCheck(state, player, card, payment)
   if (lbWhy) throw new IllegalCommandError(lbWhy)
   const [paid, events] = pay(state, player, payment)

@@ -397,6 +397,13 @@ export type StaticEffect =
    * is on the field, which is what the printed text says. Read where CP is generated and nowhere else.
    */
   | { readonly kind: 'produceElement'; readonly element: Element }
+  /**
+   * "You can only pay with <Element> CP to cast <this card>" — Ward 21-001R (rung V1-A3, spec V1-D14). Like
+   * `costReduction`, read off the card's OWN abilities wherever it is cast from, by `castRequirement`, into
+   * `CpRequirement.onlyElement`; every payment reader then admits only CP that can be that Element. No CP of another
+   * Element may be generated for the cast at all, overpay included: the card forbids it (adjudication, "kept").
+   */
+  | { readonly kind: 'onlyCp'; readonly element: Element }
   // --- rung J6: CONTINUOUS field effects (§11.12.4.4–5), applied by the layer while the source is on the field ---
   /** "Forwards you control gain +N power" — read by `effectivePower` through the layer. */
   | { readonly kind: 'modifyPower'; readonly amount: number; readonly to: StaticScope; readonly when?: StaticCondition }
@@ -405,7 +412,7 @@ export type StaticEffect =
   /** "Your Forwards cannot be broken" — read by `flagsOf`. */
   | { readonly kind: 'grantFlag'; readonly flag: FieldFlag; readonly to: StaticScope; readonly when?: StaticCondition }
 
-/** The continuous kinds — what `layer.ts` indexes; `costReduction` and `produceElement` keep their own readers. */
+/** The continuous kinds — what `layer.ts` indexes; `costReduction`, `produceElement` and `onlyCp` keep their own readers. */
 export const CONTINUOUS_STATIC_KINDS = ['modifyPower', 'grantKeyword', 'grantFlag'] as const
 export type ContinuousStatic = Extract<StaticEffect, { kind: (typeof CONTINUOUS_STATIC_KINDS)[number] }>
 

@@ -90,7 +90,7 @@ describe('I2-A3 / I2-A6 — a source is offered only while it still leads to a l
           const cp = generatedFor(view, sel, req)
           const lit = crystals(req, cp)
           const allLit = lit.every((x) => x.lit)
-          expect(allLit).toBe(canPay(req.amount, req.requiredElements, cp))
+          expect(allLit).toBe(canPay(req, cp))
           if (member) expect(allLit).toBe(true)
           // (3) extend by every offered source
           for (const b of cands.backups) {
@@ -171,5 +171,16 @@ describe('generatedFor validates through the engine', () => {
       }
       break
     }
+  })
+})
+
+describe('the crystals under "you can only pay with Fire CP" (rung V1-A3, spec V1-D14)', () => {
+  it('a Water CP lights nothing, and a Backup that can be Fire or Water lights as Fire', () => {
+    const req = { amount: 3, requiredElements: ['fire' as const], excluded: [], onlyElement: 'fire' as const }
+    const cp = [{ elements: ['water' as const], source: 1 }, { elements: ['water' as const, 'fire' as const], source: 2 }]
+    expect(crystals(req, cp)).toEqual([{ element: 'fire', lit: true }, { element: null, lit: false }, { element: null, lit: false }])
+    expect(crystals(req, [{ elements: ['fire'], source: 3 }, { elements: ['water', 'fire'], source: 2 }])).toEqual([
+      { element: 'fire', lit: true }, { element: 'fire', lit: true }, { element: null, lit: false },
+    ])
   })
 })

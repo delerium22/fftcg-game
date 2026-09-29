@@ -897,7 +897,7 @@ describe('9-074C Class Tenth Moogle — "… can produce Lightning CP."', () => 
 
   /** Can `player` cover `req` by dulling exactly `backups`? */
   const covers = (state: GameState, backups: CardId[], amount: number, els: ('earth' | 'lightning')[]) =>
-    canPay(amount, els, generateCp(state, 0, { dullBackups: backups, discards: [] }, []))
+    canPay({ amount: amount, requiredElements: els }, generateCp(state, 0, { dullBackups: backups, discards: [] }, []))
 
   it('a dulled Moogle counts as EITHER of its Elements (C6-A1)', () => {
     let s = makeGame()

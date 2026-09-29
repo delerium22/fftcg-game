@@ -1,5 +1,5 @@
 import type { CardDef, PlayerId } from './types.js'
-import { KEYWORDS, opponentOf } from './types.js'
+import { ELEMENTS, KEYWORDS, opponentOf } from './types.js'
 import type { Effect, TargetFilter, TargetSpec } from './abilities.js'
 import { EMPTY_RESOLUTION, FIELD_FLAGS } from './abilities.js'
 import type { CardId, CardInstance, GameState, PlayerState } from './state.js'
@@ -65,7 +65,9 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
         if (e.to.self !== undefined && e.to.self !== true) problems.push(`${d.code}: ${a.id} has a scope \`self\` that is not true`)
       }
       // Rung V1-A1 (spec V1-D6): a condition's filter is definition-only, like a scope's, and its count a whole number ≥ 1.
-      const when = e.kind === 'produceElement' ? undefined : e.when
+      // Rung V1-A3: `onlyCp` names an Element, and has no condition.
+      if (e.kind === 'onlyCp' && !ELEMENTS.includes(e.element)) problems.push(`${d.code}: ${a.id} restricts payment to unknown element ${String(e.element)}`)
+      const when = e.kind === 'produceElement' || e.kind === 'onlyCp' ? undefined : e.when
       if (when?.kind === 'controlsAtLeast') {
         for (const k of filterKeys(when.filter)) if (instanceAxes.includes(k)) problems.push(`${d.code}: ${a.id} counts on instance axis ${k}`)
         if (!Number.isInteger(when.count) || when.count < 1) problems.push(`${d.code}: ${a.id} has a condition count ${String(when.count)}; it must be a whole number ≥ 1`)

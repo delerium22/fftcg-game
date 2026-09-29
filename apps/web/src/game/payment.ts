@@ -149,7 +149,13 @@ export function generatedFor(v: PlayerView, sel: Payment, req: CpRequirement): G
  * same matching `canPay` does, but maximising rather than deciding, so a partial payment shows partial
  * progress. Whatever CP is left pours into the untinted crystals.
  */
-export function crystals(req: CpRequirement, cp: readonly GeneratedCp[]): Crystal[] {
+export function crystals(req: CpRequirement, generated: readonly GeneratedCp[]): Crystal[] {
+  // "You can only pay with Fire CP" (rung V1-A3): the same narrowing `canPay` applies — CP that cannot be that Element
+  // pays nothing, and a flexible source counts as it alone. The picker never offers such a source (its payments are
+  // the engine's), so this is only what the tray would show if one were forced in.
+  const only = req.onlyElement
+  const cp = only === undefined ? generated
+    : generated.filter((c) => c.elements.includes(only)).map((c) => ({ ...c, elements: [only] }))
   const need = [...req.requiredElements]
   const best = bestAssignment(need, cp)
   const taken = new Set(best.filter((i): i is number => i !== null))
