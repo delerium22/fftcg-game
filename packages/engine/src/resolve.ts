@@ -659,9 +659,13 @@ export function startResolvingTop(state: GameState): GameState {
  * an ability item is simply dropped. Nothing about the result depends on it — the game has ended.
  */
 export function clearStackAtGameOver(state: GameState): GameState {
-  if (!state.stack.length) return state
+  const placing = state.resolution.placing?.item
+  if (!state.stack.length && placing?.kind !== 'summon') return state
   let s = state
   for (const item of state.stack) if (item.kind === 'summon') s = summonToBreakZone(s, item.card)
+  // A Summon still declaring its targets (§11.3.3) is in no zone but `resolution.placing`, which the caller clears:
+  // it goes to the Break Zone like a stacked one (J8 second review H2 — it used to vanish).
+  if (placing?.kind === 'summon') s = { ...summonToBreakZone(s, placing.card), resolution: { ...s.resolution, placing: null } }
   return { ...s, stack: [] }
 }
 

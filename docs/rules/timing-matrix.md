@@ -247,6 +247,6 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.8.4 | On the field, an ordinary Character | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |
 | 15.2.8.4.1 | Moved to hand, Break Zone, main deck or removed: goes there, then to the LB deck face up at once | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |
 | 15.2.8.4.2 | The arrival's triggers still apply | tested | engine/limit-break#an LB Forward broken in battle; cards/scenarios/maat-limit-break#L3 maat-limit-break |
-| 15.2.8.4.3 | A Summon LB card: stack → Break Zone → LB deck face up | tested | engine/limit-break#an LB Summon resolves |
+| 15.2.8.4.3 | A Summon LB card: stack → Break Zone → LB deck face up (the replacement-effect sentence is untested: the engine has no replacement effects — J8 second review L4) | tested | engine/limit-break#an LB Summon resolves |
 | 15.2.8.4.4 | Even from a hidden zone (deck, hand) it goes to the LB deck | tested | engine/limit-break#returned to hand is in the LB deck face up |
-| 15.2.8.4.5 | The return is not stacked and admits no replacement effect | tested | engine/limit-break#an LB Forward broken in battle |
+| 15.2.8.4.5 | The return is not stacked (tested); it admits no replacement effect (vacuous: the engine has no replacement effects — J8 second review L4) | tested | engine/limit-break#an LB Forward broken in battle |

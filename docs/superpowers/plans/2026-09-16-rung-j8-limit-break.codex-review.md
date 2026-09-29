@@ -33,3 +33,30 @@ or a reproduction.
   it; the field stays as data for a future reader rather than being dropped from the event and its test.
 
 **Rejected (0). Disagreed with the reviewer on (0).**
+
+## Second pass — Codex (adjudicated 2026-09-29)
+
+Codex (gpt-5.6-sol, xhigh, read-only) reviewed main at 8a4e874 on 2026-09-29, told of the first pass. Each accept
+and reject is backed by the code, a red-before test, or the CR 3.3 text. Fixes are on branch `fix/j8-codex-second-pass`.
+
+**Accepted (7):**
+- H1 — an LB Summon skipped the `lbCost` refusal (the Summon branch of `castBlocker` returns before it), so a
+  zero-flip cast was listed that `isLegal` refused. `lbShort` is computed once and asked in both branches. Test with
+  a one-card LB deck (red before).
+- H2 — a Summon still declaring its targets lives only in `resolution.placing`; a concede cleared it and the card
+  was in no zone. Wider than reported: any Summon, not only an LB one. `clearStackAtGameOver` now moves a placing
+  Summon to the Break Zone (the LB sweep then returns an LB one). Test for both (red before).
+- M2 — `overAndSwept` dropped the sweep's `lbReturned` events. They are kept, placed before `gameOver` so it stays
+  the last event (asserted in the H2 test).
+- M1 — the browser's Auto payment matched `preferredPayment` against the ONE canonical flip subset, so a Maat cast
+  flipped Noctis instead of a twin Maat. `preferredChoices` matches on CP sources and keeps the preferred flips;
+  `useGame.choose` still runs `isLegal` on the result. Test (red before).
+- L2 — the card sheet now explains the viewer's own LB cards (`lbCost`, `lbSpent`); the opponent's row stays silent.
+- L3 — `validateLbDeck` refuses an LB cost that is not a whole number above 0 (§15.2.8.2). The parser is left as is:
+  `fetch-cards.ts` already rejects such a value before it reaches the card data.
+- L4 — matrix rows 15.2.8.4.3 and 15.2.8.4.5 now say their replacement-effect sentences are untested/vacuous (the
+  engine has no replacement effects).
+
+**Rejected (1):**
+- L1 — "the sweep omits the Damage Zone". CR 3.3 §15.2.8.4.1 lists exactly four zones: hand, Break Zone, main deck,
+  removed from play. The sweep matches the letter; the Damage Zone is not one of them.
