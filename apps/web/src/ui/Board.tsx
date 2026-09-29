@@ -11,6 +11,8 @@ import type { Choice, ChoiceSet, GameApi } from '../game/types.js'
 import { AI, HUMAN } from '../game/types.js'
 import { Card, cardAccessibleName, type CardProps } from './Card.js'
 import { CardDetails } from './CardDetails.js'
+import { DeckPicker } from './DeckPicker.js'
+import type { DeckPair } from '../deck.js'
 import { CardGrid, type GridItem } from './CardGrid.js'
 import { CardSheet, type SheetAction } from './CardSheet.js'
 import { EventLog } from './EventLog.js'
@@ -255,6 +257,15 @@ export function Board({ game, onHelp }: {
    * exists to prevent at the END of one.
    */
   const restarting = useRef(false)
+  /**
+   * Rung V1-C: the picker's SELECTION, which is not the game's pair (R2) — it starts as the active pair and moves
+   * only when the player changes a select. Both ways to a new game deal it: the toolbar's New game and the
+   * dialog's "Play again". Both also hand focus to the new game's first decision, one rule for one act: the
+   * dialog's button is destroyed with it, and the toolbar's is last in the tab order, so leaving focus there
+   * would put the player a full lap of the board away from the decision the new game is waiting on.
+   */
+  const [selection, setSelection] = useState<DeckPair | null>(game.decks ?? null)
+  const newGame = (): void => { restarting.current = true; if (selection) restart(selection); else restart() }
   useEffect(() => {
     if (!restarting.current || view.result) return
     const target = document.querySelector<HTMLButtonElement>('.prompt__actions button')
@@ -707,7 +718,12 @@ export function Board({ game, onHelp }: {
         <EventLog log={log} silenced={view.result !== null} />
       </aside>
 
-      {view.result && <GameOverDialog result={view.result} me={view.me} onRestart={() => { restarting.current = true; restart() }} />}
+      {/* Rung V1-C: LAST in the DOM, and so last in the tab order, while `grid-area` draws it above the board. The
+          same principle as the prompt strip's placement above: "New game" throws away the game in progress, so a
+          keyboard player reaches it after the board, not before the first card of it. */}
+      {selection && <DeckPicker selected={selection} onSelect={setSelection} onNewGame={newGame} />}
+
+      {view.result && <GameOverDialog result={view.result} me={view.me} onRestart={newGame} />}
     </div>
   )
 }

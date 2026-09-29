@@ -135,8 +135,10 @@ body {
 .table {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--rail-w);
-  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  /* Rung V1-C: the deck picker's toolbar is a thin auto row over the board column; the rail keeps its full height. */
+  grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr) auto;
   grid-template-areas:
+    'toolbar  rail'
     'opponent rail'
     'prompt   rail'
     'player   rail'
@@ -705,6 +707,40 @@ body {
   margin: 0;
   color: var(--ink-2);
 }
+
+/* ============================ deck picker (rung V1-C) ============================
+ * Its own block so a later layout can move the toolbar without touching the board's. Compact on purpose: the
+ * board's row heights are tuned to fit a 900px viewport without a scrollbar, and every pixel here comes out of them. */
+
+.picker {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  flex-wrap: wrap;
+  padding: var(--s2) var(--s5);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.picker__label {
+  font-family: var(--font-condensed);
+  font-size: var(--t-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.picker__select {
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+
+.picker .btn { margin-left: auto; padding: var(--s1) var(--s3); }
 
 /* ============================ how to play (rung H1) ============================ */
 
