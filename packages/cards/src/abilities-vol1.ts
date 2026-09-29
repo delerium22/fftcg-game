@@ -161,14 +161,125 @@ const ZACK_LB_ETB: Ability = {
   }],
 }
 
+// ---------------------------------------------------------------------------
+// Draw and search
+// ---------------------------------------------------------------------------
+
+/**
+ * The two Vol. 1 hand draws — Geomancer 18-064C's and Red Mage 18-069C's shape: `sourceZone: 'hand'` is "You can only
+ * use this ability if <card> is in your hand" (spec C3-3), and the discard of the card itself is part of the cost.
+ */
+const MACHINIST_DRAW: Ability = {
+  id: '18-003C:draw',
+  trigger: {
+    kind: 'activated', sourceZone: 'hand',
+    cost: { cp: { amount: 1, requiredElements: ['fire'] }, selfDiscard: true },
+  },
+  text: '[Fire], discard Machinist: Draw 1 card. You can only use this ability if Machinist is in your hand.',
+  effects: [{ kind: 'draw', count: 1 }],
+}
+
+const GEOMANCER_WATER_DRAW: Ability = {
+  id: '18-094C:draw',
+  trigger: {
+    kind: 'activated', sourceZone: 'hand',
+    cost: { cp: { amount: 1, requiredElements: ['water'] }, selfDiscard: true },
+  },
+  text: '[Water], discard Geomancer: Draw 1 card. You can only use this ability if Geomancer is in your hand.',
+  effects: [{ kind: 'draw', count: 1 }],
+}
+
+/** LB Leo's ETB (the LB line and the reminder are not clauses). */
+const LEO_ETB: Ability = {
+  id: '22-123R:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Leo enters the field, draw 1 card.',
+  effects: [{ kind: 'draw', count: 1 }],
+}
+
+/**
+ * Yuna's ETB. "You may play" is a SELECT by Yuna's controller (spec V1-D9: every "you may put / play / discard" is one),
+ * over her own hand (V1-D11: the candidates are hidden from the other seat), `min: 0` for "may". "1 Forward of cost 3"
+ * is `cost: 3` EXACT — Hugh Yurg's trap again: a cost-2 Forward is not playable. `type: 'forward'` also satisfies game
+ * creation's rule that a `playOntoField` binding exclude Summons. Playing is not casting (§15.1.1.7): no cost, no cast
+ * event; the played card's own ETB fires, and a second copy of a name already on the field meets §12.4.6.
+ */
+const YUNA_ETB: Ability = {
+  id: '27-129S:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Yuna enters the field, you may play 1 Forward of cost 3 from your hand onto the field.',
+  effects: [{
+    kind: 'chooseTargets', select: 'self', min: 0, max: 1,
+    from: { zone: 'hand', controller: 'self', filter: { type: 'forward', cost: 3 } },
+    then: [{ kind: 'playOntoField' }],
+  }],
+}
+
+/** Yuna's attack trigger (§10.1.2.5): Reeve's look, word for word, fired on the declaration rather than on entering. */
+const YUNA_ATTACK: Ability = {
+  id: '27-129S:attack',
+  trigger: { kind: 'attacks' },
+  text: 'When Yuna attacks, look at the top 3 cards of your deck. Add 1 card among them to your hand and return the '
+    + 'other cards to the bottom of your deck in any order.',
+  effects: [{
+    kind: 'lookAtDeck', count: 3, audience: 'self',
+    take: { min: 1, max: 1 },
+    to: 'hand', rest: 'bottom',
+  }],
+}
+
+/**
+ * LB Luso's ETB. "choose 1 Character you control" is a head choice over the `characters` zone (rung V1-A4) — Luso
+ * himself included: the text does not exclude him, and choosing him (Light) finds nothing, since no Standard Unit is
+ * Light. The search's `sameElementAsChosen` is resolved by the executor into the chosen card's printed Elements (rung
+ * V1-A3). "You may search" is `take.min: 0`. The search is private, as for Leonora (see its MVP0-SIMPLIFICATION on
+ * §15.1.1.8.1).
+ */
+const LUSO_LB_ETB: Ability = {
+  id: '23-130H:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Luso enters the field, choose 1 Character you control. You may search for 1 Job Standard Unit of the '
+    + 'same Element as the chosen Character and add it to your hand.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'characters', controller: 'self' },
+    then: [{
+      kind: 'lookAtDeck', count: 'all', audience: 'self',
+      take: { min: 0, max: 1, filter: { job: 'Standard Unit', sameElementAsChosen: true } },
+      to: 'hand', rest: 'shuffle',
+    }],
+  }],
+}
+
+/**
+ * LB Luso's watcher: Hugh Yurg's `observesEnterField` with `whose: 'self'` ("your field"). `onSource` (rung V1-A4)
+ * pumps LUSO, the watcher, not the card that arrived.
+ *
+ * `of: 'backup'` (plan R6) reads "a Job Standard Unit" as a Backup: `of` takes one type, and every Standard Unit that
+ * can enter Luso's controller's field — the Vol. 1 decks' Warrior, Machinist and Geomancer — is one. Dragoon 1-147C
+ * (Vol. 2) is a Forward Standard Unit this would miss; it reaches Luso's side only in a deck mixing the two sets (the
+ * proof test in `abilities-vol1.test.ts` pins both facts).
+ */
+const LUSO_LB_STANDARD_UNIT: Ability = {
+  id: '23-130H:standard-unit',
+  trigger: { kind: 'observesEnterField', whose: 'self', of: 'backup', filter: { job: 'Standard Unit' } },
+  text: 'When a Job Standard Unit enters your field, Luso gains +4000 power until the end of the turn.',
+  effects: [{ kind: 'onSource', do: [{ kind: 'addPower', amount: 4000 }] }],
+}
+
 /** Implemented Vol. 1 clauses by card code, spread into `ABILITIES`. Printed order within each card. */
 export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '1-170C': [FAIRY_SUMMON],
   '3-143C': [LEONORA_ETB],
   '12-005C': [IFRIT_SUMMON],
   '13-013C': [PALOM_ETB],
+  '18-003C': [MACHINIST_DRAW],
+  '18-094C': [GEOMANCER_WATER_DRAW],
   '21-001R': [WARD_ONLY_FIRE, WARD_ETB],
   '22-112R': [ZACK_LB_ETB],
+  '22-123R': [LEO_ETB],
+  '23-130H': [LUSO_LB_ETB, LUSO_LB_STANDARD_UNIT],
+  '27-129S': [YUNA_ETB, YUNA_ATTACK],
 }
 
 /** Vol. 1 clauses left unimplemented on purpose, spread into `INERT_CLAUSES` (each with its proof in `abilities.test.ts`). */
