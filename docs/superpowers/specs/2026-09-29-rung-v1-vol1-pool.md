@@ -286,7 +286,7 @@ with the usual proof test. Charlotte clause 3 (the action-ability ban) is B.
 - **V1-D17 — per-seat decks (V1-C).** Web: a pre-game picker of (your deck, AI deck) ∈ {Vol. 1, Vol. 2}², default
   **you Vol. 2 vs AI Vol. 1** (the set the user owns). `createGame` already takes per-seat `decks`/`lbDecks`. The AI
   coordinator, the worker protocol and every agent's `decks` get the per-seat lists (`determinise` needs the
-  opponent's real list). CLI: `--deck0/--deck1` (and LB equivalents), default the same as the web. **Tests:** the
+  opponent's real list). CLI: `--deck0/--deck1` (and LB equivalents); the CLI default stays the Vol. 2 MIRROR (amended 2026-09-30, V1-C review: the CLI is the measuring tool and every recorded win rate assumes the mirror). **Tests:** the
   exported `DECKS` stays the Vol. 2 mirror for fixtures, so seed-pinned tests are untouched; only e2e routes that
   run the app's real default are re-pinned, with a finder over the app's own choice set (handoff dead end).
 - **V1-D18 — art.** Text-only for the four new exclusives (as for Vol. 2's). Reprint art is fetched locally with the
