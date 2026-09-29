@@ -129,7 +129,9 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       return { kind: 'event', text: `${who(v, e.player)} use${e.player === v.me ? '' : 's'} the EX Burst on ${ownedCard(v, e.player, e.card)}` }
     case 'exBurstDeclined':
       return { kind: 'event', text: `${who(v, e.player)} decline${e.player === v.me ? '' : 's'} the EX Burst on ${ownedCard(v, e.player, e.card)}` }
-    case 'battleDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
+    // Rung V2-A1: one line per damage PACKET — a blocked party's damage to the blocker is one total (§15.1.1.9.8),
+    // so "Cloud and Luso deal 8000 damage to X", never one line per member.
+    case 'battleDamage': return { kind: 'event', text: `${nameList(v, e.dealers)} deal${e.dealers.length === 1 ? 's' : ''} ${e.amount} damage to ${qualifiedName(v, e.target)}` }
     case 'playerDamaged': return { kind: 'event', text: `${who(v, e.player)} take${e.player === v.me ? '' : 's'} 1 damage` }
     case 'broken': return { kind: 'event', text: `${qualifiedName(v, e.card)} is broken` }
     case 'putIntoBreakZone': return { kind: 'event', text: `${qualifiedName(v, e.card)} is put into the Break Zone (${BREAK_ZONE_WHY[e.reason]})` }
@@ -212,6 +214,8 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'frozen': return { kind: 'event', text: `${qualifiedName(v, e.card)} is frozen — it will not activate next turn` }
     case 'thawed': return { kind: 'event', text: `${qualifiedName(v, e.card)} ${fieldStatus(v, e.card) === 'dull' ? 'stays dull' : 'is no longer frozen'} — it was frozen` }
     case 'abilityDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
+    // Spec V2-D4 (declared in rung V2-A1, emitted from V2-A2): 0 is not damage, so this is the only line it gets.
+    case 'damageReducedToZero': return { kind: 'event', text: `${nameList(v, e.dealers)}'s ${e.original} damage to ${qualifiedName(v, e.target)} is reduced to 0` }
     case 'powerModified': return { kind: 'event', text: `${qualifiedName(v, e.card)} gets ${e.amount >= 0 ? '+' : ''}${e.amount} power until the end of the turn` }
     case 'keywordGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} gains ${KEYWORD_LABEL[e.keyword]} until the end of the turn` }
     case 'flagGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} ${FLAG_LABEL[e.flag]}` }
@@ -223,6 +227,12 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // `summonResolvedNoEffect` are noise (the latter doubles up on `unimplementedAbility` for every summon in the pool).
     default: return null
   }
+}
+
+/** "A", "A and B", "A, B and C" — a damage packet's dealers, named as the other event lines name a card. */
+function nameList(v: PlayerView, ids: readonly CardId[]): string {
+  const names = ids.map((id) => qualifiedName(v, id))
+  return names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`
 }
 
 /** A card's printed TYPE from the view, for events that carry only its id. */
@@ -334,7 +344,9 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
   for (const e of events) {
     switch (e.type) {
       // Combat and ability damage alike — the printed text says "deals damage" (spec C2-7).
-      case 'battleDamage':
+      // A battle packet has one or more dealers (rung V2-A1, §15.1.1.9.8): each is a source of the whole packet, so
+      // each gets a candidate, and a member's trigger still matches its own id.
+      case 'battleDamage': for (const source of e.dealers) hits.push({ source, target: e.target, amount: e.amount, used: false }); break
       case 'abilityDamage': hits.push({ source: e.source, target: e.target, amount: e.amount, used: false }); break
       // `playerDamaged.card` is the card TAKEN as damage, not the dealer; the dealer is the watcher itself.
       case 'playerDamaged': playerHits.push({ victim: e.player, used: false }); break

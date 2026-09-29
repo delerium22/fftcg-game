@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { loadCards } from '@fftcg/cards'
-import { nextInt, seedRng, type Rng } from '@fftcg/engine'
+import { createGame, nextInt, seedRng, viewFor, type PlayerView, type Rng } from '@fftcg/engine'
 import { parseDeckFile } from '../src/deck.js'
-import { hotseat, type HotseatIo } from '../src/hotseat.js'
+import { describeEvent, hotseat, type HotseatIo } from '../src/hotseat.js'
 
 describe('hotseat', () => {
   it('plays a complete game end to end through a scripted io', async () => {
@@ -267,4 +267,28 @@ describe('the hotseat prints WHY a choice is being asked', () => {
     expect(bursts.length, 'no EX Burst in this game, so the post-apply view is unpinned').toBeGreaterThan(0)
     expect(bursts.filter((l) => /#\d+/.test(l)), 'the EX Burst card is unnamed — the view is the pre-command one').toEqual([])
   }, 120_000)
+})
+
+// Rung V2-A1 (plan R4, R9): damage is narrated per PACKET — a party's damage to its blocker is one total
+// (§15.1.1.9.8) — and ability damage and a packet reduced to 0 get lines of their own.
+describe('hotseat damage narration (rung V2-A1)', () => {
+  const deck = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
+  // Three cards the view can name, placed by hand: a narration test needs names, not a position.
+  const [a, b, c] = [901, 902, 903] as const
+  const base = viewFor(createGame({ seed: 1, decks: [deck, deck], defs: loadCards() }), 0)
+  const v: PlayerView = { ...base, cards: { ...base.cards, [a]: { id: a, code: deck[0]!, owner: 0 as const }, [b]: { id: b, code: deck[10]!, owner: 0 as const }, [c]: { id: c, code: deck[20]!, owner: 1 as const } } }
+  const name = (id: number): string => `[${id}] ${v.defs[v.cards[id]!.code]!.name}`
+
+  it('one line per battle packet, naming every dealer', () => {
+    expect(describeEvent(v, { type: 'battleDamage', target: c, dealers: [a], original: 5000, amount: 5000, trace: [] })).toBe(`  ${name(a)} deals 5000 to ${name(c)}`)
+    expect(describeEvent(v, { type: 'battleDamage', target: c, dealers: [a, b], original: 8000, amount: 8000, trace: [] })).toBe(`  ${name(a)} and ${name(b)} deal 8000 to ${name(c)}`)
+  })
+
+  it('ability damage, worded apart from combat', () => {
+    expect(describeEvent(v, { type: 'abilityDamage', source: a, target: c, original: 3000, amount: 3000, trace: [] })).toBe(`  ${name(c)} takes 3000 damage from ${name(a)}'s ability`)
+  })
+
+  it('a packet reduced to 0 (declared now, emitted from rung V2-A2)', () => {
+    expect(describeEvent(v, { type: 'damageReducedToZero', target: c, dealers: [a], original: 5000, trace: [] })).toBe(`  ${name(a)}'s 5000 damage to ${name(c)} is reduced to 0`)
+  })
 })

@@ -20,7 +20,7 @@ export interface HotseatIo {
  * `eventCardName` falls back to `#id` for anything outside the view, so a card this player cannot see stays
  * a number rather than leaking its name.
  */
-function describeEvent(v: PlayerView, e: Event): string | null {
+export function describeEvent(v: PlayerView, e: Event): string | null {
   switch (e.type) {
     case 'unimplementedAbility': return `  ! ${e.code} has abilities that are not implemented yet (played as vanilla)`
     case 'exBurstOffered': return `  EX Burst revealed on ${eventCardName(v, e.card)} — P${e.player} may use it`
@@ -28,7 +28,11 @@ function describeEvent(v: PlayerView, e: Event): string | null {
     case 'exBurstDeclined': return `  P${e.player} declines the EX Burst on ${eventCardName(v, e.card)}`
     case 'playerDamaged': return `  P${e.player} takes 1 damage`
     case 'broken': return `  ${eventCardName(v, e.card)} is broken`
-    case 'battleDamage': return `  ${eventCardName(v, e.source)} deals ${e.amount} to ${eventCardName(v, e.target)}`
+    // Rung V2-A1: one line per damage packet — a blocked party's damage to its blocker is one total (§15.1.1.9.8).
+    case 'battleDamage': return `  ${e.dealers.map((id) => eventCardName(v, id)).join(' and ')} deal${e.dealers.length === 1 ? 's' : ''} ${e.amount} to ${eventCardName(v, e.target)}`
+    // Worded apart from combat's "deals N to", which the hotseat test reads as the combat line.
+    case 'abilityDamage': return `  ${eventCardName(v, e.target)} takes ${e.amount} damage from ${eventCardName(v, e.source)}'s ability`
+    case 'damageReducedToZero': return `  ${e.dealers.map((id) => eventCardName(v, id)).join(' and ')}'s ${e.original} damage to ${eventCardName(v, e.target)} is reduced to 0`
     case 'gameOver': return `  GAME OVER`
     default: return null
   }

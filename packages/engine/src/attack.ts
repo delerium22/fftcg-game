@@ -282,7 +282,7 @@ function landHits(state: GameState, hits: readonly Hit[]): [GameState, Event[], 
     const loc = findFieldCard(s, h.target)
     if (!loc) continue
     s = updatePlayer(s, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === h.target ? { ...c, damage: c.damage + h.amount } : c)) }))
-    events.push({ type: 'battleDamage', source: h.source, target: h.target, amount: h.amount })
+    events.push({ type: 'battleDamage', target: h.target, dealers: [h.source], original: h.amount, amount: h.amount, trace: [] })
     landed.push({ source: h.source, sourceController: h.sourceController, target: h.target, victim: null, amount: h.amount, targetController: loc.owner })
   }
   return [s, events, landed]

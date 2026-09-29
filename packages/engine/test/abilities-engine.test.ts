@@ -84,7 +84,7 @@ describe('effect primitives, one at a time', () => {
     const [t, events] = fire(s, src)
     expect(fc(t, f)?.damage).toBe(6000)
     expect(fc(t, bk)?.damage).toBe(0)
-    expect(events).toContainEqual({ type: 'abilityDamage', source: src, target: f, amount: 6000 })
+    expect(events).toContainEqual({ type: 'abilityDamage', source: src, target: f, original: 6000, amount: 6000, trace: [] })
     ok(t)
   })
 

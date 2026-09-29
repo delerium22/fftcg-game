@@ -395,12 +395,12 @@ describe('27-125S Luso — "When Luso deals damage to a Forward, break it." and 
 
     t = apply(t.state, { type: 'chooseTargets', player: 0, targets: [theirs] })
     // Rung J1-D3: the target is DECLARED; the damage lands when the clause resolves, after mode 2 declares.
-    expect(t.events).not.toContainEqual({ type: 'abilityDamage', source: luso, target: theirs, amount: 3000 })
+    expect(t.events.some((e) => e.type === 'abilityDamage'), 'a predicate, not a whole object: a shape change must not pass it vacuously').toBe(false)
     // Mode 2's prompt belongs to the SAME frame, and only the Backup is a Character.
     expect(t.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [backup] })
 
     t = apply(t.state, { type: 'chooseTargets', player: 0, targets: [backup] })
-    expect(t.events).toContainEqual({ type: 'abilityDamage', source: luso, target: theirs, amount: 3000 })
+    expect(t.events).toContainEqual({ type: 'abilityDamage', source: luso, target: theirs, original: 3000, amount: 3000, trace: [] })
     expect(t.state.players[0].hand).toContain(backup)
     expect(t.state.players[0].breakZone).toEqual([summon])
     // Only once the frame finished: c1 resolves and breaks the Forward 3000 damage did not kill.
