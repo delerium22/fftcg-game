@@ -651,6 +651,9 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
     // Rung V1-A2: a put is not a break, and an effect's activation is not the Active Phase.
     expect(text({ type: 'putIntoBreakZone', card: anyCard, reason: 'ability' })).toBe('Ramuh is put into the Break Zone (by an ability)')
     expect(text({ type: 'activatedByAbility', card: anyCard })).toBe('Ramuh is activated')
+    expect(text({ type: 'discarded', player: AI, card: anyCard, reason: 'ability' })).toBe('The AI discards Ramuh')
+    expect(text({ type: 'discarded', player: HUMAN, card: anyCard, reason: 'ability' })).toBe('You discard Ramuh')
+    expect(text({ type: 'playedFromHand', player: AI, card: anyCard })).toBe('The AI plays Ramuh onto the field from its hand')
   })
 
   it('still names a card an ability moved from a public zone into a hidden hand', () => {

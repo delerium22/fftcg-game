@@ -1081,3 +1081,33 @@ describe('put into the Break Zone and activate have their own words (rung V1-A2)
     expect(describeTriggerCause(v, { kind: 'zoneChange', card: theirs, controller: AI, reason: 'ability' })).toBe(`the AI's ${CLOUD_NAME()} was broken`)
   })
 })
+
+describe('a select from a hand names the hand, and never the cards to the other seat (rung V1-A2)', () => {
+  const play: Ability = { id: 'test:yuna', trigger: { kind: 'enterField' }, text: 'You may play 1 Forward of cost 3 from your hand onto the field.',
+    effects: [{ kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'forward', cost: 3 } }, then: [{ kind: 'playOntoField' }] }] }
+  const toss: Ability = { id: 'test:porom', trigger: { kind: 'enterField' }, text: 'Select 1 card in your hand. Discard it.',
+    effects: [{ kind: 'chooseTargets', select: 'self', min: 1, max: 1, from: { zone: 'hand', controller: 'self' }, then: [{ kind: 'discard' }] }] }
+
+  function mine(ability: Ability): PlayerView {
+    const v = suspendedView(ability, NOEL)
+    const card = instance(v, 901, CLOUD)
+    v.hand = [...v.hand, card]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: (ability.effects[0] as { min: number }).min, max: 1, candidates: [card] }
+    return v
+  }
+
+  it('the human selecting from their own hand: the prompt says the hand, the button the move', () => {
+    expect(promptFor(mine(play), [])).toBe('Noel: select up to 1 card in your hand to play onto the field')
+    expect(describeChoice(mine(play), targets([901]))).toBe(`Play ${CLOUD_NAME()}`)
+    expect(promptFor(mine(toss), [])).toBe('Noel: select 1 card in your hand to discard')
+    expect(describeChoice(mine(toss), targets([901]))).toBe(`Discard ${CLOUD_NAME()}`)
+  })
+
+  it('the AI selecting from its hidden hand: the strip says so without naming anything', () => {
+    const v = suspendedView(play, NOEL)
+    v.cards[900] = { ...v.cards[900]!, owner: AI }
+    v.resolution = { ...v.resolution, active: { ...v.resolution.active!, controller: AI } }
+    v.pending = { kind: 'chooseTargets', player: AI, min: 0, max: 1, candidates: [], hidden: true }
+    expect(promptFor(v, [])).toBe('The AI selects up to 1 card from its hand to play onto the field')
+  })
+})

@@ -1,6 +1,6 @@
 import type { CardDef, PlayerId } from './types.js'
 import { KEYWORDS, opponentOf } from './types.js'
-import type { Effect } from './abilities.js'
+import type { Effect, TargetSpec } from './abilities.js'
 import { EMPTY_RESOLUTION, FIELD_FLAGS } from './abilities.js'
 import type { CardId, CardInstance, GameState, PlayerState } from './state.js'
 import { updatePlayer } from './state.js'
@@ -81,25 +81,38 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
  */
 export function validateEffects(defs: readonly CardDef[]): string[] {
   const problems: string[] = []
-  const walk = (code: string, id: string, effects: readonly Effect[]): void => {
+  // `bound` is the spec the nearest enclosing chooser or `forEach` binds `chosen` from — null under `onSubject`.
+  const walk = (code: string, id: string, effects: readonly Effect[], bound: TargetSpec | null): void => {
     for (const e of effects) {
       switch (e.kind) {
         case 'chooseTargets':
           if (e.select !== undefined && !['self', 'opponent'].includes(e.select)) problems.push(`${code}: ${id} has an unknown select ${String(e.select)}`)
           if (e.onlyIfChosen !== undefined && e.onlyIfChosen !== true) problems.push(`${code}: ${id} has an \`onlyIfChosen\` that is not true`)
-          walk(code, id, e.then)
+          // Spec V1-D11: a hand is private, so it is only ever your own, and only selected — never a declared choice,
+          // which would name a hidden card on the stack for the whole of its wait.
+          if (e.from.zone === 'hand' && e.from.controller !== 'self') problems.push(`${code}: ${id} targets a hand that is not your own`)
+          if (e.from.zone === 'hand' && e.select !== 'self') problems.push(`${code}: ${id} targets a hand without being a select by its controller`)
+          walk(code, id, e.then, e.from)
           break
-        case 'chooseModes': for (const m of e.modes) walk(code, id, m.effects); break
-        case 'forEach': case 'onSubject': walk(code, id, e.do); break
-        case 'if': walk(code, id, e.then); walk(code, id, e.else ?? []); break
+        case 'chooseModes': for (const m of e.modes) walk(code, id, m.effects, bound); break
+        case 'forEach': walk(code, id, e.do, e.from); break
+        case 'onSubject': walk(code, id, e.do, null); break
+        case 'if': walk(code, id, e.then, bound); walk(code, id, e.else ?? [], bound); break
+        // Rung V1-A2 (R2): only a Character is played onto a field, so the binding's filter must rule a Summon out.
+        case 'playOntoField': {
+          const f = bound?.filter
+          const characters = f?.type !== undefined ? f.type !== 'summon' : f?.types !== undefined && f.types.length > 0 && !f.types.includes('summon')
+          if (!characters) problems.push(`${code}: ${id} plays a card whose filter admits a Summon`)
+          break
+        }
         // Leaves: nothing nested. Listed so a new CONTAINER kind fails to compile here instead of going unwalked.
-        case 'dull': case 'freeze': case 'damage': case 'breakCard': case 'putIntoBreakZone': case 'activate': case 'addPower': case 'grantKeyword': case 'grantFlag':
+        case 'dull': case 'freeze': case 'damage': case 'breakCard': case 'putIntoBreakZone': case 'activate': case 'discard': case 'addPower': case 'grantKeyword': case 'grantFlag':
         case 'moveToHand': case 'draw': case 'lookAtDeck': break
         default: { const _exhaustive: never = e; return _exhaustive }
       }
     }
   }
-  for (const d of defs) for (const a of d.abilities ?? []) walk(d.code, a.id, a.effects)
+  for (const d of defs) for (const a of d.abilities ?? []) walk(d.code, a.id, a.effects, null)
   return problems
 }
 

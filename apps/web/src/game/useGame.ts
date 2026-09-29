@@ -100,9 +100,11 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'drew': return { kind: 'event', text: `${who(v, e.player)} draw${e.player === v.me ? '' : 's'} ${e.count} card${e.count === 1 ? '' : 's'}` }
     // A CP discard is already implied by the cast line, and a COST discard by the "activates" line — neither
     // needs its own entry. Only the hand-limit discard is a thing the player did not otherwise see.
+    // Rung V1-A2: an effect's discard is what the clause DID, so it is narrated like the other effects.
     case 'discarded':
       return e.reason === 'handSize'
         ? { kind: 'event', text: `${who(v, e.player)} discard${e.player === v.me ? '' : 's'} ${qualifiedName(v, e.card)} to the hand limit` }
+        : e.reason === 'ability' ? { kind: 'event', text: `${who(v, e.player)} discard${e.player === v.me ? '' : 's'} ${qualifiedName(v, e.card)}` }
         : null
     // B-A6 + C1-9: coverage is per CLAUSE. `clauses` counts the ones still missing on a card that DOES have an
     // implemented clause; its absence means the whole text box is unimplemented and the card played as vanilla.
@@ -173,6 +175,9 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       // Bare: the sentence already says whose it is twice ("The AI plays … from its deck"), and with a twin on
       // the other side `qualifiedName` made it "The AI plays the AI's Luso onto the field" (found by playing).
       return { kind: 'event', text: `${who(v, e.player)} play${e.player === v.me ? '' : 's'} ${bareName(v, e.card)} onto the field from ${whoDoes(v, e.player, 'your', 'its')} deck` }
+    // Rung V1-A2: the same, from the hand — public the moment it lands, so it is named.
+    case 'playedFromHand':
+      return { kind: 'event', text: `${who(v, e.player)} play${e.player === v.me ? '' : 's'} ${bareName(v, e.card)} onto the field from ${whoDoes(v, e.player, 'your', 'its')} hand` }
     // The other half: without this a revealed card is added to a hand with nothing in the log saying so, and
     // for the no-eligible path there is no board change at all to infer it from.
     case 'addedToHand': {
@@ -319,7 +324,8 @@ export function eventLines(v: PlayerView, events: readonly Event[], queued: read
       // cost-1 Forward left his OWN watcher clause with no cause, so the log said the ability triggered and
       // never said what arrived — for a clause whose whole point is that something arrived.
       case 'cast': enterHits.push({ card: e.card, controller: e.player, type: e.cardType, used: false }); break
-      case 'playedFromDeck': {
+      case 'playedFromDeck':
+      case 'playedFromHand': {
         // The card is on the field by the time this is narrated, so the view can name its type.
         const type = defTypeOf(v, e.card)
         if (type) enterHits.push({ card: e.card, controller: e.player, type, used: false })

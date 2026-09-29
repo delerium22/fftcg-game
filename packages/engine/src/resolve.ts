@@ -184,6 +184,7 @@ export function targetCandidates(state: GameState, source: CardId, controller: P
   for (const p of ([0, 1] as const).filter((q) => owners.includes(q))) {
     const ps = state.players[p]
     const ids = spec.zone === 'breakZone' ? ps.breakZone
+      : spec.zone === 'hand' ? ps.hand   // rung V1-A2: own hand only, through a select (validated at game creation)
       : (spec.zone === 'forwards' ? ps.forwards : ps.backups).map((c) => c.id)
     for (const id of ids) if (matchesFilter(state, source, id, spec.filter)) out.push(id)
   }
@@ -575,6 +576,28 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         if (!loc || loc.card.status === 'active') continue
         ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, status: 'active' }))
         ctx.events.push({ type: 'activatedByAbility', card: id })
+      }
+      return
+    case 'discard':
+      // §15.1.1.4: hand → Break Zone. Not a field movement, so no transition and no field watcher; a card no longer
+      // in its owner's hand is skipped.
+      for (const id of ctx.chosen) {
+        const owner = ctx.state.cards[id]?.owner
+        if (owner === undefined || !ctx.state.players[owner].hand.includes(id)) continue
+        ctx.state = updatePlayer(ctx.state, owner, (ps) => ({ ...ps, hand: ps.hand.filter((x) => x !== id), breakZone: [...ps.breakZone, id] }))
+        ctx.events.push({ type: 'discarded', player: owner, card: id, reason: 'ability' })
+      }
+      return
+    case 'playOntoField':
+      // §15.1.1.7: not a cast. Out of the hand, then the one arrival path every entry shares (`putOntoField`).
+      for (const id of ctx.chosen) {
+        const owner = ctx.state.cards[id]?.owner
+        const type = defFor(ctx.state, id)?.type
+        if (owner === undefined || !ctx.state.players[owner].hand.includes(id)) continue
+        if (type !== 'forward' && type !== 'backup') continue   // only a Character enters a field (Monsters are out of scope)
+        ctx.state = updatePlayer(ctx.state, owner, (ps) => ({ ...ps, hand: ps.hand.filter((x) => x !== id) }))
+        ctx.events.push({ type: 'playedFromHand', player: owner, card: id })
+        ctx.state = putOntoField(ctx.state, id, owner, ctx.events)
       }
       return
     case 'addPower':
@@ -969,7 +992,10 @@ export function chooseTargetsCheck(state: GameState, player: PlayerId, targets: 
   if (new Set(targets).size !== targets.length) return 'duplicate target'
   const candidates = targetCandidates(state, frame.source, frame.controller, node.from)
   const max = Math.min(node.max, candidates.length)
-  if (targets.length < node.min || targets.length > max) return `choose ${node.min}..${max} targets, got ${targets.length}`
+  // A select's `min` clamps as its `max` does (rung V1-A2). Live, a select is only raised over at least `min`
+  // candidates, so this changes nothing there; it keeps a determinised hand select that sampled fewer answerable.
+  const min = node.select === undefined ? node.min : Math.min(node.min, candidates.length)
+  if (targets.length < min || targets.length > max) return `choose ${min}..${max} targets, got ${targets.length}`
   for (const id of targets) if (!candidates.includes(id)) return `${id} is not a legal target`
   return null
 }

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, seedRng, viewFor,
+  SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, isLegal, legalCommands, seedRng, viewFor,
   type Ability, type CardDef, type CardId, type Command, type Effect, type Frame, type GameState, type Payment, type PlayerId, type PlayerView, type TargetFilter,
 } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
 import { GreedyAgent } from '../src/greedy.js'
+import { IsmctsAgent } from '../src/ismcts/agent.js'
+import { searchView } from '../src/ismcts/search.js'
 import { KEY_CONTRACT, actionKey, cardRef, compareKeys, decodeAction, isOpaque, observationKey } from '../src/ismcts/keys.js'
 import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
@@ -695,5 +697,40 @@ describe('observationKey reads Freeze and the First Strike step (J3 second revie
     const held = win({ firstStrikers: [ids.a1!], heldDamage: [{ source: ids.a1!, sourceController: 0, target: ids.d1!, victim: null, amount: 5000 }] })
     expect(observationKey(held), 'a held occurrence').not.toBe(observationKey(base))
     expect(observationKey(held), 'canonical').toBe(observationKey(win({ firstStrikers: [ids.a1!], heldDamage: [{ source: ids.a1!, sourceController: 0, target: ids.d1!, victim: null, amount: 5000 }] })))
+  })
+})
+
+describe('a select over one hand is keyed by its bounds from the other seat (rung V1-A2, spec V1-D11)', () => {
+  // Yuna 27-129S's shape: "you may play 1 Forward of cost 3 from your hand onto the field."
+  const YUNA: Ability = { id: 'T-YUNA:etb', trigger: { kind: 'enterField' }, text: 'synthetic Yuna',
+    effects: [{ kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'forward', cost: 3 } }, then: [{ kind: 'playOntoField' }] }] }
+  const DEFS = [...VANILLA_POOL, makeDef({ code: 'T-YUNA', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [YUNA] })]
+
+  function yunaAsks(): GameState {
+    let s = makeGame({ defs: DEFS })
+    let yuna: CardId
+    ;[s] = withHand(s, 0, 'V-F5')
+    ;[s, yuna] = withField(s, 0, 'forwards', 'T-YUNA')
+    s = arm(s, yuna, 0, YUNA)
+    expect(s.pending).toMatchObject({ kind: 'chooseTargets', player: 0 })
+    return s
+  }
+
+  it('the observation key from player 1 is the same in the live view and in every determinisation the search keys', () => {
+    const s = yunaAsks()
+    const live = observationKey(viewFor(s, 1))
+    expect(live).toContain('/hidden')
+    for (const seed of [1, 2, 3, 4]) {
+      const [det] = determinise({ view: viewFor(s, 1), decks: decksOf(s), rng: seedRng(seed) })
+      expect(observationKey(searchView(det, 1)), `seed ${seed}`).toBe(live)
+    }
+  })
+
+  it('an ISMCTS agent for player 0 answers its own hand select with a legal command', () => {
+    const s = yunaAsks()
+    const legal = legalCommands(s, 0)
+    const d = new IsmctsAgent({ seed: 1, decks: decksOf(s), iterations: 24 }).decide(viewFor(s, 0), legal)
+    expect(d.type).toBe('chooseTargets')
+    expect(isLegal(s, d)).toBeNull()
   })
 })

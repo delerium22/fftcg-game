@@ -88,9 +88,13 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
   if (state.resolution.placing?.item.kind === 'summon') visibleIds.add(state.resolution.placing.item.card)
   const cards: Record<CardId, CardInstance> = {}
   for (const id of visibleIds) { const inst = state.cards[id]; if (inst) cards[id] = inst }
+  // Rung V1-A2 (spec V1-D11): a select over cards this viewer cannot see — the other player's hand — keeps its bounds
+  // and loses its candidates, whoever owes it. The ids alone would say which cards in that hand match the filter.
+  const pending: Pending | null = state.pending?.kind === 'chooseTargets' && state.pending.candidates.some((id) => !visibleIds.has(id))
+    ? { ...state.pending, candidates: [], hidden: true } : state.pending
   return structuredClone({
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
-    pending: state.pending, resolution: state.resolution, stack: state.stack, passes: state.passes, result: state.result, hand: state.players[me].hand, fields: [field(0), field(1)], cards, knownBy: visibleKnownBy(state, cards), defs: state.defs,
+    pending, resolution: state.resolution, stack: state.stack, passes: state.passes, result: state.result, hand: state.players[me].hand, fields: [field(0), field(1)], cards, knownBy: visibleKnownBy(state, cards), defs: state.defs,
     firstPlayer: state.firstPlayer, mulliganDecided: [state.players[0].mulliganDecided, state.players[1].mulliganDecided],
   })
 }

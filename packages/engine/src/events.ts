@@ -21,7 +21,8 @@ export type Event =
    * just paid a Lightning cost.
    */
   | { type: 'cpGenerated'; player: PlayerId; cp: readonly (readonly Element[])[] }
-  | { type: 'discarded'; player: PlayerId; card: CardId; reason: 'cp' | 'handSize' | 'cost' }
+  /** `ability` (rung V1-A2): an effect's "discard" (§15.1.1.4) — Porom. */
+  | { type: 'discarded'; player: PlayerId; card: CardId; reason: 'cp' | 'handSize' | 'cost' | 'ability' }
   /** §15.2.8.3.2 (rung J8): the face-down LB-deck cards turned face up to pay a Limit Break cost. */
   | { type: 'lbFlipped'; player: PlayerId; cards: CardId[] }
   /** §15.2.8.4 (rung J8): an LB card that reached `from` went on to its owner's LB deck face up, at once. */
@@ -39,6 +40,8 @@ export type Event =
   | { type: 'deckExposed'; player: PlayerId; count: number; audience: 'self' | 'all'; cards: readonly CardId[]; scope: 'top' | 'deck' }
   /** A card put onto the field from the deck without being cast — Hugh Yurg's search (spec C9). */
   | { type: 'playedFromDeck'; player: PlayerId; card: CardId }
+  /** A card put onto the field from its owner's hand by an effect, without being cast (rung V1-A2, §15.1.1.7). */
+  | { type: 'playedFromHand'; player: PlayerId; card: CardId }
   /** A card taken from an exposure into its owner's hand. */
   | { type: 'addedToHand'; player: PlayerId; card: CardId }
   /** A card removed from the game (spec C7-3). Distinct from breaking and from discarding. */

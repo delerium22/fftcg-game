@@ -162,6 +162,14 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
       case 'activate':
         if (loc && status === 'dull') { d += power / 1000 + 1; status = 'active' }
         break
+      // Hand selects (rung V1-A2). A discard loses the card; playing one onto the field is a free cast of it, priced
+      // by the card itself — the tempo of its cost is what `cardValue` stands for. Either needs the card in hand.
+      case 'discard':
+        if (inHand(state, id)) d -= cardValue(def)
+        break
+      case 'playOntoField':
+        if (inHand(state, id) && (def.type === 'forward' || def.type === 'backup')) d += cardValue(def)
+        break
       case 'moveToHand':
         // From the field this is removal (that side loses a body and keeps the card); from the Break Zone it is
         // retrieval — pure gain, priced by the card itself. `cardValue` is what makes C2-9's "Character"
@@ -191,6 +199,12 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
     }
   }
   return d
+}
+
+/** Is `id` in its owner's hand (rung V1-A2)? */
+const inHand = (state: GameState, id: CardId): boolean => {
+  const owner = state.cards[id]?.owner
+  return owner !== undefined && state.players[owner].hand.includes(id)
 }
 
 /**

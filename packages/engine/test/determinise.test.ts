@@ -8,7 +8,8 @@ import { determinise, SYNTHETIC_ID_BASE } from '../src/determinise.js'
 import { knows, learn } from '../src/state.js'
 import { nextInt, seedRng } from '../src/rng.js'
 import type { Ability, CardId, GameState, PlayerId } from '../src/index.js'
-import { DEFAULT_DECK, VANILLA_POOL, deckOf, makeGame } from './helpers.js'
+import { DEFAULT_DECK, VANILLA_POOL, deckOf, makeDef, makeGame, withField, withHand } from './helpers.js'
+import { drainResolution, enqueueTrigger } from '../src/resolve.js'
 
 const DECKS: [string[], string[]] = [DEFAULT_DECK, DEFAULT_DECK]
 
@@ -367,6 +368,54 @@ describe('a Summon on the stack (rung J1-A9)', () => {
       const q = det.players[0]
       const all = [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame, card].map((id) => det.cards[id]!.code).sort()
       expect(all).toEqual([...DEFAULT_DECK].sort())
+    }
+  })
+})
+
+describe('a select over your own hand is hidden from the other seat, and re-sampled (rung V1-A2, spec V1-D11)', () => {
+  // Yuna 27-129S's shape: "you may play 1 Forward of cost 3 from your hand onto the field."
+  const YUNA: Ability = { id: 'T-YUNA:etb', trigger: { kind: 'enterField' }, text: 'synthetic Yuna',
+    effects: [{ kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'forward', cost: 3 } }, then: [{ kind: 'playOntoField' }] }] }
+  const DEFS = [...VANILLA_POOL, makeDef({ code: 'T-YUNA', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [YUNA] })]
+  const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
+    const q = s.players[p]
+    return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame].map((id) => s.cards[id]!.code)
+  }) as [string[], string[]]
+
+  /** Player 0's Yuna resolving, a cost-3 Forward in hand: the select is owed by player 0. */
+  function yunaAsks(): GameState {
+    let s = makeGame({ defs: DEFS, decks: DECKS })
+    let yuna: CardId
+    ;[s] = withHand(s, 0, 'V-F5')
+    ;[s, yuna] = withField(s, 0, 'forwards', 'T-YUNA')
+    s = drainResolution(enqueueTrigger(s, yuna, 0, YUNA))[0]
+    expect(s.pending).toMatchObject({ kind: 'chooseTargets', player: 0 })
+    expect(checkInvariants(s)).toEqual([])
+    return s
+  }
+
+  it('the other seat sees the bounds and nothing else: no candidate, marked hidden; the selector sees them all', () => {
+    const s = yunaAsks()
+    const live = s.pending as Extract<GameState['pending'], { kind: 'chooseTargets' }>
+    expect(viewFor(s, 1).pending, 'no id of player 0 hand anywhere in the pending').toEqual({ kind: 'chooseTargets', player: 0, min: live.min, max: live.max, candidates: [], hidden: true })
+    expect(viewFor(s, 0).pending).toEqual(live)
+    expect(live.candidates.length).toBeGreaterThan(0)
+    expect(live.candidates.every((id) => s.players[0].hand.includes(id))).toBe(true)
+  })
+
+  it('determinise rebuilds the pending from the sampled hand: legal, answerable, still hidden', () => {
+    const s = yunaAsks()
+    const view = viewFor(s, 1)
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const [det] = determinise({ view, decks: decksOf(s), rng: seedRng(seed) })
+      const p = det.pending as Extract<GameState['pending'], { kind: 'chooseTargets' }>
+      expect(p.hidden).toBe(true)
+      expect(p.candidates.every((id) => det.players[0].hand.includes(id) && det.defs[det.cards[id]!.code]!.cost === 3), `seed ${seed}`).toBe(true)
+      expect(p.max).toBe(Math.min(1, p.candidates.length))
+      expect(checkInvariants(det), `seed ${seed}`).toEqual([])
+      const legal = legalCommands(det, 0).filter((c) => c.type === 'chooseTargets')
+      expect(legal.length, `seed ${seed}`).toBeGreaterThan(0)
+      for (const c of legal) expect(() => apply(det, c), `seed ${seed}`).not.toThrow()
     }
   })
 })
