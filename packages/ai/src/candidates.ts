@@ -192,6 +192,9 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
         break
       // `liveEffects` replaced every `if` with the branch that would run now, so none reaches here (rung V1-A1).
       case 'if': break
+      // "When you do so" (rung V1-D, R2): its value is the reflexive clause's, for the CONTROLLER, whichever card is
+      // picked here — not a change to this target's side, so `targetScore` adds it (`reflexiveValue`), not this.
+      case 'triggerReflexive': break
       // chooseTargets / chooseModes / forEach: nested, deliberately unpriced. `onSubject` (C2-5) belongs here
       // too but for a different reason — it acts on the TRIGGER EVENT's card, never on the one being chosen, so
       // its value is independent of this ranking whatever it contains. `onSource` (V1-A4) likewise acts on the
@@ -226,6 +229,25 @@ function liveEffects(state: GameState, source: CardId, controller: PlayerId, eff
 
 const targetScore = (state: GameState, me: PlayerId, source: CardId, controller: PlayerId, effects: readonly Effect[], id: CardId): number =>
   (sideOf(state, id) === me ? 1 : -1) * targetDelta(state, source, controller, effects, id)
+  + reflexiveValue(state, me, source, controller, liveEffects(state, source, controller, effects, [id]))
+
+/**
+ * What the "when you do so" clauses `effects` would fire are worth to `me` (rung V1-D, R2): each `triggerReflexive`
+ * priced as the reflexive clause's own effects, one ply out (`effectsValue`). The same for every pick of the chooser
+ * above, so it moves no ranking — what it moves is `bestSize`: without it Vincent's "you may put 1 Fire Backup" scores
+ * only the lost Backup, and the AI never takes the 9000 it buys. Game creation refuses a reflexive clause that fires
+ * another, so this never recurses more than once.
+ */
+function reflexiveValue(state: GameState, me: PlayerId, source: CardId, controller: PlayerId, effects: readonly Effect[]): number {
+  let v = 0
+  for (const eff of effects) {
+    if (eff.kind !== 'triggerReflexive') continue
+    const code = state.cards[source]?.code
+    const reflexive = (code === undefined ? undefined : state.defs[code])?.abilities?.find((a) => a.id === eff.abilityId)
+    if (reflexive) v += effectsValue(state, me, source, controller, reflexive.effects)
+  }
+  return v
+}
 
 /** Descending score, ties broken by ascending id/index — a total order, so ranking is deterministic. */
 function rankBy(items: readonly number[], score: (x: number) => number): { ranked: number[]; scores: number[] } {
@@ -296,6 +318,9 @@ function effectsValue(state: GameState, me: PlayerId, source: CardId, controller
     } else if (eff.kind === 'if') {
       // The branch that would run now (rung V1-A1). No card is bound at this level, so `subjectMatches` reads false.
       v += effectsValue(state, me, source, controller, conditionHolds({ state, source, controller }, eff.when, []) ? eff.then : (eff.else ?? []))
+    } else if (eff.kind === 'triggerReflexive') {
+      // "When you do so" at this level (rung V1-D, R2): the reflexive clause's own worth.
+      v += reflexiveValue(state, me, source, controller, [eff])
     }
     // Everything else needs a `chosen` binding it does not have at this level, so it contributes nothing.
   }

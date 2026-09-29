@@ -165,6 +165,8 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
         // Leaves: nothing nested. Listed so a new CONTAINER kind fails to compile here instead of going unwalked.
         case 'dull': case 'freeze': case 'breakCard': case 'putIntoBreakZone': case 'activate': case 'discard': case 'addPower': case 'grantKeyword': case 'grantFlag':
         case 'moveToHand': case 'draw': break
+        // Rung V1-D: a reflexive clause of THIS card. Checked per card below, where the card's clauses are known.
+        case 'triggerReflexive': break
         default: { const _exhaustive: never = e; return _exhaustive }
       }
     }
@@ -194,8 +196,28 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
       }
     }
     walk(d.code, a.id, a.effects, null, false, false)
+    // Rung V1-D (plan D-D2): `triggerReflexive` names a `reflexive` clause of the same card, and a reflexive clause fires
+    // none — the engine's step cap would stop a cycle, but the AI follows the reference to price it, with no cap.
+    for (const target of reflexiveTargets(a.effects)) {
+      if (!(d.abilities ?? []).some((b) => b.id === target && b.trigger.kind === 'reflexive')) problems.push(`${d.code}: ${a.id} triggers ${target}, which is not a reflexive clause of this card`)
+    }
+    if (a.trigger.kind === 'reflexive' && reflexiveTargets(a.effects).length > 0) problems.push(`${d.code}: ${a.id} is a reflexive clause that triggers a reflexive clause`)
   }
   return problems
+}
+
+/** Every `triggerReflexive` target in `effects`, at any depth. */
+function reflexiveTargets(effects: readonly Effect[]): string[] {
+  return effects.flatMap((e): string[] => {
+    switch (e.kind) {
+      case 'triggerReflexive': return [e.abilityId]
+      case 'chooseTargets': return reflexiveTargets(e.then)
+      case 'chooseModes': return e.modes.flatMap((m) => reflexiveTargets(m.effects))
+      case 'forEach': case 'onSubject': case 'onSource': return reflexiveTargets(e.do)
+      case 'if': return [...reflexiveTargets(e.then), ...reflexiveTargets(e.else ?? [])]
+      default: return []
+    }
+  })
 }
 
 /** Can this effect (or anything nested in it) raise a prompt? */
