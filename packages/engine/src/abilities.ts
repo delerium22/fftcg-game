@@ -529,6 +529,15 @@ export interface Ability {
    */
   readonly id: string
   readonly trigger: AbilityTrigger
+  /**
+   * A CONDITIONAL auto-ability (§11.8.13, rung V1-D): "(trigger), if (condition), (effect)" — Ultima Weapon's "When …
+   * enters the field, if you control 4 or more Water Characters, …". Read for the source's controller as the event
+   * happens (`enqueueTrigger`): false, the clause does not trigger at all. Read again as the item starts resolving
+   * (§11.11.3): false then, it is removed from the stack and does nothing (`stackCancelled`, reason `condition`).
+   * Only an auto-ability triggers, so game creation refuses it on an activated or a static ability. An effect-level
+   * "If …" after a choice (Ultima Weapon's Fire clause) is an `if` effect, not this.
+   */
+  readonly triggerIf?: StaticCondition
   /** The printed wording this AST encodes, quoted verbatim. Reviewers check the AST against THIS. */
   readonly text: string
   readonly effects: readonly Effect[]

@@ -160,7 +160,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 11.8.10.2 | No selectable mode: it does not trigger | n/a | none in the pool |
 | 11.8.11 | Variable costs | n/a | none in the pool |
 | 11.8.12 | Effects applying differently | n/a | none in the pool |
-| 11.8.13 | Conditional auto-abilities check at trigger and at resolution | n/a | none in the pool |
+| 11.8.13 | Conditional auto-abilities check at trigger and at resolution | tested | engine/conditional-triggers#does not trigger with the condition unmet; engine/conditional-triggers#becomes true only after the event; engine/conditional-triggers#became false while the item waited |
 | 11.8.14 | "You may": placed regardless, decided at resolution | tested | cards/abilities#24-063H Hugh Yurg — "you may search |
 | 11.8.15 | Only when the event actually occurs; a replaced event does not trigger | n/a | no replacement effects in the pool and no AST node for one (§11.12.5 is out of scope) |
 | 11.8.16 | Zone movement triggers | tested | engine/observer-triggers#C2-A2 |
@@ -184,7 +184,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 11.11.1 | Both forfeit: the top of the stack resolves | tested | engine/cr11-stack#J1-A2; engine/timing-l2-compositions#L2-a |
 | 11.11.2 | All chosen targets invalid: cancelled | tested | engine/cr11-stack#J1-A7 |
 | 11.11.2.1 | Some still valid: applies to those | tested | engine/cr11-stack#an item whose declared target is still there |
-| 11.11.3 | Conditional auto-abilities re-check | n/a | none in the pool |
+| 11.11.3 | Conditional auto-abilities re-check | tested | engine/conditional-triggers#became false while the item waited |
 | 11.11.4 | A moved source is read as it was before it left | simplified | packages/engine/src/abilities.ts |
 | 11.11.5 | The controller resolves per the text | tested | engine/abilities-engine#choices suspend the frame |
 | 11.11.5.1 | Choices not declared at cast are made at resolution | tested | engine/abilities-engine#a nested chooseModes → chooseTargets chain |

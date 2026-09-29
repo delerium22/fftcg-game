@@ -656,6 +656,15 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
     expect(text({ type: 'playedFromHand', player: AI, card: anyCard })).toBe('The AI plays Ramuh onto the field from its hand')
   })
 
+  it('says why an item left the stack unresolved (rung V1-D, R4)', () => {
+    const text = (e: Parameters<typeof describeEvent>[1]): string => describeEvent(view, e)?.text ?? ''
+    const ability = { kind: 'ability', source: anyCard, abilityId: DULL_TWO.id } as const
+    expect(text({ type: 'stackCancelled', item: ability, reason: 'condition' })).toBe("Ramuh's ability is removed from the stack — its condition no longer holds")
+    expect(text({ type: 'stackCancelled', item: ability, reason: 'targetsGone' })).toBe("Ramuh's ability is removed from the stack — every target it chose is gone")
+    expect(text({ type: 'stackCancelled', item: { kind: 'summon', card: RAMUH }, reason: 'noTargetAtPlacement' }))
+      .toBe('Ramuh is removed from the stack — it had no legal target as it was put on')
+  })
+
   it('still names a card an ability moved from a public zone into a hidden hand', () => {
     // Billy Bob returns a Forward from the Break Zone to its owner's HAND. Narrated from the after-view alone
     // that card has no name left, and the log reads `#51 returns to the AI's hand`.

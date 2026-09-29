@@ -56,11 +56,12 @@ export type Event =
    * Rung J1-D13, the stack's lifecycle. `item` is what went on (a Summon card, or an ability by source and
    * clause); `controller` who put it there. `stackResolved` fires when the item has finished — prompts
    * included — and `stackCancelled` when it was removed unresolved (no legal target at placement, §11.8.4;
-   * every declared target gone at resolution, §11.11.2).
+   * every declared target gone at resolution, §11.11.2; a conditional auto-ability's condition no longer met as it
+   * resolves, §11.11.3, rung V1-D).
    */
   | { type: 'stackPushed'; item: StackRef; controller: PlayerId }
   | { type: 'stackResolved'; item: StackRef }
-  | { type: 'stackCancelled'; item: StackRef; reason: 'noTargetAtPlacement' | 'targetsGone' }
+  | { type: 'stackCancelled'; item: StackRef; reason: 'noTargetAtPlacement' | 'targetsGone' | 'condition' }
   /**
    * Coverage is per CLAUSE (spec C1-9). `clauses` counts the printed clauses still unimplemented; it is OMITTED
    * when nothing on the card is implemented, which keeps the shape of the vanilla-pool log line unchanged.

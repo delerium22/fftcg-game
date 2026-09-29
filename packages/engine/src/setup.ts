@@ -50,8 +50,7 @@ function emptyPlayer(): PlayerState {
  */
 export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
   const problems: string[] = []
-  // Rung V1-A3: `sameElementAsChosen` is refused here too — a continuous effect has no choice to resolve it against.
-  const instanceAxes = ['minPower', 'maxPower', 'status', 'grantedKeyword', 'excludeSource', 'excludeSourceName', 'putIntoBreakZoneFromFieldThisTurn', 'sameElementAsChosen']
+  const instanceAxes = INSTANCE_AXES
   for (const d of defs) {
     for (const a of d.abilities ?? []) {
       if (a.trigger.kind !== 'static') continue
@@ -77,6 +76,9 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
   }
   return problems
 }
+
+/** Rung V1-A3: `sameElementAsChosen` is among them — a continuous effect or a condition has no choice to resolve it against. */
+const INSTANCE_AXES = ['minPower', 'maxPower', 'status', 'grantedKeyword', 'excludeSource', 'excludeSourceName', 'putIntoBreakZoneFromFieldThisTurn', 'sameElementAsChosen']
 
 /**
  * Every key a filter uses, an `anyOf` member's included (rung V1-A3): a member is typed `DefFilter`, but data arriving
@@ -178,6 +180,19 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
       if (discards && !special) problems.push(`${d.code}: ${a.id} has the same-name discard without being a special ability (§11.7.1)`)
     }
     if (a.trigger.kind === 'observesEnterField' && resolvesChosen(a.trigger.filter)) problems.push(`${d.code}: ${a.id} uses sameElementAsChosen in a trigger condition`)
+    // §11.8.13 (rung V1-D): only an auto-ability triggers, so only one may carry a trigger condition. A Summon's effect
+    // is not an auto-ability, and an EX Burst's resolution skips the stack that §11.11.3's re-check removes it from.
+    if (a.triggerIf !== undefined) {
+      if (['activated', 'static', 'summonResolve'].includes(a.trigger.kind)) problems.push(`${d.code}: ${a.id} has a trigger condition on an ability that does not trigger`)
+      if (a.exBurst === true) problems.push(`${d.code}: ${a.id} has a trigger condition on an EX BURST clause`)
+      // Read by `staticApplies` like a static's `when`, so checked the way `validateContinuousStatics` checks one.
+      const when = a.triggerIf
+      if (when.kind === 'controlsAtLeast') {
+        for (const k of filterKeys(when.filter)) if (INSTANCE_AXES.includes(k)) problems.push(`${d.code}: ${a.id} counts on instance axis ${k}`)
+        if (!Number.isInteger(when.count) || when.count < 1) problems.push(`${d.code}: ${a.id} has a condition count ${String(when.count)}; it must be a whole number ≥ 1`)
+        if (!['self', 'opponent'].includes(when.controller)) problems.push(`${d.code}: ${a.id} has an unknown condition controller`)
+      }
+    }
     walk(d.code, a.id, a.effects, null, false, false)
   }
   return problems
