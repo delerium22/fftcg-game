@@ -3,7 +3,7 @@ import type { CardId, CardInstance, GameState, PlayerState } from './state.js'
 import type { PlayerView } from './view.js'
 import { shuffle, type Rng } from './rng.js'
 import { effectAtPath } from './abilities.js'
-import { abilityOf, targetCandidates } from './resolve.js'
+import { abilityOf, resolveChosenSpec, targetCandidates } from './resolve.js'
 
 export const SYNTHETIC_ID_BASE = 100_000
 /**
@@ -118,6 +118,6 @@ function rebuildHiddenPending(state: GameState): GameState {
   const ability = abilityOf(state, frame)
   const node = ability ? effectAtPath(ability.effects, frame.path, frame.modes) : null
   if (node?.kind !== 'chooseTargets') return state
-  const candidates = targetCandidates(state, frame.source, frame.controller, node.from)
+  const candidates = targetCandidates(state, frame.source, frame.controller, resolveChosenSpec(state, node.from, frame.chosen))
   return { ...state, pending: { ...pending, candidates, min: Math.min(node.min, candidates.length), max: Math.min(node.max, candidates.length), hidden: true } }
 }

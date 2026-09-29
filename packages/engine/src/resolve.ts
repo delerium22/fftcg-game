@@ -174,6 +174,28 @@ export function conditionHolds(ctx: { state: GameState; source: CardId | null; c
 }
 
 /**
+ * Replace `sameElementAsChosen` with the concrete `elementIn` it means here (rung V1-A3, spec V1-D12, R1): the Elements
+ * of `chosen[0]` — the card the enclosing choice bound — read off its printing, wherever it now is. Nothing chosen is
+ * `elementIn: []`, which matches nothing. A filter without the axis is returned as is, so the common path allocates
+ * nothing. Called where the executor builds candidates or raises a pending, never inside a filter.
+ */
+export function resolveChosenFilter(state: GameState, filter: TargetFilter | undefined, chosen: readonly CardId[]): TargetFilter | undefined {
+  if (filter?.sameElementAsChosen === undefined) return filter
+  const rest: TargetFilter = { ...filter }
+  delete (rest as { sameElementAsChosen?: true }).sameElementAsChosen
+  const first = chosen[0]
+  const def = first === undefined ? undefined : defFor(state, first)
+  return { ...rest, elementIn: def ? [...def.elements] : [] }
+}
+
+/** `resolveChosenFilter` over a whole `TargetSpec`. */
+export function resolveChosenSpec(state: GameState, spec: TargetSpec, chosen: readonly CardId[]): TargetSpec {
+  if (spec.filter?.sameElementAsChosen === undefined) return spec
+  const filter = resolveChosenFilter(state, spec.filter, chosen)
+  return filter ? { ...spec, filter } : spec
+}
+
+/**
  * The legal targets of one `TargetSpec`, in a fixed player-0-then-1 order so a live state and its
  * determinisation enumerate the same candidates in the same order (spec C1-A6).
  */
@@ -365,7 +387,7 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       // node with none left is skipped. (Whether the WHOLE item is cancelled was decided in `runFrame`.)
       const pre = ctx.stage === 'resolve' ? ctx.declared.find((d) => samePath(d.path, ctx.path)) : undefined
       if (pre) {
-        const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)
+        const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, resolveChosenSpec(ctx.state, eff.from, ctx.chosen))
         const valid = pre.targets.filter((t) => candidates.includes(t))
         if (valid.length === 0) return
         const outer = ctx.chosen
@@ -374,7 +396,8 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         if (!ctx.suspend) ctx.chosen = outer
         return
       }
-      const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)
+      // Rung V1-A3: `sameElementAsChosen` reads the ENCLOSING binding, which is `ctx.chosen` here.
+      const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, resolveChosenSpec(ctx.state, eff.from, ctx.chosen))
       // A select with nothing to select does nothing, and says nothing: it is not a failed choice (§11.3.3). It is
       // only ever reached resolving, so there is no placement to cancel.
       if (eff.select !== undefined && candidates.length === 0) return
@@ -441,7 +464,9 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         kind: 'chooseFromDeck', player: ctx.controller,
         min: eff.take.min, max: eff.take.max, count: exposed.length, to: eff.to,
         scope: eff.count === 'all' ? 'deck' : 'top',
-        ...(eff.take.filter ? { filter: eff.take.filter } : {}),
+        // Rung V1-A3 (spec V1-D12, R1): resolved HERE, against the binding, so the filter that travels on the pending —
+        // and that `deckPickCandidates` re-reads in every determinised world — names concrete Elements only.
+        ...(eff.take.filter ? { filter: resolveChosenFilter(ctx.state, eff.take.filter, ctx.chosen) as TargetFilter } : {}),
       }
       // Asked through the SAME function that will validate the answer, and against the same state. Computing
       // it inline here instead left two implementations of "which positions does this filter allow" — so the
@@ -990,7 +1015,8 @@ export function chooseTargetsCheck(state: GameState, player: PlayerId, targets: 
   const node = effectAtPath(ability.effects, frame.path, frame.modes)
   if (!node || node.kind !== 'chooseTargets') return 'the waiting ability is not choosing targets'
   if (new Set(targets).size !== targets.length) return 'duplicate target'
-  const candidates = targetCandidates(state, frame.source, frame.controller, node.from)
+  // A suspended frame's `chosen` is the enclosing binding (rung V1-A3), which is what `sameElementAsChosen` reads.
+  const candidates = targetCandidates(state, frame.source, frame.controller, resolveChosenSpec(state, node.from, frame.chosen))
   const max = Math.min(node.max, candidates.length)
   // A select's `min` clamps as its `max` does (rung V1-A2). Live, a select is only raised over at least `min`
   // candidates, so this changes nothing there; it keeps a determinised hand select that sampled fewer answerable.

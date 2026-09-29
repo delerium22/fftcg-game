@@ -44,6 +44,11 @@ const CASES: Record<keyof TargetFilter, (b: ReturnType<typeof board>) => { filte
   excludeSource: (b) => ({ filter: { excludeSource: true }, expect: [b.cloud, b.nobody] }),          // source is Kain
   excludeSourceName: (b) => ({ filter: { excludeSourceName: true }, expect: [b.cloud, b.nobody] }),
   putIntoBreakZoneFromFieldThisTurn: () => ({ filter: { putIntoBreakZoneFromFieldThisTurn: true }, expect: [] }),
+  // Rung V1-A3 (spec V1-D12): any member matching is enough; `elementIn` is any of the listed Elements.
+  anyOf: (b) => ({ filter: { anyOf: [{ name: 'Cloud' }, { job: 'Dragoon' }] }, expect: [b.kain, b.cloud] }),
+  elementIn: (b) => ({ filter: { elementIn: ['earth', 'fire'] }, expect: [b.cloud, b.nobody] }),
+  // A `resolved` axis: the executor replaces it before anything filters; asked unresolved, it throws (R1).
+  sameElementAsChosen: () => ({ filter: { sameElementAsChosen: true }, expect: [] }),
 }
 
 describe('J5-A2 — every axis in FILTER_AXES has a case, and each case selects what the axis means', () => {
@@ -51,6 +56,12 @@ describe('J5-A2 — every axis in FILTER_AXES has a case, and each case selects 
     it(`${axis} (${FILTER_AXES[axis]})`, () => {
       const b = board()
       const c = CASES[axis](b)
+      if (FILTER_AXES[axis] === 'resolved') {
+        // Never fails open (V1-A3 R1): an unresolved axis matching everything would hand a search the whole deck.
+        expect(() => pick(b.s, c.filter, b.kain)).toThrow(/sameElementAsChosen/)
+        expect(() => matchesDefFilter(DRAGOON, c.filter)).toThrow(/sameElementAsChosen/)
+        return
+      }
       expect(pick(b.s, c.filter, b.kain)).toEqual(c.expect)
       // A def-only axis must answer the same through `matchesDefFilter`, which is what the search's decoder asks of a view.
       if (FILTER_AXES[axis] === 'def') {
