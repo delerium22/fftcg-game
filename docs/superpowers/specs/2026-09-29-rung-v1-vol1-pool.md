@@ -102,6 +102,25 @@ readings from the plan and its revisions R1–R10:
   same-name card out of the CP sources and `hasAnyActivation` skips a payment that spends the last copy (L1/L2); a
   select is not a choice for `needsChoice` (L3); the policy's `effectsValue` resolves the axis against nothing (L4).
 
+**As built (V1-A4), 2026-09-30.** Commits a9c1f47 (`onSource`), a45c9a8 (the `characters` zone). The V1-B plan's R1,
+split out ahead of the cards. Deviations and readings from the plan:
+- `onSource` binds `chosen` to `[source]` even when the source has left the field (§11.11.7). `addPower`,
+  `grantKeyword` and the other field effects already skip a card that is not on the field, so this is a no-op, not a
+  throw. The Layer 1 case uses a `selfToBreakZone` cost to remove the source before resolution.
+- Game creation refuses a prompt anywhere inside `onSource.do` ("prompts inside onSource"); the executor also throws, as
+  for `onSubject`. The plan said "like `onSubject`", but `validateEffects` does NOT refuse a prompt inside `onSubject`
+  (only the executor throws). `onSubject` is unchanged.
+- The AI prices `onSource` only in `effectsValue` (a mode's worth): `targetScore` of `do` on the source. It is equal to
+  the same grant on a chosen own Forward. Inside a chooser's `then`, `targetDelta` still gives it 0, since its value
+  does not depend on which card is picked. The greedy case (activate the `[0]` pump rather than pass) needed no AI
+  change: `evaluate` already reads `powerBonus`.
+- `characters` lists a player's Forwards, then Backups, player 0 then 1. No other zone switch needed a change;
+  `validateEffects` has no zone rule for it. The web names a candidate set that sits in both field zones "Character(s)
+  you control" / "the AI controls"; a `characters` choice whose candidates are all Forwards still reads "Forward",
+  because the noun is read from where the candidates sit.
+- Not touched (V1-D16): `describeAbilityEffect` reads the printed text; no new pending shape (`keys.ts`), no new state
+  field (`checkInvariants`), no timing-matrix row.
+
 ## Source and the list (V1-D1)
 
 Starter Set 2025 Vol. 1 is Fire/Water, built around Zack: 50 main-deck cards and an 8-card LB deck (official product
