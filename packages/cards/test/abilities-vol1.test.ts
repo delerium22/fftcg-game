@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { CardId, FieldCard, GameState } from '@fftcg/engine'
-import { checkInvariants, deckPickCandidates, findFieldCard, legalCommands, powerOf } from '@fftcg/engine'
+import { checkInvariants, deckPickCandidates, findFieldCard, legalCommands, powerOf, viewFor } from '@fftcg/engine'
 import { VOL1_ABILITIES, VOL1_CLAUSES } from '../src/abilities-vol1.js'
-import { DEFS, FIRE_BACKUP, WATER_BACKUP, applyNow, makeGame, withCp, withDeckTops, withField, withHand } from './harness.js'
+import { loadCards, parseDeckFile } from '../src/index.js'
+import { DEFS, FIRE_BACKUP, WATER_BACKUP, applyNow, endPhase, makeGame, withCp, withDeckTops, withField, withHand } from './harness.js'
 
 /**
  * Rung V1-B: the Starter Set 2025 Vol. 1 cards (spec 2026-09-29-rung-v1-vol1-pool.md, V1-D1/D3/D4), tested against the
@@ -226,5 +228,157 @@ describe('22-112R Zack — "Limit Break -- 1", "When Zack enters the field, choo
     const t = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] }).state
     expect(fc(t, victim)).toBeUndefined()
     ok(t)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Draw and search: Machinist, Geomancer, Leo, Yuna, LB Luso (Leonora is above, with the EX BURST cards)
+// ---------------------------------------------------------------------------
+
+describe('C3-shaped hand draws, on the Vol. 1 Standard Units', () => {
+  const offered = (s: GameState, source: CardId, abilityId: string) =>
+    legalCommands(s, 0).filter((c) => c.type === 'activateAbility' && c.source === source && c.abilityId === abilityId)
+
+  for (const [code, element, other] of [['18-003C', FIRE_BACKUP, WATER_BACKUP], ['18-094C', WATER_BACKUP, FIRE_BACKUP]] as const) {
+    it(`${code} — "[${code === '18-003C' ? 'Fire' : 'Water'}], discard ${code === '18-003C' ? 'Machinist' : 'Geomancer'}: Draw 1 card. You can only use this ability if … is in your hand."`, () => {
+      let s = makeGame(); let src: CardId
+      ;[s, src] = withHand(s, 0, code)
+      ;[s] = withCp(s, 0, [element])
+      const before = s.players[0].hand.length
+      const cmds = offered(s, src, `${code}:draw`)
+      expect(cmds.length).toBeGreaterThan(0)
+      const r = apply(s, cmds[0]!)
+      expect(r.state.players[0].hand.length, '-1 for the discarded source, +1 for the draw').toBe(before)
+      expect(r.state.players[0].breakZone).toContain(src)
+      ok(r.state)
+    })
+
+    it(`${code} needs its own Element and is not usable from the field`, () => {
+      let s = makeGame(); let inHand: CardId; let onField: CardId
+      ;[s, inHand] = withHand(s, 0, code)
+      ;[s] = withCp(s, 0, [other])
+      expect(offered(s, inHand, `${code}:draw`), 'the other Element cannot pay').toEqual([])
+      ;[s, onField] = withField(s, 0, 'backups', code)
+      ;[s] = withCp(s, 0, [element])
+      expect(offered(s, onField, `${code}:draw`)).toEqual([])
+    })
+  }
+})
+
+describe('22-123R Leo — "Limit Break -- 1", "When Leo enters the field, draw 1 card."', () => {
+  it('parses to LB 1 with one clause; on entering its controller draws 1', () => {
+    const d = def('22-123R')
+    expect([d.limitBreak, d.abilityClauses, (d.abilities ?? []).map((a) => a.id)]).toEqual([1, 1, ['22-123R:etb']])
+    const r = cast(makeGame(), '22-123R', Array<string>(3).fill(WATER_BACKUP))
+    expect(r.state.players[0].hand.length, 'Leo left the hand, then one card was drawn').toBe(1)
+    expect(r.events).toContainEqual({ type: 'drew', player: 0, count: 1 })
+    ok(r.state)
+  })
+})
+
+describe('27-129S Yuna — "When Yuna enters the field, you may play 1 Forward of cost 3 from your hand onto the field."', () => {
+  function castYuna() {
+    let s = makeGame(); let ward: CardId; let charlotte: CardId; let palom: CardId
+    ;[s, ward] = withHand(s, 0, '21-001R')        // a Forward of cost 3
+    ;[s, charlotte] = withHand(s, 0, '27-128S')   // a Forward of cost 4
+    ;[s, palom] = withHand(s, 0, '13-013C')       // a Backup of cost 2
+    const r = cast(s, '27-129S', Array<string>(4).fill(WATER_BACKUP))
+    return { r, ward, charlotte, palom }
+  }
+
+  it('selects among the cost-3 Forwards in hand only; the opponent\u2019s view carries no hand id', () => {
+    const { r, ward } = castYuna()
+    expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 0, max: 1, candidates: [ward] })
+    expect(JSON.stringify(viewFor(r.state, 1).pending), 'the select is over a hidden hand').not.toContain(String(ward))
+  })
+
+  it('plays the selected Forward without a cast; its own ETB fires. Declining plays nothing', () => {
+    const { r, ward } = castYuna()
+    const played = apply(r.state, { type: 'chooseTargets', player: 0, targets: [ward] })
+    expect(fc(played.state, ward)).toBeDefined()
+    expect(played.events).toContainEqual({ type: 'playedFromHand', player: 0, card: ward })
+    expect(played.events.some((e) => e.type === 'cast' && e.card === ward), 'playing is not casting (§15.1.1.7)').toBe(false)
+    expect(played.state.pending, 'Ward\u2019s ETB chooses its target').toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0 }))
+    const declined = apply(r.state, { type: 'chooseTargets', player: 0, targets: [] })
+    expect(declined.state.players[0].hand).toContain(ward)
+    ok(declined.state)
+  })
+})
+
+describe('27-129S Yuna — "When Yuna attacks, look at the top 3 cards of your deck. Add 1 card among them to your hand …"', () => {
+  it('fires on the attack declaration: a private look at three, one to hand, two to the bottom', () => {
+    let s = endPhase(makeGame()); let yuna: CardId; let tops: CardId[]
+    ;[s, yuna] = withField(s, 0, 'forwards', '27-129S')
+    ;[s, tops] = withDeckTops(s, 0, ['13-013C', '11-121C', '18-003C'])
+    const r = apply(s, { type: 'declareAttack', player: 0, attackers: [yuna] })
+    const p = r.state.pending
+    expect(p?.kind).toBe('chooseFromDeck')
+    if (p?.kind !== 'chooseFromDeck') throw new Error('unreachable')
+    expect([p.count, p.min, p.max]).toEqual([3, 1, 1])
+    const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [2] })
+    expect(done.state.players[0].hand).toContain(tops[2])
+    expect(done.state.players[0].deck.slice(-2), 'the other two, to the bottom').toEqual([tops[0], tops[1]])
+    ok(done.state)
+  })
+})
+
+describe('23-130H Luso — "When Luso enters the field, choose 1 Character you control. You may search for 1 Job Standard Unit of the same Element as the chosen Character …"', () => {
+  function castLuso(pick: 'fire' | 'water' | 'luso') {
+    let s = makeGame(); let fire: CardId; let water: CardId; let found: CardId[]
+    ;[s, fire] = withField(s, 0, 'forwards', '21-001R')     // Ward, a Fire Character to choose
+    ;[s, water] = withField(s, 0, 'forwards', '20-106R')    // Alphinaud, a Water one
+    ;[s, found] = withDeckTops(s, 0, ['11-010C', '18-094C', '13-013C'])          // Fire Standard Unit, Water Standard Unit, Fire Black Mage
+    const r = cast(s, '23-130H', Array<string>(5).fill(FIRE_BACKUP))
+    expect(r.state.pending).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0, min: 1, max: 1 }))
+    if (r.state.pending?.kind !== 'chooseTargets') throw new Error('unreachable')
+    expect(r.state.pending.candidates, '"1 Character you control": Forwards and Backups, Luso included').toEqual(expect.arrayContaining([r.card, fire, water, ...r.state.players[0].backups.map((b) => b.id)]))
+    const chosen = pick === 'fire' ? fire : pick === 'water' ? water : r.card
+    return { t: apply(r.state, { type: 'chooseTargets', player: 0, targets: [chosen] }).state, found }
+  }
+
+  it('a Fire Character finds only the Fire Standard Unit; a Water one only the Water one', () => {
+    for (const [pick, want] of [['fire', 0], ['water', 1]] as const) {
+      const { t, found } = castLuso(pick)
+      const p = t.pending
+      if (p?.kind !== 'chooseFromDeck') throw new Error(`no search after choosing ${pick}`)
+      expect([p.min, p.max], '"you may search"').toEqual([0, 1])
+      expect(deckPickCandidates(t, p), pick).toEqual([want])
+      const done = apply(t, { type: 'chooseFromDeck', player: 0, picks: [want] })
+      expect(done.state.players[0].hand).toContain(found[want])
+      ok(done.state)
+    }
+  })
+
+  it('choosing Luso himself (Light) finds nothing, and the search still shuffles', () => {
+    const { t } = castLuso('luso')
+    const p = t.pending
+    expect(p === null || (p.kind === 'chooseFromDeck' && deckPickCandidates(t, p).length === 0), 'no Light Standard Unit').toBe(true)
+  })
+})
+
+describe('23-130H Luso — "When a Job Standard Unit enters your field, Luso gains +4000 power until the end of the turn."', () => {
+  it('pumps Luso when a Standard Unit enters its controller\u2019s field, and not for another Backup or the opponent\u2019s', () => {
+    let s = makeGame(); let luso: CardId
+    ;[s, luso] = withField(s, 0, 'forwards', '23-130H')
+    let r = cast(s, FIRE_BACKUP, [FIRE_BACKUP])
+    expect(powerOfId(r.state, luso), 'Machinist is a Job Standard Unit').toBe(9000)
+    r = cast(r.state, '13-013C', [FIRE_BACKUP, FIRE_BACKUP])   // Palom, a Black Mage — and the cast CP are only placed
+    expect(powerOfId(r.state, luso), 'Palom is not').toBe(9000)
+    ok(r.state)
+  })
+
+  it('PROOF for the observer\u2019s `of: backup` (R6): every Job Standard Unit that can enter LB Luso\u2019s controller\u2019s field is a Backup', () => {
+    // `observesEnterField.of` is ONE type, so "a Job Standard Unit enters" cannot say Forward or Backup. Luso ships only
+    // in the Vol. 1 LB deck and watches only his controller's field, which the Vol. 1 main deck fills (Yuna and Taivas
+    // play from that hand, the searches take from that deck). Across BOTH pools the claim is false: Dragoon 1-147C
+    // (Vol. 2) is a Forward Standard Unit. A deck pairing Vol. 1's LB deck with Vol. 2's main deck would reach the gap.
+    const vol1 = new Set(['starter-2025-vol1.txt', 'starter-2025-vol1-lb.txt']
+      .flatMap((f) => parseDeckFile(readFileSync(new URL(`../../../decks/${f}`, import.meta.url), 'utf8'))))
+    expect(vol1.has('23-130H'), 'Luso is in the Vol. 1 LB deck').toBe(true)
+    const units = loadCards().filter((d) => vol1.has(d.code) && d.job?.split('/').includes('Standard Unit'))
+    expect(units.map((d) => d.code).sort(), 'the Vol. 1 Standard Units').toEqual(['11-010C', '18-003C', '18-094C'])
+    expect(units.filter((d) => d.type !== 'backup').map((d) => d.code)).toEqual([])
+    const elsewhere = loadCards().filter((d) => !vol1.has(d.code) && d.job?.split('/').includes('Standard Unit') && d.type !== 'backup')
+    expect(elsewhere.map((d) => d.code), 'the known Forward Standard Unit outside Vol. 1').toEqual(['1-147C'])
   })
 })
