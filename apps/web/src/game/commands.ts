@@ -1104,7 +1104,11 @@ function sameIds(a: readonly CardId[], b: readonly CardId[]): boolean {
   return [...a].sort((x, y) => x - y).every((id, i) => id === sortedB[i])
 }
 
-/** Payments are sets of sources, not sequences — `legalCommands` and `preferredPayment` build them in different orders. */
+/**
+ * Payments are sets of sources, not sequences — `legalCommands` and `preferredPayment` build them in different orders.
+ * `sameName` (rung V1-A3) is deliberately not compared: `preferredPaymentFor` builds CP only, and matching it against
+ * the listed special ability keeps the listed command, same-name card included; a CP-less special never opens the tray.
+ */
 export function samePayment(a: Payment, b: Payment): boolean {
   if (!sameIds(a.dullBackups, b.dullBackups)) return false
   if (!sameIds(a.lbFlip ?? [], b.lbFlip ?? [])) return false   // rung J8: which LB cards turn face up is part of the payment
@@ -1245,8 +1249,14 @@ export function activatedAbilityOf(v: PlayerView, source: CardId, abilityId: str
   return (def?.abilities ?? []).find((a) => a.id === abilityId)
 }
 
-/** The printed cost of one activated clause, for the button label. */
+/**
+ * The printed cost of one activated clause, for the button label. A special ability (§11.7, rung V1-A3) leads with its
+ * proper name — "Jecht Beam [Dull], discard Jecht" — the way the card prints it before its S icon, and its cost names
+ * the card its same-name discard takes.
+ */
 function activatedCostOf(v: PlayerView, source: CardId, abilityId: string): string {
   const ability = activatedAbilityOf(v, source, abilityId)
-  return ability && ability.trigger.kind === 'activated' ? describeAbilityCost(ability.trigger.cost) : 'Ability'
+  if (!ability || ability.trigger.kind !== 'activated') return 'Ability'
+  const cost = describeAbilityCost(ability.trigger.cost, defFor(v, source)?.name)
+  return ability.trigger.special ? `${ability.trigger.special.name} ${cost}` : cost
 }

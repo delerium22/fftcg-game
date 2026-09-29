@@ -128,23 +128,23 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 11.6.11 | Activated; activation-triggers go on the stack; the activator regains priority | tested | engine/cr10-attack-windows#J1-A3 |
 | 11.6.12 | All targets ineligible at resolution: cancelled | tested | engine/cr11-stack#J1-A7 |
 | 11.7 | Special Abilities | heading |  |
-| 11.7.1 | Like action abilities plus a same-name discard; the S icon | n/a | none in the pool |
-| 11.7.2 | Written "(cost): (effect)" | n/a | none in the pool |
-| 11.7.2.1 | The text before the colon is the cost | n/a | none in the pool |
-| 11.7.2.2 | Dull-icon costs need control since the turn began, or Haste | n/a | none in the pool |
-| 11.7.2.3 | Dull/break costs use your own Characters | n/a | none in the pool |
-| 11.7.2.4 | Remove/return costs | n/a | none in the pool |
-| 11.7.3 | Put on the stack and the cost paid; a failed activation rewinds | n/a | none in the pool |
-| 11.7.4 | Declared, revealed, on top of the stack under the activator | n/a | none in the pool |
-| 11.7.5 | "Choose" needs a legal target | n/a | none in the pool |
-| 11.7.6 | Modal special abilities | n/a | none in the pool |
-| 11.7.6.1 | The mode count is fixed | n/a | none in the pool |
-| 11.7.7 | Cost references, alternative and variable costs | n/a | none in the pool |
-| 11.7.8 | Effects applying differently | n/a | none in the pool |
-| 11.7.9 | The cost is locked | n/a | none in the pool |
-| 11.7.10 | Paid all at once | n/a | none in the pool |
-| 11.7.11 | Activated; triggers go on the stack; the activator regains priority | n/a | none in the pool |
-| 11.7.12 | All targets ineligible at resolution: cancelled | n/a | none in the pool |
+| 11.7.1 | Like action abilities plus a same-name discard; the S icon | tested | engine/special-abilities#L1 §11.7.1 — with a same-name card in hand; engine/special-abilities#L1 §11.7.1 — with no same-name card in hand; engine/special-abilities#L1 §11.7.1 — the source never pays for itself |
+| 11.7.2 | Written "(cost): (effect)" | tested | engine/special-abilities#names the discard in the printed cost |
+| 11.7.2.1 | The text before the colon is the cost | tested | engine/special-abilities#names the discard in the printed cost |
+| 11.7.2.2 | Dull-icon costs need control since the turn began, or Haste | tested | engine/special-abilities#L1 §11.7.2.2 |
+| 11.7.2.3 | Dull/break costs use your own Characters | n/a | the pool's one special ability (Jecht Beam) dulls only its own source |
+| 11.7.2.4 | Remove/return costs | n/a | no special ability in the pool removes or returns a Character as a cost |
+| 11.7.3 | Put on the stack and the cost paid; a failed activation rewinds | simplified | packages/engine/src/activate.ts; engine/special-abilities#L1 §11.7.11 |
+| 11.7.4 | Declared, revealed, on top of the stack under the activator | simplified | packages/engine/src/activate.ts; engine/special-abilities#L1 §11.7.11 |
+| 11.7.5 | "Choose" needs a legal target | tested | engine/special-abilities#L1 §11.7.5 |
+| 11.7.6 | Modal special abilities | n/a | no special ability in the pool is modal |
+| 11.7.6.1 | The mode count is fixed | n/a | no special ability in the pool is modal |
+| 11.7.7 | Cost references, alternative and variable costs | n/a | no special ability in the pool has one |
+| 11.7.8 | Effects applying differently | n/a | no special ability in the pool has one |
+| 11.7.9 | The cost is locked | n/a | nothing in the pool changes a cost between declaration and payment; the engine computes and pays in one apply |
+| 11.7.10 | Paid all at once | tested | engine/special-abilities#L1 §11.7.1 — with a same-name card in hand |
+| 11.7.11 | Activated; triggers go on the stack; the activator regains priority | tested | engine/special-abilities#L1 §11.7.11 |
+| 11.7.12 | All targets ineligible at resolution: cancelled | tested | engine/special-abilities#L1 §11.7.12 |
 | 11.8 | Auto-Abilities | heading |  |
 | 11.8.1 | Trigger automatically on their event | tested | engine/observer-triggers#C2-A2 |
 | 11.8.2 | Written "(trigger), (effect)" | tested | cards/pool-coverage#implements every printed clause |

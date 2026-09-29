@@ -280,7 +280,10 @@ export function actionKey(view: PlayerView, command: Command): ActionKey {
       const dull = joinRefs(command.payment.dullBackups.map(r))
       const discards = joinTagged(command.payment.discards.map((d) => [r(d.card), d.element] as const))
       const targets = joinRefs(command.targets.map(r))
-      return `${head}${FIELD}${r(command.source)}${FIELD}${command.abilityId}${FIELD}${dull}${FIELD}${discards}${FIELD}${targets}`
+      // Rung V1-A3 (§11.7.1): the card a special ability's same-name discard takes is a payment source like any other —
+      // a decoded activation without it is one `apply` refuses. Empty for every other ability.
+      const same = command.payment.sameName === undefined ? '' : r(command.payment.sameName)
+      return `${head}${FIELD}${r(command.source)}${FIELD}${command.abilityId}${FIELD}${dull}${FIELD}${discards}${FIELD}${targets}${FIELD}${same}`
     }
     case 'pass':
     case 'concede':
@@ -374,7 +377,11 @@ const DECODERS: Record<Command['type'], Decoder> = {
       if (src === null || !isElement(tag)) return null
       discards.push({ card: src, element: tag })
     }
-    return { type: 'activateAbility', player, source, abilityId, payment: { dullBackups, discards }, targets }
+    // Rung V1-A3: the same-name payer, when the key names one; a ref this world cannot resolve decodes to null.
+    const sameRef = args[5] ?? ''
+    const sameName = sameRef === '' ? undefined : id(sameRef)
+    if (sameName === null) return null
+    return { type: 'activateAbility', player, source, abilityId, payment: { dullBackups, discards, ...(sameName === undefined ? {} : { sameName }) }, targets }
   },
   declareAttack: ({ view, player, args, ids }) => {
     if (view.pending) return null

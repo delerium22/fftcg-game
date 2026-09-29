@@ -74,6 +74,10 @@ export function declarationNode(ability: Ability): Extract<Effect, { kind: 'choo
   }
   if (head?.kind === 'chooseModes') throw new Error(`${ability.id}: activated abilities cannot choose modes yet (spec C3-1)`)
   if (head?.kind !== 'chooseTargets') return undefined
+  // A SELECT is not a choice (§11.3.3, §11.6.5 — "'To select' something is not the same as 'to choose' it"): it is made
+  // as the ability resolves, so nothing is declared with the activation and nothing gates it (rung V1-A3, R10) —
+  // Taivas's [0] selects from hand at resolution, where declaring would put a hidden hand id on the stack.
+  if (head.select !== undefined) return undefined
   if (declaresLater(head.then)) throw new Error(`${ability.id}: nested choices inside an activated ability are not supported (spec C3-1)`)
   return head
 }
@@ -135,6 +139,9 @@ export function activationCheck(
   if (cost.selfToBreakZone && !findFieldCard(state, source)) return 'only a card on the field can be put into the Break Zone'
   if (cost.selfRemoveFromGame && !state.players[player].breakZone.includes(source)) return 'only a card in your Break Zone can be removed from the game'
   if (cost.selfDiscard && !state.players[player].hand.includes(source)) return 'only a card in your hand can be discarded'
+  // §11.7.1 (rung V1-A3): a special ability needs ANOTHER card with the same name in hand to discard. WHICH one is the
+  // payment's (`sameNameCheck`); that one exists is a precondition, so no payment can make the ability usable without.
+  if (cost.discardSameName && sameNameCards(state, player, source).length === 0) return `no card with the same name in your hand (§11.7.1)`
 
   // Validate the DECLARED targets against the state as it will be once the costs are paid (§11.6.5). Post-cost
   // is what makes it exact: Undead Princess is already in the Break Zone by then, so she cannot be her own
@@ -152,6 +159,31 @@ export function activationCheck(
   if (new Set(targets).size !== targets.length) return 'duplicate target'
   if (targets.length < node.min || targets.length > max) return `${abilityId} needs ${node.min}..${max} targets`
   for (const id of targets) if (!candidates.includes(id)) return `${id} is not a legal target for ${abilityId}`
+  return null
+}
+
+/**
+ * The cards in `player`'s hand that could pay a special ability's same-name discard for `source` (§11.7.1, rung V1-A3):
+ * every OTHER hand card with the source's printed name, in hand order. The first is the canonical payer `legalCommands`
+ * lists; any of them is accepted.
+ */
+export function sameNameCards(state: GameState, player: PlayerId, source: CardId): CardId[] {
+  const name = defOf(state, source).name
+  return state.players[player].hand.filter((id) => id !== source && defOf(state, id).name === name)
+}
+
+/**
+ * Why `payment.sameName` does not pay this cost, or null (rung V1-A3, R2). ONE check, shared by `isLegal` and
+ * `applyCosts`, so the legality question and the payment it guards cannot disagree. A cost without `discardSameName`
+ * takes no such card; one with it takes exactly one: in hand, not the source, the source's name, not also a CP discard.
+ */
+export function sameNameCheck(state: GameState, player: PlayerId, source: CardId, cost: AbilityCost, payment: Payment): string | null {
+  const id = payment.sameName
+  if (!cost.discardSameName) return id === undefined ? null : 'this cost discards no card with the same name'
+  if (id === undefined) return 'a special ability discards a card with the same name (§11.7.1)'
+  if (id === source || !state.players[player].hand.includes(id)) return `${id} is not in your hand to discard`
+  if (defOf(state, id).name !== defOf(state, source).name) return `${id} does not have the same name as ${source} (§11.7.1)`
+  if (payment.discards.some((d) => d.card === id)) return `${id} cannot pay the same-name discard and be also discarded for CP`
   return null
 }
 
@@ -225,6 +257,8 @@ function applyCosts(
   if (validate) {
     // Rung J8 (review L2): an activation's payment never turns LB cards face up; `paymentCheck` refuses it, so must this.
     if (payment.lbFlip?.length) throw new IllegalCommandError('an ability cost turns no LB card face up')
+    const sameWhy = sameNameCheck(s, player, source, cost, payment)
+    if (sameWhy) throw new IllegalCommandError(sameWhy)
     const req = abilityCpRequirement(source, cost)
     const cp = generateCp(s, player, payment, req.excluded)
     if (!canPay(req.amount, req.requiredElements, cp)) {
@@ -274,6 +308,15 @@ function applyCosts(
     // `cost`, not `cp`: this card was discarded to PAY for its own ability, and it generated no CP doing so.
     events.push({ type: 'discarded', player, card: source, reason: 'cost' })
   }
+  // §11.7.1 (rung V1-A3): the same-name discard, paid with the rest (§11.7.10). Only when `validate` — the preflight's
+  // empty payment names no card, and a hand card leaving cannot change who is a legal FIELD target (R8).
+  if (validate && cost.discardSameName && payment.sameName !== undefined) {
+    const card = payment.sameName
+    const owner = s.cards[card]?.owner ?? player
+    s = updatePlayer(s, player, (ps) => ({ ...ps, hand: ps.hand.filter((id) => id !== card) }))
+    s = updatePlayer(s, owner, (ps) => ({ ...ps, breakZone: [...ps.breakZone, card] }))
+    events.push({ type: 'discarded', player, card, reason: 'cost' })
+  }
   return [s, events, transitions]
 }
 
@@ -296,10 +339,11 @@ export function applyActivateAbility(
   if (!ability || ability.trigger.kind !== 'activated') throw new IllegalCommandError('unreachable: checked above')
 
   const pre = state   // observers are read PRE-move, exactly as `breakCard` does
-  // MVP0-SIMPLIFICATION (§11.6.3, §11.6.4; spec C3-A2): the CR puts the ability on the stack, declared, and THEN pays;
-  // here the cost is paid first and the item is placed after, with its targets validated against the post-cost
-  // board. Unobservable in this pool — §11.6.5 forbids choosing the source, and no cost removes any OTHER card a
-  // choice could name — and the events serialise as activate, cost, push. Found by rung J9's Codex review.
+  // MVP0-SIMPLIFICATION (§11.6.3, §11.6.4; for a special ability §11.7.3, §11.7.4; spec C3-A2): the CR puts the ability
+  // on the stack, declared, and THEN pays; here the cost is paid first and the item is placed after, with its targets
+  // validated against the post-cost board. Unobservable in this pool — §11.6.5 forbids choosing the source, and no cost
+  // removes any OTHER card a choice could name (the §11.7.1 same-name discard takes a HAND card, and no special ability
+  // chooses in hand) — and the events serialise as activate, cost, push. Found by rung J9's Codex review.
   const [paid, events, transitions] = applyCosts(state, player, source, ability.trigger.cost, payment, true)
   events.unshift({ type: 'abilityActivated', player, card: source, abilityId })
 

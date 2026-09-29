@@ -326,6 +326,12 @@ export type AbilityTrigger =
       /** "You can only use this ability during your turn" (Sphene). Since J1 abilities are instant speed, so
        *  the restriction is the card's own; `activationCheck` enforces it. */
       readonly yourTurnOnly?: boolean
+      /**
+       * A SPECIAL ability (§11.7, rung V1-A3, spec V1-D13), with its proper name — Jecht's "Jecht Beam". Activated as an
+       * action ability is (§11.7.1), and its cost carries `discardSameName`. Not an ACTION ability (§11.6 vs §11.7), so
+       * "cannot use action abilities" does not reach it.
+       */
+      readonly special?: { readonly name: string }
     }
   /**
    * "When <this> is chosen by a Summon or an ability" — Prishe (spec C11).
@@ -454,6 +460,12 @@ export interface AbilityCost {
   readonly selfToBreakZone?: true
   /** "discard <this card>", from hand. */
   readonly selfDiscard?: true
+  /**
+   * §11.7.1 (rung V1-A3): a special ability's "discard a card with the same name" — one OTHER card from hand whose name
+   * is the source's. WHICH card is part of the payment (`Payment.sameName`); `legalCommands` lists one canonical choice
+   * (the first in hand order) and `isLegal`/`apply` accept any card that qualifies.
+   */
+  readonly discardSameName?: true
   /**
    * "Remove <this card> … from the game" — Undead Princess, paid from the Break Zone (spec C7-2).
    *
@@ -603,8 +615,11 @@ export function hasResolutionWork(r: Resolution): boolean {
 /**
  * The printed cost, rendered the way the card prints it — `[Lightning][Dull]`, `[2][Dull], put into the Break
  * Zone`. Lives here so the CLI and the browser cannot drift into describing the same ability differently.
+ *
+ * `sourceName` names the card a special ability's same-name discard takes (rung V1-A3, R9): "discard Jecht". The S
+ * icon itself is not rendered — it IS that discard (§11.7.1), and a caller names the ability by its proper name.
  */
-export function describeAbilityCost(cost: AbilityCost): string {
+export function describeAbilityCost(cost: AbilityCost, sourceName?: string): string {
   // Icons run together and prose is comma-separated, because that is how the cards print it:
   // `[2][Dull], put Miner into the Break Zone` — never `[2], [Dull], put ...`.
   let icons = ''
@@ -618,6 +633,7 @@ export function describeAbilityCost(cost: AbilityCost): string {
   if (cost.selfToBreakZone) prose.push('put into the Break Zone')
   if (cost.selfDiscard) prose.push('discard')
   if (cost.selfRemoveFromGame) prose.push('remove from the game')
+  if (cost.discardSameName) prose.push(sourceName === undefined ? 'discard a card with the same name' : `discard ${sourceName}`)
   return [icons, ...prose].filter(Boolean).join(', ') || '[0]'
 }
 

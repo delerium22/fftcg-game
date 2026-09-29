@@ -5,6 +5,7 @@ import type { Ability, AbilityCost, Effect } from '../src/abilities.js'
 import type { Payment } from '../src/commands.js'
 import { describeAbilityCost } from '../src/abilities.js'
 import { applyNow as apply } from './helpers.js'
+import { apply as applyOne } from '../src/apply.js'
 import { legalCommands } from '../src/legal.js'
 import { activatedAbility, activationCheck, activationTargetSets } from '../src/activate.js'
 import { IllegalCommandError } from '../src/errors.js'
@@ -279,6 +280,34 @@ describe('activation legality (C3-A5)', () => {
 // ---------------------------------------------------------------------------
 // Enumeration and labelling
 // ---------------------------------------------------------------------------
+
+describe('an activated select is made at resolution (rung V1-A3, R10)', () => {
+  it('L1 §11.6.5 — Taivas [0]: a head select from hand declares nothing, goes on the stack, and prompts as it resolves', () => {
+    // "Play 1 Forward from your hand onto the field": a select (§11.3.3 — "to select" is not "to choose"), so there is
+    // nothing to declare with the activation and nothing gates it on candidates.
+    const def = actionCard('T-TAIVAS', { cp: { amount: 0 } }, [
+      { kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'forward' } }, then: [{ kind: 'playOntoField' }] },
+    ])
+    let s = gameWith([def])
+    let src: CardId, pick: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-TAIVAS')
+    ;[s, pick] = withHand(s, 0, 'V-F2')
+    expect(activationTargetSets(s, 0, src, activatedAbility(s, src, 'T-TAIVAS:act')!)).toEqual([[]])
+    expect(activationCheck(s, 0, src, 'T-TAIVAS:act', [])).toBeNull()
+    // One `apply` at a time: the window between placement and resolution is what this test is about.
+    let r = applyOne(s, { type: 'activateAbility', player: 0, source: src, abilityId: 'T-TAIVAS:act', payment: NO_PAY, targets: [] })
+    expect(r.state.stack).toHaveLength(1)
+    expect(r.state.pending).toBeNull()
+    r = applyOne(r.state, { type: 'pass', player: 0 })
+    r = applyOne(r.state, { type: 'pass', player: 1 })
+    expect(r.state.pending?.kind).toBe('chooseTargets')
+    expect(r.state.pending?.player).toBe(0)
+    if (r.state.pending?.kind !== 'chooseTargets') throw new Error('unreachable')
+    expect(r.state.pending.candidates).toContain(pick)
+    r = apply(r.state, { type: 'chooseTargets', player: 0, targets: [pick] })
+    expect(r.state.players[0].forwards.some((c) => c.id === pick)).toBe(true)
+  })
+})
 
 describe('activations are enumerated and labelled', () => {
   it('legalCommands offers one activation per clause, from every source zone', () => {

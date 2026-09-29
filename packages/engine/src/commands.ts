@@ -1,8 +1,12 @@
 import type { PlayerId, Element } from './types.js'
 import type { CardId } from './state.js'
 
-/** `lbFlip` (rung J8, §15.2.8.3.2): the OTHER face-down LB-deck cards turned face up to pay a Limit Break cost. */
-export interface Payment { dullBackups: CardId[]; discards: { card: CardId; element: Element }[]; lbFlip?: CardId[] }
+/**
+ * `lbFlip` (rung J8, §15.2.8.3.2): the OTHER face-down LB-deck cards turned face up to pay a Limit Break cost.
+ * `sameName` (rung V1-A3, §11.7.1): the hand card a special ability's cost discards — same name as the source, never the
+ * source, never also a CP discard. Absent for a cast and for an action ability.
+ */
+export interface Payment { dullBackups: CardId[]; discards: { card: CardId; element: Element }[]; lbFlip?: CardId[]; sameName?: CardId }
 export type Command =
   | { type: 'chooseFirst'; player: PlayerId; goFirst: boolean }
   | { type: 'mulligan'; player: PlayerId; redraw: boolean }

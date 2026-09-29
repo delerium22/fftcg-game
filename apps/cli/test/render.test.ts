@@ -83,6 +83,20 @@ describe('render — an activated ability names what it DOES, not only what it c
     expect(label, 'a legality condition the engine already enforced reached the label').not.toContain('You can only use this ability')
   })
 
+  it('names a special ability by its proper name, and the card its same-name discard takes (rung V1-A3)', () => {
+    const s = createGame({ seed: 1, decks: [deck, deck], defs })
+    const v = viewFor(s, 0)
+    v.defs['T-JECHT'] = { code: 'T-JECHT', name: 'Jecht', type: 'forward', elements: ['fire'], cost: 3, power: 7000, keywords: [], generic: false, exBurst: false, text: '', hasAbilities: true, abilities: [{
+      id: 'T-JECHT:beam', trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, discardSameName: true }, special: { name: 'Jecht Beam' } },
+      text: 'Jecht Beam [S][Dull]: Choose 1 Forward opponent controls. Deal it 8000 damage.',
+      effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 8000 }] }],
+    }] }
+    const jecht = mint(v, 950, 'T-JECHT')
+    const copy = mint(v, 951, 'T-JECHT')
+    const label = describeCommand(v, { type: 'activateAbility', player: 0, source: jecht, abilityId: 'T-JECHT:beam', payment: { dullBackups: [], discards: [], sameName: copy }, targets: [] })
+    expect(label).toBe('Use Jecht (T-JECHT)\'s Jecht Beam [Dull], discard Jecht: Choose 1 Forward opponent controls. Deal it 8000 damage paying: discard Jecht (T-JECHT)')
+  })
+
   it('covers every activated clause the pool ships — the SHAPE of the label', () => {
     // As with the web sweep: what the effect should say is pinned by the table in
     // `packages/cards/test/abilities.test.ts`. Here the claim is only that every clause gets a label built
