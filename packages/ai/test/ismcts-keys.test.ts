@@ -783,3 +783,55 @@ describe('a special ability keys the card its same-name discard takes (rung V1-A
     }
   })
 })
+
+describe('a characters chooser keys a Forward and a Backup apart, and round-trips (rung V1-A4)', () => {
+  // LB Luso 23-130H's "choose 1 Character you control": one pending over BOTH field zones.
+  const LUSO = clause('T-CHARS:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'characters', controller: 'self', filter: { excludeSource: true } }, then: [{ kind: 'addPower', amount: 2000 }] }])
+  function board(): { s: GameState; fwd: CardId; bkp: CardId } {
+    let s = makeGame({ defs: [...VANILLA_POOL, bearer('X-CHARS', LUSO)] })
+    let src: CardId, fwd: CardId, bkp: CardId
+    ;[s, src] = withField(s, 0, 'backups', 'X-CHARS')
+    ;[s, fwd] = withField(s, 0, 'forwards', 'V-F1')
+    ;[s, bkp] = withField(s, 0, 'backups', 'V-B1')
+    ;[s] = withField(s, 1, 'forwards', 'V-F5')
+    ;[s] = withField(s, 1, 'backups', 'V-B1')
+    return { s: arm(s, src, 0, LUSO), fwd, bkp }
+  }
+  const answers = (s: GameState) => legalCommands(s, 0).filter((c) => c.type === 'chooseTargets')
+
+  it('the Forward and the Backup get distinct action keys', () => {
+    const { s, fwd, bkp } = board()
+    expect(s.pending).toMatchObject({ kind: 'chooseTargets', candidates: [fwd, bkp] })
+    const v = viewFor(s, 0)
+    const pick = (id: CardId): Command => ({ type: 'chooseTargets', player: 0, targets: [id] })
+    expect(actionKey(v, pick(fwd))).not.toBe(actionKey(v, pick(bkp)))
+    expect(new Set(answers(s).map((c) => actionKey(v, c))).size).toBe(answers(s).length)
+  })
+
+  it('every answer round-trips across determinisations and a renumbered view, to a command legal in that world', () => {
+    const { s } = board()
+    const live = answers(s).map((c) => actionKey(viewFor(s, 0), c)).sort(compareKeys)
+    expect(live).toHaveLength(2)
+    for (const seed of [1, 2, 3]) {
+      const [det] = determinise({ view: viewFor(s, 0), decks: decksOf(s), rng: seedRng(seed) })
+      const dv = viewFor(det, 0)
+      const keys = [...answers(det), ...candidateCommands(det, 0)].map((c) => actionKey(dv, c))
+      expect([...new Set(keys)].sort(compareKeys), 'one information set, one key set').toEqual(live)
+      for (const key of keys) {
+        const back = decodeAction(dv, key)
+        expect(back, `decode failed for ${key}`).not.toBeNull()
+        expect(actionKey(dv, back!)).toBe(key)
+        expect(isLegal(det, back!)).toBeNull()
+      }
+    }
+    // Every id shifted: the keys are unchanged, and each decodes to the shifted id of a command legal live.
+    const N = 1000
+    const shifted = remapIds(viewFor(s, 0), N)
+    for (const key of live) {
+      const back = decodeAction(shifted, key)
+      if (back?.type !== 'chooseTargets') throw new Error(`decode failed for ${key}`)
+      expect(actionKey(shifted, back)).toBe(key)
+      expect(isLegal(s, { ...back, targets: back.targets.map((id) => id - N) })).toBeNull()
+    }
+  })
+})

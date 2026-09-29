@@ -29,7 +29,12 @@ const WHEN_CHOSEN: Ability = { id: 'T-SRC-PUMP:chosen', trigger: { kind: 'observ
 const DEFS: CardDef[] = [
   ...VANILLA_POOL,
   makeDef({ code: 'T-SRC', cost: 0, power: 5000, hasAbilities: true, abilityClauses: 2, abilities: [activated('T-SRC', {}), WHEN_CHOSEN] }),
-  makeDef({ code: 'T-SRC-GONE', cost: 0, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [activated('T-SRC-GONE', { selfToBreakZone: true })] }),
+  // The pump, then a draw that happens only if `chosen` IS the source: the binding made observable off the field.
+  makeDef({ code: 'T-SRC-GONE', name: 'Gone Source', cost: 0, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [{
+    ...activated('T-SRC-GONE', { selfToBreakZone: true }),
+    effects: [{ kind: 'onSource', do: [...(PUMP_SELF[0] as Extract<Effect, { kind: 'onSource' }>).do,
+      { kind: 'if', when: { kind: 'subjectMatches', filter: { name: 'Gone Source' } }, then: [{ kind: 'draw', count: 1 }] }] }],
+  }] }),
   makeDef({ code: 'T-SRC-WATCH', cost: 0, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [WATCH] }),
   makeDef({ code: 'T-ARRIVE', cost: 0, power: 3000 }),
 ]
@@ -74,9 +79,12 @@ describe('V1-A4 — onSource binds the ability\'s own card', () => {
     let s = makeGame({ defs: DEFS })
     let src: CardId
     ;[s, src] = withField(s, 0, 'forwards', 'T-SRC-GONE')
+    const hand = s.players[0].hand.length
     const r = activate(s, src, 'T-SRC-GONE:act')
     expect(r.state.players[0].breakZone, 'the cost put the source into the Break Zone before resolution').toContain(src)
     expect(r.events.some((e) => e.type === 'powerModified' || e.type === 'keywordGranted')).toBe(false)
+    // The field effects skipped it, but `chosen` was still the source: the name check read it and the draw happened.
+    expect(r.state.players[0].hand.length, 'the draw inside onSource ran on the bound source').toBe(hand + 1)
     expect(r.state.stack).toEqual([])
     ok(r.state)
   })
