@@ -26,6 +26,31 @@ readings from the plan:
   Backup you control".
 - Task 4's commit also changes the web wording (R9), though its subject names only engine and ai.
 
+**As built (V1-A2), 2026-09-30.** Commits 4ba1331 (`select`, `onlyIfChosen`), 1f7a875 (`putIntoBreakZone`,
+`activate`), ecb081b (hand targets, `discard`, `playOntoField`, hidden candidates). The flag is named `select`
+(V1-D9 said `chooser`). Deviations and readings from the plan and its revisions R1–R9:
+- A `putIntoBreakZone` transition carries a new `ZoneTransitionReason` `putByAbility`, not `ability`: `ability` is
+  `breakCard`'s, and the web's trigger cause read it as "was broken". The event is `putIntoBreakZone` with reason
+  `ability` (R6).
+- R3: a hidden or opaque `chooseTargets` pending digests with the PRINTED `min-max` of its suspended node, not the
+  pending's. The determinised pending clamps to the sampled hand (R4), so its bounds differ between worlds.
+- `chooseTargetsCheck` clamps a select's `min` to its candidates, as `max` already was. Live this changes nothing (a
+  select is raised only over at least `min` candidates); it keeps a determinised min-1 select over an empty sample
+  answerable. A select with some candidates but fewer than `min` still reports no legal target, like a choice.
+- `viewFor` keeps a hidden pending's live `min`/`max`. `max` below the printed one says fewer cards matched; with
+  every pool hand select at max 1 that says only "at least one", which the prompt existing already says.
+- Game creation runs a new `validateEffects` (recursive, R9): a hand zone must be your own and `select: 'self'`, and
+  a `playOntoField` must sit under a binding whose `type`/`types` excludes Summons. The executor also skips a
+  non-Character (Forward and Backup only; Monsters are out of scope).
+- Web: the put button reads "Put into the Break Zone: Cloud" (the button shape is `<imperative> <names>`); play reads
+  "Play Cloud"; an AI select reads "The AI selects 1 Forward it controls to …", and over its hidden hand "… card from
+  its hand …".
+- Known gaps, for V1-B: `declarationNode` (activate.ts) still declares a head `chooseTargets` at activation even when
+  it is a select, so Taivas's `[0]` needs it to skip selects. A frame's `chosen`/`declared` may carry a hand id while
+  a nested prompt waits (R9); no pool card suspends there, and the other seat's key would show it opaque.
+- Timing matrix: row 11.3.3 now also cites the select test ("select" is not "choose"). §7.7.4 and §15.1.1.1/.3/.4 have
+  no rows (the matrix covers chapters 9–12 and 15.1.1.9); their Layer 1 cases are in `engine/test/selects.test.ts`.
+
 ## Source and the list (V1-D1)
 
 Starter Set 2025 Vol. 1 is Fire/Water, built around Zack: 50 main-deck cards and an 8-card LB deck (official product
