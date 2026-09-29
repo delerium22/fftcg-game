@@ -219,7 +219,7 @@ const YUNA_ETB: Ability = {
 /**
  * Yuna's attack trigger (§10.1.2.5): Reeve's look, word for word, fired on the declaration rather than on entering.
  *
- * MVP0-SIMPLIFICATION (spec C9, rung V1-D): "return the other cards to the bottom of your deck in any order" keeps the
+ * MVP0-SIMPLIFICATION (spec C9, rung V1-F): "return the other cards to the bottom of your deck in any order" keeps the
  * exposed order; the controller does not choose it (the `rest: 'bottom'` marker in the engine's `resolve.ts`).
  */
 const YUNA_ATTACK: Ability = {

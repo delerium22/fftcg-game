@@ -236,8 +236,11 @@ and choices:
   and the AI's `preferredPaymentFor` still try only admissible sources (an off-Element one pays nothing), and the web
   `crystals()` needed no change.
 - The SIMPLIFIED table lost Ultima Weapon, Vincent and Ward. Leonora, Taivas and LB Luso now name rung V1-E, entries and
-  markers alike, and the table's pattern is any `rung V1-<letter>`. Yuna's (spec C9, the bottom order) still names
-  rung V1-D, which did not take it: no rung is scheduled for it.
+  markers alike; Yuna's (spec C9, the bottom order) names rung V1-F. The table's pattern accepts exactly those two rungs.
+- After the fresh review (all LOW): the Review Focus 1 case now plays T-COND and then a third Water Character in ONE
+  resolution (a synthetic Summon's two hand selects) and fails on its own assertion without the trigger-time check
+  (mutation-checked); the web narrates `stackCancelled` only for `condition`, since the §11.8.4 and §11.11.2
+  cancellations already have their "finds no legal target" line — one line per cancelled item; Yuna moved to V1-F.
 
 ## Source and the list (V1-D1)
 

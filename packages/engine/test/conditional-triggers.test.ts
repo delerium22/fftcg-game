@@ -30,6 +30,14 @@ const DEFS: CardDef[] = [
   ...VANILLA_POOL,
   makeDef({ code: 'T-COND', cost: 0, power: 5000, hasAbilities: true, abilityClauses: 1, abilities: [CONDITIONAL] }),
   makeDef({ code: 'T-WB', type: 'backup', elements: ['water'], cost: 0, power: null }),
+  // "Play 1 T-COND from your hand onto the field. Play 1 Water Backup from your hand onto the field." — two arrivals, one resolution.
+  makeDef({ code: 'T-DEPLOY', type: 'summon', cost: 0, power: null, hasAbilities: true, abilityClauses: 1, abilities: [{
+    id: 'T-DEPLOY:summon', trigger: { kind: 'summonResolve' }, text: 'synthetic deploy',
+    effects: [
+      { kind: 'chooseTargets', select: 'self', min: 1, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'forward', name: 'T-COND' } }, then: [{ kind: 'playOntoField' }] },
+      { kind: 'chooseTargets', select: 'self', min: 1, max: 1, from: { zone: 'hand', controller: 'self', filter: { type: 'backup', element: 'water' } }, then: [{ kind: 'playOntoField' }] },
+    ],
+  }] }),
 ]
 
 /** `waters` Water Backups on P0's field, T-COND cast from hand. */
@@ -61,19 +69,30 @@ describe('§11.8.13 — a conditional auto-ability triggers only if its conditio
     ok(s)
   })
 
-  // The mechanism of Review Focus 1: the condition is read at the enter event, so a Water Character arriving afterwards
-  // (here by a later cast rather than later in the same chain — the check is the same) never triggers it.
-  it('a condition that becomes true only after the event never triggers it (Review Focus 1)', () => {
-    const { s: s0, cond } = castWith(2)
-    let s = s0
-    let third: CardId
+  // Review Focus 1: one resolving item first plays T-COND (2 Water Characters: the condition is unmet as it enters),
+  // then — later in the SAME resolution — plays a third Water Character. The condition now holds, but it was read at the
+  // event, so the clause never triggers. Without the trigger-time check it would be queued, and the §11.11.3 re-check
+  // (3 Water) would let it resolve.
+  it('a condition that becomes true only after the event never triggers it, even later in the same chain (Review Focus 1)', () => {
+    let s = makeGame({ defs: DEFS })
+    for (let i = 0; i < 2; i++) [s] = withField(s, 0, 'backups', 'T-WB')
+    let cond: CardId, third: CardId, deploy: CardId
+    ;[s, cond] = withHand(s, 0, 'T-COND')
     ;[s, third] = withHand(s, 0, 'T-WB')
-    const r = apply(s, { type: 'castCharacter', player: 0, card: third, payment: { dullBackups: [], discards: [] } })
-    expect(r.state.players[0].backups.length, 'three Water Characters now').toBe(3)
-    expect(r.events.some((e) => e.type === 'abilityTriggered')).toBe(false)
-    expect(r.state.resolution.queue).toEqual([])
-    expect(power(r.state, cond)).toBe(0)
-    ok(r.state)
+    ;[s, deploy] = withHand(s, 0, 'T-DEPLOY')
+    const log: ReturnType<typeof apply>['events'] = []
+    const run = (c: Parameters<typeof apply>[1]): void => { const r = apply(s, c); log.push(...r.events); s = r.state }
+    run({ type: 'castSummon', player: 0, card: deploy, payment: { dullBackups: [], discards: [] } })
+    run({ type: 'pass', player: 0 }); run({ type: 'pass', player: 1 })
+    run({ type: 'chooseTargets', player: 0, targets: [cond] })
+    expect(findFieldCard(s, cond), 'T-COND entered with 2 Water Characters').toBeDefined()
+    run({ type: 'chooseTargets', player: 0, targets: [third] })
+    expect(s.players[0].backups.length, 'three Water Characters now, in the same resolution').toBe(3)
+    expect(log.some((e) => e.type === 'abilityTriggered' && e.abilityId === 'T-COND:etb'), 'T-COND:etb never triggered').toBe(false)
+    expect(stackIds(s)).toEqual([])
+    expect(s.resolution.queue.map((f) => f.abilityId)).toEqual([])
+    expect(power(s, cond)).toBe(0)
+    ok(s)
   })
 })
 
