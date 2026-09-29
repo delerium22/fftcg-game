@@ -228,7 +228,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 15.2.3 | First Strike | heading |  |
 | 15.2.3.1 | A field ability changing the damage step | tested | engine/timing-l1-first-strike#§15.2.3.2 |
 | 15.2.3.2 | First Strike Forwards deal damage first, then the rest | tested | engine/timing-l1-first-strike#§15.2.3.2; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
-| 15.2.3.3 | A priority window between the two, with no casts; damage triggers wait for the second (a break OBSERVER fired by the first batch places in the window — spec J3-D3 reading) | tested | engine/timing-l1-first-strike#§15.2.3.3; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
+| 15.2.3.3 | A priority window between the two, with no Summons or abilities (a Back Attack cast is allowed — J3 second review H2); damage triggers wait for the second (a break OBSERVER fired by the first batch places in the window — spec J3-D3 reading) | tested | engine/timing-l1-first-strike#§15.2.3.3; cards/scenarios/dragoon-blocks#L3 dragoon-blocks |
 | 15.2.3.4 | A party needs First Strike on every member | tested | engine/timing-l1-first-strike#§15.2.3.4 |
 | 15.2.4 | Freeze | heading |  |
 | 15.2.4.1 | An ongoing effect applied by Summons and abilities | tested | engine/timing-l1-freeze#§15.2.4.1 |

@@ -5,7 +5,7 @@ import type { CardId, GameState } from '../src/state.js'
 import { findFieldCard } from '../src/state.js'
 import { apply } from '../src/apply.js'
 import { castBlocker } from '../src/cast.js'
-import { legalCommands } from '../src/legal.js'
+import { forcedPass, legalCommands } from '../src/legal.js'
 import { checkInvariants } from '../src/invariants.js'
 import { endPhase, makeDef, makeGame, passBoth, withField, withHand, withHandSize, VANILLA_POOL } from './helpers.js'
 
@@ -146,7 +146,8 @@ describe('L1 §15.2.5 — a Back Attack Character is cast by the priority holder
     ok(done)
   })
 
-  it('L1 §15.2.3.3 — not in the First Strike window, where nothing may be cast', () => {
+  it('L1 §15.2.3.3 — in the First Strike window too: it bars Summons and abilities, and a Character cast is neither', () => {
+    // J3 second review H2 (CR 3.3 letter; §9.3.1.5 makes a Character cast a special action, not a special ability).
     let s = quiet(endPhase(makeGame({ defs: DEFS })))
     let a: CardId, blocker: CardId, ba: CardId
     ;[s, a] = withField(s, 0, 'forwards', 'T-FS6')
@@ -157,8 +158,17 @@ describe('L1 §15.2.5 — a Back Attack Character is cast by the priority holder
     t = apply(t, { type: 'declareBlock', player: 1, blocker }).state
     t = passBoth(t).state
     expect(t.attack?.step).toBe('firstStrike')
-    expect(castBlocker(t, 0, ba)).toBe('phase')
-    expect(legalCommands(t, 0).map((c) => c.type).filter((x) => x !== 'concede')).toEqual(['pass'])
+    expect(castBlocker(t, 0, ba)).toBeNull()
+    expect(forcedPass(t), 'a real choice: the window is not pass-only').toBeNull()
+    const cast = legalCommands(t, 0).find((c) => c.type === 'castCharacter' && c.card === ba)
+    expect(cast).toBeDefined()
+    const u = apply(t, cast!).state
+    expect(findFieldCard(u, ba), 'on the field between the batches').not.toBeNull()
+    expect(u.attack?.step, 'the window stays open').toBe('firstStrike')
+    expect([u.priority, u.passes], '§11.4.7: the turn player gains priority').toEqual([0, 0])
+    const done = passBoth(u).state
+    expect(done.attack?.step).toBe('damage')
+    ok(done)
   })
 
   it('L1 §7.7.4 — a Back Attack Backup is castable in a window, but never as a sixth Backup', () => {

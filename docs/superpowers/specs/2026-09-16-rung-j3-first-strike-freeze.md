@@ -67,7 +67,8 @@ text as the starter exclusives do).
   3. The damage occurrences of this batch are HELD on `attack.heldDamage`, not enqueued: §15.2.3.3 says
      triggers from First Strike damage are not put on the stack until all non-First-Strike damage is resolved.
   4. The `firstStrike` window opens: priority to the turn player, `passes = 0`. In it nobody may cast a Summon
-     or use an ability (§15.2.3.3); `menuShape` offers only `pass`, so `forcedPass` reports it and the browser
+     or use an ability (§15.2.3.3); `menuShape` offers only `pass` (unless a Back Attack Character is castable —
+     J3 second review H2, 2026-09-29: the letter bars Summons and abilities, not a Character cast), so `forcedPass` reports it and the browser
      and the AI's rollouts pass through it without a render or a search (J1-D14/D15). It is a window, not a
      decision, so `isResponseWindow` is true and `ATTACK_WINDOWS` (instant speed) does NOT include it.
      **Reading (review M3, 2026-09-16):** only `dealtDamage` clauses are held. A zone-change trigger CAUSED by the

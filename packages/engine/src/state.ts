@@ -85,10 +85,13 @@ export interface DamageOccurrence {
   readonly target: CardId | null
   readonly victim: PlayerId | null
   readonly amount: number
+  /** The damaged Forward's controller as the hit lands. A held First Strike occurrence's target may have broken
+   *  before its trigger is placed (§15.2.3.3), so the side cannot be looked up later. Absent for player damage. */
+  readonly targetController?: PlayerId
 }
 /**
  * `firstStrike` (rung J3, §15.2.3) is a fifth window: the First Strike combatants have dealt, the rest have
- * not, and nobody may cast or activate in it (§15.2.3.3). `heldDamage` is the first batch's occurrences,
+ * not, and no Summon or ability may be used in it — only a Back Attack cast (§15.2.3.3). `heldDamage` is the first batch's occurrences,
  * whose triggers are placed only with the second batch's; its presence is also what says the first batch is
  * done when the party split is owed between the two. Absent outside a split damage step.
  */

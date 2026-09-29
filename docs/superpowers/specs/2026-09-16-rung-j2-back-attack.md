@@ -42,7 +42,9 @@ parser already turns the keyword line (with its parenthetical) into `keywords: [
 - **J2-D2 — castability.** In `castBlocker`, a Character whose printed keywords include `backAttack` skips the
   three Character-only refusals — `phase` (Main Phase only), `notTurnPlayer`, `stackNotEmpty` — and is instead
   gated like a Summon: `instantSpeedAllowed` (a Main Phase, or an Attack Phase window; NOT the `firstStrike`
-  window), the caster holds priority, nothing is pending. **The First Strike exclusion is a reading (review L1):**
+  window), the caster holds priority, nothing is pending. **Superseded 2026-09-29 (J3 second review H2):** the
+  letter is followed — `backAttackAllowed` (`cast.ts`) also admits the `firstStrike` window, and `menuShape` lists
+  casts there. The original text follows. **The First Strike exclusion is a reading (review L1):**
   §15.2.3.3 bars "Summons or ... action or special abilities" there; casting a Character is a special ACTION
   (§9.3.1.5), which the letter does not name. The intent — nothing enters or acts between the two batches — is
   taken; it is encoded in `instantSpeedAllowed` (`cast.ts`) and `menuShape` (`legal.ts`), and a revised reading

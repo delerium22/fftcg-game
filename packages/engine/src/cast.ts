@@ -17,13 +17,23 @@ import { putOntoField, targetCandidates, warnUnimplemented } from './resolve.js'
  */
 export type CastBlocker = 'gameOver' | 'phase' | 'notInHand' | 'lbSpent' | 'notTurnPlayer' | 'priority' | 'pending' | 'stackNotEmpty' | 'monster' | 'backupsFull' | 'sameName' | 'lightDark' | 'noTarget' | 'lbCost'
 
-/** The Attack Phase steps in which priority is held AND a Summon or an action ability may be used (§9.3.1.6–7, J1-D10). `firstStrike` holds priority but admits only a pass (§15.2.3.3). */
+/** The Attack Phase steps in which priority is held AND a Summon or an action ability may be used (§9.3.1.6–7, J1-D10). `firstStrike` holds priority but bars both (§15.2.3.3); only a Back Attack cast is allowed there (`backAttackAllowed`). */
 export const ATTACK_WINDOWS: readonly AttackStep[] = ['preparation', 'declared', 'blocked', 'damage']
 
 /** Is this a moment the priority holder may cast a Summon or use an action ability? Main Phase, or an Attack Phase window. */
 export function instantSpeedAllowed(state: GameState): boolean {
   if (state.phase === 'main1' || state.phase === 'main2') return true
   return state.phase === 'attack' && state.attack !== null && ATTACK_WINDOWS.includes(state.attack.step)
+}
+
+/**
+ * Is this a moment the priority holder may cast a Back Attack Character (§15.2.5.2)? Every instant-speed moment,
+ * and also the First Strike window: §15.2.3.3 bars "Summons or ... action or special abilities" there, and a
+ * Character cast is a special ACTION (§9.3.1.5), not a special ability (§11.7). J3 second review H2 — this
+ * replaces spec J2-D2's intent reading with the letter.
+ */
+export function backAttackAllowed(state: GameState): boolean {
+  return instantSpeedAllowed(state) || (state.phase === 'attack' && state.attack?.step === 'firstStrike')
 }
 
 /**
@@ -62,9 +72,9 @@ export function castBlocker(state: GameState, player: PlayerId, card: CardId): C
   const def = defOf(state, card)
   if (def.type !== 'summon' && instant) {
     // §15.2.5.2–3: a Back Attack Character is cast by the PRIORITY HOLDER, either player, in a Main Phase or an
-    // Attack Phase window — as a response, so the stack may be non-empty — and never in the First Strike window
-    // (§15.2.3.3, which `instantSpeedAllowed` excludes). The field limits below still apply.
-    if (!instantSpeedAllowed(state)) return 'phase'
+    // Attack Phase window — as a response, so the stack may be non-empty — including the First Strike window
+    // (`backAttackAllowed`). The field limits below still apply.
+    if (!backAttackAllowed(state)) return 'phase'
     if (state.priority !== player) return 'priority'
     if (state.pending) return 'pending'
   } else if (def.type === 'summon') {
