@@ -216,6 +216,20 @@ describe('smart auto-pass (K5-A1)', () => {
     expect(legalCommands(w, HUMAN).some((c) => c.type === 'castCharacter'), 'the Back Attack cast is on the menu').toBe(true)
     expect(settleWindows(w, { control: 'smart' }).state, 'kept: a Character could enter here').toBe(w)
   })
+  it('smart: an UNAFFORDABLE Back Attack Character does not keep the `declared` window (J2 second review M1)', () => {
+    const defs = [...VANILLA_POOL, makeDef({ code: 'T-BA2', cost: 2, power: 5000, keywords: ['backAttack'] })]
+    let b = endPhase(makeGame({ defs }))
+    b = { ...b, turnPlayer: AI, priority: AI, firstPlayer: AI }
+    let attacker: CardId
+    ;[b, attacker] = withField(b, AI, 'forwards', 'V-F2')
+    ;[b] = withField(b, HUMAN, 'forwards', 'V-F3')                // a blocker, so the block is a real decision
+    b = withHandSize(withHandSize(b, AI, 0), HUMAN, 0)
+    ;[b] = withHand(b, HUMAN, 'T-BA2')                            // its only card: nothing to pay 2 CP with
+    const declared = apply(b, { type: 'declareAttack', player: AI, attackers: [attacker] }).state
+    const w = apply(declared, { type: 'pass', player: AI }).state
+    expect(legalCommands(w, HUMAN).some((c) => c.type === 'castCharacter')).toBe(false)
+    expect(settleWindows(w, { control: 'smart' }).state.pending, 'passed through to the block').toEqual({ kind: 'declareBlock', player: HUMAN })
+  })
   it('smart: the `blocked` window before damage is kept (K5-D3.2)', () => {
     const { state, blocker } = aiAttack()
     const owed = settleWindows(state, { control: 'smart' }).state
@@ -238,7 +252,8 @@ describe('the AI’s commit path settles under the live mode (K5-A2)', () => {
     let s = makeGame()
     s = { ...s, turnPlayer: AI, priority: AI, firstPlayer: AI }
     s = withHandSize(withHandSize(s, AI, 0), HUMAN, 0)
-    for (const code of ['V-S1', 'V-F1', 'V-F1']) [s] = withHand(s, HUMAN, code)
+    // Lightning discards: the Lightning Summon must be AFFORDABLE for the window to be a real one (J2 second review M1).
+    for (const code of ['V-S1', 'V-F3', 'V-F3']) [s] = withHand(s, HUMAN, code)
     const pass = { type: 'pass' as const, player: AI }
     for (const control of ['full', 'smart'] as const) {
       const committed: GameState[] = []

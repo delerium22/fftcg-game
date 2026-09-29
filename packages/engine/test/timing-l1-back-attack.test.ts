@@ -39,6 +39,8 @@ const DEFS: CardDef[] = [
   makeDef({ code: 'T-BA-B', type: 'backup', cost: 0, power: null, keywords: ['backAttack'] }),
   makeDef({ code: 'T-PLAIN', cost: 0, power: 5000 }),
   makeDef({ code: 'T-FS6', cost: 0, power: 6000, keywords: ['firstStrike'] }),
+  makeDef({ code: 'T-BA2', cost: 2, power: 5000, keywords: ['backAttack'] }),
+  makeDef({ code: 'T-S2', type: 'summon', cost: 2, power: null }),
   makeDef({ code: 'T-BURN', type: 'summon', cost: 0, power: null, hasAbilities: true, abilityClauses: 1, abilities: [BURN] }),
 ]
 
@@ -144,6 +146,69 @@ describe('L1 §15.2.5 — a Back Attack Character is cast by the priority holder
     expect(findFieldCard(done, victim), '5000 ≥ 5000').toBeNull()
     expect(findFieldCard(done, ba), 'the response was on the field first').not.toBeNull()
     ok(done)
+  })
+
+  it('L1 §15.2.5.2 — Main Phase 2 and the post-damage `damage` window too (J2 second review L1)', () => {
+    // Main Phase 2: the turn player passes the declaration step; the non-turn player casts once handed priority.
+    let s = quiet(endPhase(makeGame({ defs: DEFS })))
+    let a: CardId, ba: CardId
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    ;[s, ba] = withHand(s, 1, 'T-BA')
+    let m = apply(s, { type: 'pass', player: 0 }).state
+    expect(m.phase).toBe('main2')
+    m = apply(m, { type: 'pass', player: 0 }).state
+    expect(castBlocker(m, 1, ba)).toBeNull()
+    // The `damage` window of an unblocked attack.
+    let t = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
+    t = passBoth(t).state
+    t = apply(t, { type: 'declareBlock', player: 1, blocker: null }).state
+    t = passBoth(t).state
+    expect(t.attack?.step).toBe('damage')
+    t = apply(t, { type: 'pass', player: 0 }).state
+    expect(castBlocker(t, 1, ba)).toBeNull()
+    const cast = apply(t, { type: 'castCharacter', player: 1, card: ba, payment: NO_PAY }).state
+    expect([cast.attack?.step, cast.priority]).toEqual(['damage', 0])
+    ok(cast)
+  })
+
+  it('L1 §15.2.5.3 + §11.8.7 — an ETB cast in response goes ON TOP of the waiting Summon and resolves first (J2 second review L2)', () => {
+    let s = quiet(makeGame({ defs: DEFS }))
+    let ba: CardId, victim: CardId, burn: CardId, scratch: CardId
+    ;[s, ba] = withHand(s, 1, 'T-BA-ETB')
+    ;[s, victim] = withField(s, 1, 'forwards', 'V-F2')
+    ;[s, scratch] = withField(s, 0, 'forwards', 'V-F5')            // 7000: the ETB's 5000 only scratches it
+    ;[s, burn] = withHand(s, 0, 'T-BURN')
+    let t = apply(s, { type: 'castSummon', player: 0, card: burn, payment: NO_PAY }).state
+    t = apply(t, { type: 'chooseTargets', player: 0, targets: [victim] }).state
+    t = apply(t, { type: 'pass', player: 0 }).state
+    const cast = apply(t, { type: 'castCharacter', player: 1, card: ba, payment: NO_PAY }).state
+    expect(cast.pending).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 1 }))
+    const placed = apply(cast, { type: 'chooseTargets', player: 1, targets: [scratch] }).state
+    expect(placed.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon'))).toEqual(['summon', 'T-BA-ETB:etb'])
+    expect([placed.priority, placed.passes], '§11.4.7').toEqual([0, 0])
+    const one = passBoth(placed).state
+    expect(findFieldCard(one, scratch)?.card.damage, 'the ETB resolved first').toBe(5000)
+    expect(one.stack).toHaveLength(1)
+    const two = passBoth(one).state
+    expect(two.stack).toEqual([])
+    expect(findFieldCard(two, victim), 'then the Summon').toBeNull()
+    ok(two)
+  })
+
+  it('an UNAFFORDABLE Back Attack Character or Summon is not a decision: forcedPass passes (J2 second review M1)', () => {
+    for (const code of ['T-BA2', 'T-S2']) {
+      let s = quiet(endPhase(makeGame({ defs: DEFS })))
+      let a: CardId
+      ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+      ;[s] = withHand(s, 1, code)                                  // its only card: nothing to pay 2 CP with
+      let t = apply(s, { type: 'declareAttack', player: 0, attackers: [a] }).state
+      t = apply(t, { type: 'pass', player: 0 }).state
+      expect(legalCommands(t, 1).map((c) => c.type).filter((x) => x !== 'concede'), code).toEqual(['pass'])
+      expect(forcedPass(t), code).toEqual({ type: 'pass', player: 1 })
+      // One more card to discard for 2 CP: now it is a choice.
+      ;[t] = withHand(t, 1, 'V-F1')
+      expect(forcedPass(t), `${code}, affordable`).toBeNull()
+    }
   })
 
   it('L1 §15.2.3.3 — in the First Strike window too: it bars Summons and abilities, and a Character cast is neither', () => {

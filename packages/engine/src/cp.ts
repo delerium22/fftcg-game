@@ -148,6 +148,29 @@ export function enumeratePayments(state: GameState, player: PlayerId, card: Card
   return base.map((p) => ({ ...p, lbFlip }))
 }
 
+/**
+ * Is there ANY payment for casting `card`? A first-hit check for `forcedPass` and the browser's Smart auto-pass
+ * (J2 second review M1): an unaffordable card is not a decision. Overpaying is legal (§11.2.2.3), so the most
+ * the player can generate decides it — every active Backup and every other hand card discarded. Only the
+ * Element of each multi-Element discard is a choice; those are tried in turn (the pool has almost none).
+ */
+export function canAffordCast(state: GameState, player: PlayerId, card: CardId): boolean {
+  const req = castRequirement(state, card, player)
+  if (req.amount === 0) return true
+  const ps = state.players[player]
+  const dullBackups = ps.backups.filter((b) => b.status === 'active' && !req.excluded.includes(b.id)).map((b) => b.id)
+  const options = ps.hand
+    .filter((id) => !req.excluded.includes(id))
+    .map((id) => ({ card: id, elements: defOf(state, id).elements }))
+    .filter((o) => !o.elements.includes('light') && !o.elements.includes('dark') && o.elements.length > 0)
+  const walk = (i: number, discards: Payment['discards']): boolean => {
+    if (i === options.length) return canPay(req.amount, req.requiredElements, generateCp(state, player, { dullBackups, discards }, req.excluded))
+    const o = options[i]!
+    return o.elements.some((element) => walk(i + 1, [...discards, { card: o.card, element }]))
+  }
+  return walk(0, [])
+}
+
 /** As `enumeratePayments`, for any requirement — an ability cost as readily as a card's printed cost. */
 export function enumeratePaymentsFor(state: GameState, player: PlayerId, req: CpRequirement): Payment[] {
   const card = req.excluded
