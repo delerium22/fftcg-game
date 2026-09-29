@@ -170,6 +170,31 @@ split out ahead of the cards. Deviations and readings from the plan:
   Vol. 2 (iterations 4) took 87–93 s for two games in the suite, where the Vol. 2 J8 test plays four random/greedy
   games and two such ISMCTS games in 43 s. Not investigated.
 
+**As built (V1-C), 2026-09-30.** Commits 16994f7 (registry, `?decks=`, AI plumbing), 0a36c12 (the toolbar), 26b5644
+(e2e), 37d4d4c (CLI, README). Plan `2026-09-30-rung-v1c-deck-picker.md` with its revisions R1–R11. Readings and choices:
+- Web: `DECK_CHOICES`/`deckLists` in `apps/web/src/deck.ts`; a pair is `[you, the AI]` = seat 0, seat 1. `DECKS`/
+  `LB_DECKS` stay the Vol. 2 mirror for fixtures, with `VOL2_*` aliases. `createWebGame(seed, pair)` is what the hook
+  deals. `createAiSearch` passes only the MAIN lists: the AI reads LB decks from the view (both are public, J8-D5).
+- `GameApi` gains an optional `decks` (the active pair) and `restart(decks?)`. `Board` renders the `DeckPicker` only
+  when `decks` is present, so the hand-built fixtures keep their controls. `Board` holds the selection; the toolbar's
+  "New game" and the dialog's "Play again" both deal it, and both hand focus to the new game's first decision.
+- The toolbar is LAST in the DOM and tab order and drawn at the top by `grid-area: toolbar` (an auto row over the board
+  column; the rail keeps its height). Why: "New game" discards the game in progress with no confirmation, so a keyboard
+  player reaches the board's decision first — the principle the prompt strip's placement already states. A real-browser
+  test measures one full tab lap.
+- The opening log line is now "New game — you play Starter Vol. 2, the AI plays Starter Vol. 1" (was "you are P0…").
+  `App` parses `?seed=` and `?decks=` once, in a lazy initialiser; a malformed `?seed=` used to warn on every render.
+- Who makes the first-player choice depends on the seed alone, not the decks (seeds 2, 4, 5, 7 give it to the AI for
+  every pair). The default-pair e2e uses seed 5 and plays on to the AI's MULLIGAN: its first-player choice is made
+  before the deal, when no visible card can test a list, so a swapped worker list passed that far (checked by mutation).
+- CLI: `deckPaths` in `flags.ts`; the default stays the Vol. 2 mirror (V1-D17 as amended). `deckorder` takes
+  `--deck0/--deck1` but no LB flag (it prints main decks only). `mirror` takes only `--deck`/`--lb-deck`, and
+  `mirrorTournament` itself throws on a different list per seat. A deck path is relative to the command's working
+  directory, which under `pnpm --filter` is `apps/cli`.
+- Known, not changed: at 1440×900 the player's seat already overflowed its row by ~50 px before this rung (the J8 LB
+  deck row); the 47 px toolbar adds ~23 px to that scroll. `game-over.test.tsx`'s "native dialog" case (~3 s alone)
+  can pass the 5 s default timeout under full-suite load.
+
 ## Source and the list (V1-D1)
 
 Starter Set 2025 Vol. 1 is Fire/Water, built around Zack: 50 main-deck cards and an 8-card LB deck (official product
