@@ -527,7 +527,9 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
     // is no `assignPartyDamage` choice for `seeking` to steer at, so it falls back to index 0 — "don't block" —
     // and the party split never happens. C2's clauses shortened games again (Luso and Lightning both remove a
     // Forward), which pushed the first blind party split past seed 12. 20 is the smallest bound that passes.
-    sweep(POLICIES, 24)
+    // 24 → 30 (J2 second review M1, 2026-09-29): an unaffordable card no longer holds a window open, which moved
+    // the first blind party split to seed 26.
+    sweep(POLICIES, 30)
     // Whatever the blind policies missed, go looking for on purpose.
     // Fewer seeds than the blind sweep on purpose: a steering policy that actually steers should find its
     // target in the first game or two, so a wide bound here only buys slow failures.

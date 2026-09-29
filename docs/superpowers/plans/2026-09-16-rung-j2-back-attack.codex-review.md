@@ -23,3 +23,25 @@ backed by the code.
 - L5 — the card-details sweep plays each seed once.
 
 **Rejected (0). Disagreed with the reviewer on (0).**
+
+## Second pass — Codex (adjudicated 2026-09-29)
+
+Codex (gpt-5.6-sol, xhigh, read-only) reviewed main at 8a4e874 on 2026-09-29, told of the first pass and of the
+First Strike window change (J3 second review H2). Fixes are on branch `fix/j2-codex-second-pass`.
+
+**Accepted (4):**
+- M1 — `forcedPass` and Smart auto-pass read `actionMenu.castable`, which ignores CP, so an UNAFFORDABLE card
+  (a Summon since J1, a Back Attack Character since J2) held a pass-only window open: the browser showed a strip
+  whose one answer was Pass, and the AI searched a forced move. Reproduced (a cost-2 card as the only card in hand:
+  `legalCommands` = pass, `forcedPass` = null). Fix: `canAffordCast` (`cp.ts`) — overpaying is legal (§11.2.2.3), so
+  one `canPay` over every source the player has decides it — used by `forcedPass` and `smartPasses`. Engine and web
+  cases added. Two knock-ons: the K5-A2 fixture had a Lightning Summon with only Earth cards to pay (it passed only
+  because of this bug; it now holds Lightning discards), and B-A2's blind sweep found its first party split at seed
+  26, so its bound goes 24 → 30.
+- L1 — §15.2.5.2 now has Main Phase 2 and the post-damage `damage` window cases.
+- L2 — an ETB Back Attack cast in response to a Summon: its ETB goes on top and resolves first; the turn player
+  holds priority with `passes` 0.
+- L3 — ISMCTS through an off-turn cast: one key across five determinisations, a legal decode in each, and the
+  agent returns a legal command.
+
+**Rejected (0).**

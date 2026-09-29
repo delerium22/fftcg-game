@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  actingPlayer, actionMenu, apply, createGame, defOf, forcedDecision, isResponseWindow, legalCommands, viewFor,
+  actingPlayer, actionMenu, apply, canAffordCast, createGame, defOf, forcedDecision, isResponseWindow, legalCommands, viewFor,
   type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldCard, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS, LB_DECKS } from '../deck.js'
@@ -475,7 +475,7 @@ export function smartPasses(state: GameState): boolean {
   if (state.phase === 'attack' && state.attack?.step === 'blocked') return false
   // Rung J2 (review H1): a window in which a CHARACTER could enter — a Back Attack surprise blocker in the AI's
   // `declared` window, say — is a real decision; K5-D4 passed it when only Summons could be cast there.
-  if (actionMenu(state, HUMAN).castable.some((c) => defOf(state, c).type !== 'summon')) return false
+  if (actionMenu(state, HUMAN).castable.some((c) => defOf(state, c).type !== 'summon' && canAffordCast(state, HUMAN, c))) return false
   return true
 }
 

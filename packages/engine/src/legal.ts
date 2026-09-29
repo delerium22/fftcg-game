@@ -4,7 +4,7 @@ import { defOf } from './state.js'
 import { discardCheck } from './phases.js'
 import { excessBackupsCheck } from './rules.js'
 import type { Command, Payment } from './commands.js'
-import { canPay, castRequirement, enumeratePayments, enumeratePaymentsFor, generateCp, type CpRequirement } from './cp.js'
+import { canAffordCast, canPay, castRequirement, enumeratePayments, enumeratePaymentsFor, generateCp, type CpRequirement } from './cp.js'
 import { IllegalCommandError } from './errors.js'
 import { abilityCpRequirement, activatedAbility, activationCheck, activationTargetSets, hasAnyActivation } from './activate.js'
 import { castCheck, instantSpeedAllowed, lbFlipCheck } from './cast.js'
@@ -89,7 +89,7 @@ export function forcedPass(state: GameState): Command | null {
   // cast's payments and each activation's target sets here was a quarter of a rollout's time.
   const shape = menuShape(state, player)
   if (!shape.pass || shape.attack) return null
-  if (shape.casts && castableFrom(state, player).some((card) => castCheck(state, player, card) === null)) return null
+  if (shape.casts && castableFrom(state, player).some((card) => castCheck(state, player, card) === null && canAffordCast(state, player, card))) return null
   if (shape.abilities && hasAnyActivation(state, player)) return null
   return { type: 'pass', player }
 }

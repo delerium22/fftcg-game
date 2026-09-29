@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { apply, forcedPass, legalCommands, viewFor, type GameState } from '@fftcg/engine'
+import { apply, determinise, forcedPass, isLegal, legalCommands, seedRng, viewFor, type GameState } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
 import { GreedyAgent } from '../src/greedy.js'
+import { IsmctsAgent } from '../src/ismcts/agent.js'
+import { actionKey, decodeAction } from '../src/ismcts/keys.js'
 import { VANILLA_POOL, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
 /**
@@ -42,5 +44,25 @@ describe('the AI sees a Back Attack cast in a window (J2-A4)', () => {
     const { s, ba } = declaredWindow()
     const d = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1 }).decide(viewFor(s, 1), legalCommands(s, 1))
     expect(d).toEqual(expect.objectContaining({ type: 'castCharacter', card: ba }))
+  })
+})
+
+describe('ISMCTS through an off-turn Back Attack cast (J2 second review L3)', () => {
+  it('the cast keys identically in every determinisation, decodes to a legal command in each, and the agent returns a legal command', () => {
+    const { s } = declaredWindow()
+    const view = viewFor(s, 1)
+    const keys = new Set<string>()
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const [det] = determinise({ view, decks: decksOf(s), rng: seedRng(seed) })
+      const cast = candidateCommands(det, 1).find((c) => c.type === 'castCharacter')
+      expect(cast, `seed ${seed}`).toBeDefined()
+      const key = actionKey(viewFor(det, 1), cast!)
+      keys.add(key)
+      const back = decodeAction(viewFor(det, 1), key)
+      expect(back && isLegal(det, back), `seed ${seed}: ${key}`).toBeNull()
+    }
+    expect(keys.size, 'one information set, one key').toBe(1)
+    const d = new IsmctsAgent({ seed: 1, decks: decksOf(s), iterations: 60 }).decide(view, legalCommands(s, 1))
+    expect(isLegal(s, d)).toBeNull()
   })
 })
