@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { unimplementedClauseCount } from '@fftcg/engine'
 import { loadCards } from '../src/index.js'
@@ -24,6 +25,39 @@ describe('the card pool', () => {
    * an unimplemented clause nobody declared, and a gap SMALLER is a landed clause whose entry was not updated.
    */
   const EXPECTED_GAPS: Record<string, number> = { '27-122S': 1, '27-128S': 1, '11-121C': 1, '13-125R': 2 }
+
+  /**
+   * Rung V1-B (review M6): the clauses ENCODED with a known deviation from the rules, one line each, finished in rung
+   * V1-D (Yuna's is the older spec C9 one). The gap table above counts what is missing; this names what is present but
+   * simplified, so the pool gate does not overstate completeness. Exact both ways against the source: every encoding
+   * whose doc comment carries an `MVP0-SIMPLIFICATION` marker naming rung V1-D is listed here, and nothing else — an
+   * entry that no longer applies must go, with its marker.
+   */
+  const SIMPLIFIED: Record<string, string> = {
+    '24-126H': 'Ultima Weapon: the Water clause is a conditional auto-ability (§11.8.13); encoded as an unconditional trigger whose condition is read at resolution only — rung V1-D',
+    '23-119R': 'Vincent: "When you do so" is a separate auto-ability that goes on the stack (ruling 2019-07-19, Fusilier 9-013C); encoded inline — rung V1-D',
+    '3-143C': 'Leonora: the search does not reveal the found card (§15.1.1.8.1) — rung V1-D',
+    '21-010H': 'Taivas: the search does not reveal the found card (§15.1.1.8.1) — rung V1-D',
+    '23-130H': 'LB Luso: the search does not reveal the found card (§15.1.1.8.1) — rung V1-D',
+    '21-001R': 'Ward: §11.2.2.3 allows generating unused off-element CP; the engine refuses any off-element CP in the payment — rung V1-D',
+    '27-129S': 'Yuna: the looked-at cards go to the bottom in a fixed order, not the controller\u2019s (spec C9) — rung V1-D',
+  }
+
+  it('lists every simplified encoding, exactly: the table and the source markers agree (review M6)', () => {
+    const MARKED = /\/\*\*((?:(?!\*\/)[\s\S])*)\*\/\s*const \w+: Ability = \{\s*id: '([^:']+):/g
+    const marked = new Set<string>()
+    for (const f of ['abilities.ts', 'abilities-vol1.ts']) {
+      const src = readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8')
+      for (const m of src.matchAll(MARKED)) if (/MVP0-SIMPLIFICATION/.test(m[1]!) && /rung V1-D/.test(m[1]!)) marked.add(m[2]!)
+    }
+    expect(marked.size, 'no marker found at all — the pattern has drifted').toBeGreaterThan(0)
+    expect(Object.keys(SIMPLIFIED).sort(), 'a simplified encoding without a table entry, or an entry without its marker').toEqual([...marked].sort())
+    const pool = new Set(loadCards().map((d) => d.code))
+    for (const [code, why] of Object.entries(SIMPLIFIED)) {
+      expect(pool.has(code), code).toBe(true)
+      expect(why, code).toMatch(/rung V1-D$/)
+    }
+  })
 
   it('implements every printed clause of every card, but for the expected gaps', () => {
     const short = Object.fromEntries(loadCards()

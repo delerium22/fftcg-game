@@ -499,14 +499,15 @@ describe('24-126H Ultima Weapon — its two enters-the-field clauses, each with 
   }
   const stackIds = (s: GameState) => s.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon'))
 
-  it('both clauses trigger; the Fire one declares its target as it is placed, and resolves first', () => {
+  it('both clauses trigger; the Fire one declares its target as it is placed, and resolves first — the §11.8.7 fixed-order simplification', () => {
     let s = makeGame(); let victim: CardId
     ;[s, victim] = withField(s, 1, 'forwards', '27-127S')
     const { t } = castUltima(s, 3)
     expect(t.pending, 'clause 1 chooses its Forward at placement').toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0 }))
     const placed = step([], t, { type: 'chooseTargets', player: 0, targets: [victim] })
-    // §11.8.7, as the engine orders one controller's simultaneous triggers (the MVP0-SIMPLIFICATION on
-    // `collectWatchers`): the first-triggered is placed last, so the printed-first Fire clause is on top.
+    // MVP0-SIMPLIFICATION (§11.8.7): the controller should order their simultaneous triggers; the engine fixes the
+    // order instead (the marker on `collectWatchers`; timing matrix `simplified`). The first-triggered is placed last,
+    // so the printed-first Fire clause is on top. This pins the simplification, not a rule.
     expect(stackIds(placed)).toEqual(['24-126H:etb-water', '24-126H:etb-fire'])
   })
 

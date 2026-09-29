@@ -6,7 +6,9 @@ import { FIRE_BACKUP, WATER_BACKUP, makeGame, step, trace, withCp, withField, wi
 /**
  * Rung V1-B, Layer 3: LB Ultima Weapon 24-126H, both enters-the-field clauses at once. Clause 1 chooses as it is placed
  * and reads "4 or more Fire Characters" as it resolves; clause 2 reads "4 or more Water Characters" as it resolves, then
- * the opponent selects. Ultima Weapon (Water/Fire) counts for both.
+ * the opponent selects. Ultima Weapon (Water/Fire) counts for both. Two simplifications show here: the Water clause
+ * triggers unconditionally (§11.8.13, rung V1-D; `pool-coverage`'s SIMPLIFIED table), and the two clauses are placed in
+ * the engine's fixed order rather than one the controller chooses (§11.8.7).
  */
 
 const ok = (s: GameState) => expect(checkInvariants(s)).toEqual([])
@@ -28,7 +30,8 @@ describe('scenario: Ultima Weapon — both conditions', () => {
     s = step(log, s, { type: 'castCharacter', player: 0, card: uw, payment: { dullBackups: cp, discards: [{ card: fodder, element: 'fire' }] } })
     expect(s.pending, 'clause 1 declares its Forward as it is placed').toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0 }))
     s = step(log, s, { type: 'chooseTargets', player: 0, targets: [lightning] })
-    expect(ids(s), 'the printed-first clause resolves first').toEqual(['24-126H:etb-water', '24-126H:etb-fire'])
+    // MVP0-SIMPLIFICATION (§11.8.7): a fixed order stands in for the controller's choice (timing matrix `simplified`).
+    expect(ids(s), 'the fixed order: the printed-first clause resolves first').toEqual(['24-126H:etb-water', '24-126H:etb-fire'])
     s = step(log, s, { type: 'pass', player: 0 }); s = step(log, s, { type: 'pass', player: 1 })
     expect(findFieldCard(s, lightning)).toBeNull()
     s = step(log, s, { type: 'pass', player: 0 }); s = step(log, s, { type: 'pass', player: 1 })
@@ -36,7 +39,7 @@ describe('scenario: Ultima Weapon — both conditions', () => {
     s = step(log, s, { type: 'chooseTargets', player: 1, targets: [cloud] })
     expect(s.players[1].breakZone).toEqual(expect.arrayContaining([lightning, cloud]))
     expect(trace(log, names)).toEqual([
-      // Each clause is narrated as it is placed: the Water one first (bottom), the Fire one last (top), §11.8.7.
+      // Each clause is narrated as it is placed: the Water one first (bottom), the Fire one last (top) — the fixed order.
       'discard:ifrit', 'trigger:24-126H:etb-water', 'push:24-126H:etb-water', 'trigger:24-126H:etb-fire', 'push:24-126H:etb-fire',
       'damage:lightning:9000', 'resolve:24-126H:etb-fire', 'broken:lightning',
       'put:cloud', 'resolve:24-126H:etb-water',
