@@ -16,8 +16,9 @@ export const DEFS = loadCards()
  * would change the deck (and every seed-pinned fixture) and double every LB card (14 > 8, §8.1.3). The codes come from
  * the Vol. 2 deck files; the construction below is unchanged, so `DECK` and `LB_DECK` are what they were.
  */
-const VOL2 = new Set(['starter-2025-vol2.txt', 'starter-2025-vol2-lb.txt']
-  .flatMap((f) => parseDeckFile(readFileSync(new URL(`../../../decks/${f}`, import.meta.url), 'utf8'))))
+/** A shipped deck file, one code per physical copy. */
+export const deckFile = (f: string): string[] => parseDeckFile(readFileSync(new URL(`../../../decks/${f}`, import.meta.url), 'utf8'))
+const VOL2 = new Set(['starter-2025-vol2.txt', 'starter-2025-vol2-lb.txt'].flatMap(deckFile))
 const VOL2_DEFS = DEFS.filter((d) => VOL2.has(d.code))
 
 /** 50 cards, ≤3 copies of each of the 22 Vol. 2 main-deck codes (§8.1.1.1–2); the LB cards are the LB deck (§8.1.3, rung J8). */
@@ -30,8 +31,9 @@ export const DECK: string[] = (() => {
 /** The LB deck both seats play in these fixtures: every Vol. 2 LB card, twice (rung J8). */
 export const LB_DECK: string[] = VOL2_DEFS.filter((d) => d.limitBreak !== undefined).flatMap((d) => [d.code, d.code])
 
-export function makeGame(): GameState {
-  let s = createGame({ seed: 1, decks: [DECK, DECK], defs: DEFS, lbDecks: [LB_DECK, LB_DECK] })
+/** `lbDecks` defaults to the Vol. 2 LB deck for both seats; a Vol. 1 scenario passes the Vol. 1 LB deck (rung V1-B). */
+export function makeGame(lbDecks: [string[], string[]] = [LB_DECK, LB_DECK]): GameState {
+  let s = createGame({ seed: 1, decks: [DECK, DECK], defs: DEFS, lbDecks })
   const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : 0
   ;[s] = applyChooseFirst(s, chooser, chooser === 0)   // player 0 always goes first
   ;[s] = applyMulligan(s, 0, false)
@@ -150,6 +152,13 @@ export function trace(events: readonly Event[], names: Record<number, string> = 
       case 'phaseStarted': out.push(e.step ? `step:${e.step}` : `phase:${e.phase}`); break
       case 'attackDeclared': out.push(`attack:${e.attackers.map(n).join('+')}`); break
       case 'blockDeclared': out.push(`block:${e.blocker === null ? 'none' : n(e.blocker)}`); break
+      // rung V1-B: the Vol. 1 vocabulary. An ability's "put into the Break Zone" (V1-D8) is `put:`; the rule processes'
+      // moves (§12.4.6 same name, §7.7.4 backup limit, …) are `rule:<reason>:`.
+      case 'putIntoBreakZone': out.push(e.reason === 'ability' ? `put:${n(e.card)}` : `rule:${e.reason}:${n(e.card)}`); break
+      case 'activatedByAbility': out.push(`activated:${n(e.card)}`); break
+      case 'playedFromHand': out.push(`play:${n(e.card)}`); break
+      case 'deckExposed': out.push(`look:${e.player}:${e.count}`); break
+      case 'abilityNoLegalTarget': out.push(`noTarget:${e.abilityId}`); break
       default: break
     }
   }

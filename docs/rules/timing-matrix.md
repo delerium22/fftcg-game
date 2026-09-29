@@ -54,7 +54,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 10.1.2.2 | Legal attackers dull; Brave ones do not | tested | engine/cr10-attack#§10.1.2.2 |
 | 10.1.2.3 | Attack costs are locked at declaration | n/a | no pool card has an attack cost |
 | 10.1.2.4 | The Forward is now attacking | tested | engine/cr10-attack#§10.1.2.2 |
-| 10.1.2.5 | Triggers caused by the attacking Forward go on the stack | tested | engine/timing-l1-attack-trigger#§10.1.2.5 |
+| 10.1.2.5 | Triggers caused by the attacking Forward go on the stack | tested | engine/timing-l1-attack-trigger#§10.1.2.5; cards/scenarios/zack-sweeps#L3 zack-sweeps; cards/scenarios/yuna-attacks#L3 yuna-attacks |
 | 10.1.2.6 | The turn player gains priority (the `declared` window) | tested | engine/cr10-attack-windows#declaring an attack opens the; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 10.1.2.7 | No attackers: skip the block and damage steps | tested | engine/cr9-phases#main1 → attack declaration → main2 |
 | 10.1.3 | Block Declaration Step | heading |  |
@@ -128,7 +128,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 11.6.11 | Activated; activation-triggers go on the stack; the activator regains priority | tested | engine/cr10-attack-windows#J1-A3 |
 | 11.6.12 | All targets ineligible at resolution: cancelled | tested | engine/cr11-stack#J1-A7 |
 | 11.7 | Special Abilities | heading |  |
-| 11.7.1 | Like action abilities plus a same-name discard; the S icon | tested | engine/special-abilities#L1 §11.7.1 — with a same-name card in hand; engine/special-abilities#L1 §11.7.1 — with no same-name card in hand; engine/special-abilities#L1 §11.7.1 — the source never pays for itself |
+| 11.7.1 | Like action abilities plus a same-name discard; the S icon | tested | engine/special-abilities#L1 §11.7.1 — with a same-name card in hand; engine/special-abilities#L1 §11.7.1 — with no same-name card in hand; engine/special-abilities#L1 §11.7.1 — the source never pays for itself; cards/scenarios/jecht-beam#L3 jecht-beam |
 | 11.7.2 | Written "(cost): (effect)" | tested | engine/special-abilities#names the discard in the printed cost |
 | 11.7.2.1 | The text before the colon is the cost | tested | engine/special-abilities#names the discard in the printed cost |
 | 11.7.2.2 | Dull-icon costs need control since the turn began, or Haste | tested | engine/special-abilities#L1 §11.7.2.2 |
@@ -142,8 +142,8 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 11.7.7 | Cost references, alternative and variable costs | n/a | no special ability in the pool has one |
 | 11.7.8 | Effects applying differently | n/a | no special ability in the pool has one |
 | 11.7.9 | The cost is locked | n/a | nothing in the pool changes a cost between declaration and payment; the engine computes and pays in one apply |
-| 11.7.10 | Paid all at once | tested | engine/special-abilities#L1 §11.7.1 — with a same-name card in hand |
-| 11.7.11 | Activated; triggers go on the stack; the activator regains priority | tested | engine/special-abilities#L1 §11.7.11 |
+| 11.7.10 | Paid all at once | tested | engine/special-abilities#L1 §11.7.1 — with a same-name card in hand; cards/scenarios/jecht-beam#L3 jecht-beam |
+| 11.7.11 | Activated; triggers go on the stack; the activator regains priority | tested | engine/special-abilities#L1 §11.7.11; cards/scenarios/jecht-beam#L3 jecht-beam |
 | 11.7.12 | All targets ineligible at resolution: cancelled | tested | engine/special-abilities#L1 §11.7.12 |
 | 11.8 | Auto-Abilities | heading |  |
 | 11.8.1 | Trigger automatically on their event | tested | engine/observer-triggers#C2-A2 |
