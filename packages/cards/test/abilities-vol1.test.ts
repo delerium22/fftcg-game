@@ -1,10 +1,8 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { CardId, Event, FieldCard, GameState } from '@fftcg/engine'
 import { activationCheck, checkInvariants, deckPickCandidates, findFieldCard, keywordsOf, legalCommands, powerOf, viewFor } from '@fftcg/engine'
 import { VOL1_ABILITIES, VOL1_CLAUSES } from '../src/abilities-vol1.js'
-import { loadCards, parseDeckFile } from '../src/index.js'
-import { DEFS, FIRE_BACKUP, WATER_BACKUP, applyNow, endPhase, makeGame, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
+import { DEFS, FIRE_BACKUP, LIGHTNING_BACKUP, WATER_BACKUP, applyNow, endPhase, makeGame, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
 
 /**
  * Rung V1-B: the Starter Set 2025 Vol. 1 cards (spec 2026-09-29-rung-v1-vol1-pool.md, V1-D1/D3/D4), tested against the
@@ -368,19 +366,14 @@ describe('23-130H Luso — "When a Job Standard Unit enters your field, Luso gai
     ok(r.state)
   })
 
-  it('PROOF for the observer\u2019s `of: backup` (R6): every Job Standard Unit that can enter LB Luso\u2019s controller\u2019s field is a Backup', () => {
-    // `observesEnterField.of` is ONE type, so "a Job Standard Unit enters" cannot say Forward or Backup. Luso ships only
-    // in the Vol. 1 LB deck and watches only his controller's field, which the Vol. 1 main deck fills (Yuna and Taivas
-    // play from that hand, the searches take from that deck). Across BOTH pools the claim is false: Dragoon 1-147C
-    // (Vol. 2) is a Forward Standard Unit. A deck pairing Vol. 1's LB deck with Vol. 2's main deck would reach the gap.
-    const vol1 = new Set(['starter-2025-vol1.txt', 'starter-2025-vol1-lb.txt']
-      .flatMap((f) => parseDeckFile(readFileSync(new URL(`../../../decks/${f}`, import.meta.url), 'utf8'))))
-    expect(vol1.has('23-130H'), 'Luso is in the Vol. 1 LB deck').toBe(true)
-    const units = loadCards().filter((d) => vol1.has(d.code) && d.job?.split('/').includes('Standard Unit'))
-    expect(units.map((d) => d.code).sort(), 'the Vol. 1 Standard Units').toEqual(['11-010C', '18-003C', '18-094C'])
-    expect(units.filter((d) => d.type !== 'backup').map((d) => d.code)).toEqual([])
-    const elsewhere = loadCards().filter((d) => !vol1.has(d.code) && d.job?.split('/').includes('Standard Unit') && d.type !== 'backup')
-    expect(elsewhere.map((d) => d.code), 'the known Forward Standard Unit outside Vol. 1').toEqual(['1-147C'])
+  it('a Standard Unit FORWARD entering pumps Luso too — Dragoon 1-147C (V1-A5: `of` is a list)', () => {
+    let s = makeGame(); let luso: CardId
+    ;[s, luso] = withField(s, 0, 'forwards', '23-130H')
+    expect(def('1-147C').job, 'Dragoon is a Job Standard Unit').toBe('Standard Unit')
+    expect(def('1-147C').type).toBe('forward')
+    const r = cast(s, '1-147C', [LIGHTNING_BACKUP, LIGHTNING_BACKUP, LIGHTNING_BACKUP])
+    expect(powerOfId(r.state, luso)).toBe(9000)
+    ok(r.state)
   })
 })
 

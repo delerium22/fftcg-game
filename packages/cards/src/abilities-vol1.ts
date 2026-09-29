@@ -253,16 +253,12 @@ const LUSO_LB_ETB: Ability = {
 
 /**
  * LB Luso's watcher: Hugh Yurg's `observesEnterField` with `whose: 'self'` ("your field"). `onSource` (rung V1-A4)
- * pumps LUSO, the watcher, not the card that arrived.
- *
- * `of: 'backup'` (plan R6) reads "a Job Standard Unit" as a Backup: `of` takes one type, and every Standard Unit that
- * can enter Luso's controller's field — the Vol. 1 decks' Warrior, Machinist and Geomancer — is one. Dragoon 1-147C
- * (Vol. 2) is a Forward Standard Unit this would miss; it reaches Luso's side only in a deck mixing the two sets (the
- * proof test in `abilities-vol1.test.ts` pins both facts).
+ * pumps LUSO, the watcher, not the card that arrived. "a Job Standard Unit" is any Character with that Job: a Backup
+ * (Warrior, Machinist, Geomancer) or a Forward (Dragoon 1-147C), so `of` lists both (rung V1-A5).
  */
 const LUSO_LB_STANDARD_UNIT: Ability = {
   id: '23-130H:standard-unit',
-  trigger: { kind: 'observesEnterField', whose: 'self', of: 'backup', filter: { job: 'Standard Unit' } },
+  trigger: { kind: 'observesEnterField', whose: 'self', of: ['forward', 'backup'], filter: { job: 'Standard Unit' } },
   text: 'When a Job Standard Unit enters your field, Luso gains +4000 power until the end of the turn.',
   effects: [{ kind: 'onSource', do: [{ kind: 'addPower', amount: 4000 }] }],
 }
