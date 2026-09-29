@@ -36,11 +36,11 @@ The user chose (2026-09-30):
 | Report assumption | This repo | Consequence |
 |---|---|---|
 | "Change `apply` to return `{state, events}`" | **Already done.** `apply` returns `ApplyResult { state, events }` with 46 typed events (`packages/engine/src/events.ts`). | The foundation needs **no engine change**. |
-| "Give every card a lifelong instance ID" | **Already done.** `CardId` is a number fixed for the whole game. | Use it, namespaced by a game generation (§4.6), as the React key and the Motion `layoutId`. |
-| "Hidden cards get their ID but not their code" | **Unsafe here.** IDs are assigned in decklist order before the shuffle (`packages/engine/src/setup.ts:216`), so a hidden card's ID *reveals* the card. The opponent's hand reaches the view only as `handCount`. Both LB decks are in `view.cards` even while face-down. | Hidden cards animate from **zone anchors**. Face-up-ness comes from an explicit per-zone rule in the projection (§4.1), not from `view.cards`. |
-| "The client receives events" | **Events are dropped at the seam.** `narrateApply` and `choose` compute events, then call `commit(state, lines)` with log lines only (`apps/web/src/game/useGame.ts`). | U3 threads redacted steps through `commit` (§4.2). |
+| "Give every card a lifelong instance ID" | **Already done.** `CardId` is a number fixed for the whole game. | Use it, namespaced by a game generation (section 4.6), as the React key and the Motion `layoutId`. |
+| "Hidden cards get their ID but not their code" | **Unsafe here.** IDs are assigned in decklist order before the shuffle (`packages/engine/src/setup.ts:216`), so a hidden card's ID *reveals* the card. The opponent's hand reaches the view only as `handCount`. Both LB decks are in `view.cards` even while face-down. | Hidden cards animate from **zone anchors**. Face-up-ness comes from an explicit per-zone rule in the projection (section 4.1), not from `view.cards`. |
+| "The client receives events" | **Events are dropped at the seam.** `narrateApply` and `choose` compute events, then call `commit(state, lines)` with log lines only (`apps/web/src/game/useGame.ts`). | U3 threads redacted steps through `commit` (section 4.2). |
 | One `apply` per commit | `settleWindows` applies several commands (forced passes, Smart auto-passes) in one commit. | A commit is a *batch* of one or more applies; `settleWindows` returns each apply's boundary. |
-| AI paced by `AI_STEP_MS` | `SearchCoordinator` holds a result until `request time + stepMs` (600 ms). | Delivery also waits for "presentation idle" through a cancellable subscription (§4.5). |
+| AI paced by `AI_STEP_MS` | `SearchCoordinator` holds a result until `request time + stepMs` (600 ms). | Delivery also waits for "presentation idle" through a cancellable subscription (section 4.5). |
 | React 19.3 `<ViewTransition>` | React is **19.2.8**. | No `<ViewTransition>` until a deliberate upgrade (U10). |
 | Motion 13.4.4/13.4.5 | `npm view motion version` = **13.4.6**; peers `react ^18 \|\| ^19`. | U4 re-checks the registry and pins an exact version. |
 
@@ -192,7 +192,7 @@ pile node.
 - A card cast from a hidden hand appears only in `after`. Its actor starts face-down at the hand anchor, flips at
   centre stage, then flies to its slot.
 - A card returned to a hidden hand flies to the anchor, flips face-down, and leaves the model.
-- `layoutId` follows the projection's face-up records, namespaced by the game generation (§4.6).
+- `layoutId` follows the projection's face-up records, namespaced by the game generation (section 4.6).
 
 ### 4.4 Input: converge, then play
 
@@ -274,7 +274,7 @@ CP are crystals, damage cracks crystals, breaks shatter into crystal shards, and
 | Reveals are the core moment | The AI telegraph reveals at centre stage. The EX Burst reveal is the biggest beat in the game. |
 | Big end-turn button, bottom right | A large primary-action button bottom right (Pass / End / Confirm) that glows when it's the only sensible move. |
 | Vivid colour on dark | A deep indigo stage with element-tinted light. Saturated element hues. Gold for emphasis, cyan for "you can act". |
-| Short beats | Durations at the fast end (§7), a Fast speed, and skip on click by default. |
+| Short beats | Durations at the fast end (section 7), a Fast speed, and skip on click by default. |
 
 **Tokens** (`apps/web/src/tokens.css`, mirrored in `motion.ts` where JS needs them):
 
@@ -299,7 +299,7 @@ old and new side by side:
 - **The text card** (no art) gets generative element art: layered SVG crystal shards in the card's element hues
   with a grain texture, seeded by the card code so it never changes. The card name is set large.
 - **The card back** is our own design (a crystal emblem on deep blue with gold line work), not Square Enix's.
-- **The hover preview** (§6) shows a large card (about 320 px wide) with pointer-tracked tilt and a foil sheen, plus
+- **The hover preview** (section 6) shows a large card (about 320 px wide) with pointer-tracked tilt and a foil sheen, plus
   the full rules text in Barlow.
 
 **Card visual state model.** Each state is derived, never stored, and exposed as a `data-*` attribute that CSS
@@ -364,7 +364,7 @@ scroll. Card sizes come from container query units, so the board, not the window
   ticker at the centre line shows the latest line. The e2e test that reads log lines opens the drawer first.
 - **The hover preview** replaces the `CardDetails` rail: hover for 300 ms, or keyboard focus. Pressing a card still
   opens its `CardSheet` (rung I1), which stays the place to read a card and act on it.
-- **Settings** (⚙) is a popover (§8).
+- **Settings** (⚙) is a popover (section 8).
 - The grid areas are named so U11 can add portrait templates without restructuring.
 
 ## 7. Motion and effects
@@ -396,13 +396,13 @@ Easings: `--ease-out` `cubic-bezier(.16,1,.3,1)`, `--ease-in` `cubic-bezier(.7,0
 - **Screen shake** is a transform on the board container, used only on the 6th and 7th damage and the EX Burst.
 
 **Beats.** Each has the shape preparation → emphasis → aftermath. The emphasis point releases the beat's diffs
-(§4.3); the aftermath is decoration and never blocks. "Decoration" in the table means the beat releases at 0 ms
+(section 4.3); the aftermath is decoration and never blocks. "Decoration" in the table means the beat releases at 0 ms
 and only its effect plays. Durations are at 1×. The table covers the event types that animate; the compile-time
-classification (§4.2) marks every other type `logOnly` or `settle`.
+classification (section 4.2) marks every other type `logOnly` or `settle`.
 
 | Events | Beat | Blocking | Effect |
 |---|---|---|---|
-| (AI batch start) | Telegraph from the step's `Telegraph` (§4.5) | soft | reveal flash / arrow |
+| (AI batch start) | Telegraph from the step's `Telegraph` (section 4.5) | soft | reveal flash / arrow |
 | `turnStarted` | "YOUR TURN" / "AI TURN" banner punch, 700 ms | soft | banner sweep |
 | `phaseStarted` | Phase tracker advances | decoration | — |
 | `activated` | Active Phase untap, staggered 40 ms | soft | — |
@@ -448,7 +448,7 @@ becomes non-blocking or is cut.
 | Sound (U8) | volume, mute | 70 %, unmuted |
 
 The full-control toggle stays in the action area (K4-D5: it is "for now", reset on restart, not a preference). It is
-gameplay input, so it is locked until the board converges (§4.4).
+gameplay input, so it is locked until the board converges (section 4.4).
 
 **Reduced motion** (from the system setting, or the in-app override):
 
@@ -479,7 +479,7 @@ tests (`focus`, `announcements`, `pressable`, `how-to-play`) must pass at every 
 | Layer | What it proves |
 |---|---|
 | Director unit tests (Vitest, fake clock) | step → beats, blocking flags, release order, skip and collapse, restart, Instant draining synchronously, and convergence to `after` |
-| **Convergence property test** | The canonical projection is the `BoardModel`. After every beat: the well-formedness invariants (§4.3). At the end of every step: displayed = `after`. Corpus: 200 or more Greedy-vs-Greedy games, plus targeted fixtures for a shuffle that drops knowledge, a card public then hidden again, stack changes of more than one entry, two Forwards broken at once, LB flips, a continuous-effect source entering or leaving, and restart mid-batch |
+| **Convergence property test** | The canonical projection is the `BoardModel`. After every beat: the well-formedness invariants (section 4.3). At the end of every step: displayed = `after`. Corpus: 200 or more Greedy-vs-Greedy games, plus targeted fixtures for a shuffle that drops knowledge, a card public then hidden again, stack changes of more than one entry, two Forwards broken at once, LB flips, a continuous-effect source entering or leaving, and restart mid-batch |
 | Mapper table tests | One fixture per animated event type → the expected beat kinds and released diffs; the compile-time classification covers the rest |
 | Redaction tests | No `PresentationStep` carries a card ID outside `before.cards ∪ after.cards`, over the whole corpus |
 | Coordinator tests | The idle gate: busy then idle delivers once; invalidate, restart and dispose while waiting; the Greedy fallback waits too |
@@ -528,7 +528,7 @@ and U6, which are the two points where the feel changes most.
 - **UO-A6** Across the property-test corpus, every intermediate displayed model is well formed, and displayed =
   `after` at the end of every step.
 - **UO-A9** No `PresentationStep` carries a card ID the human's views don't carry.
-- **UO-A7** The performance budget in §9 holds.
+- **UO-A7** The performance budget in section 9 holds.
 - **UO-A8** The accessibility tests pass, and a keyboard-only game can still be played to the end.
 
 ## 13. Out of scope
@@ -543,8 +543,8 @@ multiplayer stay possible later.
 | Risk | Mitigation |
 |---|---|
 | Displayed and authoritative drift apart | The flat `BoardModel`, the settle beat, the dev assertion, the property test, and Instant as an escape hatch |
-| A stale click reaches `choose` | Gameplay input waits for convergence (§4.4) |
-| The AI stalls behind the presentation | A cancellable `whenIdle` subscription with rechecks, plus named coordinator tests (§4.5) |
+| A stale click reaches `choose` | Gameplay input waits for convergence (section 4.4) |
+| The AI stalls behind the presentation | A cancellable `whenIdle` subscription with rechecks, plus named coordinator tests (section 4.5) |
 | Animation makes the e2e suite flaky | Instant drains synchronously; `storageState` plus `?motion=instant`; exactly one normal-speed e2e |
 | Low-end performance | Only transform and opacity; `will-change` only in flight; pooled canvas; the Effects setting |
 | Conflicts with V1 work | U0 and U1 avoid every file V1-C edits; U2 and later wait for V1-C (D15) |
@@ -557,17 +557,17 @@ multiplayer stay possible later.
 These are the calls taken on your behalf that most change what you'll see and play. Everything else in
 **Decisions** follows from the reviews or the code.
 
-1. **§5, D10 — the look.** "Crystal Arena": Snap's punch carried through FF's crystal motif, a deep indigo stage,
+1. **Section 5, D10 — the look.** "Crystal Arena": Snap's punch carried through FF's crystal motif, a deep indigo stage,
    saturated element colours, and Barlow Condensed with Barlow. Is that the direction? The other options are a
    punchier version of today's "card table under a low lamp", or a different motif.
-2. **§6, D22, D28 — the layout.** The log moves into a drawer that is closed by default, the hover preview replaces
+2. **Section 6, D22, D28 — the layout.** The log moves into a drawer that is closed by default, the hover preview replaces
    the card-details rail, the stack gets a column on the right, and the LB decks become a fan (yours) and a pile
    (the AI's). Is a closed-by-default log acceptable?
-3. **§7 — pacing.** About 6 s for a 4-action AI turn at Normal, a Fast speed at 0.6×, and skip on click on by default.
+3. **Section 7 — pacing.** About 6 s for a 4-action AI turn at Normal, a Fast speed at 0.6×, and skip on click on by default.
    Faster or slower to start?
-4. **§11, D30 — order.** U0 and U1 start now while V1 finishes, then the rungs run strictly in order, and you
+4. **Section 11, D30 — order.** U0 and U1 start now while V1 finishes, then the rungs run strictly in order, and you
    play-test after U4 and U6. Any rung you want earlier (for example, sound)?
-5. **§13 — out of scope.** Drag-to-play, a replay viewer, deck building and phone play (until U11). Should any of
+5. **Section 13 — out of scope.** Drag-to-play, a replay viewer, deck building and phone play (until U11). Should any of
    these come in?
 
 ## Decisions
@@ -592,7 +592,7 @@ can be overturned here.
   not wait.** Latency is unchanged, and the board is never more than one AI batch behind.
 - **D9 — Settings:** Normal / Fast (0.6×) / Instant; reduced motion System / On / Off; Effects Full / Reduced; skip on
   click on. They live in `localStorage` because they are per-browser conveniences.
-- **D10 — "Crystal Arena" visual direction** (§5), with Barlow Condensed and Barlow self-hosted. It carries the Snap
+- **D10 — "Crystal Arena" visual direction** (section 5), with Barlow Condensed and Barlow self-hosted. It carries the Snap
   traits the user asked for through FF's crystal motif. The fonts and palette can be overturned at the U1 fixture
   review.
 - **D11 — No `<ViewTransition>` now.** React is 19.2.8. Revisit in U10.
