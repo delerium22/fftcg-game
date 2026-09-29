@@ -98,11 +98,21 @@ const RETURN_THEN = etb('T-RET:etb', [{ kind: 'chooseTargets', min: 1, max: 1, f
   { kind: 'moveToHand' },
   { kind: 'if', when: { kind: 'subjectMatches', filter: { element: 'fire' } }, then: [{ kind: 'draw', count: 2 }], else: [{ kind: 'draw', count: 1 }] },
 ] }])
+// A chooser under an `if` under a DECLARED chooser, with an effect after the `if` that must still act on the
+// OUTER target (V1-A1 review M1: it used to act on the inner pick).
+const NESTED = etb('T-NEST:etb', [oneForward([{ kind: 'if', when: MARKED, then: [oneForward([{ kind: 'dull' }])] }, { kind: 'damage', amount: 1000 }])])
+// The same, with the outer chooser itself under an `if` — both prompts at resolution, nothing declared.
+const NESTED_LATE = etb('T-NESTL:etb', [{ kind: 'if', when: MARKED, then: [oneForward([{ kind: 'if', when: MARKED, then: [oneForward([{ kind: 'dull' }])] }, { kind: 'damage', amount: 1000 }])] }])
+// A chooser under an `if` inside a MODE: two two-level nodes on one program counter.
+const MODAL = etb('T-MODAL:etb', [{ kind: 'chooseModes', min: 1, max: 1, modes: [
+  { label: 'Dull a Forward', effects: [{ kind: 'if', when: MARKED, then: [oneForward([{ kind: 'dull' }])] }] },
+  { label: 'Draw 1 card', effects: [{ kind: 'draw', count: 1 }] },
+] }])
 const IF_DEFS: CardDef[] = [
   ...VANILLA_POOL,
   makeDef({ code: 'T-MARK', type: 'backup', power: null, cost: 1 }),
   makeDef({ code: 'T-FIRE', elements: ['fire'], cost: 3, power: 9000 }),
-  ...[PALOM, GATED, BY_ELEMENT, RETURN_THEN].map((a) => makeDef({ code: a.id.split(':')[0]!, cost: 2, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [a] })),
+  ...[PALOM, GATED, BY_ELEMENT, RETURN_THEN, NESTED, NESTED_LATE, MODAL].map((a) => makeDef({ code: a.id.split(':')[0]!, cost: 2, power: 1000, hasAbilities: true, abilityClauses: 1, abilities: [a] })),
 ]
 
 /** Put the clause on the agenda and run it until it asks its question, or to the end. */
@@ -150,6 +160,41 @@ describe('V1-A1 — the if effect', () => {
     s = { ...s, players: [{ ...s.players[0], backups: s.players[0].backups.filter((c) => c.id !== mark), breakZone: [...s.players[0].breakZone, mark] }, s.players[1]] }
     s = answer(s, [foe])
     expect(findFieldCard(s, foe)?.card.status).toBe('dull')
+    ok(s)
+  })
+
+  it('an effect after a nested prompt acts on its own chooser\u2019s target, not the inner pick — declared or chosen at resolution', () => {
+    for (const clause of [NESTED, NESTED_LATE]) {
+      let s = makeGame({ defs: IF_DEFS }); let src: CardId, outer: CardId, inner: CardId
+      ;[s, src] = withField(s, 0, 'forwards', clause.id.split(':')[0]!)
+      ;[s] = withField(s, 0, 'backups', 'T-MARK')
+      ;[s, outer] = withField(s, 1, 'forwards', 'V-F8')
+      ;[s, inner] = withField(s, 1, 'forwards', 'V-F5')
+      s = arm(s, src, 0, clause)
+      s = answer(s, [outer])
+      expect(s.pending?.kind, clause.id).toBe('chooseTargets')
+      s = answer(s, [inner])
+      expect(findFieldCard(s, inner)?.card.status, `${clause.id}: the inner pick is dulled`).toBe('dull')
+      expect([dmg(s, outer), dmg(s, inner)], `${clause.id}: the trailing damage hits the outer target`).toEqual([1000, 0])
+      ok(s)
+    }
+  })
+
+  it('a prompt under an if under a chosen mode suspends on a five-level program counter and resumes through both', () => {
+    let s = makeGame({ defs: IF_DEFS }); let src: CardId, foe: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-MODAL')
+    ;[s] = withField(s, 0, 'backups', 'T-MARK')
+    ;[s, foe] = withField(s, 1, 'forwards', 'V-F2')
+    s = arm(s, src, 0, MODAL)
+    expect(s.pending?.kind).toBe('chooseMode')
+    s = applyNow(s, { type: 'chooseMode', player: 0, modes: [0] }).state
+    expect(s.pending?.kind, 'the chooser under the if prompts at resolution').toBe('chooseTargets')
+    const frame = s.resolution.active!
+    expect(frame.path).toEqual([0, 0, 0, 0, 0])
+    ok(s)
+    s = answer(s, [foe])
+    expect(findFieldCard(s, foe)?.card.status).toBe('dull')
+    expect(s.stack).toEqual([])
     ok(s)
   })
 
