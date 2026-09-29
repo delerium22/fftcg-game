@@ -90,7 +90,27 @@ export interface TargetSpec {
  */
 export type Effect =
   /** Choose `min..max` targets, then run `then` once with `chosen` bound to them. min 0 = "up to". */
-  | { readonly kind: 'chooseTargets'; readonly min: number; readonly max: number; readonly from: TargetSpec; readonly then: readonly Effect[] }
+  | {
+      readonly kind: 'chooseTargets'; readonly min: number; readonly max: number; readonly from: TargetSpec; readonly then: readonly Effect[]
+      /**
+       * A SELECT, not a choice (rung V1-A2, spec V1-D9): §11.3.3 "'To select' something is not equivalent to 'to
+       * choose' something". Absent is a printed "choose". A select is made as the ability RESOLVES — the declare
+       * stage ends at it like any non-choice — by the ability's controller (`self`: "you may put / play / discard")
+       * or by that player's opponent (`opponent`: Alphinaud's "your opponent selects"). `from` stays relative to
+       * the ability's controller either way. It never triggers "when chosen" (Prishe), never makes a Summon
+       * uncastable, and with nothing to select it does nothing, silently — it is not a failed choice.
+       */
+      readonly select?: 'self' | 'opponent'
+      /**
+       * "When you do so, …" (rung V1-A2, spec V1-D10): `then` is skipped when the answer is empty. Without it `then`
+       * runs on zero picks, which the existing "up to" shapes rely on.
+       *
+       * MVP0-SIMPLIFICATION (§11.8, Vincent 23-119R): "when you do so" is a reflexive trigger in the printed text;
+       * here its effects run inside the same resolution, and a choice among them is made there, not declared as a
+       * separate stack item. No pool card can respond between the two, so it is unobservable today.
+       */
+      readonly onlyIfChosen?: true
+    }
   /** Choose `min..max` of `modes` ("select up to 2 of the 3 following"); chosen modes run in listed order. */
   | { readonly kind: 'chooseModes'; readonly min: number; readonly max: number; readonly modes: readonly AbilityMode[] }
   /** Run `do` once per card matching `from`, with `chosen` bound to that one card. Untargeted — no choice. */

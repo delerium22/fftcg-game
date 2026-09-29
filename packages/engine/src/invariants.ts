@@ -1,8 +1,8 @@
 import type { Frame } from './abilities.js'
-import { FIELD_FLAGS, MAX_RESOLUTION_STEPS } from './abilities.js'
+import { FIELD_FLAGS, MAX_RESOLUTION_STEPS, effectAtPath } from './abilities.js'
 import type { FieldCard, GameState } from './state.js'
 import { MAX_BACKUPS } from './state.js'
-import { KEYWORDS } from './types.js'
+import { KEYWORDS, opponentOf } from './types.js'
 
 function checkFieldCard(problems: string[], where: string, c: FieldCard, state: GameState): void {
   // A `oncePerTurn` marker is only meaningful on a card that HAS such an ability, activated from the field.
@@ -29,6 +29,13 @@ function checkFrame(problems: string[], where: string, f: Frame, state: GameStat
   if (f.path.some((i) => !Number.isInteger(i) || i < 0)) problems.push(`${where} frame ${f.abilityId} has a malformed program counter`)
   if (new Set(f.chosen).size !== f.chosen.length) problems.push(`${where} frame ${f.abilityId} chose a duplicate target`)
   if (new Set(f.modes).size !== f.modes.length) problems.push(`${where} frame ${f.abilityId} chose a duplicate mode`)
+}
+
+/** The `select` of the node a suspended frame sits on, read off the def directly so this module stays free of the executor (`abilityOf` lives in resolve.ts). */
+function suspendedSelect(state: GameState, f: Frame): 'self' | 'opponent' | undefined {
+  const ability = state.defs[state.cards[f.source]?.code ?? '']?.abilities?.find((a) => a.id === f.abilityId)
+  const node = ability ? effectAtPath(ability.effects, f.path, f.modes) : null
+  return node?.kind === 'chooseTargets' ? node.select : undefined
 }
 
 export function checkInvariants(state: GameState): string[] {
@@ -122,7 +129,8 @@ export function checkInvariants(state: GameState): string[] {
   const abilityPending = ABILITY_PENDINGS.some((k) => state.pending?.kind === k)
   if (abilityPending && !r.active) problems.push(`pending ${state.pending?.kind} with no active frame`)
   if (r.active && !abilityPending) problems.push(`active frame ${r.active.abilityId} with no ability pending`)
-  if (abilityPending && r.active && state.pending && state.pending.player !== r.active.controller) {
+  // The one exception (rung V1-A2, spec V1-D9): "your opponent selects" is owed by the frame controller's opponent.
+  if (abilityPending && r.active && state.pending && state.pending.player !== r.active.controller && !(state.pending.player === opponentOf(r.active.controller) && suspendedSelect(state, r.active) === 'opponent')) {
     problems.push(`pending ${state.pending.kind} is owed by P${state.pending.player} but the frame is controlled by P${r.active.controller}`)
   }
   if (state.pending?.kind === 'chooseTargets') {

@@ -337,7 +337,9 @@ function settleLook(ctx: Ctx, eff: Extract<Effect, { kind: 'lookAtDeck' }>, expo
 function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): void {
   // Rung J1-D3: the declare stage walks CHOICE nodes only. The first effect that is not one ends declaration —
   // the item is fully declared and goes on the stack; everything from here runs when it resolves.
-  if (ctx.stage === 'declare' && eff.kind !== 'chooseTargets' && eff.kind !== 'chooseModes') { ctx.done = true; return }
+  // A SELECT is not a choice either (§11.3.3, rung V1-A2): it is made as the item resolves, so declaration ends at it.
+  const choice = (eff.kind === 'chooseTargets' && eff.select === undefined) || eff.kind === 'chooseModes'
+  if (ctx.stage === 'declare' && !choice) { ctx.done = true; return }
   step(ctx)
   switch (eff.kind) {
     case 'chooseTargets': {
@@ -349,6 +351,8 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         const here = ctx.resume.length === depth + 2
         const own = here ? [...ctx.answer] : ctx.declared.find((d) => samePath(d.path, ctx.path))?.targets ?? [...ctx.chosen]
         if (here) ctx.declared.push({ path: [...ctx.path], targets: [...own] })
+        // "When you do so" (rung V1-A2, spec V1-D10): nothing picked, nothing nested runs.
+        if (eff.onlyIfChosen && own.length === 0) return
         const outer = ctx.chosen
         ctx.chosen = [...own]
         runEffects(ctx, eff.then, depth + 1, true)
@@ -370,13 +374,19 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         return
       }
       const candidates = targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)
+      // A select with nothing to select does nothing, and says nothing: it is not a failed choice (§11.3.3). It is
+      // only ever reached resolving, so there is no placement to cancel.
+      if (eff.select !== undefined && candidates.length === 0) return
       if (candidates.length === 0 || eff.min > candidates.length) {
         // §11.8.4: an auto-ability that cannot choose still triggers, and is removed as it is placed.
         if (ctx.stage === 'declare') ctx.cancelled = true
         noLegalTarget(ctx)
         return
       }
-      ctx.suspend = { kind: 'chooseTargets', player: ctx.controller, min: eff.min, max: Math.min(eff.max, candidates.length), candidates }
+      // "Your opponent selects" (spec V1-D9): the prompt is the opponent's; the candidates stay relative to the
+      // ability's controller, and `chooseTargetsCheck` re-derives them the same way.
+      const player = eff.select === 'opponent' ? opponentOf(ctx.controller) : ctx.controller
+      ctx.suspend = { kind: 'chooseTargets', player, min: eff.min, max: Math.min(eff.max, candidates.length), candidates }
       return
     }
     case 'chooseModes': {
@@ -936,11 +946,13 @@ export function chooseTargetsCheck(state: GameState, player: PlayerId, targets: 
 export function applyChooseTargets(state: GameState, player: PlayerId, targets: readonly CardId[]): [GameState, Event[]] {
   const why = chooseTargetsCheck(state, player, targets)
   if (why) throw new IllegalCommandError(why)
-  const { frame } = suspendedNode(state)
+  const { frame, node } = suspendedNode(state)
   // Extending the path by one level says "the choice at this node is made" — resume runs `then`, not the prompt.
   const active: Frame = { ...frame, chosen: [...targets], path: [...frame.path, 0] }
-  // "When <this> is chosen" triggers HERE (spec C11, rung J1-D7) and is placed above the choosing item.
-  const after = dispatchChosenTriggers(state, targets, frame.source, frame.controller)
+  // "When <this> is chosen" triggers HERE (spec C11, rung J1-D7) and is placed above the choosing item — but not
+  // for a SELECT, which is not a choice (§11.3.3, rung V1-A2).
+  const selected = node.kind === 'chooseTargets' && node.select !== undefined
+  const after = selected ? state : dispatchChosenTriggers(state, targets, frame.source, frame.controller)
   return [{ ...after, pending: null, resolution: { ...after.resolution, active } }, []]
 }
 

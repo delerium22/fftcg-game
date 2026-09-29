@@ -1017,3 +1017,41 @@ describe('a counted amount says the number that will apply (rung V1-A1)', () => 
     expect(label).toBe("Undead Princess's remove from the game: Deal 1000 damage for each Backup you control to Sphene")
   })
 })
+
+describe('a select says "select", and the AI selecting is named while the human waits (rung V1-A2)', () => {
+  // Alphinaud 20-106R's shape, dulling instead of the Break Zone: "your opponent selects 1 Forward they control".
+  const theySelect: Ability = {
+    id: 'test:alph', trigger: { kind: 'enterField' }, text: 'When Noel enters the field, your opponent selects 1 Forward they control. Dull it.',
+    effects: [{ kind: 'chooseTargets', select: 'opponent', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }],
+  }
+  const iSelect: Ability = { ...theySelect, id: 'test:mine', text: 'You may select 1 Forward opponent controls. Dull it.',
+    effects: [{ kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }] }] }
+
+  it('the human selecting for their own clause reads "select", not "choose"', () => {
+    expect(promptFor(dullView(iSelect, [CLOUD]), [])).toBe('Noel: select up to 1 Forward the AI controls to dull')
+  })
+
+  it('the AI clause asking the HUMAN to select: the human answers, from their own Forwards', () => {
+    const v = suspendedView(theySelect, NOEL)
+    v.cards[900] = { ...v.cards[900]!, owner: AI }
+    v.resolution = { ...v.resolution, active: { ...v.resolution.active!, controller: AI } }
+    const mine = instance(v, 901, CLOUD)
+    v.fields[HUMAN].forwards = [fieldCard(mine)]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: 1, max: 1, candidates: [mine] }
+    expect(promptFor(v, [])).toBe('Noel: select 1 Forward you control to dull')
+  })
+
+  it('the human clause asking the AI to select: the strip says what the AI is doing, not just "waiting"', () => {
+    const v = suspendedView(theySelect, NOEL)
+    const theirs = instance(v, 901, CLOUD, AI)
+    v.fields[AI].forwards = [fieldCard(theirs)]
+    v.pending = { kind: 'chooseTargets', player: AI, min: 1, max: 1, candidates: [theirs] }
+    expect(promptFor(v, [])).toBe('The AI selects 1 Forward it controls to dull')
+  })
+
+  it('the AI choosing (not selecting) still reads as waiting', () => {
+    const v = dullView(DULL_EXACTLY_1, [CLOUD])
+    v.pending = { ...(v.pending as Extract<Pending, { kind: 'chooseTargets' }>), player: AI }
+    expect(promptFor(v, [])).toBe('Waiting for the opponent…')
+  })
+})
