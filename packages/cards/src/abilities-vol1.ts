@@ -124,12 +124,51 @@ const WARD_ETB: Ability = {
   }],
 }
 
+// ---------------------------------------------------------------------------
+// Burn
+// ---------------------------------------------------------------------------
+
+/**
+ * Palom's ETB. The target is declared as the ability is put on the stack; the `if` is read as it RESOLVES (rung V1-A1),
+ * so a Porom Forward that arrives or leaves in between decides the amount. "a Card Name Porom Forward" you control is
+ * `controlsAtLeast 1` over your Characters filtered to Forwards named Porom: the pool's only Porom (11-121C) is a
+ * Backup, so in this pool the 8000 branch is live code with no reachable case (spec V1-D3; tested synthetically).
+ */
+const PALOM_ETB: Ability = {
+  id: '13-013C:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Palom enters the field, choose 1 Forward. Deal it 4000 damage. If you control a Card Name Porom Forward, deal it 8000 damage instead.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{
+      kind: 'if', when: { kind: 'controlsAtLeast', count: 1, controller: 'self', filter: { type: 'forward', name: 'Porom' } },
+      then: [{ kind: 'damage', amount: 8000 }],
+      else: [{ kind: 'damage', amount: 4000 }],
+    }],
+  }],
+}
+
+/** LB Zack's ETB (the LB line and the LB reminder are not clauses, as for Maat). "Choose 1 Forward": either side. */
+const ZACK_LB_ETB: Ability = {
+  id: '22-112R:etb',
+  trigger: { kind: 'enterField' },
+  text: 'When Zack enters the field, choose 1 Forward. Deal it 3000 damage.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{ kind: 'damage', amount: 3000 }],
+  }],
+}
+
 /** Implemented Vol. 1 clauses by card code, spread into `ABILITIES`. Printed order within each card. */
 export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '1-170C': [FAIRY_SUMMON],
   '3-143C': [LEONORA_ETB],
   '12-005C': [IFRIT_SUMMON],
+  '13-013C': [PALOM_ETB],
   '21-001R': [WARD_ONLY_FIRE, WARD_ETB],
+  '22-112R': [ZACK_LB_ETB],
 }
 
 /** Vol. 1 clauses left unimplemented on purpose, spread into `INERT_CLAUSES` (each with its proof in `abilities.test.ts`). */
