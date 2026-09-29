@@ -24,7 +24,7 @@ import { expect, test } from '@playwright/test'
 const SEED_WITH_A_SEARCH = 135
 
 test('a deck search offers its candidates as cards a person can see and press', async ({ page }) => {
-  await page.goto(`/?seed=${SEED_WITH_A_SEARCH}`)
+  await page.goto(`/?seed=${SEED_WITH_A_SEARCH}&decks=vol2,vol2`)
 
   // Seed 135 (28 until rung J2 added Scarmiglione; 8 until rung J3 added three cards — a deck-list change
   // reshuffles every seed; 5 until rung J1 moved the AI's opening choice). At seed 135 the human chooses first, keeps a hand holding

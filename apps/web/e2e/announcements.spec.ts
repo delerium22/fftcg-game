@@ -143,7 +143,8 @@ test('the live regions fall silent for the dialog and come back for the next gam
     log: document.querySelector('.log__lines')?.getAttribute('aria-live') ?? null,
   }))
 
-  await page.goto('/')
+  // Played to the end, so the pair is pinned (rung V1-C): the mirror this game was written against.
+  await page.goto('/?decks=vol2,vol2')
   expect(await live(), 'the regions are not announcing during play').toEqual({ prompt: 'polite', log: 'polite' })
 
   await playToTheEnd(page)

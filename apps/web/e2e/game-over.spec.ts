@@ -36,7 +36,8 @@ import { playToTheEnd as drive } from './drive.js'
  */
 
 test('the game-over dialog is modal, and the board behind it is not reachable', async ({ page }) => {
-  await page.goto('/')
+  // Played to the end, so the pair is pinned (rung V1-C): the mirror these games were written against.
+  await page.goto('/?decks=vol2,vol2')
   await drive(page)
   const dialog = page.locator('dialog.banner')
   await expect(dialog).toBeVisible()
@@ -61,7 +62,7 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
   for (let i = 0; i < 4; i++) {
     await page.keyboard.press('Tab')
     const onBoard = await page.evaluate(() =>
-      !!document.activeElement?.closest('.table__seat, .table__hand, .table__prompt, .table__rail'))
+      !!document.activeElement?.closest('.table__seat, .table__hand, .table__prompt, .table__rail, .table__toolbar'))
     expect(onBoard, `Tab ${i + 2} escaped the dialog onto the board`).toBe(false)
   }
 
@@ -72,7 +73,7 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
   for (let i = 0; i < 3; i++) {
     await page.keyboard.press('Shift+Tab')
     const onBoard = await page.evaluate(() =>
-      !!document.activeElement?.closest('.table__seat, .table__hand, .table__prompt, .table__rail'))
+      !!document.activeElement?.closest('.table__seat, .table__hand, .table__prompt, .table__rail, .table__toolbar'))
     expect(onBoard, `Shift+Tab ${i + 1} escaped the dialog backwards onto the board`).toBe(false)
   }
 
@@ -85,6 +86,14 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
     return document.activeElement === outside ? 'took focus' : 'refused'
   })
   expect(refused, 'a board control behind the modal dialog could still be focused').toBe('refused')
+  // Rung V1-C: the deck picker's toolbar is outside the dialog too, and its New game button must be as unreachable.
+  const toolbar = await page.evaluate(() => {
+    const outside = document.querySelector<HTMLElement>('.table__toolbar button')
+    if (!outside) return 'no toolbar control to try'
+    outside.focus()
+    return document.activeElement === outside ? 'took focus' : 'refused'
+  })
+  expect(toolbar, 'the toolbar behind the modal dialog could still be focused').toBe('refused')
 
   // 7. Escape leaves it open — the game is over and there is nothing to dismiss to.
   await page.keyboard.press('Escape')
@@ -94,7 +103,7 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
 test('restarting hands focus to the new game rather than to the document body', async ({ page }) => {
   // The defect the jsdom suite concealed: a new game's first decision is often the AI's, so the render right
   // after a restart offers no button, and an effect that spends its flag there leaves focus on `body`.
-  await page.goto('/')
+  await page.goto('/?decks=vol2,vol2')
   await drive(page)
   await page.locator('dialog.banner button').click()
   await expect(page.locator('dialog.banner')).toHaveCount(0)

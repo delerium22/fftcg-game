@@ -20,7 +20,7 @@ import { expect, test } from '@playwright/test'
 const SEED = 50
 
 test('a cast is paid by pressing the cards you spend, and Confirm casts it', async ({ page }) => {
-  await page.goto(`/?seed=${SEED}`)
+  await page.goto(`/?seed=${SEED}&decks=vol2,vol2`)
   await page.getByRole('button', { name: /Take the first turn/ }).click()
   await page.getByRole('button', { name: /Keep hand/ }).click()
 
