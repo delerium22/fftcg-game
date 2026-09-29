@@ -4,9 +4,9 @@ import { apply, canAffordCast, checkInvariants, enumeratePayments, legalCommands
 import { FIRE_BACKUP, WATER_BACKUP, makeGame, withCp, withHand } from '../harness.js'
 
 /**
- * Rung V1-B, Layer 3: Ward 21-001R — "You can only pay with Fire CP to cast Ward." (rung V1-A3, V1-D14). Every payment
- * reader admits only Fire CP for Ward, overpay included (§11.2.2.3 would otherwise allow it); a Water discard or Backup
- * never helps. The AI's candidates are checked on the real card in `apps/cli/test/selfplay.test.ts`.
+ * Rung V1-B, Layer 3: Ward 21-001R — "You can only pay with Fire CP to cast Ward." (rung V1-A3, V1-D14). Only Fire CP
+ * counts toward Ward's cost; a Water discard or Backup never helps. Since rung V1-D (§11.2.2.3) Water CP may be generated
+ * alongside enough Fire CP and go unspent. The AI's candidates are checked on the real card in `apps/cli/test/selfplay.test.ts`.
  */
 
 const ok = (s: GameState) => expect(checkInvariants(s)).toEqual([])
@@ -24,6 +24,10 @@ describe('scenario: Ward — only Fire CP', () => {
     expect(() => apply(s, { type: 'castCharacter', player: 0, card: ward, payment: { dullBackups: [...fire, water[0]!], discards: [] } }), 'a Water Backup in the payment')
       .toThrow(/fire/i)
     ;[s, more] = withCp(s, 0, [FIRE_BACKUP])
+    // §11.2.2.3 (rung V1-D): three Fire CP pay, and a Water Backup dulled beside them is generated and unspent.
+    const over = apply(s, { type: 'castCharacter', player: 0, card: ward, payment: { dullBackups: [...fire, ...more, water[0]!], discards: [] } })
+    expect(over.state.players[0].backups.find((b) => b.id === water[0])?.status).toBe('dull')
+    ok(over.state)
     const casts = legalCommands(s, 0).filter((c) => c.type === 'castCharacter' && c.card === ward)
     expect(casts.length).toBeGreaterThan(0)
     for (const c of casts) if (c.type === 'castCharacter') expect(c.payment.dullBackups.filter((b) => water.includes(b))).toEqual([])

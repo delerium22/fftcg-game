@@ -99,8 +99,9 @@ export function preferredPaymentFor(state: GameState, player: PlayerId, req: CpR
   if (req.amount === 0) return { dullBackups: [], discards: [] }
   const ps = state.players[player]
   const sources: Source[] = []
-  // "You can only pay with <Element> CP" (rung V1-A3, spec V1-D14): a source that cannot be that Element is not a source
-  // at all, and one that can counts as it alone — so a Fire/Water discard is DECLARED Fire, as `canPay` requires.
+  // "You can only pay with <Element> CP" (rung V1-A3, spec V1-D14): a source that cannot be that Element pays nothing (it
+  // could be generated, unspent — rung V1-D, §11.2.2.3 — but the AI never wastes one), and one that can counts as it
+  // alone — so a Fire/Water discard is DECLARED Fire, as `canPay` requires.
   const only = req.onlyElement
   const usable = (elements: readonly Element[]): Element[] => (only === undefined ? [...elements] : elements.includes(only) ? [only] : [])
   for (const b of ps.backups) {
