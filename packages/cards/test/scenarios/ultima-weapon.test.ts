@@ -5,10 +5,10 @@ import { FIRE_BACKUP, WATER_BACKUP, makeGame, step, trace, withCp, withField, wi
 
 /**
  * Rung V1-B, Layer 3: LB Ultima Weapon 24-126H, both enters-the-field clauses at once. Clause 1 chooses as it is placed
- * and reads "4 or more Fire Characters" as it resolves; clause 2 reads "4 or more Water Characters" as it resolves, then
- * the opponent selects. Ultima Weapon (Water/Fire) counts for both. Two simplifications show here: the Water clause
- * triggers unconditionally (§11.8.13, rung V1-D; `pool-coverage`'s SIMPLIFIED table), and the two clauses are placed in
- * the engine's fixed order rather than one the controller chooses (§11.8.7).
+ * and reads "4 or more Fire Characters" as it resolves; clause 2 reads "4 or more Water Characters" as it triggers and
+ * again as it resolves, then the opponent selects. Ultima Weapon (Water/Fire) counts for both. Clause 2 is a conditional auto-ability (§11.8.13,
+ * rung V1-D): below 4 Water Characters as Ultima Weapon enters, it does not trigger at all. One simplification shows
+ * here: the two clauses are placed in the engine's fixed order rather than one the controller chooses (§11.8.7).
  */
 
 const ok = (s: GameState) => expect(checkInvariants(s)).toEqual([])
@@ -43,6 +43,25 @@ describe('scenario: Ultima Weapon — both conditions', () => {
       'discard:ifrit', 'trigger:24-126H:etb-water', 'push:24-126H:etb-water', 'trigger:24-126H:etb-fire', 'push:24-126H:etb-fire',
       'damage:lightning:9000', 'resolve:24-126H:etb-fire', 'broken:lightning',
       'put:cloud', 'resolve:24-126H:etb-water',
+    ])
+    ok(s)
+  })
+
+  it('L3 ultima-weapon — with 3 Water Characters the Water clause never triggers (§11.8.13); only the Fire clause goes on the stack', () => {
+    let s = makeGame()
+    let uw: CardId, fodder: CardId, cp: CardId[], lightning: CardId
+    ;[s, lightning] = withField(s, 1, 'forwards', '27-127S')
+    ;[s, uw] = withHand(s, 0, '24-126H')
+    ;[s, fodder] = withHand(s, 0, '12-005C')
+    ;[s, cp] = withCp(s, 0, [FIRE_BACKUP, FIRE_BACKUP, FIRE_BACKUP, WATER_BACKUP, WATER_BACKUP])
+    // Fire: Ultima Weapon + 3 Machinists = 4. Water: Ultima Weapon + 2 Geomancers = 3.
+    const log: Event[] = []
+    s = step(log, s, { type: 'castCharacter', player: 0, card: uw, payment: { dullBackups: cp, discards: [{ card: fodder, element: 'fire' }] } })
+    s = step(log, s, { type: 'chooseTargets', player: 0, targets: [lightning] })
+    expect(ids(s)).toEqual(['24-126H:etb-fire'])
+    s = step(log, s, { type: 'pass', player: 0 }); s = step(log, s, { type: 'pass', player: 1 })
+    expect(trace(log, { [uw]: 'ultima', [lightning]: 'lightning', [fodder]: 'ifrit' })).toEqual([
+      'discard:ifrit', 'trigger:24-126H:etb-fire', 'push:24-126H:etb-fire', 'damage:lightning:9000', 'resolve:24-126H:etb-fire', 'broken:lightning',
     ])
     ok(s)
   })

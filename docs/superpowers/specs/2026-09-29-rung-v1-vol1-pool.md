@@ -199,6 +199,42 @@ split out ahead of the cards. Deviations and readings from the plan:
   deck row); the 47 px toolbar adds ~23 px to that scroll. `game-over.test.tsx`'s "native dialog" case (~3 s alone)
   can pass the 5 s default timeout under full-suite load.
 
+**As built (V1-D), 2026-09-30.** Commits de41ac0 (conditional auto-abilities), aca5780 ("When you do so"), 14b0f10
+(Fire-only CP), then the cards commit (Ultima Weapon, Vincent, the SIMPLIFIED table, this note). Plan
+`2026-09-30-rung-v1d-fidelity.md` with its revisions R1–R6; its Task 3 (revealed searches) is rung V1-E (R1). Readings
+and choices:
+- §11.8.13: `Ability.triggerIf` is a `StaticCondition` read by `staticApplies` for the source's controller, in
+  `enqueueTrigger` (every dispatcher funnels there). Unmet: no frame and no event. §11.11.3: `runFrame` re-reads it when a
+  frame starts resolving (`stage === 'resolve'`, empty path), before the §11.11.2 check; unmet, `stackCancelled` with the
+  new reason `condition` and no `abilityNoLegalTarget`. Game creation refuses `triggerIf` on `activated`, `static` and
+  `summonResolve` (a Summon's effect is not an auto-ability) and on an EX BURST clause (an EX Burst skips the stack the
+  re-check removes it from; no pool card needs it), and checks the condition as a static's `when` is checked.
+- The web now narrates `stackCancelled` for every reason ("… is removed from the stack — its condition no longer holds").
+  The §11.8.4 and §11.11.2 cases also keep their existing "finds no legal target" line, so those read twice.
+- "When you do so": `AbilityTrigger` `reflexive` and the effect `triggerReflexive { abilityId }`, which enqueues the
+  reflexive clause with the running frame's source and controller and a null trigger event. Placement, declaration at
+  placement (J1-D3), §11.8.4 and the window all come from the existing agenda. Game creation refuses a `triggerReflexive`
+  that names anything but a reflexive clause of the same card, and a reflexive clause that fires one (the AI follows the
+  reference to price it, with no cap). A watcher of the put, triggered first by the same controller, resolves BEFORE
+  the reflexive clause (last-triggered placed first, the §11.8.7 simplification), pinned in `reflexive-triggers`.
+- R2: the AI adds a reflexive clause's `effectsValue` to every pick of the chooser that fires it (`reflexiveValue` in
+  `targetScore`, target-independent), so `bestSize` takes Vincent's put when the 9000 has a Forward to kill and declines
+  it when nothing can be hit. `targetDelta` gives `triggerReflexive` 0. No new pending or state shape, so `keys.ts` and
+  `checkInvariants` are unchanged; strict random/greedy/ISMCTS self-play with a synthetic Vincent reaches the clause.
+- Vincent 23-119R is two AST units (`VOL1_CLAUSES` 1 → 2): `:etb` quotes the first sentence, `:when-you-do-so` the rest;
+  both are verbatim slices of the printed text. His scenario now shows the window: the opponent casts Ifrit on the
+  chosen Lightning, and the 9000 ends `stackCancelled` `targetsGone`. Ultima Weapon's Water clause carries the
+  `triggerIf` in place of its `if`; with 3 Water Characters it does not trigger (card test and scenario), and a Water
+  Character gone before it resolves removes it (card test). Its Fire clause keeps its effect-level `if`.
+- §11.2.2.3 (V1-B review M3): `onlyAdmissible` drops CP that cannot be the Element instead of refusing the payment, so
+  Water CP generated beside three Fire CP is legal and unspent, and 2 Fire + 1 Water is refused. This supersedes
+  V1-D14's "overpay included"; the V1-A3 adjudication carries a dated reversal line. The enumerators, `canAffordCast`
+  and the AI's `preferredPaymentFor` still try only admissible sources (an off-Element one pays nothing), and the web
+  `crystals()` needed no change.
+- The SIMPLIFIED table lost Ultima Weapon, Vincent and Ward. Leonora, Taivas and LB Luso now name rung V1-E, entries and
+  markers alike, and the table's pattern is any `rung V1-<letter>`. Yuna's (spec C9, the bottom order) still names
+  rung V1-D, which did not take it: no rung is scheduled for it.
+
 ## Source and the list (V1-D1)
 
 Starter Set 2025 Vol. 1 is Fire/Water, built around Zack: 50 main-deck cards and an 8-card LB deck (official product

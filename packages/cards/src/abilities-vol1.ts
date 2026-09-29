@@ -38,7 +38,7 @@ export const VOL1_CLAUSES: Record<string, number> = {
   '21-010H': 2,   // ETB search | [0]: play from hand
   '22-112R': 1,   // ETB 3000 (the LB line and the reminder are not clauses)
   '22-123R': 1,   // ETB draw 1
-  '23-119R': 1,   // ETB put a Fire Backup, when you do so 9000 (First Strike is a keyword line)
+  '23-119R': 2,   // ETB put a Fire Backup | when you do so 9000 — one printed clause, two AST units (First Strike is a keyword line)
   '23-130H': 2,   // ETB search by the chosen Character's Element | a Standard Unit enters: +4000
   '24-126H': 2,   // ETB 9000 with 4 Fire Characters | ETB with 4 Water Characters: the opponent selects
 }
@@ -84,7 +84,7 @@ const FAIRY_SUMMON: Ability = {
  * Leonora's ETB: Hugh Yurg's search shape (`count: 'all'`, private, "you may" = `take.min: 0`, then shuffle), taking to
  * hand. "Card Name Palom or Card Name Porom" is an `anyOf` of two names.
  *
- * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-D): a search REVEALS the card it finds. `lookAtDeck` has no "reveal the taken
+ * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-E): a search REVEALS the card it finds. `lookAtDeck` has no "reveal the taken
  * card only" audience — `all` would show the opponent the whole deck — so the found card goes to hand unseen by the
  * opponent.
  */
@@ -102,11 +102,8 @@ const LEONORA_ETB: Ability = {
 
 /**
  * Ward's first clause: a static read by `castRequirement` wherever Ward is cast from (rung V1-A3, V1-D14). A card PLAYED
- * onto the field (Taivas's `[0]`) is not cast and pays nothing, so the clause does not reach it.
- *
- * MVP0-SIMPLIFICATION (§11.2.2.3, rung V1-D): a player may generate more CP than a cost needs and choose which CP pays;
- * "You can only pay with Fire CP" restricts the CP spent, not the CP generated. The engine refuses any CP of another
- * Element in Ward's payment, so a surplus off-element CP generated alongside the Fire CP is refused too.
+ * onto the field (Taivas's `[0]`) is not cast and pays nothing, so the clause does not reach it. It restricts the CP
+ * spent, not the CP generated (§11.2.2.3, rung V1-D): Water CP may be generated beside enough Fire CP and go unspent.
  */
 const WARD_ONLY_FIRE: Ability = {
   id: '21-001R:only-fire',
@@ -243,7 +240,7 @@ const YUNA_ATTACK: Ability = {
  * Light. The search's `sameElementAsChosen` is resolved by the executor into the chosen card's printed Elements (rung
  * V1-A3). "You may search" is `take.min: 0`.
  *
- * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-D): the search does not reveal the found card, as for Leonora.
+ * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-E): the search does not reveal the found card, as for Leonora.
  */
 const LUSO_LB_ETB: Ability = {
   id: '23-130H:etb',
@@ -341,8 +338,10 @@ const ALPHINAUD_DAMAGE_3: Ability = {
  * - Clause 1 CHOOSES first and tests afterwards: the Forward is declared as the clause is placed on the stack, and the
  *   `if` is read as it resolves. Below 4 Fire Characters the choice was still made (a Prishe chosen still pumps) and
  *   nothing is dealt.
- * - Clause 2 tests first: "if you control 4 or more Water Characters, your opponent selects". The select sits under
- *   the `if`, made by the opponent at resolution, over their own Forwards (Alphinaud's shape without "dull").
+ * - Clause 2 is a CONDITIONAL auto-ability (§11.8.13, rung V1-D): "When …, if you control 4 or more Water Characters,
+ *   your opponent selects". The condition is `triggerIf`: read as Ultima Weapon enters (below 4, the clause does not
+ *   trigger at all) and again as it resolves (§11.11.3: below 4 then, it is removed from the stack). The select is made
+ *   by the opponent at resolution, over their own Forwards (Alphinaud's shape without "dull").
  *
  * "Fire Characters" is `controlsAtLeast` with an `element` filter over Forwards and Backups; a Fire/Water card counts
  * for both, Ultima Weapon itself included — it is on the field when its own ETBs resolve.
@@ -361,51 +360,51 @@ const ULTIMA_WEAPON_FIRE: Ability = {
   }],
 }
 
-/**
- * MVP0-SIMPLIFICATION (§11.8.13, rung V1-D): "When …, if you control 4 or more Water Characters, …" is a CONDITIONAL
- * auto-ability — it triggers only if the condition holds when the event happens, and checks it again at resolution. The
- * engine has no trigger-level condition: the clause always triggers and the `if` is read at resolution only.
- */
 const ULTIMA_WEAPON_WATER: Ability = {
   id: '24-126H:etb-water',
   trigger: { kind: 'enterField' },
+  triggerIf: { kind: 'controlsAtLeast', count: 4, controller: 'self', filter: { element: 'water' } },
   text: 'When Ultima Weapon enters the field, if you control 4 or more Water Characters, your opponent selects 1 Forward '
     + 'they control. Put it into the Break Zone.',
   effects: [{
-    kind: 'if', when: { kind: 'controlsAtLeast', count: 4, controller: 'self', filter: { element: 'water' } },
-    then: [{
-      kind: 'chooseTargets', select: 'opponent', min: 1, max: 1,
-      from: { zone: 'forwards', controller: 'opponent' },
-      then: [{ kind: 'putIntoBreakZone' }],
-    }],
+    kind: 'chooseTargets', select: 'opponent', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'opponent' },
+    then: [{ kind: 'putIntoBreakZone' }],
   }],
 }
 
 /**
- * LB Vincent's ETB. "you may put 1 Fire Backup you control" is a select by the controller, `min: 0`; "When you do so" is
- * `onlyIfChosen` (spec V1-D10): declining skips the rest, including the damage choice. First Strike is a keyword line,
- * not a clause.
+ * LB Vincent's ETB. "you may put 1 Fire Backup you control" is a select by the controller, `min: 0`; `onlyIfChosen` (spec
+ * V1-D10): declining puts nothing and triggers nothing. First Strike is a keyword line, not a clause.
  *
- * MVP0-SIMPLIFICATION (§11.8, rung V1-D): "When you do so" is a separate auto-ability that goes on the stack after the
- * Backup is put, with a response window before it resolves (official ruling 2019-07-19, Fusilier 9-013C). Here the
- * damage choice is made inside the same resolution (the marker on the engine's `onlyIfChosen`).
+ * "When you do so, …" is a separate auto-ability (rung V1-D): the official ruling of 2019-07-19 (Fusilier 9-013C) puts
+ * it on the stack after the first part resolves, and players may respond. So the put fires `VINCENT_WHEN_YOU_DO_SO`
+ * with `triggerReflexive`, and the printed clause is two AST units (`VOL1_CLAUSES` counts 2).
  */
 const VINCENT_ETB: Ability = {
   id: '23-119R:etb',
   trigger: { kind: 'enterField' },
-  text: 'When Vincent enters the field, you may put 1 Fire Backup you control into the Break Zone. When you do so, choose '
-    + '1 Forward opponent controls. Deal it 9000 damage.',
+  text: 'When Vincent enters the field, you may put 1 Fire Backup you control into the Break Zone.',
   effects: [{
     kind: 'chooseTargets', select: 'self', onlyIfChosen: true, min: 0, max: 1,
     from: { zone: 'backups', controller: 'self', filter: { element: 'fire' } },
-    then: [
-      { kind: 'putIntoBreakZone' },
-      {
-        kind: 'chooseTargets', min: 1, max: 1,
-        from: { zone: 'forwards', controller: 'opponent' },
-        then: [{ kind: 'damage', amount: 9000 }],
-      },
-    ],
+    then: [{ kind: 'putIntoBreakZone' }, { kind: 'triggerReflexive', abilityId: '23-119R:when-you-do-so' }],
+  }],
+}
+
+/**
+ * Vincent's "When you do so": a `reflexive` clause, fired only by his ETB's put. Its "choose" is declared as it is placed
+ * on the stack — with no opposing Forward then, it is removed (§11.8.4) — and a Forward that has left by the time it
+ * resolves cancels it (§11.11.2).
+ */
+const VINCENT_WHEN_YOU_DO_SO: Ability = {
+  id: '23-119R:when-you-do-so',
+  trigger: { kind: 'reflexive' },
+  text: 'When you do so, choose 1 Forward opponent controls. Deal it 9000 damage.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'opponent' },
+    then: [{ kind: 'damage', amount: 9000 }],
   }],
 }
 
@@ -416,7 +415,7 @@ const WARRIOR_OR_WARRIOR = [{ job: 'Warrior' }, { name: 'Warrior' }] as const
  * Taivas's ETB search: Leonora's shape. With no cost limit, a second Taivas is findable (Job Warrior) — the printed text
  * allows it.
  *
- * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-D): the search does not reveal the found card, as for Leonora.
+ * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-E): the search does not reveal the found card, as for Leonora.
  */
 const TAIVAS_SEARCH: Ability = {
   id: '21-010H:search',
@@ -622,7 +621,7 @@ export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '21-010H': [TAIVAS_SEARCH, TAIVAS_PLAY],
   '22-112R': [ZACK_LB_ETB],
   '22-123R': [LEO_ETB],
-  '23-119R': [VINCENT_ETB],
+  '23-119R': [VINCENT_ETB, VINCENT_WHEN_YOU_DO_SO],
   '23-130H': [LUSO_LB_ETB, LUSO_LB_STANDARD_UNIT],
   '24-126H': [ULTIMA_WEAPON_FIRE, ULTIMA_WEAPON_WATER],
   // Clause 1 (the +2000 replacement) is rung V2; clause 2 is the `:etb` and `:attack` pair.
