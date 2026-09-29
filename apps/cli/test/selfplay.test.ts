@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { RandomAgent, type Agent } from '@fftcg/ai'
+import { RandomAgent, candidateCommands, type Agent } from '@fftcg/ai'
 import { loadCards } from '@fftcg/cards'
-import type { Command, PlayerView } from '@fftcg/engine'
+import type { CardId, Command, FieldCard, GameState, PlayerView } from '@fftcg/engine'
+import { applyChooseFirst, applyMulligan, createGame } from '@fftcg/engine'
 import { parseDeckFile } from '../src/deck.js'
 import { mirrorTournament, pairedBootstrapCi, type MirrorReport } from '../src/mirror.js'
 import { newGameStats, playGame, readSearchCounters, selfPlay } from '../src/selfplay.js'
@@ -11,6 +12,14 @@ const deck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/
 const decks = (): [string[], string[]] => { const d = deck(); return [d, d] }
 const lbDeck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2-lb.txt', import.meta.url), 'utf8'))
 const lbDecks = (): [string[], string[]] => { const d = lbDeck(); return [d, d] }
+/** Rung V1-B: Starter Set 2025 Vol. 1 and its LB deck. */
+const vol1 = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol1.txt', import.meta.url), 'utf8'))
+const vol1Lb = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol1-lb.txt', import.meta.url), 'utf8'))
+/** Both seat orders of Vol. 1 against Vol. 2, each with its own LB deck. */
+const crossDecks = (): { decks: [string[], string[]]; lbDecks: [string[], string[]] }[] => [
+  { decks: [vol1(), deck()], lbDecks: [vol1Lb(), lbDeck()] },
+  { decks: [deck(), vol1()], lbDecks: [lbDeck(), vol1Lb()] },
+]
 
 describe('self-play with the real Vol. 2 pool', () => {
   it('20 random games complete without engine errors', () => {
@@ -57,6 +66,58 @@ describe('self-play with the real Vol. 2 pool', () => {
     const r2 = selfPlay({ games: 2, seed: 1, decks: decks(), lbDecks: lbDecks(), defs, agents: [{ kind: 'ismcts', iterations: 4 }, { kind: 'ismcts', iterations: 4 }], strict: true })
     expect(r2.failures).toEqual([]); expect(r2.completed).toBe(2)
   }, 300_000)
+})
+
+// Rung V1-B (plan Task 4, R10): the Vol. 1 pool under play, against Vol. 2, in both seat orders — the J8 test's shape.
+describe('self-play Vol. 1 vs Vol. 2 with their LB decks (rung V1-B)', () => {
+  it('strict random-vs-greedy games complete in both seat orders; Vol. 1 reports its rung-V2 gaps', () => {
+    const defs = loadCards()
+    for (const [i, { decks, lbDecks }] of crossDecks().entries()) {
+      const r = selfPlay({ games: 4, seed: 1000 + i * 100, decks, lbDecks, defs, agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: true })
+      expect(r.failures, `seat order ${i}`).toEqual([]); expect(r.completed).toBe(4)
+      // Wuk Lamat, Charlotte, Porom and Yuzuki print clauses finished in rung V2 (the pool-coverage gap table), so a
+      // Vol. 1 game that casts one warns. The Vol. 2 mirror above asserts 0.
+      expect(r.unimplementedAbilities, `seat order ${i}: no Vol. 1 gap was ever reported`).toBeGreaterThan(0)
+    }
+  }, 300_000)
+
+  it('strict games complete for a small ISMCTS in both seat orders', () => {
+    const defs = loadCards()
+    for (const [i, { decks, lbDecks }] of crossDecks().entries()) {
+      const r = selfPlay({ games: 1, seed: 7 + i, decks, lbDecks, defs, agents: [{ kind: 'ismcts', iterations: 4 }, { kind: 'ismcts', iterations: 4 }], strict: true })
+      expect(r.failures, `seat order ${i}`).toEqual([]); expect(r.completed).toBe(1)
+    }
+  }, 300_000)
+
+  it('the AI never proposes a Ward cast that a Water Backup helps pay (21-001R: only Fire CP)', () => {
+    // A real Vol. 1 game at player 0's first Main Phase, rearranged: Ward in hand, two Machinists and two Geomancers on
+    // the field as Backups (all from player 0's own deck, so every instance stays in one zone).
+    const defs = loadCards()
+    let s: GameState = createGame({ seed: 3, decks: [vol1(), deck()], defs })
+    const chooser = s.pending?.kind === 'chooseFirst' ? s.pending.player : 0
+    ;[s] = applyChooseFirst(s, chooser, chooser === 0)
+    ;[s] = applyMulligan(s, 0, false)
+    ;[s] = applyMulligan(s, 1, false)
+    const p0 = s.players[0]
+    const pool = [...p0.deck, ...p0.hand]
+    const take = (code: string, n: number): CardId[] => pool.filter((id) => s.cards[id]!.code === code).slice(0, n)
+    const ward = take('21-001R', 1)[0]!
+    const fire = take('18-003C', 3)
+    const water = take('18-094C', 2)
+    const backup = (id: CardId): FieldCard => ({ id, status: 'active', damage: 0, enteredTurn: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })
+    const arrange = (fires: CardId[]): GameState => {
+      const used = new Set([ward, ...fires, ...water])
+      return { ...s, players: [{ ...p0, hand: [ward], deck: pool.filter((id) => !used.has(id)), backups: [...fires, ...water].map(backup) }, s.players[1]] }
+    }
+    const wardCasts = (st: GameState) => candidateCommands(st, 0).filter((c) => c.type === 'castCharacter' && c.card === ward)
+    expect(wardCasts(arrange(fire.slice(0, 2))), 'two Fire CP cannot pay 3, and the Water ones may not help').toEqual([])
+    const casts = wardCasts(arrange(fire))
+    expect(casts.length, 'three Fire CP pay for Ward').toBeGreaterThan(0)
+    for (const c of casts) if (c.type === 'castCharacter') {
+      expect(c.payment.dullBackups.filter((id) => water.includes(id))).toEqual([])
+      expect(c.payment.discards.filter((d) => d.element !== 'fire')).toEqual([])
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
