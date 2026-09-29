@@ -1,19 +1,60 @@
 {
-  "measured": "2026-09-29T23:24:13.338Z",
+  "measured": "2026-09-29T23:52:53.815Z",
   "route": "/?seed=1&decks=vol2,vol2&art=off",
   "viewport": "1440x900",
   "cpuThrottle": 4,
-  "gameMs": 25669,
-  "frames": 1409,
-  "frameGapMs": {
-    "p50": 16.699999999999818,
-    "p95": 33.29999999999927,
-    "p99": 66.69999999999891,
-    "max": 116.69999999999999
-  },
-  "longTasks": {
-    "count": 37,
-    "maxMs": 103,
-    "totalMs": 2532
+  "games": [
+    {
+      "gameMs": 27424,
+      "frames": 1512,
+      "frameGapMs": {
+        "p50": 16.699999999999818,
+        "p95": 33.29999999999927,
+        "p99": 50.099999999999454,
+        "max": 133.29999999999998
+      },
+      "longTasks": {
+        "count": 41,
+        "maxMs": 106,
+        "totalMs": 2723
+      }
+    },
+    {
+      "gameMs": 27385,
+      "frames": 1526,
+      "frameGapMs": {
+        "p50": 16.699999999999818,
+        "p95": 16.80000000000291,
+        "p99": 50,
+        "max": 100
+      },
+      "longTasks": {
+        "count": 32,
+        "maxMs": 111,
+        "totalMs": 2047
+      }
+    },
+    {
+      "gameMs": 25022,
+      "frames": 1407,
+      "frameGapMs": {
+        "p50": 16.699999999999818,
+        "p95": 16.80000000000109,
+        "p99": 50,
+        "max": 83.39999999999964
+      },
+      "longTasks": {
+        "count": 18,
+        "maxMs": 102,
+        "totalMs": 1279
+      }
+    }
+  ],
+  "median": {
+    "gameMs": 27385,
+    "frameGapP95Ms": 16.80000000000291,
+    "frameGapP99Ms": 50,
+    "frameGapMaxMs": 100,
+    "longTaskCount": 32
   }
 }

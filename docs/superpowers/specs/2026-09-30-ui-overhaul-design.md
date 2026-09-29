@@ -471,8 +471,11 @@ tests (`focus`, `announcements`, `pressable`, `how-to-play`) must pass at every 
 - Memoise `Card` by `(id, visual state)`. Never call `setState` inside an animation frame.
 - Preload and `decode()` the art for both decks at game start. Every `<img>` keeps a fixed aspect ratio and
   `decoding="async"`. The text card shows until the art is decoded, then cross-fades.
-- **Budget:** during a scripted full combat with 4× CPU throttling, no frame longer than 50 ms comes from the
-  presentation layer. The long-task count stays within 2 of the U0 baseline.
+- **Budget:** measured with the U0 protocol (`FFTCG_BASELINE=1 pnpm test:browser baseline --workers=1`: three full
+  games at 4× CPU throttling, compared by median). The median long-task count stays at or below 40 (the U0 median of
+  32, plus 25%). The median 99th-percentile frame gap stays at or below 67 ms (the U0 median of 50 ms, plus one frame).
+  No frame longer than 50 ms may come from presentation code in a profiler trace. (Revised in U0: the original
+  "within 2 long tasks" was inside the 18–41 spread between games.)
 
 ## 10. Testing
 
@@ -557,10 +560,16 @@ multiplayer stay possible later.
 - **U0** (branch `feat/u0-harness`, plan `docs/superpowers/plans/2026-09-30-rung-u0-harness.md`): `settings.ts`,
   `bootstrap.ts` wired from `main.tsx`, the `?motion=instant`, `?art=off` and `?perf=1` flags, the fixture gallery
   (`fixtures.html`) with its screenshot baseline, the browser suite at Instant, and the recorded baseline in
-  `docs/superpowers/measurements/u0/`. At 4× CPU throttling today's UI shows 37 long tasks (worst 103 ms) and frame
-  gaps of p95 33.3 ms, p99 66.7 ms and worst 116.7 ms, all from React re-rendering the board. The section 9 budget is
-  therefore relative to that. Deviations: code comments say "spec section N" rather than a section sign, because
-  `rules-citations` checks every section sign under `apps/` against the Comprehensive Rules.
+  `docs/superpowers/measurements/u0/`. Over three serial games at 4× CPU throttling, today's UI shows a median of 32
+  long tasks (18–41, worst 111 ms) and median frame gaps of p99 50 ms and worst 100 ms, all from React re-rendering
+  the board. The section 9 budget was revised to compare medians, because the spread between games is wider than the
+  first draft's allowance. Other deviations: code comments say "spec section N" rather than a section sign, because
+  `rules-citations` checks every section sign under `apps/` against the Comprehensive Rules; screenshot specs run an
+  art guard before capturing (review finding). Carried to later rungs (found by the U0 review, pre-existing): U5
+  fixes the payment badge that labels an LB flip "Discard" (`Card.tsx`, `paying === 'dull' ? 'Dulls' : 'Discard'`); U4
+  moves the raw `@media (prefers-reduced-motion)` block in `styles.css` to `[data-reduced-motion='true']`, so the
+  in-app "Off" override works; the legacy `MediaQueryList.addListener` fallback and a real-browser reduced-motion
+  test are deferred minors.
 
 ## Questions for your review
 
