@@ -3,8 +3,9 @@
 <!-- review-page: https://claude.ai/artifact/Doa1ofjxA78fc5BkesWYtF round: 1 -->
 
 > **Status:** design spec, written 2026-09-30, revised the same day after a Codex review and a Fable review
-> (adjudicated in `docs/superpowers/plans/2026-09-30-ui-overhaul-design.codex-review.md`). Awaiting the user's review.
-> No code yet.
+> (adjudicated in `docs/superpowers/plans/2026-09-30-ui-overhaul-design.codex-review.md`). **Approved by the user
+> 2026-09-30**: all six review questions and every decision in §D accepted as written. V1-C merged (PR #12), so U2
+> onward is unblocked.
 > **Input:** the user's research report "Polishing a React-DOM FFTCG App" (pasted 2026-09-30), checked against this repo.
 > **Shape:** one umbrella spec. Each rung (U0–U11) below gets its own plan, a Codex plan review for the architectural
 > rungs, TDD, a play-test and a PR — the same process as rungs A–V1.
@@ -497,7 +498,7 @@ The flags `?motion=instant` and `?art=off` are production-safe query parameters.
 |---|---|---|---|
 | **U0** Harness and baseline | Settings store; `--motion-scale`; `?motion=instant`, `?art=off`; Playwright `storageState` sets Instant; the `fixtures.html` entry skeleton; a dev frame/long-task overlay (`?perf=1`); baseline screenshots and a perf trace of today's UI | new `bootstrap.ts` and `settings.ts` wired from `main.tsx`, `art.ts`, `playwright.config.ts`, `vite.config.ts`, new `fixtures.html` | **now** |
 | **U1** Tokens and the card | `tokens.css`, fonts, the icon sprite; the card redesign with the `data-*` state model, generative text-card art and the card back; the fixture gallery covering every card state | new `tokens.css` imported from `main.tsx`, `Card.tsx`, `Card.css`, fixture files (not `styles.css`, which V1-C edits) | **now** |
-| **U2** Board layout | `project(view)` → `BoardModel`, with the Board rendering from it (identical output). The viewport-fit grid, the top bar (hosting V1-C's picker) with an always-available Concede, piles and `ZoneSheet`, the LB fan, damage crystals, the stack column, the centre line, the primary-action button, the log drawer, the hover preview and the settings popover. `Board.tsx` (713 lines) splits into zone components | `Board.tsx`, `PromptStrip`, `EventLog`, `CardDetails`, `styles.css`, new `board/` | after V1-C merges |
+| **U2** Board layout | `project(view)` → `BoardModel`, with the Board rendering from it (identical output). The viewport-fit grid, the top bar (hosting V1-C's picker) with an always-available Concede, piles and `ZoneSheet`, the LB fan, damage crystals, the stack column, the centre line, the primary-action button, the log drawer, the hover preview and the settings popover. `Board.tsx` (713 lines) splits into zone components | `Board.tsx`, `PromptStrip`, `EventLog`, `CardDetails`, `styles.css`, new `board/` | after U1 (V1-C merged as PR #12) |
 | **U3** Director foundation | Per-apply `PresentationStep`s with redaction and the exhaustive event classification; the director, displayed model, settle beat, convergence gating, skip, speed, Instant draining synchronously, restart and game generation; the coordinator's `whenIdle` gate; the convergence property test. **Every step drains synchronously, as at Instant, until U4 adds durations: the game plays exactly as today, with no timers** | `useGame.ts`, `coordinator.ts`, `types.ts`, new `presentation/` | after U2 |
 | **U4** Core motion | Add `motion`; zone moves (draw, play, break, discard, return, damage); dull and untap; hand fan springs; hover and inspect; turn and phase banners; AI telegraph reveals; the thinking indicator; art preload | presentation, UI | after U3 |
 | **U5** Targeting and payment | Target arrows (SVG Bézier), highlight and dim, CP crystals flowing to the meter, clear confirm and cancel | `SelectionTray`, `PaymentTray`, board | after U4 |
