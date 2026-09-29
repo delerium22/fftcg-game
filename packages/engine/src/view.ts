@@ -1,4 +1,5 @@
 import type { CardDef, PlayerId } from './types.js'
+import { opponentOf } from './types.js'
 import type { AttackState, CardId, CardInstance, FieldCard, GameResult, GameState, LbCard, Pending, Phase, StackItem } from './state.js'
 import { knows, knowsBit } from './state.js'
 import type { Resolution } from './abilities.js'
@@ -25,6 +26,12 @@ export interface FieldView {
   /** One entry per card, top first. Replaces a bare count: the count is `deck.length`. */
   deck: DeckSlot[]
   handCount: number
+  /**
+   * Rung V1-E (E-D1): the cards in THIS player's hand the viewer knows — revealed by a search (§15.1.1.8.1) or by
+   * Miner, or returned from a public zone — in hand order. Empty for the viewer's own seat, whose hand is `hand`.
+   * The rest of the hand stays a count: a card the viewer does not know is never named.
+   */
+  knownHand: CardId[]
   /**
    * Public (spec C10-2): the Break Zone is public and everyone saw the card leave the field, so this is
    * unredacted for both seats. It is on the view because `determinise` rebuilds `PlayerState` field by
@@ -59,7 +66,7 @@ export interface PlayerView {
 export function viewFor(state: GameState, me: PlayerId): PlayerView {
   const field = (p: PlayerId): FieldView => {
     const ps = state.players[p]
-    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, lbDeck: ps.lbDeck, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length, putIntoBreakZoneFromFieldThisTurn: ps.putIntoBreakZoneFromFieldThisTurn }
+    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, lbDeck: ps.lbDeck, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length, knownHand: knownHandFor(state, p, me), putIntoBreakZoneFromFieldThisTurn: ps.putIntoBreakZoneFromFieldThisTurn }
   }
   const visibleIds = new Set<CardId>(state.players[me].hand)
   for (const p of [0, 1] as const) {
@@ -72,14 +79,10 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
     for (const x of ps.lbDeck) visibleIds.add(x.id)             // rung J8-D5: both LB decks, open lists
     // Deck cards this viewer has legitimately seen (spec C9-5) — their instances must be in `cards`, or the
     // id in the slot names nothing.
-    //
-    // MVP0-SIMPLIFICATION (spec C9): knowledge is tracked for DECK positions only. A card publicly revealed by
-    // Miner and then added to its controller's hand stays flagged in `knownBy`, but is deliberately NOT surfaced
-    // here, so the opponent forgets it — where a real player would keep tracking it. Showing it would require
-    // `determinise` to pin a known code into an opponent HAND slot (it samples the whole hand from the unseen
-    // multiset today), which is its own rung. The error runs in the safe direction: the view never shows a card
-    // it should hide, it only fails to remember one it could have shown.
     for (const id of ps.deck) if (knows(state, me, id)) visibleIds.add(id)
+    // ...and the other player's hand cards this viewer knows (rung V1-E): the same rule, one zone on. `determinise`
+    // pins them into that hand rather than sampling it whole.
+    for (const id of knownHandFor(state, p, me)) visibleIds.add(id)
   }
   // A Summon on the stack is in no player zone and is public (§7.12.2): it must be in `cards`, or the stack
   // names an id the view cannot resolve and `determinise` deals its code a second time (rung J1).
@@ -90,7 +93,9 @@ export function viewFor(state: GameState, me: PlayerId): PlayerView {
   for (const id of visibleIds) { const inst = state.cards[id]; if (inst) cards[id] = inst }
   // Rung V1-A2 (spec V1-D11): a select over cards this viewer cannot see — the other player's hand — keeps its bounds
   // and loses its candidates, whoever owes it. The ids alone would say which cards in that hand match the filter.
-  const pending: Pending | null = state.pending?.kind === 'chooseTargets' && state.pending.candidates.some((id) => !visibleIds.has(id))
+  // Keyed on the ZONE as well as on visibility (rung V1-E, R1): a known hand card is visible now, and a select whose
+  // candidates were all known ones would otherwise show them — and so say that every unknown card fails the filter.
+  const pending: Pending | null = state.pending?.kind === 'chooseTargets' && state.pending.candidates.some((id) => !visibleIds.has(id) || state.players[opponentOf(me)].hand.includes(id))
     ? { ...state.pending, candidates: [], hidden: true } : state.pending
   return structuredClone({
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
@@ -135,6 +140,17 @@ export function pickedDeckCards(view: PlayerView, player: PlayerId, picks: reado
     out.push(card)
   }
   return out
+}
+
+/**
+ * The cards in `owner`'s hand that `viewer` knows (rung V1-E, E-D1) — none for the viewer's own hand, which the view
+ * carries whole as `hand`.
+ *
+ * EXPORTED for the reason `deckSlotsFor` is: `searchView` is the second copy of this projection.
+ */
+export function knownHandFor(state: GameState, owner: PlayerId, viewer: PlayerId): CardId[] {
+  if (owner === viewer) return []
+  return state.players[owner].hand.filter((id) => knows(state, viewer, id))
 }
 
 /**

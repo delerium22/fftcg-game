@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, isLegal, legalCommands, seedRng, viewFor,
+  SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, isLegal, learn, legalCommands, seedRng, viewFor,
   type Ability, type CardDef, type CardId, type Command, type Effect, type Frame, type GameState, type Payment, type PlayerId, type PlayerView, type TargetFilter,
 } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
@@ -832,6 +832,44 @@ describe('a characters chooser keys a Forward and a Backup apart, and round-trip
       if (back?.type !== 'chooseTargets') throw new Error(`decode failed for ${key}`)
       expect(actionKey(shifted, back)).toBe(key)
       expect(isLegal(s, { ...back, targets: back.targets.map((id) => id - N) })).toBeNull()
+    }
+  })
+})
+
+describe('a known card in the other player\'s hand is observed (rung V1-E, E-D3, Review Focus 4)', () => {
+  /** Player 1's opening hand with its first `n` cards known to player 0 — as if revealed by a search and kept. */
+  const revealed = (n: number): GameState => { const s = makeGame(); return learn(s, [0, 1], s.players[1].hand.slice(0, n)) }
+
+  it('keys a position with no known hand card exactly as before: a bare count', () => {
+    const key = observationKey(viewFor(makeGame(), 0))
+    expect(key).toContain(';hd5;')
+    expect(key).not.toContain('hd5[')
+  })
+
+  it('digests the known cards by code, so two positions differing only in one of them differ', () => {
+    const s = revealed(2)
+    const key = observationKey(viewFor(s, 0))
+    const codes = s.players[1].hand.slice(0, 2).map((id) => s.cards[id]!.code).sort(compareKeys)
+    expect(key).toContain(`hd5[${codes.join(',')}]`)
+    expect(key).not.toBe(observationKey(viewFor(makeGame(), 0)))
+    // The same count, one known card each, of a different code: a different information set.
+    const oneKnown = (code: string): string => {
+      let t = withHandSize(makeGame(), 1, 4)
+      let id: CardId
+      ;[t, id] = withHand(t, 1, code)
+      return observationKey(viewFor(learn(t, [0, 1], [id]), 0))
+    }
+    expect(oneKnown('V-F1')).not.toBe(oneKnown('V-F8'))
+  })
+
+  it('is stable across determinisations: the known cards are pinned, the unknown ones stay opaque', () => {
+    const s = revealed(2)
+    const live = observationKey(viewFor(s, 0))
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const [det] = determinise({ view: viewFor(s, 0), decks: decksOf(s), rng: seedRng(seed) })
+      expect(observationKey(searchView(det, 0)), `seed ${seed}`).toBe(live)
+      // R7: a known opponent hand card is still unnameable in an ACTION key — no pool select picks from that hand.
+      for (const id of det.players[1].hand) expect(cardRef(searchView(det, 0), id, 0), `seed ${seed}`).toBe('?')
     }
   })
 })

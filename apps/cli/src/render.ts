@@ -66,12 +66,18 @@ function lbLine(v: PlayerView, p: PlayerId): string[] {
   return [`  LB deck:  ${lb.map((x) => `[${x.id}] ${cardName(v, x.id)} (${x.faceUp ? 'UP' : 'down'})`).join('  ')}`]
 }
 
+/** Rung V1-E: the opponent's hand cards this seat knows (revealed by a search, or returned from the field), by name. */
+function knownHand(v: PlayerView, p: PlayerId): string {
+  const known = v.fields[p]!.knownHand
+  return known.length ? ` (known: ${known.map((id) => `[${id}] ${cardName(v, id)}`).join('  ')})` : ''
+}
+
 export function renderView(v: PlayerView): string {
   const opp = v.me === 0 ? 1 : 0
   const step = v.attack ? ` / ${v.pending?.kind === 'assignPartyDamage' ? 'assign party damage' : v.attack.step}` : ''
   const lines = [
     `=== Turn ${v.turn} — P${v.turnPlayer}'s turn — ${PHASE_LABEL[v.phase]}${step} — you are P${v.me} ===`,
-    `Opponent P${opp}: deck ${v.fields[opp].deck.length}, hand ${v.fields[opp].handCount}, damage ${v.fields[opp].damageZone.length}/7, break ${v.fields[opp].breakZone.length}`,
+    `Opponent P${opp}: deck ${v.fields[opp].deck.length}, hand ${v.fields[opp].handCount}${knownHand(v, opp)}, damage ${v.fields[opp].damageZone.length}/7, break ${v.fields[opp].breakZone.length}`,
     `  Forwards: ${v.fields[opp].forwards.map((c) => fieldCard(v, c)).join('  ') || '-'}`,
     `  Backups:  ${v.fields[opp].backups.map((c) => fieldCard(v, c)).join('  ') || '-'}`,
     ...lbLine(v, opp),

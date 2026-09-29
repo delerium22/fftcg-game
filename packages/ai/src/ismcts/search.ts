@@ -1,5 +1,5 @@
 import {
-  actingPlayer, apply, deckSlotsFor, determinise, knows, nextInt, seedRng, visibleKnownBy,
+  actingPlayer, apply, deckSlotsFor, determinise, knownHandFor, knows, nextInt, seedRng, visibleKnownBy,
   type CardId, type CardInstance, type Command, type FieldView, type GameState, type PlayerId, type PlayerView, type Rng, forcedPass } from '@fftcg/engine'
 import { candidateCommands } from '../candidates.js'
 import { DEFAULT_WEIGHTS, evaluate, resolveWeights, type Weights } from '../evaluate.js'
@@ -222,7 +222,7 @@ export function selectKey(node: SearchNode, available: readonly ActionKey[], roo
 export function searchView(state: GameState, me: PlayerId): PlayerView {
   const field = (p: PlayerId): FieldView => {
     const ps = state.players[p]
-    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, lbDeck: ps.lbDeck, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length, putIntoBreakZoneFromFieldThisTurn: ps.putIntoBreakZoneFromFieldThisTurn }
+    return { forwards: ps.forwards, backups: ps.backups, damageZone: ps.damageZone, breakZone: ps.breakZone, removedFromGame: ps.removedFromGame, lbDeck: ps.lbDeck, deck: deckSlotsFor(state, p, me), handCount: ps.hand.length, knownHand: knownHandFor(state, p, me), putIntoBreakZoneFromFieldThisTurn: ps.putIntoBreakZoneFromFieldThisTurn }
   }
   const cards: Record<CardId, CardInstance> = {}
   const see = (id: CardId): void => { const inst = state.cards[id]; if (inst) cards[id] = inst }
@@ -244,6 +244,8 @@ export function searchView(state: GameState, me: PlayerId): PlayerView {
     for (const id of ps.deck) if (knows(state, me, id)) see(id)
     // Rung J8: both LB decks are public (spec D5) — the same omission a third time, on the zone J8 added.
     for (const x of ps.lbDeck) see(x.id)
+    // Rung V1-E: the other player's hand cards this viewer knows, which `knownHandFor` puts on the FieldView above.
+    for (const id of knownHandFor(state, p, me)) see(id)
   }
   // A Summon on the stack (rung J1) — public, in no player zone, and `viewFor` shows it too.
   for (const item of state.stack) if (item.kind === 'summon') see(item.card)

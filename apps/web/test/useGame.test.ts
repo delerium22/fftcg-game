@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
-  actingPlayer, apply, applyChooseFirst, createGame, learn, legalCommands, viewFor,
+  actingPlayer, apply, applyChooseFirst, createGame, knows, learn, legalCommands, viewFor,
   type Ability, type CardDef, type CardId, type Command, type Event, type FieldCard, type Frame, type GameState, type PlayerId, type PlayerView,
 } from '@fftcg/engine'
 import { GreedyAgent, type Agent, type SearchDiagnostics, type SearchResult } from '@fftcg/ai'
@@ -25,12 +25,18 @@ import { withField } from '../../../packages/engine/test/helpers.js'
 
 const newGame = (seed: number, defs: CardDef[] = CARD_DEFS): GameState => createGame({ seed, decks: DECKS, defs })
 
-/** Spec B-A3, asserted rather than inspected: nothing the AI holds in hand may reach the human's view. */
+/**
+ * Spec B-A3, asserted rather than inspected: nothing the AI holds in hand may reach the human's view — but for the
+ * cards the human was shown (rung V1-E: Miner's reveal, a search's, a card returned from the field), which the view
+ * names in `knownHand` and nowhere else.
+ */
 function assertNoAiHandLeak(state: GameState, view: PlayerView): void {
   for (const id of state.players[AI].hand) {
-    expect(view.cards[id]).toBeUndefined()
+    if (knows(state, HUMAN, id)) expect(view.fields[AI].knownHand).toContain(id)
+    else expect(view.cards[id]).toBeUndefined()
     expect(view.hand).not.toContain(id)
   }
+  expect(view.fields[AI].knownHand.every((id) => knows(state, HUMAN, id))).toBe(true)
 }
 
 interface PlayedGame { state: GameState; log: LogLine[]; humanMoves: number; commandTypes: Set<Command['type']>; orphanStates: number; leaks: string[]; deckChoices: number; deckLabels: { text: string; allPublic: boolean }[] }
