@@ -310,6 +310,13 @@ describe('L1 §15.2.3 — First Strike splits the damage step', () => {
     ok(split.state)
   })
 
+  it('V2-A1 plan R9 — the dealers are in a stable order, whatever order the party was declared in', () => {
+    const { s, attackers, blocker } = board(['T-WATCH', 'T-WATCH'], 'T-BIG')
+    const r = intoDamage(s, [attackers[1]!, attackers[0]!], blocker)
+    const split = apply(r.state, { type: 'assignPartyDamage', player: 1, assignments: [{ target: attackers[0]!, amount: 13000 }] })
+    expect(split.events.find((e) => e.type === 'battleDamage')).toEqual({ type: 'battleDamage', target: blocker, dealers: [attackers[0], attackers[1]], original: 14000, amount: 14000, trace: [] })
+  })
+
   it('V2-A1 plan R6 — an all-First-Strike party into a surviving blocker: ONE held packet, never re-applied; each member triggers exactly once', () => {
     const { s, attackers, blocker, names } = board(['T-FS-WATCH', 'T-FS-WATCH'], 'T-BIG')   // 6000 + 6000 into 13000
     const r = intoDamage(s, attackers, blocker)
