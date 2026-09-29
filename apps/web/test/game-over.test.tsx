@@ -69,7 +69,8 @@ function remountPending(): void {
   const v = { ...viewFor(s, HUMAN), pending: { kind: 'chooseFirst' as const, player: AI }, priority: AI }
   const api: GameApi = {
     view: v, choices: buildChoiceSet(v, []), log: [], aiThinking: true,
-    choose: (_c: Choice) => {}, restart: () => {},
+    // The toggle is wired, as the real hook wires it: it is the one button the strip shows while the AI thinks.
+    choose: (_c: Choice) => {}, restart: () => {}, fullControl: false, setFullControl: () => {},
   }
   act(() => { root!.render(createElement(Board, { game: api })) })
 }
@@ -88,7 +89,7 @@ function remountLive(): void {
   const v = viewFor(s, HUMAN)
   const api: GameApi = {
     view: v, choices: buildChoiceSet(v, legalCommands(s, HUMAN)), log: [], aiThinking: false,
-    choose: (_c: Choice) => {}, restart: () => {},
+    choose: (_c: Choice) => {}, restart: () => {}, fullControl: false, setFullControl: () => {},
   }
   act(() => { root!.render(createElement(Board, { game: api })) })
 }
@@ -177,7 +178,10 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     // version of this test jumped straight to the mulligan and so never exercised that gap, while the real
     // browser left focus on `document.body` until the player tabbed in from the top of the document.
     remountPending()
-    expect(document.querySelectorAll('.prompt__actions button'), 'this step is meant to have no actions').toHaveLength(0)
+    // No DECISION yet — but the Full control toggle (rung K5) is a button in the same row, and the focus effect
+    // used to land on it and spend its flag, so the player's first real decision never got focus (V1-C review).
+    expect(document.querySelectorAll('.prompt__actions button[data-command]'), 'this step is meant to have no actions').toHaveLength(0)
+    expect(document.querySelector('.prompt__actions [data-toggle="full-control"]'), 'the toggle is what this step is about').not.toBe(null)
     remountLive()
 
     // The EXACT control, not "something inside .prompt__actions". Accepting any descendant let a mutant

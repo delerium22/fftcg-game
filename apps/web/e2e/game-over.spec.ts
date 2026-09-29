@@ -103,11 +103,14 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
 test('restarting hands focus to the new game rather than to the document body', async ({ page }) => {
   // The defect the jsdom suite concealed: a new game's first decision is often the AI's, so the render right
   // after a restart offers no button, and an effect that spends its flag there leaves focus on `body`.
-  await page.goto('/?decks=vol2,vol2')
+  // Seed 1, so the restart deals seed 2, where the AI makes the first-player choice: while it thinks, the strip's
+  // only button is the Full control toggle (rung K5), and focus must wait past it for a DECISION — `[data-command]`
+  // (V1-C review). Pinned to the mirror because the game is played to the end.
+  await page.goto('/?seed=1&decks=vol2,vol2')
   await drive(page)
   await page.locator('dialog.banner button').click()
   await expect(page.locator('dialog.banner')).toHaveCount(0)
   await expect
-    .poll(() => page.evaluate(() => document.activeElement?.closest('.prompt__actions') !== null), { timeout: 15_000 })
+    .poll(() => page.evaluate(() => document.activeElement?.matches('.prompt__actions button[data-command]') ?? false), { timeout: 15_000 })
     .toBe(true)
 })
