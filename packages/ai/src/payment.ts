@@ -99,18 +99,26 @@ export function preferredPaymentFor(state: GameState, player: PlayerId, req: CpR
   if (req.amount === 0) return { dullBackups: [], discards: [] }
   const ps = state.players[player]
   const sources: Source[] = []
+  // "You can only pay with <Element> CP" (rung V1-A3, spec V1-D14): a source that cannot be that Element is not a source
+  // at all, and one that can counts as it alone — so a Fire/Water discard is DECLARED Fire, as `canPay` requires.
+  const only = req.onlyElement
+  const usable = (elements: readonly Element[]): Element[] => (only === undefined ? [...elements] : elements.includes(only) ? [only] : [])
   for (const b of ps.backups) {
     if (b.status !== 'active' || card.includes(b.id)) continue
     // The Elements this Backup may COUNT AS, from the engine, not from the printed def — since C6 a static
     // can add one (Moogle produces Lightning as well as its printed Earth). Reading `def.elements` here is
     // what would let the AI's assignment drift from what `canPay` accepts.
-    sources.push({ kind: 'backup', id: b.id, elements: backupElements(state, b.id), cp: 1, cost: 1 })
+    const elements = usable(backupElements(state, b.id))
+    if (elements.length === 0) continue
+    sources.push({ kind: 'backup', id: b.id, elements, cp: 1, cost: 1 })
   }
   for (const id of ps.hand) {
     if (card.includes(id)) continue
     const d = defOf(state, id)
     if (d.elements.includes('light') || d.elements.includes('dark')) continue
-    sources.push({ kind: 'discard', id, elements: d.elements, cp: 2, cost: 2 + cardValue(d) })
+    const elements = usable(d.elements)
+    if (elements.length === 0) continue
+    sources.push({ kind: 'discard', id, elements, cp: 2, cost: 2 + cardValue(d) })
   }
   const chosen = new Set<Source>()
   const declared = new Map<CardId, Element>()
@@ -150,7 +158,7 @@ export function preferredPaymentFor(state: GameState, player: PlayerId, req: CpR
         .sort((a, b) => (handOrder.get(a.card) ?? 0) - (handOrder.get(b.card) ?? 0)),
     }
   }
-  const pays = (from: Iterable<Source>): boolean => canPay(req.amount, elements, generateCp(state, player, build(from), card))
+  const pays = (from: Iterable<Source>): boolean => canPay(req, generateCp(state, player, build(from), card))
 
   // R5: the two phases above are each greedy in isolation, so together they can over-spend — the required-element
   // phase takes the cheapest source for the element (often a 1 CP backup), then the top-up phase adds a 2 CP

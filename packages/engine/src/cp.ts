@@ -76,14 +76,34 @@ export function generateCp(state: GameState, player: PlayerId, payment: Payment,
  *
  * `elements` is expected to already be `requiredElements(def)` (Light/Dark exemption applied by the caller).
  */
-export function canPay(cost: number, elements: readonly Element[], cp: GeneratedCp[]): boolean {
-  if (cost === 0) return cp.length === 0   // §11.2.2.4 / §11.2.2.1 last sentence
+export function canPay(req: CpToPay, generated: readonly GeneratedCp[]): boolean {
+  const { amount: cost, requiredElements: elements } = req
+  if (cost === 0) return generated.length === 0   // §11.2.2.4 / §11.2.2.1 last sentence
+  const cp = onlyAdmissible(req, generated)
+  if (cp === null) return false
   if (cp.length < cost) return false
   // Each REQUIREMENT needs its own distinct source that can produce it (§11.2.2.1–2). With flexible sources
   // that is a matching problem, not a count: assigning greedily can strand a later requirement on a source an
   // earlier one took, when swapping the two works. Requirements are 1–3 and sources single digits, so a plain
   // backtracking search is the right size of tool.
   return assignable([...elements], cp, new Set())
+}
+
+/**
+ * Under `onlyElement` (rung V1-A3, spec V1-D14, R3): null when ANY generated CP cannot be that Element — refused whole,
+ * overpay included — and otherwise every entry narrowed to it, so a flexible source (a Moogle-style Backup that can also
+ * produce Fire) counts as Fire and nothing else. Without the restriction, the CP as generated.
+ */
+export function onlyAdmissible(req: Pick<CpRequirement, 'onlyElement'>, cp: readonly GeneratedCp[]): readonly GeneratedCp[] | null {
+  const only = req.onlyElement
+  if (only === undefined) return cp
+  if (cp.some((c) => !c.elements.includes(only))) return null
+  return cp.map((c) => (c.elements.length === 1 ? c : { ...c, elements: [only] }))
+}
+
+/** Why a payment does not cover `req`, for an error: the cost, and the restriction when there is one. */
+export function payShortfall(req: CpToPay): string {
+  return `payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}${req.onlyElement ? ` (only ${req.onlyElement} CP may pay it)` : ''}`
 }
 
 /**
@@ -98,17 +118,36 @@ export interface CpRequirement {
   readonly requiredElements: readonly Element[]
   /** Cards that may not be a source. See `generateCp`. */
   readonly excluded: readonly CardId[]
+  /** "You can only pay with <Element> CP" (rung V1-A3): every CP generated must be able to be this Element. */
+  readonly onlyElement?: Element
 }
+
+/** The half of a requirement `canPay` reads — no exclusions, which `generateCp` has already applied. */
+export type CpToPay = Pick<CpRequirement, 'amount' | 'requiredElements' | 'onlyElement'>
 
 /** The requirement for CASTING `card` — the Light/Dark exemption applied (§11.2.1.1). */
 export function castRequirement(state: GameState, card: CardId, caster: PlayerId): CpRequirement {
   const def = defOf(state, card)
+  const only = onlyCpOf(def)
   return {
     amount: Math.max(0, def.cost - costReduction(state, def, caster)),
     requiredElements: requiredElements(def),
     excluded: [card],
+    ...(only === undefined ? {} : { onlyElement: only }),
   }
 }
+
+/** The card's OWN "you can only pay with <Element> CP" (rung V1-A3), read wherever it is cast from, like `costReduction`. */
+function onlyCpOf(def: CardDef): Element | undefined {
+  for (const ability of def.abilities ?? []) {
+    if (ability.trigger.kind === 'static' && ability.trigger.effect.kind === 'onlyCp') return ability.trigger.effect.element
+  }
+  return undefined
+}
+
+/** Can this source's CP be spent under `req`'s restriction? Filters the sources the enumerators and `canAffordCast` try. */
+const admits = (req: Pick<CpRequirement, 'onlyElement'>, elements: readonly Element[]): boolean =>
+  req.onlyElement === undefined || elements.includes(req.onlyElement)
 
 /**
  * How much this card's own static abilities take off its cost (spec C4-4).
@@ -158,13 +197,15 @@ export function canAffordCast(state: GameState, player: PlayerId, card: CardId):
   const req = castRequirement(state, card, player)
   if (req.amount === 0) return true
   const ps = state.players[player]
-  const dullBackups = ps.backups.filter((b) => b.status === 'active' && !req.excluded.includes(b.id)).map((b) => b.id)
+  // Under `onlyElement` (rung V1-A3) every source is one that can be that Element, and a discard declares it: an
+  // inadmissible source would make the whole maximal payment illegal rather than merely unhelpful.
+  const dullBackups = ps.backups.filter((b) => b.status === 'active' && !req.excluded.includes(b.id) && admits(req, backupElements(state, b.id))).map((b) => b.id)
   const options = ps.hand
     .filter((id) => !req.excluded.includes(id))
-    .map((id) => ({ card: id, elements: defOf(state, id).elements }))
-    .filter((o) => !o.elements.includes('light') && !o.elements.includes('dark') && o.elements.length > 0)
+    .map((id) => ({ card: id, elements: defOf(state, id).elements.filter((e) => admits(req, [e])) }))
+    .filter((o) => !defOf(state, o.card).elements.includes('light') && !defOf(state, o.card).elements.includes('dark') && o.elements.length > 0)
   const walk = (i: number, discards: Payment['discards']): boolean => {
-    if (i === options.length) return canPay(req.amount, req.requiredElements, generateCp(state, player, { dullBackups, discards }, req.excluded))
+    if (i === options.length) return canPay(req, generateCp(state, player, { dullBackups, discards }, req.excluded))
     const o = options[i]!
     return o.elements.some((element) => walk(i + 1, [...discards, { card: o.card, element }]))
   }
@@ -175,12 +216,12 @@ export function canAffordCast(state: GameState, player: PlayerId, card: CardId):
 export function enumeratePaymentsFor(state: GameState, player: PlayerId, req: CpRequirement): Payment[] {
   const card = req.excluded
   if (req.amount === 0) return [{ dullBackups: [], discards: [] }]
-  const elements = req.requiredElements
   const ps = state.players[player]
-  const backups = ps.backups.filter((b) => b.status === 'active' && !card.includes(b.id)).map((b) => b.id)
+  // Rung V1-A3: under `onlyElement`, only sources that can be that Element, and discards declaring it, are tried.
+  const backups = ps.backups.filter((b) => b.status === 'active' && !card.includes(b.id) && admits(req, backupElements(state, b.id))).map((b) => b.id)
   const discardOptions = ps.hand
     .filter((id) => !card.includes(id))
-    .flatMap((id) => defOf(state, id).elements.filter((e) => e !== 'light' && e !== 'dark').map((element) => ({ card: id, element })))
+    .flatMap((id) => defOf(state, id).elements.filter((e) => e !== 'light' && e !== 'dark' && admits(req, [e])).map((element) => ({ card: id, element })))
   // Each hand card may be discarded at most once, so choose ≤1 element option per card.
   const byCard = new Map<CardId, Element[]>()
   for (const o of discardOptions) byCard.set(o.card, [...(byCard.get(o.card) ?? []), o.element])
@@ -195,15 +236,15 @@ export function enumeratePaymentsFor(state: GameState, player: PlayerId, req: Cp
       const dullBackups = backups.filter((_, k) => backupMask & (1 << k))
       const payment = { dullBackups, discards }
       const cp = generateCp(state, player, payment, card)
-      if (!canPay(req.amount, elements, cp)) return
+      if (!canPay(req, cp)) return
       // minimality: removing any single source must break payment
       for (let k = 0; k < dullBackups.length; k++) {
         const less = { ...payment, dullBackups: dullBackups.filter((_, j) => j !== k) }
-        if (canPay(req.amount, elements, generateCp(state, player, less, card))) return
+        if (canPay(req, generateCp(state, player, less, card))) return
       }
       for (let k = 0; k < discards.length; k++) {
         const less = { ...payment, discards: discards.filter((_, j) => j !== k) }
-        if (canPay(req.amount, elements, generateCp(state, player, less, card))) return
+        if (canPay(req, generateCp(state, player, less, card))) return
       }
       results.push(payment)
       return

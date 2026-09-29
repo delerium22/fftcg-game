@@ -5,7 +5,7 @@ import type { Ability, AbilityCost, Effect, Frame } from './abilities.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
-import { canPay, generateCp, pay, type CpRequirement, enumeratePaymentsFor } from './cp.js'
+import { canPay, generateCp, pay, payShortfall, type CpRequirement, enumeratePaymentsFor } from './cp.js'
 import { instantSpeedAllowed } from './cast.js'
 import type { ZoneTransition } from './rules.js'
 import { dispatchChosenTriggers, enqueueZoneChangeTriggers, forgetBreakZoneArrivals, removeFromField, targetCandidates } from './resolve.js'
@@ -261,9 +261,7 @@ function applyCosts(
     if (sameWhy) throw new IllegalCommandError(sameWhy)
     const req = abilityCpRequirement(source, cost)
     const cp = generateCp(s, player, payment, req.excluded)
-    if (!canPay(req.amount, req.requiredElements, cp)) {
-      throw new IllegalCommandError(`payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}`)
-    }
+    if (!canPay(req, cp)) throw new IllegalCommandError(payShortfall(req))
     const [paid, payEvents] = pay(s, player, payment)
     s = paid
     events.push(...payEvents)

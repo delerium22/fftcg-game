@@ -41,19 +41,19 @@ describe('§11.2 generating CP', () => {
 describe('§11.2.2 paying a cost', () => {
   const E = (e: 'earth' | 'lightning', n = 1) => Array.from({ length: n }, (_, i) => ({ elements: [e], source: 100 + i }))
   it('needs at least one CP of the card\'s element', () => {
-    expect(canPay(2, ['earth'], E('lightning', 2))).toBe(false)
-    expect(canPay(2, ['earth'], [...E('earth'), ...E('lightning')])).toBe(true)
+    expect(canPay({ amount: 2, requiredElements: ['earth'] }, E('lightning', 2))).toBe(false)
+    expect(canPay({ amount: 2, requiredElements: ['earth'] }, [...E('earth'), ...E('lightning')])).toBe(true)
   })
   it('§11.2.2.3: excess CP is allowed and wasted', () => {
-    expect(canPay(1, ['earth'], [...E('earth'), ...E('lightning', 2)])).toBe(true)
+    expect(canPay({ amount: 1, requiredElements: ['earth'] }, [...E('earth'), ...E('lightning', 2)])).toBe(true)
   })
   it('§11.2.2.1: multi-element cards need one CP of each element', () => {
-    expect(canPay(2, ['earth', 'lightning'], E('earth', 2))).toBe(false)
-    expect(canPay(2, ['earth', 'lightning'], [...E('earth'), ...E('lightning')])).toBe(true)
+    expect(canPay({ amount: 2, requiredElements: ['earth', 'lightning'] }, E('earth', 2))).toBe(false)
+    expect(canPay({ amount: 2, requiredElements: ['earth', 'lightning'] }, [...E('earth'), ...E('lightning')])).toBe(true)
   })
   it('§11.2.2.4: cost 0 must not generate CP', () => {
-    expect(canPay(0, ['earth'], [])).toBe(true)
-    expect(canPay(0, ['earth'], E('earth'))).toBe(false)
+    expect(canPay({ amount: 0, requiredElements: ['earth'] }, [])).toBe(true)
+    expect(canPay({ amount: 0, requiredElements: ['earth'] }, E('earth'))).toBe(false)
   })
 })
 
@@ -65,17 +65,17 @@ describe('required Elements are a MULTISET, not a set', () => {
   // MVP0 pool prints a repeated Element, so this was latent — but the requirement type now describes ability
   // costs too, which is exactly where repeated Elements turn up.
   it('one Lightning does not pay [Lightning][Lightning]', () => {
-    expect(canPay(2, ['lightning', 'lightning'], [...E('lightning'), ...E('earth')])).toBe(false)
-    expect(canPay(2, ['lightning', 'lightning'], E('lightning', 2))).toBe(true)
+    expect(canPay({ amount: 2, requiredElements: ['lightning', 'lightning'] }, [...E('lightning'), ...E('earth')])).toBe(false)
+    expect(canPay({ amount: 2, requiredElements: ['lightning', 'lightning'] }, E('lightning', 2))).toBe(true)
   })
 
   it('still accepts one CP per DISTINCT element when the requirement is not repeated', () => {
-    expect(canPay(2, ['lightning', 'earth'], [...E('lightning'), ...E('earth')])).toBe(true)
+    expect(canPay({ amount: 2, requiredElements: ['lightning', 'earth'] }, [...E('lightning'), ...E('earth')])).toBe(true)
   })
 
   it('counts surplus of the wrong element as no help', () => {
-    expect(canPay(3, ['lightning', 'lightning'], [...E('lightning'), ...E('earth', 2)])).toBe(false)
-    expect(canPay(3, ['lightning', 'lightning'], [...E('lightning', 2), ...E('earth')])).toBe(true)
+    expect(canPay({ amount: 3, requiredElements: ['lightning', 'lightning'] }, [...E('lightning'), ...E('earth', 2)])).toBe(false)
+    expect(canPay({ amount: 3, requiredElements: ['lightning', 'lightning'] }, [...E('lightning', 2), ...E('earth')])).toBe(true)
   })
 })
 

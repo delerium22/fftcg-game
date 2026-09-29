@@ -12,7 +12,7 @@ describe('preferredPayment', () => {
     ;[s, card] = withHand(s, 0, 'V-F2')                 // earth cost 2
     const p = preferredPayment(s, 0, card)!
     expect([...p.dullBackups].sort()).toEqual([b1, b2].sort()); expect(p.discards).toEqual([])
-    expect(canPay(2, ['earth'], generateCp(s, 0, p, card))).toBe(true)
+    expect(canPay({ amount: 2, requiredElements: ['earth'] }, generateCp(s, 0, p, card))).toBe(true)
   })
   it('discards the lowest-value cards when backups are insufficient, never the card itself', () => {
     let s = withHandSize(makeGame(), 0, 0); let cheap: number, card: number
@@ -78,7 +78,7 @@ describe('preferredPayment', () => {
     ;[s] = withHand(s, 0, 'V-F6')                       // lightning 2000 — cheap discard supplies lightning
     ;[s, dual] = withHand(s, 0, 'V-F4')                 // earth/lightning cost 2
     const p = preferredPayment(s, 0, dual)!
-    expect(canPay(2, ['earth', 'lightning'], generateCp(s, 0, p, dual))).toBe(true)
+    expect(canPay({ amount: 2, requiredElements: ['earth', 'lightning'] }, generateCp(s, 0, p, dual))).toBe(true)
     let t = withHandSize(makeGame(), 0, 0)
     ;[t, poor] = withHand(t, 0, 'V-F8')                 // cost 5, nothing to pay with
     expect(preferredPayment(t, 0, poor)).toBeNull()
@@ -98,7 +98,7 @@ describe('preferredPayment', () => {
     // has nothing left for lightning. The correct payment spends V-EARTHONLY on earth and V-DUAL on lightning.
     const p = preferredPayment(s, 0, target)!
     expect(p).not.toBeNull()
-    expect(canPay(3, ['earth', 'lightning'], generateCp(s, 0, p, target))).toBe(true)
+    expect(canPay({ amount: 3, requiredElements: ['earth', 'lightning'] }, generateCp(s, 0, p, target))).toBe(true)
   })
   it('does not count a multi-element backup for its non-first element (engine produces elements[0] only)', () => {
     const defs = [...VANILLA_POOL, makeDef({ code: 'V-BD', type: 'backup', elements: ['earth', 'lightning'], cost: 1, power: null })]
@@ -126,7 +126,7 @@ describe('preferredPayment', () => {
     // fire: V-LF} is a legal assignment. Bounded backtracking must find it.
     const p = preferredPayment(s, 0, target)
     expect(p).not.toBeNull()
-    expect(canPay(3, ['earth', 'lightning', 'fire'], generateCp(s, 0, p!, target))).toBe(true)
+    expect(canPay({ amount: 3, requiredElements: ['earth', 'lightning', 'fire'] }, generateCp(s, 0, p!, target))).toBe(true)
   })
   it('C3: preferredPayment pays a Light card with two off-element (earth) backups, no same-element CP needed', () => {
     const defs = [...VANILLA_POOL, makeDef({ code: 'V-L1', elements: ['light'], cost: 2, power: 5000 })]
@@ -137,7 +137,7 @@ describe('preferredPayment', () => {
     const p = preferredPayment(s, 0, card)
     expect(p).not.toBeNull()
     expect(p!.discards).toEqual([])
-    expect(canPay(2, [], generateCp(s, 0, p!, card))).toBe(true)
+    expect(canPay({ amount: 2, requiredElements: [] }, generateCp(s, 0, p!, card))).toBe(true)
   })
 })
 
@@ -221,7 +221,7 @@ describe('a source covers as many requirements as it generates CP', () => {
     const preferred = preferredPaymentFor(s, 0, req)
     expect(preferred, 'the AI declined a payment the engine accepts').not.toBeNull()
     expect(preferred?.discards.map((d) => d.card)).toEqual([inHand])
-    expect(canPay(req.amount, req.requiredElements, generateCp(s, 0, preferred!, []))).toBe(true)
+    expect(canPay({ amount: req.amount, requiredElements: req.requiredElements }, generateCp(s, 0, preferred!, []))).toBe(true)
   })
 
   it('does not let one discard cover TWO DIFFERENT Elements', () => {
@@ -234,5 +234,26 @@ describe('a source covers as many requirements as it generates CP', () => {
 
     expect(enumeratePaymentsFor(s, 0, req)).toEqual([])   // the engine refuses it
     expect(preferredPaymentFor(s, 0, req)).toBeNull()     // and so does the AI
+  })
+})
+
+describe('preferredPayment under "you can only pay with Fire CP" (rung V1-A3, spec V1-D14)', () => {
+  const WARD = makeDef({ code: 'T-WARD', elements: ['fire'], cost: 3, power: 7000, hasAbilities: true, abilityClauses: 1,
+    abilities: [{ id: 'T-WARD:only', trigger: { kind: 'static', effect: { kind: 'onlyCp', element: 'fire' } }, text: 'You can only pay with Fire CP to cast Ward.', effects: [] }] })
+  const DEFS = [...VANILLA_POOL, WARD,
+    makeDef({ code: 'T-BF', type: 'backup', elements: ['fire'], cost: 2, power: null }),
+    makeDef({ code: 'T-BW', type: 'backup', elements: ['water'], cost: 2, power: null }),
+    makeDef({ code: 'T-FW', elements: ['fire', 'water'], cost: 1, power: 2000 })]
+
+  it('spends only Fire CP — skipping cheaper Water Backups — and declares a Fire/Water discard as Fire', () => {
+    let s = withHandSize(makeGame({ defs: DEFS }), 0, 0); let bf: number, fw: number, ward: number
+    ;[s] = withField(s, 0, 'backups', 'T-BW')
+    ;[s] = withField(s, 0, 'backups', 'T-BW')
+    ;[s, bf] = withField(s, 0, 'backups', 'T-BF')
+    ;[s, fw] = withHand(s, 0, 'T-FW')
+    ;[s, ward] = withHand(s, 0, 'T-WARD')
+    const p = preferredPayment(s, 0, ward)!
+    expect(p).toEqual({ dullBackups: [bf], discards: [{ card: fw, element: 'fire' }] })
+    expect(legalCommands(s, 0).some((c) => c.type === 'castCharacter' && c.card === ward && c.payment.dullBackups.join() === p.dullBackups.join() && JSON.stringify(c.payment.discards) === JSON.stringify(p.discards))).toBe(true)
   })
 })

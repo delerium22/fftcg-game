@@ -4,7 +4,7 @@ import { defOf } from './state.js'
 import { discardCheck } from './phases.js'
 import { excessBackupsCheck } from './rules.js'
 import type { Command, Payment } from './commands.js'
-import { canAffordCast, canPay, castRequirement, enumeratePayments, enumeratePaymentsFor, generateCp, type CpRequirement } from './cp.js'
+import { canAffordCast, canPay, castRequirement, enumeratePayments, enumeratePaymentsFor, generateCp, payShortfall, type CpRequirement } from './cp.js'
 import { IllegalCommandError } from './errors.js'
 import { abilityCpRequirement, activatedAbility, activationCheck, activationTargetSets, hasAnyActivation, sameNameCards, sameNameCheck } from './activate.js'
 import { CAST_SAME_NAME, castCheck, instantSpeedAllowed, lbFlipCheck } from './cast.js'
@@ -194,7 +194,7 @@ function paymentCheck(state: GameState, player: PlayerId, payment: Payment, req:
     const lb = req.excluded[0] === undefined ? null : lbFlipCheck(state, player, req.excluded[0], payment)
     if (lb) return lb
     const cp = generateCp(state, player, payment, req.excluded)
-    return canPay(req.amount, req.requiredElements, cp) ? null : `payment does not cover cost ${req.amount} ${req.requiredElements.join('/')}`
+    return canPay(req, cp) ? null : payShortfall(req)
   } catch (e) {
     if (e instanceof IllegalCommandError) return e.message
     throw e
