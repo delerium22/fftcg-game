@@ -302,7 +302,7 @@ export type AbilityTrigger =
    * **cost 1**". Both are explicit rather than implicit in which array the producer happens to scan, which is
    * the mistake C2 had to call out once already.
    */
-  | { readonly kind: 'observesEnterField'; readonly whose: TriggerWhose; readonly of: CardType; readonly filter?: TargetFilter }
+  | { readonly kind: 'observesEnterField'; readonly whose: TriggerWhose; readonly of: CardType | readonly CardType[]; readonly filter?: TargetFilter }
   /**
    * The beginning of the Attack Phase, on the CONTROLLER's own turn (spec C5-2). Cloud prints "during each of
    * your turns", and that restriction lives in the dispatch rather than on the card: a clause that fired on
@@ -445,6 +445,14 @@ export type StaticCondition =
    * its own output. No filter is any Character.
    */
   | { readonly kind: 'controlsAtLeast'; readonly count: number; readonly controller: 'self' | 'opponent'; readonly filter?: DefFilter }
+
+/**
+ * Does an observer's `of` admit a card of `type`? One type, or several (rung V1-A5): LB Luso 23-130H watches "a Job
+ * Standard Unit", and a Standard Unit may be a Forward (Dragoon 1-147C) or a Backup (Geomancer 18-064C).
+ */
+export function observesType(of: CardType | readonly CardType[], type: CardType | undefined): boolean {
+  return type !== undefined && (typeof of === 'string' ? of === type : of.includes(type))
+}
 
 export type ActivationSourceZone = 'field' | 'hand' | 'breakZone'
 

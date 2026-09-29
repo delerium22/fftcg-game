@@ -3,7 +3,7 @@ import type { Ability, AbilityTrigger, Condition, Effect, Frame, TargetFilter, T
 import type { ZoneTransition } from './rules.js'
 import { drawCards } from './draw.js'
 import { shuffle } from './rng.js'
-import { EMPTY_RESOLUTION, MAX_RESOLUTION_STEPS, effectAtPath, hasResolutionWork, unimplementedClauseCount } from './abilities.js'
+import { EMPTY_RESOLUTION, MAX_RESOLUTION_STEPS, effectAtPath, hasResolutionWork, observesType, unimplementedClauseCount } from './abilities.js'
 import type { CardId, DamageOccurrence, FieldCard, GameState, Pending, StackItem } from './state.js'
 export type { DamageOccurrence } from './state.js'
 import { defOf, findFieldCard, forget, learn, updatePlayer, powerOf, keywordsOf, flagsOf } from './state.js'
@@ -1272,7 +1272,7 @@ export function enqueueEnterFieldTriggers(state: GameState, card: CardId, contro
         // "your field" is relative to the WATCHER, never the turn player (spec C2-10, and C8-1 inherits it).
         if (t.whose === 'self' && controller !== watcher) continue
         if (t.whose === 'opponent' && controller === watcher) continue
-        if (def.type !== t.of) continue
+        if (!observesType(t.of, def.type)) continue
         // `source` is the WATCHER, so `excludeSource` on such a filter would mean "not myself arriving".
         if (t.filter && !matchesFilter(s, c.id, card, t.filter)) continue
         s = enqueueTrigger(s, c.id, watcher, ability, event)
