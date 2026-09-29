@@ -117,10 +117,11 @@ beforeAll(() => {
   //
   // Rung V1-E: the AI now remembers the card Miner revealed into the human's hand, so it plays seed 8 — the one
   // seed of 1–12 that reached this position — differently, and the position moved out of that range. Seed 87 is the
-  // first of 13–90 to reach it; named directly, because walking 80 seeds would cost the file ~40 s.
+  // first of 13–90 to reach it, named directly: seeds 1–12 no longer reach it, and walking them costs ~8 s against
+  // the 10 s hook timeout.
   MINER_ASYMMETRY = search('castMiner', (s) =>
     s.pending?.kind === 'discardToHandSize' && s.pending.player === HUMAN
-    && asymmetricPair(s) !== null, [...SEEDS, 87])
+    && asymmetricPair(s) !== null, [87])
 })
 
 describe('two cards of the same code', () => {
