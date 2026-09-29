@@ -295,8 +295,8 @@ old and new side by side:
 - **The text card** (no art) gets generative element art: layered SVG crystal shards in the card's element hues
   with a grain texture, seeded by the card code so it never changes. The card name is set large.
 - **The card back** is our own design (a crystal emblem on deep blue with gold line work), not Square Enix's.
-- **Inspect:** a large card (about 320 px wide) with pointer-tracked tilt and a foil sheen, plus the full rules text
-  in Barlow.
+- **The hover preview** (§6) shows a large card (about 320 px wide) with pointer-tracked tilt and a foil sheen, plus
+  the full rules text in Barlow.
 
 **Card visual state model.** Each state is derived, never stored, and exposed as a `data-*` attribute that CSS
 styles and tests select on:
