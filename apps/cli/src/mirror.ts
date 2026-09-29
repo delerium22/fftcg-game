@@ -205,6 +205,13 @@ const agentSeed = (gameSeed: number, which: 0 | 1): number => gameSeed * 2 + whi
 
 export function mirrorTournament(opts: MirrorOptions): MirrorReport {
   if (!Number.isInteger(opts.pairs) || opts.pairs < 1) throw new Error(`mirrorTournament: invalid pairs ${opts.pairs}`)
+  // Rung V1-C (R7): the seat swap is what cancels the seat effect, and it only isolates the SEAT if both seats hold
+  // the same list. With one deck per seat the swap moves the deck too, and the seat bias reported would be a deck
+  // bias under the wrong name. A seat-by-deck crossover would be its own tournament.
+  const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((c, i) => c === b[i])
+  if (!same(opts.decks[0], opts.decks[1]) || (opts.lbDecks && !same(opts.lbDecks[0], opts.lbDecks[1]))) {
+    throw new Error('mirrorTournament: a mirror plays one list for both seats; these seats hold different decks')
+  }
   const strict = opts.strict ?? true
   const max = opts.maxCommands ?? 2000
   const samples = opts.bootstrapSamples ?? 2000
