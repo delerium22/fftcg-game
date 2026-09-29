@@ -142,6 +142,7 @@ describe('V1-A1 — the if effect', () => {
     ;[s, foe] = withField(s, 1, 'forwards', 'V-F2')
     s = arm(s, src, 0, GATED)
     expect(s.pending?.kind).toBe('chooseTargets')
+    ok(s)   // the suspended state, program counter inside a branch, is well-formed
     const frame = s.resolution.active!
     expect(frame.path, 'if at 0, then-branch 0, chooser at 0').toEqual([0, 0, 0])
     expect(effectAtPath(abilityOf(s, frame)!.effects, frame.path, frame.modes)).toBe((GATED.effects[0] as Extract<Effect, { kind: 'if' }>).then[0])
