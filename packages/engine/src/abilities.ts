@@ -190,6 +190,13 @@ export type Effect =
        * without it the controller would keep perfect knowledge of a 40-card deck for the rest of the game.
        */
       readonly rest: 'bottom' | 'shuffle'
+      /**
+       * Rung V1-E (E-D5): a SEARCH reveals what it finds (§15.1.1.8.1) — the look stays private (`audience: 'self'`), and
+       * each TAKEN card is revealed to both players as it goes to hand, and stays known there. `audience: 'all'` is the
+       * other shape, revealing everything looked at (Miner). Only with `to: 'hand'` (a card put onto the field is public
+       * already); game creation refuses it elsewhere.
+       */
+      readonly revealTaken?: true
     }
   /**
    * Act on the card the TRIGGER EVENT is about — Luso's "break **it**" (spec C2-5). Binds `chosen` to the

@@ -149,6 +149,7 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
           walk(code, id, e.then, bound, byChoice, true); walk(code, id, e.else ?? [], bound, byChoice, true); break
         // Luso's search: resolved against the enclosing choice's card as the pending is raised (resolve.ts).
         case 'lookAtDeck':
+          if (e.revealTaken !== undefined && e.to !== 'hand') problems.push(`${code}: ${id} reveals the taken card of a search that does not take to hand`)
           if (resolvesChosen(e.take.filter) && !byChoice) sameElement('in a search with no choice before it')
           if (nestedChosen(e.take.filter)) sameElement('inside an anyOf member; only the top level of a filter is resolved')
           break

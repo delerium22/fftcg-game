@@ -241,7 +241,12 @@ export function removeFromField(state: GameState, id: CardId): GameState {
     : { ...ps, backups: ps.backups.filter((c) => c.id !== id) }))
 }
 
-/** §7.10: a card always goes to its OWNER's zone, not its controller's. Returns null if the card is nowhere movable. */
+/**
+ * §7.10: a card always goes to its OWNER's zone, not its controller's. Returns null if the card is nowhere movable.
+ *
+ * Rung V1-E (R2): it comes from a PUBLIC zone — the field or a Break Zone — so both players saw it arrive in the hand
+ * and both know it there.
+ */
 function toHand(state: GameState, id: CardId): GameState | null {
   const owner = state.cards[id]?.owner
   if (owner === undefined) return null
@@ -252,7 +257,7 @@ function toHand(state: GameState, id: CardId): GameState | null {
     if (holder === undefined) return null
     s = updatePlayer(s, holder, (ps) => ({ ...ps, breakZone: ps.breakZone.filter((x) => x !== id) }))
   }
-  return updatePlayer(s, owner, (ps) => ({ ...ps, hand: [...ps.hand, id] }))
+  return learn(updatePlayer(s, owner, (ps) => ({ ...ps, hand: [...ps.hand, id] })), [0, 1], [id])
 }
 
 // ---------------------------------------------------------------------------
@@ -358,8 +363,12 @@ function settleLook(ctx: Ctx, eff: Extract<Effect, { kind: 'lookAtDeck' }>, expo
   // of it, and then it is randomised, so the knowledge must go with it. `forget` is called on the deck AFTER
   // the taken cards have left it — a card on its way to the field is public, and re-hiding it would be wrong.
   if (eff.rest === 'shuffle') ctx.state = forget(ctx.state, deck)
+  // Rung V1-E (§15.1.1.8.1): a search reveals what it finds. Learned AFTER the `forget` above, which only ever reaches
+  // the deck, so the taken card stays known in hand to both players.
+  const revealed = eff.revealTaken === true && eff.to === 'hand'
+  if (revealed) ctx.state = learn(ctx.state, [0, 1], taken)
   for (const id of taken) {
-    if (eff.to === 'hand') { ctx.events.push({ type: 'addedToHand', player: ctx.controller, card: id }); continue }
+    if (eff.to === 'hand') { ctx.events.push({ type: 'addedToHand', player: ctx.controller, card: id, ...(revealed ? { revealed: true as const } : {}) }); continue }
     ctx.events.push({ type: 'playedFromDeck', player: ctx.controller, card: id })
     ctx.state = putOntoField(ctx.state, id, ctx.controller, ctx.events)
   }

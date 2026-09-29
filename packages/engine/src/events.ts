@@ -42,8 +42,8 @@ export type Event =
   | { type: 'playedFromDeck'; player: PlayerId; card: CardId }
   /** A card put onto the field from its owner's hand by an effect, without being cast (rung V1-A2, §15.1.1.7). */
   | { type: 'playedFromHand'; player: PlayerId; card: CardId }
-  /** A card taken from an exposure into its owner's hand. */
-  | { type: 'addedToHand'; player: PlayerId; card: CardId }
+  /** A card taken from an exposure into its owner's hand. `revealed`: shown to both players as it went (rung V1-E). */
+  | { type: 'addedToHand'; player: PlayerId; card: CardId; revealed?: true }
   /** A card removed from the game (spec C7-3). Distinct from breaking and from discarding. */
   | { type: 'removedFromGame'; player: PlayerId; card: CardId }
   /**

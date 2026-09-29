@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { checkInvariants } from '../src/invariants.js'
 import { viewFor } from '../src/view.js'
 import { determinise, SYNTHETIC_ID_BASE } from '../src/determinise.js'
-import { learn } from '../src/state.js'
+import { knows, learn } from '../src/state.js'
 import { seedRng } from '../src/rng.js'
 import { drainResolution, enqueueTrigger } from '../src/resolve.js'
-import type { Ability, CardId, GameState, PlayerId } from '../src/index.js'
+import { apply } from '../src/apply.js'
+import { validateEffects } from '../src/setup.js'
+import type { Ability, CardDef, CardId, Effect, Event, GameState, PlayerId } from '../src/index.js'
 import { DEFAULT_DECK, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from './helpers.js'
 
 /**
@@ -103,5 +105,123 @@ describe('determinisation pins the known hand cards (V1-E, E-D2, Review Focus 3)
     const code = s.cards[s.players[1].hand[0]!]!.code
     const short = DEFAULT_DECK.filter((c) => c !== code)
     expect(() => determinise({ view: viewFor(s, 0), decks: [DEFAULT_DECK, short], rng: seedRng(1) })).toThrow(/does not contain visible card/)
+  })
+})
+
+const etb = (id: string, effects: readonly Effect[]): Ability => ({ id, trigger: { kind: 'enterField' }, text: `synthetic ${id}`, effects })
+const bearer = (code: string, a: Ability): CardDef => makeDef({ code, type: 'backup', power: null, cost: 1, hasAbilities: true, abilityClauses: 1, abilities: [a] })
+
+/** Run `a` for `controller` from a fresh game, answering a deck prompt with `picks`; the events of the answer are returned. */
+function resolve(a: Ability, controller: PlayerId, picks: number[] | null, prepare: (s: GameState) => GameState = (x) => x): { s: GameState; events: Event[] } {
+  const code = a.id.split(':')[0]!
+  let s = prepare(makeGame({ defs: [...VANILLA_POOL, bearer(code, a)], decks: DECKS }))
+  let src: CardId
+  ;[s, src] = withField(s, controller, 'backups', code)
+  s = drainResolution(enqueueTrigger(s, src, controller, a))[0]
+  if (picks === null) return { s, events: [] }
+  expect(s.pending?.kind, 'the search did not ask').toBe('chooseFromDeck')
+  const r = apply(s, { type: 'chooseFromDeck', player: controller, picks })
+  return { s: r.state, events: r.events }
+}
+
+describe('a search reveals the card it takes (V1-E, E-D5, §15.1.1.8.1)', () => {
+  const search = (revealTaken: boolean): Ability => etb('T-SRCH:etb', [{
+    kind: 'lookAtDeck', count: 'all', audience: 'self', take: { min: 0, max: 1, filter: { name: 'V-F8' } }, to: 'hand', rest: 'shuffle',
+    ...(revealTaken ? { revealTaken: true as const } : {}),
+  }])
+  /** The index of the first V-F8 in player 0's deck, read off the state the prompt was raised in. */
+  const firstF8 = (s: GameState): number => s.players[0].deck.findIndex((id) => s.cards[id]!.code === 'V-F8')
+
+  it('the opponent learns the taken card, and only it: no deck card is known to anyone after the shuffle (Review Focus 5)', () => {
+    const asked = resolve(search(true), 0, null).s
+    const i = firstF8(asked)
+    const taken = asked.players[0].deck[i]!
+    const { s, events } = resolve(search(true), 0, [i])
+    expect(s.players[0].hand).toContain(taken)
+    expect(knows(s, 1, taken), 'the reveal did not reach the opponent').toBe(true)
+    expect(knows(s, 0, taken), 'the shuffle forgot the card that had already left the deck').toBe(true)
+    for (const id of s.players[0].deck) expect(s.knownBy[id], `deck card ${id} still known after the shuffle`).toBeUndefined()
+    expect(viewFor(s, 1).fields[0].knownHand).toEqual([taken])
+    expect(events).toContainEqual({ type: 'addedToHand', player: 0, card: taken, revealed: true })
+    expect(checkInvariants(s)).toEqual([])
+  })
+
+  it('without revealTaken the take stays private, as before', () => {
+    const asked = resolve(search(false), 0, null).s
+    const i = firstF8(asked)
+    const taken = asked.players[0].deck[i]!
+    const { s, events } = resolve(search(false), 0, [i])
+    expect(knows(s, 1, taken)).toBe(false)
+    expect(viewFor(s, 1).fields[0].knownHand).toEqual([])
+    expect(events).toContainEqual({ type: 'addedToHand', player: 0, card: taken })
+  })
+
+  it('taking nothing reveals nothing', () => {
+    const { s, events } = resolve(search(true), 0, [])
+    expect(viewFor(s, 1).fields[0].knownHand).toEqual([])
+    expect(events.some((e) => e.type === 'addedToHand')).toBe(false)
+  })
+
+  it('game creation refuses revealTaken on a search that does not take to hand (R5)', () => {
+    const toField = etb('T-FLD:etb', [{ kind: 'lookAtDeck', count: 'all', audience: 'self', take: { min: 0, max: 1 }, to: 'field', rest: 'shuffle', revealTaken: true }])
+    const toHand = search(true)
+    const problems = validateEffects([bearer('T-FLD', toField), bearer('T-SRCH', toHand)]).join('; ')
+    expect(problems).toMatch(/T-FLD:etb reveals the taken card of a search that does not take to hand/)
+    expect(problems).not.toMatch(/T-SRCH/)
+  })
+})
+
+describe('a card that returns to a hand from a public zone is known to both players (V1-E, R2, Review Focus 1)', () => {
+  it('a Forward never exposed before it entered the field, bounced: known, and surfaced to the other seat', () => {
+    // Put onto player 1's field straight from nowhere — no reveal, no look — so the bit can only come from the bounce.
+    let bounced: CardId = -1
+    const bounce = etb('T-BNC:etb', [{ kind: 'forEach', from: { zone: 'forwards', controller: 'opponent' }, do: [{ kind: 'moveToHand' }] }])
+    const { s } = resolve(bounce, 0, null, (x) => { let t: GameState; [t, bounced] = withField(x, 1, 'forwards', 'V-F2'); return t })
+    expect(s.players[1].hand).toContain(bounced)
+    expect(knows(s, 0, bounced) && knows(s, 1, bounced)).toBe(true)
+    expect(viewFor(s, 0).fields[1].knownHand).toEqual([bounced])
+    expect(checkInvariants(s)).toEqual([])
+  })
+
+  it('a card returned from the Break Zone: the same', () => {
+    let back: CardId = -1
+    const retrieve = etb('T-RET:etb', [{ kind: 'forEach', from: { zone: 'breakZone', controller: 'self' }, do: [{ kind: 'moveToHand' }] }])
+    const { s } = resolve(retrieve, 1, null, (x) => {
+      const ps = x.players[1]
+      back = ps.deck[0]!
+      const players: GameState['players'] = [x.players[0], { ...ps, deck: ps.deck.slice(1), breakZone: [...ps.breakZone, back] }]
+      return { ...x, players }
+    })
+    expect(s.players[1].hand).toContain(back)
+    expect(viewFor(s, 0).fields[1].knownHand).toEqual([back])
+  })
+})
+
+describe('deck-slot knowledge surfaces when the card is drawn (V1-E, R6)', () => {
+  /** Player 0's deck cut to three, the top two exposed and sent to the bottom, then all three drawn. */
+  const lookThenDraw = (audience: 'self' | 'all'): { s: GameState; exposed: CardId[] } => {
+    let exposed: CardId[] = []
+    const look = etb('T-LOOK:etb', [
+      { kind: 'lookAtDeck', count: 2, audience, take: { min: 0, max: 0 }, to: 'hand', rest: 'bottom' },
+      { kind: 'draw', count: 3 },
+    ])
+    const { s } = resolve(look, 0, [], (x) => {
+      const ps = x.players[0]
+      exposed = ps.deck.slice(0, 2)
+      const players: GameState['players'] = [{ ...ps, deck: ps.deck.slice(0, 3) }, x.players[1]]
+      return { ...x, players }
+    })
+    for (const id of exposed) expect(s.players[0].hand, 'the fixture did not draw the exposed cards').toContain(id)
+    return { s, exposed }
+  }
+
+  it("Miner's reveal: the two revealed cards, sent to the bottom and drawn, stay known to the opponent", () => {
+    const { s, exposed } = lookThenDraw('all')
+    expect([...viewFor(s, 1).fields[0].knownHand].sort()).toEqual([...exposed].sort())
+  })
+
+  it('a private look: the looked-at cards, drawn, do NOT surface to the opponent', () => {
+    const { s } = lookThenDraw('self')
+    expect(viewFor(s, 1).fields[0].knownHand).toEqual([])
   })
 })
