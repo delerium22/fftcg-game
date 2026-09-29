@@ -1,5 +1,7 @@
 # UI/UX overhaul — a premium, Marvel Snap–style presentation layer
 
+<!-- review-page: https://claude.ai/artifact/Doa1ofjxA78fc5BkesWYtF round: 1 -->
+
 > **Status:** design spec, written 2026-09-30, revised the same day after a Codex review and a Fable review
 > (adjudicated in `docs/superpowers/plans/2026-09-30-ui-overhaul-design.codex-review.md`). Awaiting the user's review.
 > No code yet.
