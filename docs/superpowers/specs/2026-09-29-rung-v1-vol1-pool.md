@@ -124,6 +124,8 @@ split out ahead of the cards. Deviations and readings from the plan:
 - Known gap: inside a chooser's `then`, `targetDelta` prices `onSource` at 0, so on a min-0 chooser `bestSize` cannot
   see it. A "you may select …; when you do so, this card gains …" shape would decline the pick and lose the self-grant.
   No pool card has that shape (Jecht and LB Luso are plain).
+- `onSource` binds a CardId, not an incarnation: a source that leaves and re-enters before resolution would get the
+  effect (engine-wide gap — declared targets have it too; no pool card can re-enter while its ability waits). Backlog.
 
 ## Source and the list (V1-D1)
 
