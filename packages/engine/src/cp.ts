@@ -80,7 +80,6 @@ export function canPay(req: CpToPay, generated: readonly GeneratedCp[]): boolean
   const { amount: cost, requiredElements: elements } = req
   if (cost === 0) return generated.length === 0   // §11.2.2.4 / §11.2.2.1 last sentence
   const cp = onlyAdmissible(req, generated)
-  if (cp === null) return false
   if (cp.length < cost) return false
   // Each REQUIREMENT needs its own distinct source that can produce it (§11.2.2.1–2). With flexible sources
   // that is a matching problem, not a count: assigning greedily can strand a later requirement on a source an
@@ -90,15 +89,16 @@ export function canPay(req: CpToPay, generated: readonly GeneratedCp[]): boolean
 }
 
 /**
- * Under `onlyElement` (rung V1-A3, spec V1-D14, R3): null when ANY generated CP cannot be that Element — refused whole,
- * overpay included — and otherwise every entry narrowed to it, so a flexible source (a Moogle-style Backup that can also
- * produce Fire) counts as Fire and nothing else. Without the restriction, the CP as generated.
+ * The CP that may be USED under `onlyElement` (rung V1-A3, spec V1-D14, R3; rung V1-D, plan D-D4): the entries that can be
+ * that Element, each narrowed to it, so a flexible source (a Moogle-style Backup that can also produce Fire) counts as
+ * Fire and nothing else. The rest are dropped, not refused: §11.2.2.3 lets a player generate as much CP as they like and
+ * choose which pays, and "You can only pay with Fire CP" restricts the CP used — an off-Element CP is generated, unspent,
+ * and ceases to exist (§11.2.2.3.1). Without the restriction, the CP as generated.
  */
-export function onlyAdmissible(req: Pick<CpRequirement, 'onlyElement'>, cp: readonly GeneratedCp[]): readonly GeneratedCp[] | null {
+export function onlyAdmissible(req: Pick<CpRequirement, 'onlyElement'>, cp: readonly GeneratedCp[]): readonly GeneratedCp[] {
   const only = req.onlyElement
   if (only === undefined) return cp
-  if (cp.some((c) => !c.elements.includes(only))) return null
-  return cp.map((c) => (c.elements.length === 1 ? c : { ...c, elements: [only] }))
+  return cp.filter((c) => c.elements.includes(only)).map((c) => (c.elements.length === 1 ? c : { ...c, elements: [only] }))
 }
 
 /** Why a payment does not cover `req`, for an error: the cost, and the restriction when there is one. */
@@ -118,7 +118,7 @@ export interface CpRequirement {
   readonly requiredElements: readonly Element[]
   /** Cards that may not be a source. See `generateCp`. */
   readonly excluded: readonly CardId[]
-  /** "You can only pay with <Element> CP" (rung V1-A3): every CP generated must be able to be this Element. */
+  /** "You can only pay with <Element> CP" (rung V1-A3): only CP that can be this Element pays; others may be generated, unspent (rung V1-D, §11.2.2.3). */
   readonly onlyElement?: Element
 }
 
@@ -197,8 +197,8 @@ export function canAffordCast(state: GameState, player: PlayerId, card: CardId):
   const req = castRequirement(state, card, player)
   if (req.amount === 0) return true
   const ps = state.players[player]
-  // Under `onlyElement` (rung V1-A3) every source is one that can be that Element, and a discard declares it: an
-  // inadmissible source would make the whole maximal payment illegal rather than merely unhelpful.
+  // Under `onlyElement` (rung V1-A3) only sources that can be that Element are tried, and a discard declares it. An
+  // inadmissible source would be legal to add (rung V1-D, §11.2.2.3) but pays nothing, so leaving it out loses nothing.
   const dullBackups = ps.backups.filter((b) => b.status === 'active' && !req.excluded.includes(b.id) && admits(req, backupElements(state, b.id))).map((b) => b.id)
   const options = ps.hand
     .filter((id) => !req.excluded.includes(id))
@@ -217,7 +217,8 @@ export function enumeratePaymentsFor(state: GameState, player: PlayerId, req: Cp
   const card = req.excluded
   if (req.amount === 0) return [{ dullBackups: [], discards: [] }]
   const ps = state.players[player]
-  // Rung V1-A3: under `onlyElement`, only sources that can be that Element, and discards declaring it, are tried.
+  // Rung V1-A3: under `onlyElement`, only sources that can be that Element, and discards declaring it, are tried — an
+  // off-Element source may be generated (rung V1-D) but pays nothing, so no minimal payment includes one.
   const backups = ps.backups.filter((b) => b.status === 'active' && !card.includes(b.id) && admits(req, backupElements(state, b.id))).map((b) => b.id)
   const discardOptions = ps.hand
     .filter((id) => !card.includes(id))

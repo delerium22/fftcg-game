@@ -426,8 +426,8 @@ export type StaticEffect =
   /**
    * "You can only pay with <Element> CP to cast <this card>" — Ward 21-001R (rung V1-A3, spec V1-D14). Like
    * `costReduction`, read off the card's OWN abilities wherever it is cast from, by `castRequirement`, into
-   * `CpRequirement.onlyElement`; every payment reader then admits only CP that can be that Element. No CP of another
-   * Element may be generated for the cast at all, overpay included: the card forbids it (adjudication, "kept").
+   * `CpRequirement.onlyElement`; every payment reader then counts only CP that can be that Element toward the cost. CP
+   * of another Element may still be generated and go unspent (§11.2.2.3; rung V1-D reversed the V1-A3 reading).
    */
   | { readonly kind: 'onlyCp'; readonly element: Element }
   // --- rung J6: CONTINUOUS field effects (§11.12.4.4–5), applied by the layer while the source is on the field ---

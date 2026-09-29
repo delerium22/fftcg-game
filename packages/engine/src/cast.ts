@@ -170,7 +170,7 @@ function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: P
   if (payment.sameName !== undefined) throw new IllegalCommandError(CAST_SAME_NAME)
   const req = castRequirement(state, card, player)
   const cp = generateCp(state, player, payment, req.excluded)
-  // `req` carries `onlyElement` (rung V1-A3): Ward's "only Fire CP" is refused here as `isLegal` refuses it.
+  // `req` carries `onlyElement` (rung V1-A3): only Fire CP counts toward Ward's cost, here as in `isLegal`; other CP may be generated, unspent (rung V1-D).
   if (!canPay(req, cp)) throw new IllegalCommandError(payShortfall(req))
   const lbWhy = lbFlipCheck(state, player, card, payment)
   if (lbWhy) throw new IllegalCommandError(lbWhy)

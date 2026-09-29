@@ -150,9 +150,10 @@ export function generatedFor(v: PlayerView, sel: Payment, req: CpRequirement): G
  * progress. Whatever CP is left pours into the untinted crystals.
  */
 export function crystals(req: CpRequirement, generated: readonly GeneratedCp[]): Crystal[] {
-  // "You can only pay with Fire CP" (rung V1-A3): the same narrowing `canPay` applies — CP that cannot be that Element
-  // pays nothing, and a flexible source counts as it alone. The picker never offers such a source (its payments are
-  // the engine's), so this is only what the tray would show if one were forced in.
+  // "You can only pay with Fire CP" (rung V1-A3): the same narrowing `canPay` applies (`onlyAdmissible`) — CP that cannot
+  // be that Element pays nothing, and a flexible source counts as it alone. The engine accepts such CP generated and unspent
+  // (rung V1-D, §11.2.2.3), but the picker never offers it — its payments are the engine's minimal ones — so this is only
+  // what the tray would show if one were forced in.
   const only = req.onlyElement
   const cp = only === undefined ? generated
     : generated.filter((c) => c.elements.includes(only)).map((c) => ({ ...c, elements: [only] }))
