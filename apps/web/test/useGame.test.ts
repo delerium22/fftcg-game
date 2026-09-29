@@ -683,6 +683,15 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
     expect(describeEvent(v, { type: 'abilityTriggered', player: HUMAN, card: RAMUH, abilityId: multi.id })?.text).toContain('Line one. Line two.')
   })
 
+  it('says a reflexive clause triggered "when you do so" (rung V1-D)', () => {
+    const reflexive: Ability = { id: 'ui-fixture:when-you-do-so', trigger: { kind: 'reflexive' }, text: 'When you do so, choose 1 Forward opponent controls. Deal it 9000 damage.', effects: [] }
+    const v = abilityView()
+    v.defs['20-103H'] = { ...(v.defs['20-103H'] as CardDef), abilities: [THREE_MODES, reflexive] }
+    expect(describeEvent(v, { type: 'abilityTriggered', player: HUMAN, card: RAMUH, abilityId: reflexive.id, cause: null })?.text)
+      .toBe(`Ramuh's ability triggers (when you do so): "${reflexive.text}"`)
+    expect(describeEvent(v, { type: 'abilityTriggered', player: HUMAN, card: RAMUH, abilityId: THREE_MODES.id, cause: null })?.text).not.toContain('when you do so')
+  })
+
   it('counts the clauses still missing on a card that HAS an implemented one (C1-9)', () => {
     const partial = describeEvent(view, { type: 'unimplementedAbility', card: anyCard, code: '20-103H', clauses: 1 })
     expect(partial?.kind).toBe('warning')

@@ -126,11 +126,8 @@ export type Effect =
       readonly select?: 'self' | 'opponent'
       /**
        * "When you do so, …" (rung V1-A2, spec V1-D10): `then` is skipped when the answer is empty. Without it `then`
-       * runs on zero picks, which the existing "up to" shapes rely on.
-       *
-       * MVP0-SIMPLIFICATION (§11.8, Vincent 23-119R): "when you do so" is a reflexive trigger in the printed text;
-       * here its effects run inside the same resolution, and a choice among them is made there, not declared as a
-       * separate stack item. No pool card can respond between the two, so it is unobservable today.
+       * runs on zero picks, which the existing "up to" shapes rely on. Since rung V1-D the "when you do so" clause itself
+       * is a separate `reflexive` ability that `then` fires with `triggerReflexive` — its own stack item (Vincent).
        */
       readonly onlyIfChosen?: true
     }
@@ -219,6 +216,14 @@ export type Effect =
    * re-reads the condition, which may no longer hold.
    */
   | { readonly kind: 'if'; readonly when: Condition; readonly then: readonly Effect[]; readonly else?: readonly Effect[] }
+  /**
+   * "When you do so, …" (rung V1-D, plan D-D2): fire the `reflexive` clause `abilityId` of this same card. It is
+   * TRIGGERED here, with the running frame's source and controller and no trigger event, and does nothing more now:
+   * like any trigger it is placed at the next priority grant (§11.8.7) — its own stack item, its choices declared as it
+   * is placed (§11.8.4 applies), resolved after a window. The official ruling of 2019-07-19 (Fusilier 9-013C): the
+   * follow-up goes on the stack after the first part resolves, and players may respond. Not a choice; never suspends.
+   */
+  | { readonly kind: 'triggerReflexive'; readonly abilityId: string }
 
 /**
  * How much (rung V1-A1, spec V1-D7): a printed number, or "N for each <filter> Character <side> controls" — Zack's
@@ -317,6 +322,13 @@ export type AbilityTrigger =
    * with that member as its source; the controller is the turn player, who declared the attack.
    */
   | { readonly kind: 'attacks' }
+  /**
+   * "When you do so, …" (rung V1-D, plan D-D2): an auto-ability whose trigger event is its own card's effect having been
+   * done — Vincent's 9000 after the Fire Backup is put. No dispatcher fires it on its own; only a `triggerReflexive`
+   * effect in a clause of the same card does. Game creation refuses a `triggerReflexive` naming anything else, and a
+   * reflexive clause that fires one (which the AI's pricing would otherwise follow forever).
+   */
+  | { readonly kind: 'reflexive' }
   /**
    * NOT a trigger at all: an ability the player chooses to use (spec C3-1). It lives in this union because
    * every dispatch site already switches on `kind`, so an activated ability is inertly ignored by trigger
@@ -578,7 +590,7 @@ export interface Frame {
   readonly chosen: readonly CardId[]
   /**
    * What fired this clause, for `onSubject` and for narration. Null for `enterField`/`summonResolve`/`attacks`,
-   * which are about the source itself. It must survive prompts and the source leaving the field (spec C2-5).
+   * which are about the source itself, and for `reflexive` (rung V1-D), fired by the source's own effect. It must survive prompts and the source leaving the field (spec C2-5).
    */
   readonly triggerEvent: TriggerEvent | null
   /** Modes picked by an enclosing `chooseModes`, as indices into its `modes`. */

@@ -143,7 +143,9 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'abilityTriggered': {
       const text = abilityText(v, e.card, e.abilityId)
       const why = cause ? ` — ${describeTriggerCause(v, cause)}` : ''
-      return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability triggers${why}${text ? `: "${text}"` : ''}` }
+      // Rung V1-D: a reflexive clause has no trigger event to name; it fired because its own card's effect was done.
+      const reflexive = triggerOf(v, e.card, e.abilityId)?.kind === 'reflexive' ? ' (when you do so)' : ''
+      return { kind: 'event', text: `${qualifiedName(v, e.card)}'s ability triggers${reflexive}${why}${text ? `: "${text}"` : ''}` }
     }
     // C3: ACTIVATED, not triggered. The distinction is the whole of what this rung added for the player —
     // "triggers" would report a move they deliberately made as something that merely happened to them.

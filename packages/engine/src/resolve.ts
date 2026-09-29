@@ -677,6 +677,14 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         ctx.events.push({ type: 'returnedToHand', player: ctx.state.cards[id]?.owner ?? ctx.controller, card: id })
       }
       return
+    case 'triggerReflexive': {
+      // "When you do so" (rung V1-D): the reflexive clause TRIGGERS now, and is placed at the next priority grant — its
+      // own stack item after this one resolves, with a window before it resolves. Looked up on the source's def, which
+      // `state.cards` keeps wherever the source now is. Validated at game creation; a missing clause is a no-op.
+      const reflexive = defFor(ctx.state, ctx.source)?.abilities?.find((a) => a.id === eff.abilityId && a.trigger.kind === 'reflexive')
+      if (reflexive) ctx.state = enqueueTrigger(ctx.state, ctx.source, ctx.controller, reflexive)
+      return
+    }
     case 'draw': {
       // The ability's CONTROLLER draws, not the turn player: Miner's draw is Miner's controller's.
       const [drawn, drawEvents] = drawCards(ctx.state, ctx.controller, eff.count)
