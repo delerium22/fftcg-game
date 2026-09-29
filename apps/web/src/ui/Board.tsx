@@ -268,7 +268,10 @@ export function Board({ game, onHelp }: {
   const newGame = (): void => { restarting.current = true; if (selection) restart(selection); else restart() }
   useEffect(() => {
     if (!restarting.current || view.result) return
-    const target = document.querySelector<HTMLButtonElement>('.prompt__actions button')
+    // `[data-command]`: a DECISION. While the AI thinks, the row's only button is the Full control toggle (rung
+    // K5), which carries none — landing there spent the flag, and the player's first real decision never got focus
+    // (V1-C review).
+    const target = document.querySelector<HTMLButtonElement>('.prompt__actions button[data-command]')
     // Keep waiting if there is nothing to focus YET. A new game's first decision is often the AI's — it
     // chooses who goes first — so on the render right after the restart the strip says "Waiting for the
     // opponent…" and offers no button at all. Consuming the flag there left focus on `document.body` until

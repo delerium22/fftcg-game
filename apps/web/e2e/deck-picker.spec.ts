@@ -80,9 +80,11 @@ test('the picker is labelled, last in the tab order, and a keyboard can start th
   await newGame.focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.log__line').first()).toHaveText('New game — you play Starter Vol. 2, the AI plays Starter Vol. 2')
-  // And focus goes to the new game's first decision, not back to the end of the tab order.
+  // And focus goes to the new game's first decision, not back to the end of the tab order. The new game is seed 2,
+  // where the AI chooses first: while it thinks the strip holds only the Full control toggle, which is not a
+  // decision, so the check is for a `[data-command]` button (V1-C review).
   await expect
-    .poll(() => page.evaluate(() => document.activeElement?.closest('.prompt__actions') !== null), { timeout: 15_000 })
+    .poll(() => page.evaluate(() => document.activeElement?.matches('.prompt__actions button[data-command]') ?? false), { timeout: 15_000 })
     .toBe(true)
 })
 
