@@ -645,8 +645,8 @@ const UNDEAD_PRINCESS_PUMP: Ability = {
  * `[0]` is a real cost, not the absence of one: it means the ability costs nothing, which is why `cost` is
  * an empty CP requirement rather than an omitted field.
  *
- * "only during your turn" needs no code — C3-11 already restricts every activated ability to the turn
- * player. "Only once per turn" is `oncePerTurn`, tracked on Sphene's own `FieldCard` so that two copies
+ * "only during your turn" is `yourTurnOnly`: C3-11's turn-player restriction was retired at J1 (abilities are
+ * instant speed), and until 2026-09-29 nothing replaced it here. "Only once per turn" is `oncePerTurn`, tracked on Sphene's own `FieldCard` so that two copies
  * would have separate allowances and a Sphene that left the field and returned has a fresh one (CR §7.4).
  *
  * "1 Forward other than Sphene" is `excludeSourceName`, not `excludeSource`: the printed wording excludes
@@ -654,7 +654,7 @@ const UNDEAD_PRINCESS_PUMP: Ability = {
  */
 const SPHENE_RETRIEVE: Ability = {
   id: '27-126S:retrieve',
-  trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 0 } }, oncePerTurn: true },
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 0 } }, oncePerTurn: true, yourTurnOnly: true },
   text: '[0]: Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn. '
     + 'Add it to your hand. You can only use this ability during your turn and only once per turn.',
   effects: [{

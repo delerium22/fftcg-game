@@ -118,6 +118,7 @@ export function activationCheck(
   if (ability.trigger.oncePerTurn && findFieldCard(state, source)?.card.usedThisTurn.includes(abilityId)) {
     return `${abilityId} has already been used this turn`
   }
+  if (ability.trigger.yourTurnOnly && state.turnPlayer !== player) return `${abilityId} may only be used during your turn`
 
   if (cost.dull) {
     // §11.6.2.2 — the dull icon, and ONLY the dull icon, brings the active/entered-this-turn/Haste rule with
