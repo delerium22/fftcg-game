@@ -168,6 +168,9 @@ describe('3-143C Leonora — "EX BURST When Leonora enters the field, you may se
     expect(took.state.players[0].hand).toContain(found[1])
     expect(took.state.players[0].hand.length).toBe(hand + 1)
     ok(took.state)
+    // §15.1.1.8.1 (rung V1-E): the search reveals Porom, and the opponent keeps knowing it is in that hand.
+    expect(took.events).toContainEqual({ type: 'addedToHand', player: 0, card: found[1], revealed: true })
+    expect(viewFor(took.state, 1).fields[0].knownHand).toEqual([found[1]])
     const declined = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [] })
     expect(declined.state.players[0].hand.length).toBe(hand)
     ok(declined.state)
@@ -368,6 +371,9 @@ describe('23-130H Luso — "When Luso enters the field, choose 1 Character you c
       const done = apply(t, { type: 'chooseFromDeck', player: 0, picks: [want] })
       expect(done.state.players[0].hand).toContain(found[want])
       ok(done.state)
+      // §15.1.1.8.1 (rung V1-E): revealed as it is taken.
+      expect(done.events).toContainEqual({ type: 'addedToHand', player: 0, card: found[want], revealed: true })
+      expect(viewFor(done.state, 1).fields[0].knownHand).toEqual([found[want]])
     }
   })
 
@@ -666,6 +672,12 @@ describe('21-010H Taivas — "When Taivas enters the field, you may search for 1
     if (p?.kind !== 'chooseFromDeck') throw new Error('no search')
     expect([p.min, p.max]).toEqual([0, 1])
     expect(deckPickCandidates(r.state, p).filter((i) => i < 5), 'not Charlotte').toEqual([0, 1, 2, 4])
+    // §15.1.1.8.1 (rung V1-E): the found Warrior is revealed, and stays known in hand.
+    const warrior = r.state.players[0].deck[1]!
+    const done = apply(r.state, { type: 'chooseFromDeck', player: 0, picks: [1] })
+    expect(done.events).toContainEqual({ type: 'addedToHand', player: 0, card: warrior, revealed: true })
+    expect(viewFor(done.state, 1).fields[0].knownHand).toEqual([warrior])
+    ok(done.state)
   })
 })
 

@@ -84,9 +84,8 @@ const FAIRY_SUMMON: Ability = {
  * Leonora's ETB: Hugh Yurg's search shape (`count: 'all'`, private, "you may" = `take.min: 0`, then shuffle), taking to
  * hand. "Card Name Palom or Card Name Porom" is an `anyOf` of two names.
  *
- * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-E): a search REVEALS the card it finds. `lookAtDeck` has no "reveal the taken
- * card only" audience — `all` would show the opponent the whole deck — so the found card goes to hand unseen by the
- * opponent.
+ * A search REVEALS the card it finds (§15.1.1.8.1): the look is private, and `revealTaken` shows the taken card to both
+ * players, who keep knowing it in hand (rung V1-E).
  */
 const LEONORA_ETB: Ability = {
   id: '3-143C:etb',
@@ -96,7 +95,7 @@ const LEONORA_ETB: Ability = {
   effects: [{
     kind: 'lookAtDeck', count: 'all', audience: 'self',
     take: { min: 0, max: 1, filter: { anyOf: [{ name: 'Palom' }, { name: 'Porom' }] } },
-    to: 'hand', rest: 'shuffle',
+    to: 'hand', rest: 'shuffle', revealTaken: true,
   }],
 }
 
@@ -238,9 +237,7 @@ const YUNA_ATTACK: Ability = {
  * LB Luso's ETB. "choose 1 Character you control" is a head choice over the `characters` zone (rung V1-A4) — Luso
  * himself included: the text does not exclude him, and choosing him (Light) finds nothing, since no Standard Unit is
  * Light. The search's `sameElementAsChosen` is resolved by the executor into the chosen card's printed Elements (rung
- * V1-A3). "You may search" is `take.min: 0`.
- *
- * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-E): the search does not reveal the found card, as for Leonora.
+ * V1-A3). "You may search" is `take.min: 0`. The found card is revealed (`revealTaken`, §15.1.1.8.1), as for Leonora.
  */
 const LUSO_LB_ETB: Ability = {
   id: '23-130H:etb',
@@ -253,7 +250,7 @@ const LUSO_LB_ETB: Ability = {
     then: [{
       kind: 'lookAtDeck', count: 'all', audience: 'self',
       take: { min: 0, max: 1, filter: { job: 'Standard Unit', sameElementAsChosen: true } },
-      to: 'hand', rest: 'shuffle',
+      to: 'hand', rest: 'shuffle', revealTaken: true,
     }],
   }],
 }
@@ -412,10 +409,8 @@ const VINCENT_WHEN_YOU_DO_SO: Ability = {
 const WARRIOR_OR_WARRIOR = [{ job: 'Warrior' }, { name: 'Warrior' }] as const
 
 /**
- * Taivas's ETB search: Leonora's shape. With no cost limit, a second Taivas is findable (Job Warrior) — the printed text
- * allows it.
- *
- * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-E): the search does not reveal the found card, as for Leonora.
+ * Taivas's ETB search: Leonora's shape, the found card revealed. With no cost limit, a second Taivas is findable (Job
+ * Warrior) — the printed text allows it.
  */
 const TAIVAS_SEARCH: Ability = {
   id: '21-010H:search',
@@ -424,7 +419,7 @@ const TAIVAS_SEARCH: Ability = {
   effects: [{
     kind: 'lookAtDeck', count: 'all', audience: 'self',
     take: { min: 0, max: 1, filter: { anyOf: WARRIOR_OR_WARRIOR } },
-    to: 'hand', rest: 'shuffle',
+    to: 'hand', rest: 'shuffle', revealTaken: true,
   }],
 }
 
