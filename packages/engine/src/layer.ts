@@ -2,7 +2,7 @@ import type { PlayerId } from './types.js'
 import type { CardDef, Keyword } from './types.js'
 import { opponentOf } from './types.js'
 import type { FieldCard, GameState, CardId } from './state.js'
-import type { ContinuousStatic, DefFilter, FieldFlag, StaticCondition } from './abilities.js'
+import type { Amount, ContinuousStatic, DefFilter, FieldFlag, StaticCondition } from './abilities.js'
 import { CONTINUOUS_STATIC_KINDS } from './abilities.js'
 import { matchesDefFilter } from './filters.js'
 
@@ -56,6 +56,13 @@ export function countControlled(state: GameState, player: PlayerId, filter: DefF
     if (d !== undefined && matchesDefFilter(d, filter)) n++
   }
   return n
+}
+
+/** An `Amount` as a number now, for `controller` (rung V1-A1, spec V1-D7): a printed number, or `times` per counted Character. */
+export function amountOf(state: GameState, controller: PlayerId, amount: Amount): number {
+  if (typeof amount === 'number') return amount
+  const side = amount.per.controller === 'self' ? controller : opponentOf(controller)
+  return amount.times * countControlled(state, side, amount.per.filter)
 }
 
 /**

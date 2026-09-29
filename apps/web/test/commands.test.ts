@@ -990,3 +990,30 @@ describe('an if names the branch that will run (rung V1-A1)', () => {
     expect(label).toBe("Undead Princess's remove from the game: Deal 8000 damage to Sphene")
   })
 })
+
+describe('a counted amount says the number that will apply (rung V1-A1)', () => {
+  const PER_BACKUP = { per: { controller: 'self', filter: { type: 'backup' } }, times: 1000 } as const
+  const counted: Ability = {
+    id: 'test:counted', trigger: { kind: 'enterField' }, text: 'Choose 1 Forward opponent controls. Deal it 1000 damage for each Backup you control.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: PER_BACKUP }] }],
+  }
+
+  it('with a frame, the count now: two Backups you control make 2000', () => {
+    const v = dullView(counted, [SPHENE])
+    v.fields[HUMAN].backups = [fieldCard(instance(v, 960, GEOMANCER)), fieldCard(instance(v, 961, GEOMANCER))]
+    v.fields[AI].backups = [fieldCard(instance(v, 962, GEOMANCER, AI))]   // the AI's Backup is not "you control"
+    expect(promptFor(v, [])).toBe('Noel: choose 1 Forward the AI controls to deal 2000 damage to')
+    expect(describeChoice(v, targets([901]))).toBe('Deal 2000 damage to Sphene')
+  })
+
+  it('with no frame (an activation button), the printed rate', () => {
+    const v = viewFor(dealtGame(1), HUMAN)
+    const princess = instance(v, 930, '19-052C')
+    const foe = instance(v, 931, SPHENE, AI)
+    const clause = (v.defs['19-052C'] as CardDef).abilities!.find((a) => a.id === '19-052C:remove')!
+    const rated: Ability = { ...clause, effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'damage', amount: PER_BACKUP }] }] }
+    v.defs['19-052C'] = { ...(v.defs['19-052C'] as CardDef), abilities: (v.defs['19-052C'] as CardDef).abilities!.map((a) => (a.id === clause.id ? rated : a)) }
+    const label = describeChoice(v, { type: 'activateAbility', player: HUMAN, source: princess, abilityId: clause.id, payment: { dullBackups: [], discards: [] }, targets: [foe] }, { payment: false })
+    expect(label).toBe("Undead Princess's remove from the game: Deal 1000 damage for each Backup you control to Sphene")
+  })
+})

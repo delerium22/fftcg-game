@@ -9,7 +9,10 @@ export type { DamageOccurrence } from './state.js'
 import { defOf, findFieldCard, forget, learn, updatePlayer, powerOf, keywordsOf, flagsOf } from './state.js'
 import { matchesDefFilter } from './filters.js'
 export { matchesDefFilter } from './filters.js'
-import { staticApplies } from './layer.js'
+import { amountOf, staticApplies } from './layer.js'
+// Rung V1-A1: the AI and the browser price and word counted amounts through these. Not `export *` from layer.ts,
+// which cp.ts already re-exports `staticApplies` from — the index would see it twice.
+export { amountOf, countControlled } from './layer.js'
 import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event, StackRef } from './events.js'
@@ -474,13 +477,17 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       }
       return
     case 'damage': {
+      // A counted amount (rung V1-A1) is read once per hit, for the ability's controller. Zero deals nothing at all:
+      // no event and no damage trigger, since a card that deals 0 damage has not dealt damage.
+      const amount = amountOf(ctx.state, ctx.controller, eff.amount)
+      if (amount <= 0) return
       const hits: DamageOccurrence[] = []
       for (const id of ctx.chosen) {
         const loc = findFieldCard(ctx.state, id)
         if (!loc || loc.zone !== 'forwards') continue   // only Forwards carry damage
-        ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, damage: c.damage + eff.amount }))
-        ctx.events.push({ type: 'abilityDamage', source: ctx.source, target: id, amount: eff.amount })
-        hits.push({ source: ctx.source, sourceController: ctx.controller, target: id, victim: null, amount: eff.amount, targetController: loc.owner })
+        ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, damage: c.damage + amount }))
+        ctx.events.push({ type: 'abilityDamage', source: ctx.source, target: id, amount })
+        hits.push({ source: ctx.source, sourceController: ctx.controller, target: id, victim: null, amount, targetController: loc.owner })
       }
       ctx.state = enqueueDamageTriggers(ctx.state, hits)   // ability damage triggers exactly as combat damage does (spec C2-7)
       // §12.4.5 turns this into a break; `settle` runs the rule processes, which honour `cannotBeBroken`. Because

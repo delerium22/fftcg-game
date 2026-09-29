@@ -182,3 +182,40 @@ describe('V1-A1 — the if effect', () => {
     expect(() => declarationNode(nested)).toThrow(/nested choices/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Counted damage (spec V1-D7)
+// ---------------------------------------------------------------------------
+
+// Zack 27-123S's sweep: "deal each Forward opponent controls 1000 damage for each Backup you control."
+const SWEEP = etb('T-SWEEP:etb', [{ kind: 'forEach', from: { zone: 'forwards', controller: 'opponent' },
+  do: [{ kind: 'damage', amount: { per: { controller: 'self', filter: { type: 'backup' } }, times: 1000 } }] }])
+const SWEEP_WATCH: Ability = { id: 'T-SWEEP:watch', trigger: { kind: 'dealtDamage', to: 'forward', whose: 'any' }, text: 'When this deals damage to a Forward, draw 1 card.', effects: [{ kind: 'draw', count: 1 }] }
+const SWEEP_DEFS: CardDef[] = [...VANILLA_POOL, makeDef({ code: 'T-SWEEP', cost: 3, power: 7000, hasAbilities: true, abilityClauses: 2, abilities: [SWEEP, SWEEP_WATCH] })]
+
+describe('V1-A1 — counted damage', () => {
+  it('L1 §11.11 — 1000 per Backup you control: three Backups deal 3000 to each opponent Forward', () => {
+    let s = withHandSize(makeGame({ defs: SWEEP_DEFS }), 0, 0); let src: CardId, a: CardId, b: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-SWEEP')
+    for (const code of ['V-B1', 'V-B3', 'V-B4']) [s] = withField(s, 0, 'backups', code)
+    ;[s] = withField(s, 1, 'backups', 'V-B1')   // the opponent's Backup is not "you control"
+    ;[s, a] = withField(s, 1, 'forwards', 'V-F8'); [s, b] = withField(s, 1, 'forwards', 'V-F7')
+    const [t, events] = drainResolution(enqueueTrigger(s, src, 0, SWEEP))
+    expect([dmg(t, a), dmg(t, b)]).toEqual([3000, 3000])
+    expect(events.filter((e) => e.type === 'abilityDamage').map((e) => e.type === 'abilityDamage' && e.amount)).toEqual([3000, 3000])
+    ok(t)
+  })
+
+  it('with no Backups the amount is 0: nothing is dealt, no abilityDamage event, no damage trigger', () => {
+    let s = withHandSize(makeGame({ defs: SWEEP_DEFS }), 0, 0); let src: CardId, a: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-SWEEP')
+    ;[s, a] = withField(s, 1, 'forwards', 'V-F8')
+    const [t, events] = drainResolution(enqueueTrigger(s, src, 0, SWEEP))
+    expect(dmg(t, a)).toBe(0)
+    expect(events.some((e) => e.type === 'abilityDamage')).toBe(false)
+    expect(events.some((e) => e.type === 'abilityTriggered' && e.abilityId === 'T-SWEEP:watch'), 'the source dealt no damage').toBe(false)
+    expect(t.resolution.queue).toEqual([])
+    expect(t.players[0].hand).toEqual([])
+    ok(t)
+  })
+})
