@@ -84,8 +84,9 @@ const FAIRY_SUMMON: Ability = {
  * Leonora's ETB: Hugh Yurg's search shape (`count: 'all'`, private, "you may" = `take.min: 0`, then shuffle), taking to
  * hand. "Card Name Palom or Card Name Porom" is an `anyOf` of two names.
  *
- * MVP0-SIMPLIFICATION (§15.1.1.8.1): a search REVEALS the card it finds. `lookAtDeck` has no "reveal the taken card only"
- * audience — `all` would show the opponent the whole deck — so the found card goes to hand unseen by the opponent.
+ * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-D): a search REVEALS the card it finds. `lookAtDeck` has no "reveal the taken
+ * card only" audience — `all` would show the opponent the whole deck — so the found card goes to hand unseen by the
+ * opponent.
  */
 const LEONORA_ETB: Ability = {
   id: '3-143C:etb',
@@ -100,9 +101,12 @@ const LEONORA_ETB: Ability = {
 }
 
 /**
- * Ward's first clause: a static read by `castRequirement` wherever Ward is cast from (rung V1-A3, V1-D14). No CP of
- * another Element may pay for Ward, overpay included. A card PLAYED onto the field (Taivas's `[0]`) is not cast and pays
- * nothing, so the clause does not reach it.
+ * Ward's first clause: a static read by `castRequirement` wherever Ward is cast from (rung V1-A3, V1-D14). A card PLAYED
+ * onto the field (Taivas's `[0]`) is not cast and pays nothing, so the clause does not reach it.
+ *
+ * MVP0-SIMPLIFICATION (§11.2.2.3, rung V1-D): a player may generate more CP than a cost needs and choose which CP pays;
+ * "You can only pay with Fire CP" restricts the CP spent, not the CP generated. The engine refuses any CP of another
+ * Element in Ward's payment, so a surplus off-element CP generated alongside the Fire CP is refused too.
  */
 const WARD_ONLY_FIRE: Ability = {
   id: '21-001R:only-fire',
@@ -215,7 +219,12 @@ const YUNA_ETB: Ability = {
   }],
 }
 
-/** Yuna's attack trigger (§10.1.2.5): Reeve's look, word for word, fired on the declaration rather than on entering. */
+/**
+ * Yuna's attack trigger (§10.1.2.5): Reeve's look, word for word, fired on the declaration rather than on entering.
+ *
+ * MVP0-SIMPLIFICATION (spec C9, rung V1-D): "return the other cards to the bottom of your deck in any order" keeps the
+ * exposed order; the controller does not choose it (the `rest: 'bottom'` marker in the engine's `resolve.ts`).
+ */
 const YUNA_ATTACK: Ability = {
   id: '27-129S:attack',
   trigger: { kind: 'attacks' },
@@ -232,8 +241,9 @@ const YUNA_ATTACK: Ability = {
  * LB Luso's ETB. "choose 1 Character you control" is a head choice over the `characters` zone (rung V1-A4) — Luso
  * himself included: the text does not exclude him, and choosing him (Light) finds nothing, since no Standard Unit is
  * Light. The search's `sameElementAsChosen` is resolved by the executor into the chosen card's printed Elements (rung
- * V1-A3). "You may search" is `take.min: 0`. The search is private, as for Leonora (see its MVP0-SIMPLIFICATION on
- * §15.1.1.8.1).
+ * V1-A3). "You may search" is `take.min: 0`.
+ *
+ * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-D): the search does not reveal the found card, as for Leonora.
  */
 const LUSO_LB_ETB: Ability = {
   id: '23-130H:etb',
@@ -351,6 +361,11 @@ const ULTIMA_WEAPON_FIRE: Ability = {
   }],
 }
 
+/**
+ * MVP0-SIMPLIFICATION (§11.8.13, rung V1-D): "When …, if you control 4 or more Water Characters, …" is a CONDITIONAL
+ * auto-ability — it triggers only if the condition holds when the event happens, and checks it again at resolution. The
+ * engine has no trigger-level condition: the clause always triggers and the `if` is read at resolution only.
+ */
 const ULTIMA_WEAPON_WATER: Ability = {
   id: '24-126H:etb-water',
   trigger: { kind: 'enterField' },
@@ -368,9 +383,12 @@ const ULTIMA_WEAPON_WATER: Ability = {
 
 /**
  * LB Vincent's ETB. "you may put 1 Fire Backup you control" is a select by the controller, `min: 0`; "When you do so" is
- * `onlyIfChosen` (spec V1-D10): declining skips the rest, including the damage choice. The damage target is then a
- * CHOICE made as the same ability resolves — see the MVP0-SIMPLIFICATION on `onlyIfChosen` (§11.8): the printed
- * reflexive trigger is not a separate stack item. First Strike is a keyword line, not a clause.
+ * `onlyIfChosen` (spec V1-D10): declining skips the rest, including the damage choice. First Strike is a keyword line,
+ * not a clause.
+ *
+ * MVP0-SIMPLIFICATION (§11.8, rung V1-D): "When you do so" is a separate auto-ability that goes on the stack after the
+ * Backup is put, with a response window before it resolves (official ruling 2019-07-19, Fusilier 9-013C). Here the
+ * damage choice is made inside the same resolution (the marker on the engine's `onlyIfChosen`).
  */
 const VINCENT_ETB: Ability = {
   id: '23-119R:etb',
@@ -397,6 +415,8 @@ const WARRIOR_OR_WARRIOR = [{ job: 'Warrior' }, { name: 'Warrior' }] as const
 /**
  * Taivas's ETB search: Leonora's shape. With no cost limit, a second Taivas is findable (Job Warrior) — the printed text
  * allows it.
+ *
+ * MVP0-SIMPLIFICATION (§15.1.1.8.1, rung V1-D): the search does not reveal the found card, as for Leonora.
  */
 const TAIVAS_SEARCH: Ability = {
   id: '21-010H:search',
