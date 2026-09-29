@@ -243,7 +243,12 @@ export type Condition =
  * hand. It exists because it is half of Cloud's printed clause, and it gets its enforcement point and its
  * test the day a return effect arrives — until then it must not be described as protecting anything.
  */
-export const FIELD_FLAGS = ['cannotBeBroken', 'cannotBeReturnedByOpponent'] as const
+/*
+ * `cannotUseActionAbilities` (rung V1-A3, spec V1-D15) is Charlotte's "Forwards your opponent controls cannot use action
+ * abilities", granted continuously by a `grantFlag` static and read by `activationCheck`. An action ability (§11.6) only:
+ * a special ability (§11.7) is not one, and stays usable.
+ */
+export const FIELD_FLAGS = ['cannotBeBroken', 'cannotBeReturnedByOpponent', 'cannotUseActionAbilities'] as const
 export type FieldFlag = (typeof FIELD_FLAGS)[number]
 
 export interface AbilityMode {

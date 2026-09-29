@@ -1,6 +1,6 @@
 import type { PlayerId } from './types.js'
 import type { CardId, FieldCard, GameState } from './state.js'
-import { defOf, findFieldCard, updatePlayer, keywordsOf } from './state.js'
+import { defOf, findFieldCard, flagsOf, updatePlayer, keywordsOf } from './state.js'
 import type { Ability, AbilityCost, Effect, Frame } from './abilities.js'
 import type { Payment } from './commands.js'
 import type { Event } from './events.js'
@@ -125,6 +125,12 @@ export function activationCheck(
     return `${abilityId} has already been used this turn`
   }
   if (ability.trigger.yourTurnOnly && state.turnPlayer !== player) return `${abilityId} may only be used during your turn`
+  // Charlotte's ban (rung V1-A3, spec V1-D15): a source carrying the flag — through the layer, so it lifts the moment the
+  // static's source leaves — cannot use an ACTION ability. A special ability (§11.7) is not one (§11.6).
+  const onField = findFieldCard(state, source)
+  if (onField && !ability.trigger.special && flagsOf(state, onField.card).has('cannotUseActionAbilities')) {
+    return `${source} cannot use action abilities`
+  }
 
   if (cost.dull) {
     // §11.6.2.2 — the dull icon, and ONLY the dull icon, brings the active/entered-this-turn/Haste rule with
