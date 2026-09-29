@@ -63,19 +63,37 @@ export interface TargetFilter {
   readonly status?: 'active' | 'dull'
   /** A keyword the instance HAS: printed or granted this turn; off the field, printed only. */
   readonly grantedKeyword?: Keyword
+  // --- rung V1-A3 (spec V1-D12) ---
+  /**
+   * "Card Name Palom or Card Name Porom" (Leonora), "Job Warrior or Card Name Warrior" (Taivas): the card satisfies at
+   * least ONE member. Members are definition-only (`DefFilter`), so a disjunction never reads the state; an empty list
+   * matches nothing. Conjoins with the other axes like any axis.
+   */
+  readonly anyOf?: readonly DefFilter[]
+  /** Any ONE of these Elements. What `sameElementAsChosen` resolves to; an empty list matches nothing. */
+  readonly elementIn?: readonly Element[]
+  /**
+   * "of the same Element as the chosen Character" (Luso 23-130H). NEVER read by a filter: the executor RESOLVES it into
+   * `elementIn` (the first chosen card's printed Elements) where it builds candidates or raises a pending, so a pending
+   * that travels into the search carries only world-independent axes. Asked unresolved, a filter THROWS — it must never
+   * fail open and hand a search the whole deck. Game creation admits it only where a choice has already bound a card.
+   */
+  readonly sameElementAsChosen?: true
 }
 
 /**
  * Where each axis is answered (rung J5-D3): `def` axes read the printing alone (`matchesDefFilter`, which the
  * ISMCTS decoder may ask of a view); `instance` axes need the state (`matchesFilter`). Typed over EVERY key
  * of `TargetFilter`, so an axis added without a home fails to compile; `target-filters.test.ts` exercises
- * each by name, so an axis added without a test fails there.
+ * each by name, so an axis added without a test fails there. `resolved` (rung V1-A3, R1) is an axis the executor
+ * replaces before any filter runs; a filter asked it throws.
  */
-export const FILTER_AXES: Record<keyof TargetFilter, 'def' | 'instance'> = {
+export const FILTER_AXES: Record<keyof TargetFilter, 'def' | 'instance' | 'resolved'> = {
   type: 'def', types: 'def', element: 'def', maxCost: 'def', cost: 'def',
-  job: 'def', category: 'def', name: 'def', keyword: 'def',
+  job: 'def', category: 'def', name: 'def', keyword: 'def', anyOf: 'def', elementIn: 'def',
   excludeSource: 'instance', excludeSourceName: 'instance', putIntoBreakZoneFromFieldThisTurn: 'instance',
   minPower: 'instance', maxPower: 'instance', status: 'instance', grantedKeyword: 'instance',
+  sameElementAsChosen: 'resolved',
 }
 
 export interface TargetSpec {
@@ -342,7 +360,7 @@ export type AbilityTrigger =
  * which the CR orders by dependence then timestamp. Every layer member today is additive, so the order is
  * unobservable; the day a non-additive or instance-scoped effect lands, fixed-point semantics go here.
  */
-export type DefFilter = Pick<TargetFilter, 'type' | 'types' | 'element' | 'cost' | 'maxCost' | 'job' | 'category' | 'name' | 'keyword'>
+export type DefFilter = Pick<TargetFilter, 'type' | 'types' | 'element' | 'cost' | 'maxCost' | 'job' | 'category' | 'name' | 'keyword' | 'anyOf' | 'elementIn'>
 
 /**
  * Whom a continuous effect reaches (rung J6-D2): the existing targeting vocabulary — `controller` is relative

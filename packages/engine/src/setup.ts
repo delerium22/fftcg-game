@@ -1,6 +1,6 @@
 import type { CardDef, PlayerId } from './types.js'
 import { KEYWORDS, opponentOf } from './types.js'
-import type { Effect, TargetSpec } from './abilities.js'
+import type { Effect, TargetFilter, TargetSpec } from './abilities.js'
 import { EMPTY_RESOLUTION, FIELD_FLAGS } from './abilities.js'
 import type { CardId, CardInstance, GameState, PlayerState } from './state.js'
 import { updatePlayer } from './state.js'
@@ -50,7 +50,8 @@ function emptyPlayer(): PlayerState {
  */
 export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
   const problems: string[] = []
-  const instanceAxes = ['minPower', 'maxPower', 'status', 'grantedKeyword', 'excludeSource', 'excludeSourceName', 'putIntoBreakZoneFromFieldThisTurn']
+  // Rung V1-A3: `sameElementAsChosen` is refused here too — a continuous effect has no choice to resolve it against.
+  const instanceAxes = ['minPower', 'maxPower', 'status', 'grantedKeyword', 'excludeSource', 'excludeSourceName', 'putIntoBreakZoneFromFieldThisTurn', 'sameElementAsChosen']
   for (const d of defs) {
     for (const a of d.abilities ?? []) {
       if (a.trigger.kind !== 'static') continue
@@ -59,14 +60,14 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
       if (e.kind === 'grantKeyword' && !KEYWORDS.includes(e.keyword)) problems.push(`${d.code}: ${a.id} grants unknown keyword ${String(e.keyword)}`)
       if (e.kind === 'grantFlag' && !FIELD_FLAGS.includes(e.flag)) problems.push(`${d.code}: ${a.id} grants unknown flag ${String(e.flag)}`)
       if (e.kind === 'modifyPower' || e.kind === 'grantKeyword' || e.kind === 'grantFlag') {
-        for (const k of Object.keys(e.to.filter ?? {})) if (instanceAxes.includes(k)) problems.push(`${d.code}: ${a.id} scopes on instance axis ${k}`)
+        for (const k of filterKeys(e.to.filter)) if (instanceAxes.includes(k)) problems.push(`${d.code}: ${a.id} scopes on instance axis ${k}`)
         if (!['self', 'opponent', 'any'].includes(e.to.controller)) problems.push(`${d.code}: ${a.id} has an unknown scope controller`)
         if (e.to.self !== undefined && e.to.self !== true) problems.push(`${d.code}: ${a.id} has a scope \`self\` that is not true`)
       }
       // Rung V1-A1 (spec V1-D6): a condition's filter is definition-only, like a scope's, and its count a whole number ≥ 1.
       const when = e.kind === 'produceElement' ? undefined : e.when
       if (when?.kind === 'controlsAtLeast') {
-        for (const k of Object.keys(when.filter ?? {})) if (instanceAxes.includes(k)) problems.push(`${d.code}: ${a.id} counts on instance axis ${k}`)
+        for (const k of filterKeys(when.filter)) if (instanceAxes.includes(k)) problems.push(`${d.code}: ${a.id} counts on instance axis ${k}`)
         if (!Number.isInteger(when.count) || when.count < 1) problems.push(`${d.code}: ${a.id} has a condition count ${String(when.count)}; it must be a whole number ≥ 1`)
         if (!['self', 'opponent'].includes(when.controller)) problems.push(`${d.code}: ${a.id} has an unknown condition controller`)
       }
@@ -76,16 +77,36 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
 }
 
 /**
+ * Every key a filter uses, an `anyOf` member's included (rung V1-A3): a member is typed `DefFilter`, but data arriving
+ * through JSON is not typed, and an instance axis inside a disjunction would read the state as surely as one outside.
+ */
+function filterKeys(filter: object | undefined): string[] {
+  if (!filter) return []
+  const anyOf = (filter as { anyOf?: unknown }).anyOf
+  const members = Array.isArray(anyOf) ? anyOf.flatMap((m: unknown) => (typeof m === 'object' && m !== null ? filterKeys(m) : [])) : []
+  return [...Object.keys(filter), ...members]
+}
+
+/** Does this filter carry the resolved axis `sameElementAsChosen`, at the top or inside an `anyOf` member? */
+const resolvesChosen = (filter: TargetFilter | undefined): boolean => filterKeys(filter).includes('sameElementAsChosen')
+
+/**
  * Rung V1-A2: the effect shapes the executor trusts, checked once at game creation for data arriving through JSON.
  * Walks every nesting — `then`, `do`, modes, `if` branches — since a node is as reachable deep as at the top.
  */
 export function validateEffects(defs: readonly CardDef[]): string[] {
   const problems: string[] = []
   // `bound` is the spec the nearest enclosing chooser or `forEach` binds `chosen` from — null under `onSubject`.
-  const walk = (code: string, id: string, effects: readonly Effect[], bound: TargetSpec | null): void => {
+  // `byChoice`: that binding is a `chooseTargets`'s (not a `forEach`'s). `resolving`: a node here is certainly reached
+  // at RESOLUTION — under a select or an `if`, where declaration has ended — so a choice here is not declared.
+  const walk = (code: string, id: string, effects: readonly Effect[], bound: TargetSpec | null, byChoice: boolean, resolving: boolean): void => {
+    // Rung V1-A3 (R1): `sameElementAsChosen` resolves against a card an enclosing CHOICE bound, and only as the item
+    // resolves — a declared choice is made before anything is bound for it to read.
+    const sameElement = (where: string): void => { problems.push(`${code}: ${id} uses sameElementAsChosen ${where}`) }
     for (const e of effects) {
       switch (e.kind) {
         case 'chooseTargets':
+          if (resolvesChosen(e.from.filter) && !(byChoice && (e.select !== undefined || resolving))) sameElement('on a choice declared before any card is bound')
           if (e.select !== undefined && !['self', 'opponent'].includes(e.select)) problems.push(`${code}: ${id} has an unknown select ${String(e.select)}`)
           if (e.onlyIfChosen !== undefined && e.onlyIfChosen !== true) problems.push(`${code}: ${id} has an \`onlyIfChosen\` that is not true`)
           // Spec V1-D11: a hand is private, so it is only ever your own, and only selected — never a declared choice,
@@ -101,14 +122,24 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
               if (suspends(t)) { problems.push(`${code}: ${id} prompts while a hand pick is still in hand`); break }
             }
           }
-          walk(code, id, e.then, e.from)
+          walk(code, id, e.then, e.from, true, resolving || e.select !== undefined)
           break
-        case 'chooseModes': for (const m of e.modes) walk(code, id, m.effects, bound); break
+        case 'chooseModes': for (const m of e.modes) walk(code, id, m.effects, bound, byChoice, resolving); break
         case 'forEach':
           if (e.from.zone === 'hand') problems.push(`${code}: ${id} iterates over a hand, which is private`)
-          walk(code, id, e.do, e.from); break
-        case 'onSubject': walk(code, id, e.do, null); break
-        case 'if': walk(code, id, e.then, bound); walk(code, id, e.else ?? [], bound); break
+          if (resolvesChosen(e.from.filter)) sameElement('on a forEach, which chooses nothing')
+          walk(code, id, e.do, e.from, false, resolving); break
+        case 'onSubject': walk(code, id, e.do, null, false, resolving); break
+        case 'if':
+          if (e.when.kind === 'subjectMatches' && resolvesChosen(e.when.filter)) sameElement('in a condition')
+          walk(code, id, e.then, bound, byChoice, true); walk(code, id, e.else ?? [], bound, byChoice, true); break
+        // Luso's search: resolved against the enclosing choice's card as the pending is raised (resolve.ts).
+        case 'lookAtDeck':
+          if (resolvesChosen(e.take.filter) && !byChoice) sameElement('in a search with no choice before it')
+          break
+        case 'damage':
+          if (typeof e.amount !== 'number' && resolvesChosen(e.amount.per.filter)) sameElement('in a counted amount')
+          break
         // Rung V1-A2 (R2): only a Character is played onto a field, so the binding's filter must rule a Summon out.
         case 'playOntoField': {
           const f = bound?.filter
@@ -117,8 +148,8 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
           break
         }
         // Leaves: nothing nested. Listed so a new CONTAINER kind fails to compile here instead of going unwalked.
-        case 'dull': case 'freeze': case 'damage': case 'breakCard': case 'putIntoBreakZone': case 'activate': case 'discard': case 'addPower': case 'grantKeyword': case 'grantFlag':
-        case 'moveToHand': case 'draw': case 'lookAtDeck': break
+        case 'dull': case 'freeze': case 'breakCard': case 'putIntoBreakZone': case 'activate': case 'discard': case 'addPower': case 'grantKeyword': case 'grantFlag':
+        case 'moveToHand': case 'draw': break
         default: { const _exhaustive: never = e; return _exhaustive }
       }
     }
@@ -128,7 +159,8 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
     // gating activation on candidates). Refused until V1-A3 teaches it that a select is made at resolution.
     const head = a.effects[0]
     if (a.trigger.kind === 'activated' && head?.kind === 'chooseTargets' && head.select !== undefined) problems.push(`${d.code}: ${a.id} opens an activated ability with a select, not yet supported`)
-    walk(d.code, a.id, a.effects, null)
+    if (a.trigger.kind === 'observesEnterField' && resolvesChosen(a.trigger.filter)) problems.push(`${d.code}: ${a.id} uses sameElementAsChosen in a trigger condition`)
+    walk(d.code, a.id, a.effects, null, false, false)
   }
   return problems
 }

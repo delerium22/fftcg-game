@@ -13,6 +13,9 @@ import type { TargetFilter } from './abilities.js'
  */
 export function matchesDefFilter(def: CardDef, filter: TargetFilter | undefined, instanceAxesElsewhere = false): boolean {
   if (!filter) return true
+  // Rung V1-A3 (R1): a resolved axis must have been replaced by the executor. Checked before the instance-axes
+  // return below, so `matchesFilter` (which passes `true`) cannot skip it and fail open.
+  if (filter.sameElementAsChosen !== undefined) throw new Error('sameElementAsChosen reached a filter unresolved; the executor resolves it into elementIn')
   if (filter.type !== undefined && def.type !== filter.type) return false
   // "Character" is Forward, Backup OR Monster and never Summon (§7.2), which a single `type` cannot say — both
   // Prishe's and Luso's Break-Zone retrievals need it (spec C2-9). `type` and `types` conjoin: a filter carrying
@@ -23,7 +26,11 @@ export function matchesDefFilter(def: CardDef, filter: TargetFilter | undefined,
   // EXACT, not a ceiling: a cost-3 Forward must not satisfy Hugh Yurg's "of cost 1" (spec C8-3).
   if (filter.cost !== undefined && def.cost !== filter.cost) return false
   // Rung J5. An unknown job or category (the patched exclusives) matches nothing: `undefined !== 'Dragoon'`.
-  if (filter.job !== undefined && def.job !== filter.job) return false
+  // Rung V1-A3 (spec V1-D12): SE writes a multi-job card as `"Princess/Warrior"`, so the filter's job must be ONE of
+  // the slash-separated jobs, exactly — "Warrior" is not "Warrior of Light".
+  if (filter.job !== undefined && !(def.job ?? '').split('/').map((j) => j.trim()).includes(filter.job)) return false
+  if (filter.elementIn !== undefined && !def.elements.some((e) => filter.elementIn?.includes(e))) return false
+  if (filter.anyOf !== undefined && !filter.anyOf.some((member) => matchesDefFilter(def, member))) return false
   if (filter.category !== undefined && !(def.categories ?? []).includes(filter.category)) return false
   if (filter.name !== undefined && def.name !== filter.name) return false
   if (filter.keyword !== undefined && !def.keywords.includes(filter.keyword)) return false
