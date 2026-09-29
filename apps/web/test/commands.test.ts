@@ -1129,3 +1129,24 @@ describe('a special ability is named by its proper name, and its cost names the 
     expect(describeChoice(v, cmd, { payment: false })).toBe("Jecht's Jecht Beam [Dull], discard Jecht: Deal 8000 damage to Sphene")
   })
 })
+
+describe('a Character choice is named "Character" (rung V1-A4)', () => {
+  // LB Luso 23-130H's "choose 1 Character you control": the candidates sit in BOTH field zones.
+  const pump = (max: number): Ability => ({ id: 'test:luso', trigger: { kind: 'enterField' }, text: 'Choose 1 Character you control. It gains +2000 power.',
+    effects: [{ kind: 'chooseTargets', min: max, max, from: { zone: 'characters', controller: 'self' }, then: [{ kind: 'addPower', amount: 2000 }] }] })
+
+  function mixed(max: number): PlayerView {
+    const v = suspendedView(pump(max), NOEL)
+    const fwd = instance(v, 901, CLOUD)
+    const bkp = instance(v, 902, '9-074C')
+    v.fields[HUMAN].forwards = [fieldCard(fwd)]
+    v.fields[HUMAN].backups = [fieldCard(bkp)]
+    v.pending = { kind: 'chooseTargets', player: HUMAN, min: max, max, candidates: [fwd, bkp] }
+    return v
+  }
+
+  it('a Forward and a Backup of yours read "Character you control", one or several', () => {
+    expect(promptFor(mixed(1), [])).toBe('Noel: choose 1 Character you control to give +2000 power')
+    expect(promptFor(mixed(2), [])).toBe('Noel: choose 2 Characters you control to give +2000 power')
+  })
+})
