@@ -242,6 +242,35 @@ and choices:
   (mutation-checked); the web narrates `stackCancelled` only for `condition`, since the §11.8.4 and §11.11.2
   cancellations already have their "finds no legal target" line — one line per cancelled item; Yuna moved to V1-F.
 
+**As built (V1-E), 2026-09-30.** Commits 49706bd (views, determinisation, keys, CLI), 1fdd8b3 (`revealTaken`, `toHand`,
+the three cards), 2cea883 (the agreement trace), 6d716ab (the board row and the log line). Plan
+`2026-09-30-rung-v1e-revealed-hand.md` with its revisions R1–R7. Readings and choices:
+- §15.1.1.8.1 "find specific cards … reveal them": `lookAtDeck.revealTaken` keeps the look private and teaches both
+  players each TAKEN card after the shuffle's `forget` (which reaches only the deck), so the card stays known in hand
+  (Review Focus 5). Game creation refuses it without `to: 'hand'`. Leonora, Taivas and LB Luso set it; the SIMPLIFIED
+  table holds only Yuna, and its pattern accepts rung V1-F only.
+- `FieldView.knownHand` (E-D1) is computed once, by the exported `knownHandFor`, for `viewFor` and `searchView` alike.
+  The V1-A2 hand-select redaction now also hides any select with a candidate in the other player's hand (R1), beside the
+  visibility test it had.
+- `determinise` pins the known ids first in the sampled hand, their codes out of the unseen multiset (E-D2); a known
+  code absent from the list throws the existing "does not contain visible card". The observation key's `hd5` becomes
+  `hd5[codes]` only when a card is known (E-D3); ACTION keys still name a known opponent hand card `?` (R7).
+- R2: `toHand` (the only path from a public zone to a hand: bounce, Break Zone retrieval) learns the card for both
+  players. Review Focus 1's test bounces a Forward that was never exposed, so the bit can only come from the bounce.
+- E-D4 as planned: knowledge ends only on a shuffle. No effect returns a hand card to the deck today.
+- Narration: "The AI reveals Porom and adds it to its hand" — "its", as every other AI line says, where the plan wrote
+  "their"; the name is bare, as `playedFromDeck`'s is. The AI's move label for the search stays "Take 1 card" (it is
+  written from the pre-reveal position); the next line names the card.
+- The board: an "AI hand — N of M known" row in the AI's section, drawn only while the human knows a card, so every
+  other position keeps its layout. `boardCardIds` counts those ids. The Seat's hand count is unchanged.
+- Fixture drift: the AI now pins the human's Miner-revealed card, so `duplicates.test.tsx`'s Miner position moved from
+  seed 8 to seed 87 (named directly); `useGame.test.ts`'s hand-leak check allows exactly the cards the human knows.
+- Browser (Vol. 1 vs Vol. 1, 1440×900, seed 11): the AI cast Taivas and took a second Ward; the log read "The AI
+  searches its deck", "The AI: Take 1 card", "The AI reveals Ward and adds it to its hand", and the row read "AI hand —
+  1 of 1 known" with Ward face up. In two more games (seeds 22 and 25) the row sat under the AI's status bar reading
+  "AI hand — 1 of 3 known" (and "1 of 2") with Ward face up, the bar's Hand still 3 (and 2). The AI's think time varies,
+  so a seed does not always replay the same game.
+
 ## Source and the list (V1-D1)
 
 Starter Set 2025 Vol. 1 is Fire/Water, built around Zack: 50 main-deck cards and an 8-card LB deck (official product
