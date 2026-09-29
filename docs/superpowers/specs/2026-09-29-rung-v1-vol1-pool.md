@@ -127,29 +127,35 @@ split out ahead of the cards. Deviations and readings from the plan:
 - `onSource` binds a CardId, not an incarnation: a source that leaves and re-enters before resolution would get the
   effect (engine-wide gap — declared targets have it too; no pool card can re-enter while its ability waits). Backlog.
 
-**As built (V1-B), 2026-09-30.** Commits 3cee2d1 (data, deck files, patch, the four EX BURST cards), 170646d (burn),
-5e04ef9 (draw and search), c6054e8 (the field), 8f879b8 (specials and statics), a8b121a (Layer 3 scenarios, matrix),
-3cbeff3 (self-play). The encodings are in `packages/cards/src/abilities-vol1.ts`, spread into the three maps of
+**As built (V1-B), 2026-09-30.** Commits 8f933be (data, deck files, patch, the four EX BURST cards), d1759da (burn),
+6f84b62 (draw and search), e2beee0 (the field), a8bd4d2 (specials and statics), cdde895 (Layer 3 scenarios, matrix),
+9cc767b (self-play), rebased onto V1-A5 (a95c8dc); after the Codex review (`2026-09-30-rung-v1b-code-review.md`),
+0549ea5 (LB Luso), fe4e2e5 (the SIMPLIFIED table), aa80d3b (cost text, categories, deck counts). The encodings are in `packages/cards/src/abilities-vol1.ts`, spread into the three maps of
 `abilities.ts`. Deviations and readings from the plan and its revisions R1–R10:
 - Data: one fetch wrote 46 cards; the 24 Vol. 2 defs are byte-identical. The patch quotes Materia Hunter's text with its
   markdown emphasis removed (Zack's `*Haste*` → `Haste`), as `normalise` removes the SE markup.
 - `ABILITY_CLAUSES` counts AST units (R2): Zack 27-123S 3, Wuk Lamat 27-122S 3, Charlotte 3, Yuna 2. `pool-coverage`'s
   gap table is exact: `{ 27-122S: 1, 27-128S: 1, 11-121C: 1, 13-125R: 2 }`. Charlotte's clause 2 is inert, with its
   proof beside Sphene's (no Summon of cost 1 in either pool). Yuzuki implements nothing, so its warning has no count.
-- R6 was wrong in one fact: Dragoon 1-147C (Vol. 2) is a FORWARD Job Standard Unit, so "every Standard Unit in both
-  pools is a Backup" is false. LB Luso's watcher keeps `of: 'backup'` (`observesEnterField.of` is one type); its proof
-  is pinned to the Vol. 1 decks, whose Standard Units (Warrior, Machinist, Geomancer) are all Backups, and to "your
-  field". A seat playing Vol. 1's LB deck with Vol. 2's main deck would reach the gap. V1-C must keep each LB deck with
-  its main deck, or `of` needs a type list.
+- R6 was wrong in one fact: Dragoon 1-147C (Vol. 2) is a FORWARD Job Standard Unit. V1-A5 made
+  `observesEnterField.of` a list, so LB Luso's watcher is `of: ['forward', 'backup']`, and a case shows Dragoon entering
+  pumps him (review M1).
+- The SIMPLIFIED table (review M6). `pool-coverage` lists, beside the gap table, every encoding with a known deviation,
+  finished in rung V1-D; it must equal the set of encodings whose doc comment carries an `MVP0-SIMPLIFICATION` marker
+  naming rung V1-D. Ultima Weapon's Water clause is a conditional auto-ability (§11.8.13), encoded as an unconditional
+  trigger whose condition is read at resolution only. Vincent's "When you do so" is a separate auto-ability that goes on
+  the stack (official ruling 2019-07-19, Fusilier 9-013C), encoded inline. The searches of Leonora, Taivas and LB Luso
+  do not reveal the found card (§15.1.1.8.1): `lookAtDeck` has no "reveal the taken card" audience. Ward: §11.2.2.3
+  lets a player generate unused off-element CP, and the engine refuses any (this reverses the V1-A3 adjudication's
+  reading). Yuna: the bottom order is fixed (the spec C9 simplification).
 - Readings: Porom with an empty hand discards nothing and draws nothing (no "discarded card" to test; the select with no
   candidate skips its `then`). Taivas's play is `min: 1`, `types: ['forward', 'backup']`, `maxCost: 3`; with nothing
   playable it resolves silently and is spent (R5). LB Luso may choose himself (Light), which finds nothing. Wuk Lamat
   and Ultima Weapon count themselves among the Characters. Palom's 8000 branch is tested on a synthetic Porom
   Forward. Jecht Beam targets `controller: 'any'`; §11.7.5's "cannot choose themselves" stays an open reading (R10).
-- A search is private: `lookAtDeck` has no "reveal the taken card" audience, so Leonora, Taivas and LB Luso add the
-  found card to hand unseen by the opponent (§15.1.1.8.1 says reveal it). An MVP0-SIMPLIFICATION on Leonora records it.
-- Ultima Weapon's two ETBs: the engine places one controller's simultaneous triggers so the first-triggered resolves
-  first (the MVP0-SIMPLIFICATION on `collectWatchers`, §11.8.7), so the Fire clause resolves before the Water one.
+- Ultima Weapon's two ETBs: the engine places one controller's simultaneous triggers in a fixed order, so the
+  first-triggered resolves first (the MVP0-SIMPLIFICATION on `collectWatchers`, §11.8.7; timing matrix `simplified`).
+  The tests that pin Fire before Water are named as that simplification, not as a rule.
 - R8: casting LB Zack beside Zack 27-123S is refused (`sameName`); a second Wuk Lamat played by Taivas's `[0]` is
   allowed onto the field and §12.4.6 puts both copies into the Break Zone (J4's rule), pinned in `taivas-plays`.
 - Harness (R3): `DECK` and `LB_DECK` are read from the Vol. 2 deck files and are identical to before. `makeGame` takes
@@ -158,8 +164,9 @@ split out ahead of the cards. Deviations and readings from the plan:
   rows 11.7.1, 11.7.10 and 11.7.11 cite `jecht-beam`.
 - Ward's "the AI never proposes one" is checked on `candidateCommands` in `apps/cli/test/selfplay.test.ts`: the cards
   package cannot import the AI.
-- Known gaps: `describeAbilityCost` renders Warrior's `[Fire][1][Dull]` as `[Fire][Dull]` — with `requiredElements`
-  present it prints only the Element icons, dropping the generic remainder. Strict ISMCTS self-play of Vol. 1 against
+- `describeAbilityCost` now prints required Elements and a generic remainder together: Warrior's `[Fire][1][Dull]`.
+  The data test pins every card's categories exactly, and the deck files are pinned to the V1-D1 code counts.
+- Known gap: strict ISMCTS self-play of Vol. 1 against
   Vol. 2 (iterations 4) took 87–93 s for two games in the suite, where the Vol. 2 J8 test plays four random/greedy
   games and two such ISMCTS games in 43 s. Not investigated.
 
