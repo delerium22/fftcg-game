@@ -60,6 +60,14 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
       if (e.kind === 'modifyPower' || e.kind === 'grantKeyword' || e.kind === 'grantFlag') {
         for (const k of Object.keys(e.to.filter ?? {})) if (instanceAxes.includes(k)) problems.push(`${d.code}: ${a.id} scopes on instance axis ${k}`)
         if (!['self', 'opponent', 'any'].includes(e.to.controller)) problems.push(`${d.code}: ${a.id} has an unknown scope controller`)
+        if (e.to.self !== undefined && e.to.self !== true) problems.push(`${d.code}: ${a.id} has a scope \`self\` that is not true`)
+      }
+      // Rung V1-A1 (spec V1-D6): a condition's filter is definition-only, like a scope's, and its count a whole number ≥ 1.
+      const when = e.kind === 'produceElement' ? undefined : e.when
+      if (when?.kind === 'controlsAtLeast') {
+        for (const k of Object.keys(when.filter ?? {})) if (instanceAxes.includes(k)) problems.push(`${d.code}: ${a.id} counts on instance axis ${k}`)
+        if (!Number.isInteger(when.count) || when.count < 1) problems.push(`${d.code}: ${a.id} has a condition count ${String(when.count)}; it must be a whole number ≥ 1`)
+        if (!['self', 'opponent'].includes(when.controller)) problems.push(`${d.code}: ${a.id} has an unknown condition controller`)
       }
     }
   }
