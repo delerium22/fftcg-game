@@ -6,8 +6,8 @@ import { excessBackupsCheck } from './rules.js'
 import type { Command, Payment } from './commands.js'
 import { canAffordCast, canPay, castRequirement, enumeratePayments, enumeratePaymentsFor, generateCp, type CpRequirement } from './cp.js'
 import { IllegalCommandError } from './errors.js'
-import { abilityCpRequirement, activatedAbility, activationCheck, activationTargetSets, hasAnyActivation } from './activate.js'
-import { castCheck, instantSpeedAllowed, lbFlipCheck } from './cast.js'
+import { abilityCpRequirement, activatedAbility, activationCheck, activationTargetSets, hasAnyActivation, sameNameCards, sameNameCheck } from './activate.js'
+import { CAST_SAME_NAME, castCheck, instantSpeedAllowed, lbFlipCheck } from './cast.js'
 import { deckPickCandidates, chooseTargetsCheck } from './resolve.js'
 import { attackCheck, legalBlockers, legalPartyDamageAssignments, partyDamageCheck } from './attack.js'
 
@@ -146,12 +146,17 @@ export function isLegal(state: GameState, command: Command): string | null {
       // payment, not only a minimal listed one (§11.2.2.3), and a non-listed set of sources too.
       const ability = activatedAbility(state, command.source, command.abilityId)
       if (!ability || ability.trigger.kind !== 'activated') return `${command.abilityId} is not an activated ability`
+      // §11.7.1 (rung V1-A3, R2): the same-name discard, exactly as `applyCosts` will judge it — any qualifying card.
+      const sameWhy = sameNameCheck(state, command.player, command.source, ability.trigger.cost, command.payment)
+      if (sameWhy) return sameWhy
       return paymentCheck(state, command.player, command.payment, abilityCpRequirement(command.source, ability.trigger.cost))
     }
     case 'castCharacter':
     case 'castSummon': {
       const why = castCheck(state, command.player, command.card)
       if (why) return why
+      // Rung V1-A3 (R2): only a special ability discards a card with the same name, as only a Limit Break turns LB cards up.
+      if (command.payment.sameName !== undefined) return CAST_SAME_NAME
       return paymentCheck(state, command.player, command.payment, castRequirement(state, command.card, command.player))
     }
     default: {
@@ -379,7 +384,16 @@ function activationsWithMeta(state: GameState, player: PlayerId, setCap: number)
       const all = activationTargetSets(state, player, source, ability, setCap + 1)   // one more than the cap: enough to know it bit
       let targetSets = all
       if (all.length > setCap) { targetSets = all.slice(0, setCap); capped = true }
-      for (const payment of enumeratePaymentsFor(state, player, req)) {
+      for (const cp of enumeratePaymentsFor(state, player, req)) {
+        // §11.7.1 (rung V1-A3, R2): a special ability's payment names the card its same-name discard takes. ONE canonical
+        // card is listed — the first in hand order that this CP payment does not already discard — and `isLegal`/
+        // `apply` accept any that qualifies, as J8 does for Limit Break flips. None left: this payment cannot be used.
+        let payment = cp
+        if (ability.trigger.cost.discardSameName) {
+          const card = sameNameCards(state, player, source).find((id) => !cp.discards.some((d) => d.card === id))
+          if (card === undefined) continue
+          payment = { ...cp, sameName: card }
+        }
         for (const targets of targetSets) {
           if (activationCheck(state, player, source, ability.id, targets) !== null) continue
           out.push({ type: 'activateAbility', player, source, abilityId: ability.id, payment, targets })

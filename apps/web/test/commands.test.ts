@@ -1111,3 +1111,21 @@ describe('a select from a hand names the hand, and never the cards to the other 
     expect(promptFor(v, [])).toBe('The AI selects up to 1 card from its hand to play onto the field')
   })
 })
+
+describe('a special ability is named by its proper name, and its cost names the discard (rung V1-A3)', () => {
+  // Jecht 18-129C's shape: "Jecht Beam [S][Dull]: Choose 1 Forward opponent controls. Deal it 8000 damage."
+  const beam: Ability = {
+    id: 'T-JECHT:beam', trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, discardSameName: true }, special: { name: 'Jecht Beam' } },
+    text: 'Jecht Beam [S][Dull]: Choose 1 Forward opponent controls. Deal it 8000 damage.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 8000 }] }],
+  }
+  it('the button names the card, the proper name, the cost with the name it discards, and the effect', () => {
+    const v = viewFor(dealtGame(1), HUMAN)
+    v.defs['T-JECHT'] = { code: 'T-JECHT', name: 'Jecht', type: 'forward', elements: ['fire'], cost: 3, power: 7000, keywords: [], generic: false, exBurst: false, text: '', hasAbilities: true, abilities: [beam] }
+    const jecht = instance(v, 960, 'T-JECHT')
+    const copy = instance(v, 961, 'T-JECHT')
+    const foe = instance(v, 962, SPHENE, AI)
+    const cmd: Command = { type: 'activateAbility', player: HUMAN, source: jecht, abilityId: beam.id, payment: { dullBackups: [], discards: [], sameName: copy }, targets: [foe] }
+    expect(describeChoice(v, cmd, { payment: false })).toBe("Jecht's Jecht Beam [Dull], discard Jecht: Deal 8000 damage to Sphene")
+  })
+})

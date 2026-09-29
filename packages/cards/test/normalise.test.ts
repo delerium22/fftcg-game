@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normaliseSeCard, parseKeywords, parseLimitBreak, cleanText, type SeCard } from '../src/normalise.js'
+import { normaliseSeCard, parseKeywords, parseLimitBreak, cleanText, textLines, type SeCard } from '../src/normalise.js'
 
 const base: SeCard = {
   code: '1-014C', name_en: 'Samurai', type_en: 'Forward', element: ['火'], cost: '3', power: '5000',
@@ -50,6 +50,17 @@ describe('Limit Break (rung J8, §15.2.8.2)', () => {
     expect(normaliseSeCard({ ...base, text_en: '[[i]]Limit Break -- 2[[/]]' }).hasAbilities, 'the LB line alone is no clause').toBe(false)
     expect(normaliseSeCard(base).limitBreak, 'absent on an ordinary card').toBeUndefined()
     expect(parseLimitBreak('Brave')).toBeUndefined()
+  })
+})
+
+describe('a special ability line (rung V1-A3, §11.7.1, R4)', () => {
+  it('reads "[[s]]Name[[/]] 《S》《ダル》: effect" as ONE printed line, the proper name and the S icon kept', () => {
+    const jecht = '《火》《水》: Jecht gains Haste, First Strike and Brave until the end of the turn. You can only use this ability during your turn.[[br]][[s]]Jecht Beam[[/]] 《S》《ダル》: Choose 1 Forward. Deal it 8000 damage.'
+    expect(textLines(jecht)).toEqual([
+      '[Fire][Water]: Jecht gains Haste, First Strike and Brave until the end of the turn. You can only use this ability during your turn.',
+      'Jecht Beam [S][Dull]: Choose 1 Forward. Deal it 8000 damage.',
+    ])
+    expect(normaliseSeCard({ ...base, text_en: jecht }).hasAbilities).toBe(true)
   })
 })
 

@@ -191,12 +191,12 @@ describe('V1-A2 review — hidden hand ids never reach the stack', () => {
     expect(problems).toMatch(/T-LEAK:etb prompts while a hand pick is still in hand/)
     expect(problems).not.toMatch(/T-POROM/)
   })
-  it('refuses a forEach over a hand, and an activated ability that opens with a select (until V1-A3)', () => {
+  it('refuses a forEach over a hand, and admits an activated ability that opens with a select (V1-A3 R10)', () => {
     const each = etb('T-EACH:etb', [{ kind: 'forEach', from: { zone: 'hand', controller: 'self' }, do: [{ kind: 'discard' }] }])
     const act: Ability = { id: 'T-ACT:play', trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 0 } } }, text: 'synthetic', effects: [handPick([{ kind: 'playOntoField' }])] }
     const problems = validateEffects([bearer('T-EACH', each), bearer('T-ACT', act)]).join('; ')
     expect(problems).toMatch(/T-EACH:etb iterates over a hand/)
-    expect(problems).toMatch(/T-ACT:play opens an activated ability with a select/)
+    expect(problems).not.toMatch(/T-ACT/)
   })
 })
 

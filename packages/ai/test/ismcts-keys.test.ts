@@ -734,3 +734,52 @@ describe('a select over one hand is keyed by its bounds from the other seat (run
     expect(isLegal(s, d)).toBeNull()
   })
 })
+
+describe('a special ability keys the card its same-name discard takes (rung V1-A3, spec V1-D13)', () => {
+  // Jecht 18-129C's shape: "Jecht Beam [S][Dull]: Choose 1 Forward opponent controls. Deal it 8000 damage."
+  const BEAM: Ability = {
+    id: 'T-JECHT:beam', trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, discardSameName: true }, special: { name: 'T Beam' } },
+    text: 'T Beam [S][Dull]: Choose 1 Forward opponent controls. Deal it 8000 damage.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 8000 }] }],
+  }
+  const DEFS: CardDef[] = [
+    ...VANILLA_POOL,
+    makeDef({ code: 'T-JECHT', name: 'Jecht', cost: 3, power: 7000, generic: false, hasAbilities: true, abilityClauses: 1, abilities: [BEAM] }),
+    makeDef({ code: 'T-JECHT2', name: 'Jecht', cost: 5, power: 9000, generic: false }),
+  ]
+  function board(): GameState {
+    let s = makeGame({ defs: DEFS })
+    ;[s] = withField(s, 0, 'forwards', 'T-JECHT')
+    ;[s] = withField(s, 1, 'forwards', 'V-F7')
+    ;[s] = withHand(s, 0, 'T-JECHT2')
+    return s
+  }
+  const beamOf = (cs: readonly Command[]) => cs.find((c): c is Extract<Command, { type: 'activateAbility' }> => c.type === 'activateAbility' && c.abilityId === 'T-JECHT:beam')
+
+  it('the policy offers the activation paying with the same-name card, and the key names it', () => {
+    const s = board()
+    const c = beamOf(candidateCommands(s, 0))
+    const copy = s.players[0].hand.find((id) => s.cards[id]?.code === 'T-JECHT2')
+    expect(c?.payment.sameName).toBe(copy)
+    const v = viewFor(s, 0)
+    const key = actionKey(v, c!)
+    expect(key).toContain('h:T-JECHT2')
+    const without: Payment = { dullBackups: c!.payment.dullBackups, discards: c!.payment.discards }
+    expect(actionKey(v, { ...c!, payment: without }), 'the payer is part of the action').not.toBe(key)
+  })
+
+  it('round-trips across determinisations to a command legal in each world', () => {
+    const s = board()
+    const live = actionKey(viewFor(s, 0), beamOf(candidateCommands(s, 0))!)
+    for (const seed of [1, 2, 3]) {
+      const [det] = determinise({ view: viewFor(s, 0), decks: decksOf(s), rng: seedRng(seed) })
+      const dv = viewFor(det, 0)
+      const c = beamOf(candidateCommands(det, 0))
+      expect(actionKey(dv, c!), 'one information set, one key').toBe(live)
+      const back = decodeAction(dv, live)
+      expect(back?.type === 'activateAbility' && back.payment.sameName !== undefined).toBe(true)
+      expect(isLegal(det, back!)).toBeNull()
+      expect(() => apply(det, back!)).not.toThrow()
+    }
+  })
+})

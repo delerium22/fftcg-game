@@ -102,7 +102,9 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'mulligan': return c.redraw ? 'Mulligan (redraw 5)' : 'Keep hand'
     case 'castCharacter':
     case 'castSummon': {
-      const pay = [...c.payment.dullBackups.map((id) => `dull ${cardName(v, id)}`), ...c.payment.discards.map((d) => `discard ${cardName(v, d.card)} as ${d.element}`)]
+      // Rung V1-A3 (§11.7.1): a special ability's same-name discard is part of the payment, and names its card.
+      const same = c.payment.sameName === undefined ? [] : [`discard ${cardName(v, c.payment.sameName)}`]
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${cardName(v, id)}`), ...c.payment.discards.map((d) => `discard ${cardName(v, d.card)} as ${d.element}`), ...same]
       // Rung J8: the Limit Break cost — which LB-deck cards turn face up — is part of the payment.
       const flips = c.payment.lbFlip?.length ? ` turning ${c.payment.lbFlip.map((id) => cardName(v, id)).join(', ')} face up,` : ''
       return `Cast ${cardName(v, c.card)}${flips} paying: ${pay.join(', ') || 'nothing'}`
@@ -132,7 +134,9 @@ export function describeCommand(v: PlayerView, c: Command): string {
     case 'discardToHandSize': return `Discard ${c.cards.map((id) => cardName(v, id)).join(', ')}`
     case 'breakExcessBackups': return `Put ${c.cards.map((id) => cardName(v, id)).join(', ')} into the Break Zone`
     case 'activateAbility': {
-      const pay = [...c.payment.dullBackups.map((id) => `dull ${cardName(v, id)}`), ...c.payment.discards.map((d) => `discard ${cardName(v, d.card)} as ${d.element}`)]
+      // Rung V1-A3 (§11.7.1): a special ability's same-name discard is part of the payment, and names its card.
+      const same = c.payment.sameName === undefined ? [] : [`discard ${cardName(v, c.payment.sameName)}`]
+      const pay = [...c.payment.dullBackups.map((id) => `dull ${cardName(v, id)}`), ...c.payment.discards.map((d) => `discard ${cardName(v, d.card)} as ${d.element}`), ...same]
       const cost = abilityCostOf(v, c.source, c.abilityId)
       // The EFFECT, not just the cost: a hotseat player has no more access to rules text than a browser one.
       const ability = abilityOf(v, c.source, c.abilityId)
@@ -151,9 +155,11 @@ function abilityOf(v: PlayerView, source: number, abilityId: string): Ability | 
   return (def?.abilities ?? []).find((a) => a.id === abilityId)
 }
 
-/** The printed cost of one activated clause, for the command label. */
+/** The printed cost of one activated clause, for the command label — a special ability's led by its proper name (rung V1-A3). */
 function abilityCostOf(v: PlayerView, source: number, abilityId: string): string {
   const def = v.defs[v.cards[source]?.code ?? '']
   const ability = (def?.abilities ?? []).find((a) => a.id === abilityId)
-  return ability && ability.trigger.kind === 'activated' ? describeAbilityCost(ability.trigger.cost) : 'ability'
+  if (!ability || ability.trigger.kind !== 'activated') return 'ability'
+  const cost = describeAbilityCost(ability.trigger.cost, def?.name)
+  return ability.trigger.special ? `${ability.trigger.special.name} ${cost}` : cost
 }

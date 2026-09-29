@@ -154,6 +154,9 @@ export function castCheck(state: GameState, player: PlayerId, card: CardId): str
   return why === null ? null : CAST_BLOCKER_TEXT[why]
 }
 
+/** Rung V1-A3 (R2): a cast's payment never names a same-name discard; that is a special ability's cost (§11.7.1). */
+export const CAST_SAME_NAME = 'a cast discards no card with the same name; only a special ability does (§11.7.1)'
+
 /**
  * Validate and spend a cast's payment.
  *
@@ -164,6 +167,7 @@ export function castCheck(state: GameState, player: PlayerId, card: CardId): str
  * that does (Odin's "reduced by 3"), and this is the seam it would have broken.
  */
 function checkedPay(state: GameState, player: PlayerId, card: CardId, payment: Payment): [GameState, Event[]] {
+  if (payment.sameName !== undefined) throw new IllegalCommandError(CAST_SAME_NAME)
   const req = castRequirement(state, card, player)
   const cp = generateCp(state, player, payment, req.excluded)
   if (!canPay(req.amount, req.requiredElements, cp)) {

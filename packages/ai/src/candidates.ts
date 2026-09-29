@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -432,8 +432,17 @@ function activationCandidates(state: GameState, player: PlayerId): Command[] {
   for (const source of sources) {
     for (const ability of defOf(state, source).abilities ?? []) {
       if (ability.trigger.kind !== 'activated') continue
-      const payment = preferredPaymentFor(state, player, abilityCpRequirement(source, ability.trigger.cost))
-      if (!payment) continue
+      const cp = preferredPaymentFor(state, player, abilityCpRequirement(source, ability.trigger.cost))
+      if (!cp) continue
+      // §11.7.1 (rung V1-A3, R2): a special ability's payment must NAME its same-name discard, or `apply` refuses it.
+      // The first in hand order that the CP payment leaves in hand, as `legalCommands` lists it. Copies of one name are
+      // near enough interchangeable that choosing among them is not worth a branch; the evaluator prices the lost card.
+      let payment = cp
+      if (ability.trigger.cost.discardSameName) {
+        const card = sameNameCards(state, player, source).find((id) => !cp.discards.some((d) => d.card === id))
+        if (card === undefined) continue
+        payment = { ...cp, sameName: card }
+      }
       // One command per declared TARGET SET — the target choice is part of the action now, not a decision the
       // search reaches a ply later, so collapsing them would hide the choice from the agent entirely.
       // Bounded like every other set the policy enumerates (rung J7-D2): the first sixteen declarations.

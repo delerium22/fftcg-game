@@ -154,11 +154,8 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
       }
     }
   }
+  // An activated ability may open with a select since V1-A3 (R10): `declarationNode` leaves it to resolution.
   for (const d of defs) for (const a of d.abilities ?? []) {
-    // V1-A2 review M1: `declarationNode` would declare a head select at activation (naming hand ids on the stack and
-    // gating activation on candidates). Refused until V1-A3 teaches it that a select is made at resolution.
-    const head = a.effects[0]
-    if (a.trigger.kind === 'activated' && head?.kind === 'chooseTargets' && head.select !== undefined) problems.push(`${d.code}: ${a.id} opens an activated ability with a select, not yet supported`)
     if (a.trigger.kind === 'observesEnterField' && resolvesChosen(a.trigger.filter)) problems.push(`${d.code}: ${a.id} uses sameElementAsChosen in a trigger condition`)
     walk(d.code, a.id, a.effects, null, false, false)
   }
