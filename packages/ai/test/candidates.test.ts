@@ -433,4 +433,19 @@ describe('candidateCommands: the V1-A1 shapes', () => {
       expect(modesOf(candidateCommands(s, 0)[0])).toEqual([withMark ? 0 : 1])
     }
   })
+
+  it('counted damage is priced by the count now: 2 Backups kill only the 2000 Forward, 4 kill the 3000 one too', () => {
+    const a = clause('T-COUNT:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' },
+      then: [{ kind: 'damage', amount: { per: { controller: 'self', filter: { type: 'backup' } }, times: 1000 } }] }])
+    for (const backups of [2, 4]) {
+      let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-COUNT', a)] }), 0, 0)
+      let src: number, two: number, three: number
+      ;[s, src] = withField(s, 0, 'forwards', 'T-COUNT')
+      for (let i = 0; i < backups; i++) [s] = withField(s, 0, 'backups', 'V-B1')
+      ;[s, two] = withField(s, 1, 'forwards', 'V-F6')     // 2000
+      ;[s, three] = withField(s, 1, 'forwards', 'V-F1')   // 3000
+      s = arm(s, src, 0, a)
+      expect(targetsOf(candidateCommands(s, 0)[0]), `${backups} Backups`).toEqual([backups === 2 ? two : three])
+    }
+  })
 })

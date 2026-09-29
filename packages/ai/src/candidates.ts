@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -124,10 +124,14 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
         break
       case 'damage': {
         if (!loc || loc.zone !== 'forwards') break   // only Forwards carry damage
+        // A counted amount (rung V1-A1) is priced at the count NOW, for the frame's controller — the executor reads
+        // it the same way when the hit lands. Zero deals nothing and is worth nothing.
+        const amount = amountOf(state, controller, eff.amount)
+        if (amount <= 0) break
         // §12.4.5: damage ≥ power breaks. Damage that actually breaks is worth the whole card; damage that does
         // not is worth only the exposure it leaves behind. C2: a source that breaks what it damages (Luso) kills
         // the target whatever its power — `cannotBeBroken` stops both routes (§12.4.5 and `breakCard` alike).
-        const lethal = power >= 1000 && loc.card.damage + eff.amount >= power
+        const lethal = power >= 1000 && loc.card.damage + amount >= power
         const breaks = (lethal || breaksWhatItDamages(state, source)) && !flagsOf(state, loc.card).has('cannotBeBroken')
         const kill = cardValue(def) + power / 1000
         if (breaks) { d -= kill; break }
@@ -143,7 +147,7 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
         // chip damage is worth literally 0 to the search, so a policy that priced it richly would chase
         // value the search then fails to confirm. It keeps a kill ahead of a chip across this pool's whole
         // power range while still preferring a bigger dent to a smaller one.
-        const dealt = Math.min(eff.amount, Math.max(0, power - loc.card.damage))
+        const dealt = Math.min(amount, Math.max(0, power - loc.card.damage))
         d -= power > 0 ? (dealt / power) * kill * 0.25 : 0
         break
       }

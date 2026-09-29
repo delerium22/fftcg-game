@@ -1,6 +1,6 @@
 import {
-  HAND_SIZE_LIMIT, abilityCpRequirement, castBlocker, conditionHolds, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, flagsOf, keywordsOf, pickedDeckCards, seedRng,
-  type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
+  HAND_SIZE_LIMIT, abilityCpRequirement, amountOf, castBlocker, conditionHolds, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, flagsOf, keywordsOf, pickedDeckCards, seedRng,
+  type Ability, type Amount, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameResult, type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
   type ZoneTransitionReason, type CastBlocker, type StackItem, type AttackStep } from '@fftcg/engine'
 import { preferredPayment, preferredPaymentFor } from '@fftcg/ai'
@@ -370,6 +370,21 @@ function describedBranch(e: Extract<Effect, { kind: 'if' }>, frame: VerbFrame): 
 }
 
 /**
+ * "N damage" (rung V1-A1, spec V1-D7). With a frame, a counted amount is the number that will actually apply,
+ * counted on the shim for the frame's controller; with none it is the printed rate — "1000 damage for each Backup
+ * you control" — never `[object Object]`.
+ */
+function damagePhrase(amount: Amount, frame: VerbFrame): string {
+  if (typeof amount === 'number') return `${amount} damage`
+  if (frame !== null) return `${amountOf(frame.state, frame.controller, amount)} damage`
+  const f = amount.per.filter
+  const type = f?.type ? `${capitalise(f.type)}` : 'Character'
+  const noun = [f?.element ? capitalise(f.element) : '', f?.name ? `Card Name ${f.name}` : type].filter(Boolean).join(' ')
+  const whose = amount.per.controller === 'self' ? 'you control' : 'your opponent controls'
+  return `${amount.times} damage for each ${noun} ${whose}`
+}
+
+/**
  * What a clause does to the cards it picks, as an imperative for the button ("Dull") and a purpose clause for
  * the prompt ("to dull"). Read off the AST rather than hard-coded per card, so a clause the cards lane adds
  * tomorrow gets a real label with no change here.
@@ -378,7 +393,7 @@ function verbOf(e: Effect, frame: VerbFrame): Verb | null {
   switch (e.kind) {
     case 'dull': return { imperative: 'Dull', purpose: 'to dull' }
     case 'freeze': return { imperative: 'Freeze', purpose: 'to freeze' }
-    case 'damage': return { imperative: `Deal ${e.amount} damage to`, purpose: `to deal ${e.amount} damage to` }
+    case 'damage': return { imperative: `Deal ${damagePhrase(e.amount, frame)} to`, purpose: `to deal ${damagePhrase(e.amount, frame)} to` }
     case 'breakCard': return { imperative: 'Break', purpose: 'to break' }
     case 'addPower': return { imperative: `Give ${signed(e.amount)} power to`, purpose: `to give ${signed(e.amount)} power` }
     case 'grantKeyword': return { imperative: `Give ${KEYWORD_LABEL[e.keyword]} to`, purpose: `to give ${KEYWORD_LABEL[e.keyword]}` }

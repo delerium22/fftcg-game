@@ -98,7 +98,7 @@ export type Effect =
   | { readonly kind: 'dull' }
   /** "Freeze it" (§15.2.4, rung J3): the card skips its controller's next Active Phase. Does not dull. */
   | { readonly kind: 'freeze' }
-  | { readonly kind: 'damage'; readonly amount: number }
+  | { readonly kind: 'damage'; readonly amount: Amount }
   | { readonly kind: 'breakCard' }
   | { readonly kind: 'addPower'; readonly amount: number }
   | { readonly kind: 'grantKeyword'; readonly keyword: Keyword }
@@ -150,6 +150,17 @@ export type Effect =
    * re-reads the condition, which may no longer hold.
    */
   | { readonly kind: 'if'; readonly when: Condition; readonly then: readonly Effect[]; readonly else?: readonly Effect[] }
+
+/**
+ * How much (rung V1-A1, spec V1-D7): a printed number, or "N for each <filter> Character <side> controls" — Zack's
+ * "1000 damage for each Backup you control". `per.controller` is relative to the ability's controller and
+ * `per.filter` is definition-only, counted by the same `countControlled` as `controlsAtLeast`.
+ *
+ * Counted as each hit resolves. Within one frame nothing leaves the field by damage — breaks are rule processes
+ * run between frames (§12.4.5) — so every hit of one sweep reads the same count. A clause whose own effects move
+ * counted cards mid-sweep would need the count fixed first; none does.
+ */
+export type Amount = number | { readonly per: { readonly controller: 'self' | 'opponent'; readonly filter?: DefFilter }; readonly times: number }
 
 /**
  * What an `if` tests (rung V1-A1, spec V1-D6): any static condition, read for the ability's controller, or a fact
