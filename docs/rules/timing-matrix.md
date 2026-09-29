@@ -54,7 +54,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 10.1.2.2 | Legal attackers dull; Brave ones do not | tested | engine/cr10-attack#§10.1.2.2 |
 | 10.1.2.3 | Attack costs are locked at declaration | n/a | no pool card has an attack cost |
 | 10.1.2.4 | The Forward is now attacking | tested | engine/cr10-attack#§10.1.2.2 |
-| 10.1.2.5 | Triggers caused by the attacking Forward go on the stack | n/a | no pool card prints "when attacks"; the AST has no such trigger |
+| 10.1.2.5 | Triggers caused by the attacking Forward go on the stack | tested | engine/timing-l1-attack-trigger#§10.1.2.5 |
 | 10.1.2.6 | The turn player gains priority (the `declared` window) | tested | engine/cr10-attack-windows#declaring an attack opens the; cards/scenarios/ramuh-in-a-window#L3 ramuh-in-a-window |
 | 10.1.2.7 | No attackers: skip the block and damage steps | tested | engine/cr9-phases#main1 → attack declaration → main2 |
 | 10.1.3 | Block Declaration Step | heading |  |

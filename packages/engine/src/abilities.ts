@@ -202,6 +202,13 @@ export type AbilityTrigger =
    */
   | { readonly kind: 'attackPhaseBegins' }
   /**
+   * "When <this> attacks" (rung V1-A1, spec V1-D5). Fires the moment THIS Forward is declared an attacker —
+   * §10.1.2.4 makes it "an attacking Forward" — and §10.1.2.5 puts the clause on the stack before the turn player
+   * gains priority in the `declared` window (§10.1.2.6). A party places one per member that carries it, each
+   * with that member as its source; the controller is the turn player, who declared the attack.
+   */
+  | { readonly kind: 'attacks' }
+  /**
    * NOT a trigger at all: an ability the player chooses to use (spec C3-1). It lives in this union because
    * every dispatch site already switches on `kind`, so an activated ability is inertly ignored by trigger
    * dispatch — and the compiler finds any switch that forgot it.
@@ -409,8 +416,8 @@ export interface Frame {
   readonly path: readonly number[]
   readonly chosen: readonly CardId[]
   /**
-   * What fired this clause, for `onSubject` and for narration. Null for `enterField`/`summonResolve`, which
-   * are about the source itself. It must survive prompts and the source leaving the field (spec C2-5).
+   * What fired this clause, for `onSubject` and for narration. Null for `enterField`/`summonResolve`/`attacks`,
+   * which are about the source itself. It must survive prompts and the source leaving the field (spec C2-5).
    */
   readonly triggerEvent: TriggerEvent | null
   /** Modes picked by an enclosing `chooseModes`, as indices into its `modes`. */
