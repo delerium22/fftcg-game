@@ -252,7 +252,7 @@ describe('C2-A4: Luso breaks what it damages, in combat and by ability alike (sp
     s = attackInto(s, [luso]).state   // through the `declared` window (rung J1-D10)
     const r = blockWith(s, blocker)   // and the `blocked` one: the damage lands on the exit
 
-    expect(r.events).toContainEqual({ type: 'battleDamage', source: luso, target: blocker, amount: 3000 })
+    expect(r.events).toContainEqual({ type: 'battleDamage', target: blocker, dealers: [luso], original: 3000, amount: 3000, trace: [] })
     expect(r.events).toContainEqual({ type: 'broken', card: luso })                                  // §12.4.5 took Luso
     expect(ids(r.events, BREAK_IT)).toHaveLength(1)                                                  // …and it still triggered
     expect(r.events).toContainEqual({ type: 'brokenByAbility', card: blocker, source: luso })
@@ -264,7 +264,7 @@ describe('C2-A4: Luso breaks what it damages, in combat and by ability alike (sp
 
   it('ability: a Forward Luso burned for less than lethal is broken by the trigger', () => {
     const { r, victim, luso } = lusoBurns(3000, 'V-F8')   // 9000 power — 3000 is not lethal
-    expect(r.events).toContainEqual({ type: 'abilityDamage', source: luso, target: victim, amount: 3000 })
+    expect(r.events).toContainEqual({ type: 'abilityDamage', source: luso, target: victim, original: 3000, amount: 3000, trace: [] })
     expect(r.events).toContainEqual({ type: 'brokenByAbility', card: victim, source: luso })
     expect(r.state.players[1].breakZone).toContain(victim)
     ok(r.state)

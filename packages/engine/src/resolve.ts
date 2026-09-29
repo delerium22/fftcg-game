@@ -570,7 +570,7 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         const loc = findFieldCard(ctx.state, id)
         if (!loc || loc.zone !== 'forwards') continue   // only Forwards carry damage
         ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, damage: c.damage + amount }))
-        ctx.events.push({ type: 'abilityDamage', source: ctx.source, target: id, amount })
+        ctx.events.push({ type: 'abilityDamage', source: ctx.source, target: id, original: amount, amount, trace: [] })
         hits.push({ source: ctx.source, sourceController: ctx.controller, target: id, victim: null, amount, targetController: loc.owner })
       }
       ctx.state = enqueueDamageTriggers(ctx.state, hits)   // ability damage triggers exactly as combat damage does (spec C2-7)

@@ -2,6 +2,13 @@ import type { PlayerId, Element, CardType, Keyword } from './types.js'
 import type { Phase, AttackStep, GameResult, CardId } from './state.js'
 import type { FieldFlag, TriggerEvent } from './abilities.js'
 
+/**
+ * One replacement effect's change to a damage packet, in the order applied (spec V2-D1, V2-D9: "5000 → 4000
+ * (Charlotte)"). Rung V2-A1 declares it and always emits an empty trace — nothing modifies damage yet; rung V2-A2 is
+ * where replacement effects arrive and may reshape it.
+ */
+export interface DamageTraceStep { readonly by: CardId; readonly before: number; readonly after: number }
+
 /** How an event names a stack item: the Summon card, or the ability's source and clause. */
 export type StackRef = { kind: 'summon'; card: CardId } | { kind: 'ability'; source: CardId; abilityId: string }
 
@@ -69,7 +76,13 @@ export type Event =
   | { type: 'unimplementedAbility'; card: CardId; code: string; clauses?: number }
   | { type: 'attackDeclared'; player: PlayerId; attackers: CardId[] }
   | { type: 'blockDeclared'; player: PlayerId; blocker: CardId | null }
-  | { type: 'battleDamage'; source: CardId; target: CardId; amount: number }
+  /**
+   * One damage PACKET landing on a Forward in battle (rung V2-A1, spec V2-D1). A blocked party's damage to the
+   * blocker is ONE packet whose `dealers` are every member that dealt it, in declaration order — §15.1.1.9.8 makes it
+   * one total, not one hit per member. `original` is the amount before replacement effects and `trace` the steps
+   * between (equal and empty until rung V2-A2).
+   */
+  | { type: 'battleDamage'; target: CardId; dealers: readonly CardId[]; original: number; amount: number; trace: readonly DamageTraceStep[] }
   | { type: 'playerDamaged'; player: PlayerId; card: CardId }
   /**
    * Rung G3, the EX Burst lifecycle (§11.10). `exBurstSkipped` is gone: it was the honest warning that the
@@ -102,7 +115,14 @@ export type Event =
   | { type: 'frozen'; card: CardId }
   /** That Active Phase came: the card was left as it was and the status cleared. */
   | { type: 'thawed'; card: CardId }
-  | { type: 'abilityDamage'; source: CardId; target: CardId; amount: number }
+  /** An ability's damage packet to one Forward (rung V2-A1): one source, and `original`/`trace` as `battleDamage`. */
+  | { type: 'abilityDamage'; source: CardId; target: CardId; original: number; amount: number; trace: readonly DamageTraceStep[] }
+  /**
+   * Spec V2-D4: a packet whose replacement effects brought it to 0 — which is not damage (official ruling
+   * 2021-08-19), so no `battleDamage`/`abilityDamage` and no dealt-damage trigger; this narrates it and triggers
+   * nothing. Declared in rung V2-A1 with its narration; first emitted in rung V2-A2.
+   */
+  | { type: 'damageReducedToZero'; target: CardId; dealers: readonly CardId[]; original: number; trace: readonly DamageTraceStep[] }
   | { type: 'powerModified'; card: CardId; amount: number }
   | { type: 'keywordGranted'; card: CardId; keyword: Keyword }
   | { type: 'flagGranted'; card: CardId; flag: FieldFlag }

@@ -132,7 +132,7 @@ export function trace(events: readonly Event[], names: Record<number, string> = 
       case 'powerModified': out.push(`power:${n(e.card)}:${e.amount > 0 ? '+' : ''}${e.amount}`); break
       case 'keywordGranted': out.push(`keyword:${n(e.card)}:${e.keyword}`); break
       case 'abilityDamage': out.push(`damage:${n(e.target)}:${e.amount}`); break
-      case 'battleDamage': out.push(`battle:${n(e.source)}>${n(e.target)}:${e.amount}`); break
+      case 'battleDamage': out.push(`battle:${e.dealers.map(n).join('+')}>${n(e.target)}:${e.amount}`); break   // one packet (rung V2-A1)
       case 'broken': out.push(`broken:${n(e.card)}`); break               // the §12.4.5 rule process
       case 'brokenByAbility': out.push(`abilityBroken:${n(e.card)}`); break   // a `breakCard` effect — kept distinct on purpose
       case 'flagGranted': out.push(`flag:${n(e.card)}:${e.flag}`); break

@@ -742,12 +742,14 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
     expect(text({ type: 'dulled', card: anyCard })).toContain('is dulled')
     expect(text({ type: 'frozen', card: anyCard })).toContain('is frozen — it will not activate next turn')
     expect(text({ type: 'thawed', card: anyCard })).toContain('is no longer frozen — it was frozen')   // J3 review L1: the card is active in this view
-    expect(text({ type: 'abilityDamage', source: anyCard, target: anyCard, amount: 3000 })).toContain('3000 damage')
+    expect(text({ type: 'abilityDamage', source: anyCard, target: anyCard, original: 3000, amount: 3000, trace: [] })).toContain('3000 damage')
     expect(text({ type: 'powerModified', card: anyCard, amount: 3000 })).toContain('+3000 power until the end of the turn')
     expect(text({ type: 'powerModified', card: anyCard, amount: -1000 })).toContain('-1000 power')
     expect(text({ type: 'keywordGranted', card: anyCard, keyword: 'haste' })).toContain('gains Haste')
     expect(text({ type: 'flagGranted', card: anyCard, flag: 'cannotBeBroken' })).toContain('cannot be broken this turn')
     expect(text({ type: 'brokenByAbility', card: anyCard, source: anyCard })).toContain('is broken by')
+    // Spec V2-D4, declared in rung V2-A1 and first emitted in V2-A2: 0 is not damage, and this is its only line.
+    expect(text({ type: 'damageReducedToZero', target: anyCard, dealers: [anyCard], original: 5000, trace: [] })).toMatch(/5000 damage to .* is reduced to 0$/)
     expect(text({ type: 'breakPrevented', card: anyCard, flag: 'cannotBeBroken' })).toContain('survives')
     expect(text({ type: 'returnedToHand', player: HUMAN, card: anyCard })).toContain('returns to your hand')
     expect(text({ type: 'returnedToHand', player: AI, card: anyCard })).toContain("returns to the AI's hand")
@@ -1077,8 +1079,8 @@ describe('the log says WHY an observer trigger fired (spec C2-5)', () => {
 })
 
 describe('Luso has no prompt, so the log is the only evidence (spec C2-A5)', () => {
-  const abilityHit = (amount: number): Event => ({ type: 'abilityDamage', source: ids.luso, target: ids.victim, amount })
-  const combatHit = (amount: number): Event => ({ type: 'battleDamage', source: ids.luso, target: ids.victim, amount })
+  const abilityHit = (amount: number): Event => ({ type: 'abilityDamage', source: ids.luso, target: ids.victim, original: amount, amount, trace: [] })
+  const combatHit = (amount: number): Event => ({ type: 'battleDamage', target: ids.victim, dealers: [ids.luso], original: amount, amount, trace: [] })
 
   it('narrates the cause of a damage trigger, combat and ability alike (C2-7)', () => {
     const v = c2View()
@@ -1105,12 +1107,22 @@ describe('Luso has no prompt, so the log is the only evidence (spec C2-A5)', () 
     // A party's damage is simultaneous, and Luso may be second in field order. Pairing on position alone would
     // put the other attacker's victim in Luso's line — the array-position bug C2-8 names, wearing a log line.
     const out = texts(c2View(), [
-      { type: 'battleDamage', source: ids.mine, target: ids.sphene, amount: 5000 },
-      { type: 'battleDamage', source: ids.luso, target: ids.victim, amount: 3000 },
+      { type: 'battleDamage', target: ids.sphene, dealers: [ids.mine], original: 5000, amount: 5000, trace: [] },
+      { type: 'battleDamage', target: ids.victim, dealers: [ids.luso], original: 3000, amount: 3000, trace: [] },
       triggered(HUMAN, ids.luso, LUSO_DAMAGES),
     ])
     expect(out[2]).toContain("Luso dealt 3000 damage to the AI's Prishe")
     expect(out[2]).not.toContain('Sphene')
+  })
+
+  it('V2-A1: a party packet is ONE line naming every dealer, and each dealer still finds its own cause (§15.1.1.9.8)', () => {
+    const out = texts(c2View(), [
+      { type: 'battleDamage', target: ids.victim, dealers: [ids.mine, ids.luso], original: 8000, amount: 8000, trace: [] },
+      triggered(HUMAN, ids.luso, LUSO_DAMAGES),
+    ])
+    expect(out).toHaveLength(2)
+    expect(out[0]).toMatch(/ and .*Luso deal 8000 damage to the AI's Prishe$/)
+    expect(out[1]).toContain("Luso dealt 8000 damage to the AI's Prishe")
   })
 
   it("does not steal a break trigger's cause, and is not stolen from", () => {
@@ -1768,8 +1780,8 @@ describe('a mirror match names both sides of a trade (found by playing)', () => 
   it('says whose card dealt the damage and whose died — with both already in the Break Zone', () => {
     const v = mirrorView()
     const out = eventLines(v, [
-      { type: 'battleDamage', source: 960, target: 961, amount: 8000 },
-      { type: 'battleDamage', source: 961, target: 960, amount: 8000 },
+      { type: 'battleDamage', target: 961, dealers: [960], original: 8000, amount: 8000, trace: [] },
+      { type: 'battleDamage', target: 960, dealers: [961], original: 8000, amount: 8000, trace: [] },
       { type: 'broken', card: 960 },
       { type: 'broken', card: 961 },
     ]).map((l) => l.text)

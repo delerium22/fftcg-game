@@ -60,7 +60,7 @@ function trace(events: readonly Event[], names: Record<number, string>): string[
   for (const e of events) {
     switch (e.type) {
       case 'phaseStarted': if (e.step) out.push(`step:${e.step}`); break
-      case 'battleDamage': out.push(`battle:${n(e.source)}>${n(e.target)}:${e.amount}`); break
+      case 'battleDamage': out.push(`battle:${e.dealers.map(n).join('+')}>${n(e.target)}:${e.amount}`); break   // one packet (rung V2-A1)
       case 'broken': out.push(`broken:${n(e.card)}`); break
       case 'abilityTriggered': out.push(`trigger:${e.abilityId}`); break
       case 'stackPushed': out.push(`push:${e.item.kind === 'ability' ? e.item.abilityId : 'summon'}`); break
