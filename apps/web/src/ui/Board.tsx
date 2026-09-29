@@ -12,7 +12,7 @@ import { AI, HUMAN } from '../game/types.js'
 import { Card, cardAccessibleName, type CardProps } from './Card.js'
 import { CardDetails } from './CardDetails.js'
 import { DeckPicker } from './DeckPicker.js'
-import type { DeckPair } from '../deck.js'
+import { pairLabel, type DeckPair } from '../deck.js'
 import { CardGrid, type GridItem } from './CardGrid.js'
 import { CardSheet, type SheetAction } from './CardSheet.js'
 import { EventLog } from './EventLog.js'
@@ -726,7 +726,7 @@ export function Board({ game, onHelp }: {
           keyboard player reaches it after the board, not before the first card of it. */}
       {selection && <DeckPicker selected={selection} onSelect={setSelection} onNewGame={newGame} />}
 
-      {view.result && <GameOverDialog result={view.result} me={view.me} onRestart={newGame} />}
+      {view.result && <GameOverDialog result={view.result} me={view.me} onRestart={newGame} pair={selection ? pairLabel(selection) : undefined} />}
     </div>
   )
 }

@@ -192,6 +192,9 @@ split out ahead of the cards. Deviations and readings from the plan:
   `--deck0/--deck1` but no LB flag (it prints main decks only). `mirror` takes only `--deck`/`--lb-deck`, and
   `mirrorTournament` itself throws on a different list per seat. A deck path is relative to the command's working
   directory, which under `pnpm --filter` is `apps/cli`.
+- After the fresh review: c7c8d4f — a new game's focus waits for a `[data-command]` decision (it landed on the Full
+  control toggle while the AI thought, and spent its flag); the follow-up commit names the pair on "Play again (Vol. 2 vs
+  Vol. 1)" so a changed selection is not dealt silently, and the CLI checks flag names before reading any deck file.
 - Known, not changed: at 1440×900 the player's seat already overflowed its row by ~50 px before this rung (the J8 LB
   deck row); the 47 px toolbar adds ~23 px to that scroll. `game-over.test.tsx`'s "native dialog" case (~3 s alone)
   can pass the 5 s default timeout under full-suite load.

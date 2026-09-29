@@ -139,6 +139,15 @@ describe('deck flags', () => {
     expect(code).toBe(0)
   })
 
+  it('names the unknown flag before it tries to read any deck file (V1-C review)', () => {
+    // The flag check used to run AFTER the deck files were read, so a seat flag given to mirror with a path that
+    // does not exist died on the file — the wrong complaint about the wrong mistake.
+    const { code, err } = run(['mirror', '--pairs', '1', '--fast', '--deck1', '/nonexistent.txt'])
+    expect(err).toContain('unknown flag for mirror: --deck1')
+    expect(err).not.toContain('ENOENT')
+    expect(code).toBe(2)
+  })
+
   it('the real CLI refuses a seat flag for mirror', () => {
     const { code, err } = run(['mirror', '--pairs', '1', '--a', 'random', '--b', 'random', '--fast', '--deck1', VOL1])
     expect(code).toBe(2)

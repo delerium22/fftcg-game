@@ -55,7 +55,8 @@ test('the game-over dialog is modal, and the board behind it is not reachable', 
 
   // 3. The first Tab reaches the only action.
   await page.keyboard.press('Tab')
-  expect(await focused()).toMatchObject({ tag: 'BUTTON', text: 'Play again', inDialog: true })
+  // Rung V1-C: the button names the pair it deals — here the pinned mirror.
+  expect(await focused()).toMatchObject({ tag: 'BUTTON', text: 'Play again (Vol. 2 vs Vol. 2)', inDialog: true })
 
   // 4. Tabbing on never lands on the board. It may pass through the document root, which is what a modal
   //    dialog with a single tabbable child does — what matters is that no board control is ever reached.

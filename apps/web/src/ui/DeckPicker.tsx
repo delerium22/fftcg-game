@@ -1,5 +1,5 @@
 import { useId, type JSX } from 'react'
-import { DECK_CHOICES, DECK_KEYS, isDeckKey, type DeckPair } from '../deck.js'
+import { DECK_CHOICES, DECK_KEYS, isDeckKey, pairLabel, type DeckPair } from '../deck.js'
 
 /**
  * Rung V1-C (spec V1-D17, plan R1): the toolbar that picks a deck per seat and starts a new game with them.
@@ -31,7 +31,7 @@ export function DeckPicker({ selected, onSelect, onNewGame }: {
       <label className="picker__label" htmlFor={theirs}>AI deck</label>
       <select id={theirs} className="picker__select" value={selected[1]} onChange={(e) => { pick(1, e.target.value) }}>{options}</select>
       <button type="button" className="btn" onClick={onNewGame}>
-        New game ({DECK_CHOICES[selected[0]].label} vs {DECK_CHOICES[selected[1]].label})
+        New game ({pairLabel(selected)})
       </button>
     </div>
   )
