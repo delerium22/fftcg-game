@@ -309,6 +309,21 @@ describe('an activated select is made at resolution (rung V1-A3, R10)', () => {
   })
 })
 
+describe('a select after the head of an activated ability is not a declared choice (review L3)', () => {
+  it('L1 §11.6.5 — a select in `then` or after the head does not make declarationNode throw', () => {
+    const sel: Effect = { kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [{ kind: 'dull' }] }
+    const inThen = actionCard('T-SELTHEN', { cp: { amount: 0 } }, [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'dull' }, sel] }])
+    const after = actionCard('T-SELAFTER', { cp: { amount: 0 } }, [{ kind: 'draw', count: 1 }, sel])
+    let s = gameWith([inThen, after])
+    let a: CardId, b: CardId, foe: CardId
+    ;[s, a] = withField(s, 0, 'forwards', 'T-SELTHEN')
+    ;[s, b] = withField(s, 0, 'forwards', 'T-SELAFTER')
+    ;[s, foe] = withField(s, 1, 'forwards', 'V-F2')
+    expect(activationTargetSets(s, 0, a, activatedAbility(s, a, 'T-SELTHEN:act')!)).toEqual([[foe]])
+    expect(activationTargetSets(s, 0, b, activatedAbility(s, b, 'T-SELAFTER:act')!)).toEqual([[]])
+  })
+})
+
 describe('activations are enumerated and labelled', () => {
   it('legalCommands offers one activation per clause, from every source zone', () => {
     const field = actionCard('T-FIELD', { dull: true }, [{ kind: 'draw', count: 1 }])

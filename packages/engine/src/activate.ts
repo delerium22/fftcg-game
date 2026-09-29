@@ -85,7 +85,8 @@ export function declarationNode(ability: Ability): Extract<Effect, { kind: 'choo
 /** Does this effect (or anything nested in it) suspend for a player decision? */
 function needsChoice(eff: Effect): boolean {
   switch (eff.kind) {
-    case 'chooseTargets': return true
+    // A SELECT is made as the ability resolves (§11.3.3, review L3), and so is everything under it: nothing to declare.
+    case 'chooseTargets': return eff.select === undefined
     case 'chooseModes': return true
     case 'forEach': return eff.do.some(needsChoice)
     case 'onSubject': return eff.do.some(needsChoice)
@@ -208,7 +209,11 @@ export function hasAnyActivation(state: GameState, player: PlayerId): boolean {
       const sets = activationTargetSets(state, player, source, ability)
       if (sets.length === 0) continue
       if (activationCheck(state, player, source, ability.id, sets[0]) !== null) continue
-      if (enumeratePaymentsFor(state, player, abilityCpRequirement(source, ability.trigger.cost)).length > 0) return true
+      const payments = enumeratePaymentsFor(state, player, abilityCpRequirement(source, ability.trigger.cost))
+      // §11.7.1 (review L2): as `legalCommands` lists it, a special ability's CP payment must leave a same-name card in
+      // hand for the S's discard — a payment that discards the last copy for CP is no payment for it.
+      const copies = ability.trigger.cost.discardSameName ? sameNameCards(state, player, source) : null
+      if (payments.some((p) => copies === null || copies.some((id) => !p.discards.some((d) => d.card === id)))) return true
     }
   }
   return false

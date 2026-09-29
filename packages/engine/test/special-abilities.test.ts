@@ -7,7 +7,7 @@ import type { Command, Payment } from '../src/commands.js'
 import { findFieldCard } from '../src/state.js'
 import { apply } from '../src/apply.js'
 import { isLegal, legalCommands } from '../src/legal.js'
-import { activationCheck } from '../src/activate.js'
+import { activationCheck, hasAnyActivation } from '../src/activate.js'
 import { checkInvariants } from '../src/invariants.js'
 import { validateEffects } from '../src/setup.js'
 import { deckOf, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
@@ -149,6 +149,28 @@ describe('V1-A3 — a special ability discards a card with the same name (§11.7
     expect(validateEffects([with_({ kind: 'activated', sourceZone: 'field', cost: { dull: true }, special: { name: 'T Beam' } })]).join()).toMatch(/special ability without/)
     expect(validateEffects([with_({ kind: 'activated', sourceZone: 'field', cost: { discardSameName: true } })]).join()).toMatch(/same-name discard without/)
     expect(validateEffects([with_({ kind: 'activated', sourceZone: 'field', cost: BEAM_COST, special: { name: 'T Beam' } })])).toEqual([])
+  })
+
+  it('L1 §11.7.1 — the same-name copy is never also the CP discard: with it as the only card, nothing is usable (review L2)', () => {
+    // [Fire] + S: the copy is Fire, so it COULD pay the CP — but then nothing would be left to discard for the S.
+    const burn: Ability = { ...beam('T-JF'), id: 'T-JF:beam', trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 1, requiredElements: ['fire'] }, discardSameName: true }, special: { name: 'T Burn' } } }
+    const defs = [...DEFS, makeDef({ code: 'T-JF', name: 'Burner', elements: ['fire'], cost: 2, power: 5000, generic: false, hasAbilities: true, abilityClauses: 1, abilities: [burn] })]
+    const game = (hand: readonly string[]): { s: GameState; src: CardId } => {
+      let s = makeGame({ defs, decks: [deckOf(VANILLA_POOL.map((d) => d.code)), deckOf(VANILLA_POOL.map((d) => d.code))] })
+      s = { ...s, players: [{ ...s.players[0], hand: [], backups: [] }, s.players[1]] }
+      let src: CardId
+      ;[s, src] = withField(s, 0, 'forwards', 'T-JF')
+      ;[s] = withField(s, 1, 'forwards', 'V-F7')
+      for (const code of hand) [s] = withHand(s, 0, code)
+      return { s, src }
+    }
+    const listed = (s: GameState) => legalCommands(s, 0).filter((c) => c.type === 'activateAbility' && c.abilityId === 'T-JF:beam')
+    const both = game(['T-JF', 'T-FIRE'])
+    expect(listed(both.s)).toHaveLength(1)
+    expect(hasAnyActivation(both.s, 0)).toBe(true)
+    const only = game(['T-JF'])
+    expect(listed(only.s)).toEqual([])
+    expect(hasAnyActivation(only.s, 0), 'agrees with legalCommands').toBe(false)
   })
 
   it('names the discard in the printed cost', () => {

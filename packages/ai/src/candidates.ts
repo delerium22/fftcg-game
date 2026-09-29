@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, resolveChosenSpec, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -277,12 +277,14 @@ function effectsValue(state: GameState, me: PlayerId, source: CardId, controller
       // Ranked by whoever ANSWERS, summed for `me` (rung V1-A2, spec V1-D9): "your opponent selects" is the
       // opponent's best answer, which is the caster's worst — a min, not the max a caster's own choice is.
       const selector = eff.select === 'opponent' ? opponentOf(controller) : me
-      const { ranked, scores } = rankBy(targetCandidates(state, source, controller, eff.from), (id) => targetScore(state, selector, source, controller, eff.then, id))
+      // No card is bound at this level, so `sameElementAsChosen` resolves against nothing (`elementIn: []`) rather than
+      // reaching a filter unresolved and throwing (review L4).
+      const { ranked, scores } = rankBy(targetCandidates(state, source, controller, resolveChosenSpec(state, eff.from, [])), (id) => targetScore(state, selector, source, controller, eff.then, id))
       const max = Math.min(eff.max, scores.length)
       if (eff.min > scores.length) continue   // cannot legally resolve: the executor no-ops it
       for (const id of ranked.slice(0, bestSize(scores, Math.min(eff.min, max), max))) v += targetScore(state, me, source, controller, eff.then, id)
     } else if (eff.kind === 'forEach') {
-      for (const id of targetCandidates(state, source, controller, eff.from)) v += targetScore(state, me, source, controller, eff.do, id)
+      for (const id of targetCandidates(state, source, controller, resolveChosenSpec(state, eff.from, []))) v += targetScore(state, me, source, controller, eff.do, id)
     } else if (eff.kind === 'chooseModes') {
       const { scores } = rankBy(eff.modes.map((_, i) => i), (i) => effectsValue(state, me, source, controller, eff.modes[i]?.effects ?? []))
       const max = Math.min(eff.max, scores.length)
@@ -432,17 +434,16 @@ function activationCandidates(state: GameState, player: PlayerId): Command[] {
   for (const source of sources) {
     for (const ability of defOf(state, source).abilities ?? []) {
       if (ability.trigger.kind !== 'activated') continue
-      const cp = preferredPaymentFor(state, player, abilityCpRequirement(source, ability.trigger.cost))
-      if (!cp) continue
       // §11.7.1 (rung V1-A3, R2): a special ability's payment must NAME its same-name discard, or `apply` refuses it.
-      // The first in hand order that the CP payment leaves in hand, as `legalCommands` lists it. Copies of one name are
-      // near enough interchangeable that choosing among them is not worth a branch; the evaluator prices the lost card.
-      let payment = cp
-      if (ability.trigger.cost.discardSameName) {
-        const card = sameNameCards(state, player, source).find((id) => !cp.discards.some((d) => d.card === id))
-        if (card === undefined) continue
-        payment = { ...cp, sameName: card }
-      }
+      // The first same-name card in hand order is reserved for it — EXCLUDED from the CP sources, so the value-minimising
+      // payment cannot spend it on CP and leave nothing for the S (review L1). Copies of one name are near enough
+      // interchangeable that choosing among them is not worth a branch.
+      const req = abilityCpRequirement(source, ability.trigger.cost)
+      const reserved = ability.trigger.cost.discardSameName ? sameNameCards(state, player, source)[0] : undefined
+      if (ability.trigger.cost.discardSameName && reserved === undefined) continue
+      const cp = preferredPaymentFor(state, player, reserved === undefined ? req : { ...req, excluded: [...req.excluded, reserved] })
+      if (!cp) continue
+      const payment = reserved === undefined ? cp : { ...cp, sameName: reserved }
       // One command per declared TARGET SET — the target choice is part of the action now, not a decision the
       // search reaches a ply later, so collapsing them would hide the choice from the agent entirely.
       // Bounded like every other set the policy enumerates (rung J7-D2): the first sixteen declarations.

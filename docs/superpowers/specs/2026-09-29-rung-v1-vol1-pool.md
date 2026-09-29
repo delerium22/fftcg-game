@@ -98,6 +98,9 @@ readings from the plan and its revisions R1–R10:
   an `elementIn` already on the same filter (no card has both).
 - Game creation also refuses `special` without `discardSameName` and the reverse (§11.7.1): either half alone would
   escape the ban for free or pay the S's discard while banned. Added after the plan, in a follow-up commit.
+- Review fixes: game creation refuses `sameElementAsChosen` inside an `anyOf` member (M1); the AI reserves the first
+  same-name card out of the CP sources and `hasAnyActivation` skips a payment that spends the last copy (L1/L2); a
+  select is not a choice for `needsChoice` (L3); the policy's `effectsValue` resolves the axis against nothing (L4).
 
 ## Source and the list (V1-D1)
 

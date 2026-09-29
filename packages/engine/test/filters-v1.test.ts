@@ -162,6 +162,12 @@ describe('V1-A3 — game creation admits sameElementAsChosen only where the exec
     expect(validateEffects([def([choose([{ kind: 'if', when: { kind: 'subjectMatches', filter: SAME }, then: [{ kind: 'dull' }] }])])]).join()).toMatch(/sameElementAsChosen/)
   })
 
+  it('refuses it inside an anyOf member, which the executor does not resolve (review M1)', () => {
+    const nested = { anyOf: [{ name: 'A' }, { sameElementAsChosen: true }] } as unknown as typeof SAME
+    expect(validateEffects([def([choose([look(nested)])])]).join()).toMatch(/sameElementAsChosen inside an anyOf member/)
+    expect(validateEffects([def([choose([choose([{ kind: 'dull' }], nested, 'self')])])]).join()).toMatch(/sameElementAsChosen inside an anyOf member/)
+  })
+
   it('a continuous scope refuses it, and an instance axis inside an anyOf member', () => {
     // Data arriving through JSON is untyped: parse it, as the card data is, rather than cast a literal past the type.
     const scoped = (filter: object): CardDef => JSON.parse(JSON.stringify(makeDef({ code: 'T-S', hasAbilities: true, abilityClauses: 1, abilities: [

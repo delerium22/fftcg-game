@@ -535,3 +535,46 @@ describe('candidateCommands: the V1-A2 selects', () => {
     expect(targetsOf(candidateCommands(s, 0)[0])).toEqual([big])
   })
 })
+
+describe('V1-A3 review — special abilities and resolved filters in the policy', () => {
+  it('L1: the same-name copy is kept for the S, and a Fire card pays the [Fire] (legalCommands and the policy agree)', () => {
+    const burn: Ability = {
+      id: 'T-JF:beam', trigger: { kind: 'activated', sourceZone: 'field', cost: { cp: { amount: 1, requiredElements: ['fire'] }, discardSameName: true }, special: { name: 'T Burn' } },
+      text: 'T Burn [Fire][S]: Choose 1 Forward opponent controls. Deal it 8000 damage.',
+      effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 8000 }] }],
+    }
+    const defs = [...VANILLA_POOL, makeDef({ code: 'T-JF', name: 'Burner', elements: ['fire'], cost: 2, power: 5000, generic: false, hasAbilities: true, abilityClauses: 1, abilities: [burn] }),
+      // Worth MORE than the copy, so a policy that let the copy pay the CP would spend it there and have no S left.
+      makeDef({ code: 'T-FIRE', elements: ['fire'], cost: 5, power: 9000 })]
+    let s = withHandSize(makeGame({ defs }), 0, 0)
+    s = { ...s, players: [{ ...s.players[0], backups: [] }, s.players[1]] }
+    let src: CardId, copy: CardId, fire: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-JF')
+    ;[s] = withField(s, 1, 'forwards', 'V-F7')
+    ;[s, copy] = withHand(s, 0, 'T-JF')
+    ;[s, fire] = withHand(s, 0, 'T-FIRE')
+    const legal = legalCommands(s, 0).filter((c) => c.type === 'activateAbility' && c.source === src)
+    expect(legal).toHaveLength(1)
+    const policy = candidateCommands(s, 0).filter((c) => c.type === 'activateAbility' && c.source === src)
+    expect(policy).toHaveLength(1)
+    const c = policy[0]!
+    if (c.type !== 'activateAbility') throw new Error('unreachable')
+    expect(c.payment).toEqual({ dullBackups: [], discards: [{ card: fire, element: 'fire' }], sameName: copy })
+  })
+
+  it('L4: ranking modes over a select that reads sameElementAsChosen does not throw', () => {
+    const sel: Effect = { kind: 'chooseTargets', select: 'self', min: 0, max: 1, from: { zone: 'forwards', controller: 'self', filter: { sameElementAsChosen: true } }, then: [{ kind: 'addPower', amount: 1000 }] }
+    const a = clause('T-MODESEL:etb', [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'self' }, then: [
+      { kind: 'chooseModes', min: 1, max: 1, modes: [{ label: 'pump', effects: [sel] }, { label: 'draw', effects: [{ kind: 'draw', count: 1 }] }] },
+    ] }])
+    let s = makeGame({ defs: [...VANILLA_POOL, bearer('T-MODESEL', a)] })
+    let src: CardId, mine: CardId
+    ;[s, src] = withField(s, 0, 'forwards', 'T-MODESEL')
+    ;[s, mine] = withField(s, 0, 'forwards', 'V-F2')
+    s = arm(s, src, 0, a)
+    s = apply(s, { type: 'chooseTargets', player: 0, targets: [mine] }).state
+    expect(s.pending?.kind).toBe('chooseMode')
+    expect(() => candidateCommands(s, 0)).not.toThrow()
+    expect(candidateCommands(s, 0).some((c) => c.type === 'chooseMode')).toBe(true)
+  })
+})

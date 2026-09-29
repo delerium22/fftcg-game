@@ -92,6 +92,10 @@ function filterKeys(filter: object | undefined): string[] {
 /** Does this filter carry the resolved axis `sameElementAsChosen`, at the top or inside an `anyOf` member? */
 const resolvesChosen = (filter: TargetFilter | undefined): boolean => filterKeys(filter).includes('sameElementAsChosen')
 
+/** Is the axis inside an `anyOf` member? `resolveChosenFilter` resolves the top level only, so there it would throw (review M1). */
+const nestedChosen = (filter: TargetFilter | undefined): boolean =>
+  (filter?.anyOf ?? []).some((m) => filterKeys(m).includes('sameElementAsChosen'))
+
 /**
  * Rung V1-A2: the effect shapes the executor trusts, checked once at game creation for data arriving through JSON.
  * Walks every nesting — `then`, `do`, modes, `if` branches — since a node is as reachable deep as at the top.
@@ -109,6 +113,7 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
       switch (e.kind) {
         case 'chooseTargets':
           if (resolvesChosen(e.from.filter) && !(byChoice && (e.select !== undefined || resolving))) sameElement('on a choice declared before any card is bound')
+          if (nestedChosen(e.from.filter)) sameElement('inside an anyOf member; only the top level of a filter is resolved')
           if (e.select !== undefined && !['self', 'opponent'].includes(e.select)) problems.push(`${code}: ${id} has an unknown select ${String(e.select)}`)
           if (e.onlyIfChosen !== undefined && e.onlyIfChosen !== true) problems.push(`${code}: ${id} has an \`onlyIfChosen\` that is not true`)
           // Spec V1-D11: a hand is private, so it is only ever your own, and only selected — never a declared choice,
@@ -138,6 +143,7 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
         // Luso's search: resolved against the enclosing choice's card as the pending is raised (resolve.ts).
         case 'lookAtDeck':
           if (resolvesChosen(e.take.filter) && !byChoice) sameElement('in a search with no choice before it')
+          if (nestedChosen(e.take.filter)) sameElement('inside an anyOf member; only the top level of a filter is resolved')
           break
         case 'damage':
           if (typeof e.amount !== 'number' && resolvesChosen(e.amount.per.filter)) sameElement('in a counted amount')
