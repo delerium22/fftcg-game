@@ -11,10 +11,12 @@ import type { Page } from '@playwright/test'
  * the tray, where Auto + Confirm pay). Strip buttons are preferred; then any GLOWING card, through its sheet.
  * A sheet with nothing to offer is backed out of.
  */
-export async function playToTheEnd(page: Page, budgetMs = 120_000): Promise<void> {
+export async function playToTheEnd(page: Page, budgetMs = 120_000, until?: () => Promise<boolean>): Promise<void> {
   const deadline = Date.now() + budgetMs
   while (Date.now() < deadline) {
     if (await page.locator('dialog.banner').count() > 0) return
+    // A caller that wants a mid-game position (the U0 baseline screenshots) stops here instead of at game over.
+    if (until && await until()) return
     const sheet = page.locator('dialog[data-card-sheet]')
     if (await sheet.count()) {
       // Rung J7: "Choose several…" opens the set picker; the driver takes the plain commit or pay action.
