@@ -61,6 +61,8 @@ describe('§11.8.13 — a conditional auto-ability triggers only if its conditio
     ok(s)
   })
 
+  // The mechanism of Review Focus 1: the condition is read at the enter event, so a Water Character arriving afterwards
+  // (here by a later cast rather than later in the same chain — the check is the same) never triggers it.
   it('a condition that becomes true only after the event never triggers it (Review Focus 1)', () => {
     const { s: s0, cond } = castWith(2)
     let s = s0
@@ -92,11 +94,14 @@ describe('§11.11.3 — a conditional auto-ability re-checks its condition as it
   })
 
   it('a condition still met at resolution resolves normally', () => {
-    const { s, cond } = castWith(4)
-    const placed: GameState = { ...s, players: [{ ...s.players[0], backups: s.players[0].backups.slice(1) }, s.players[1]] }
+    const { s, cond, backups } = castWith(4)
+    const gone = backups[0]!
+    const placed: GameState = { ...s, players: [{ ...s.players[0], backups: s.players[0].backups.filter((c) => c.id !== gone), breakZone: [...s.players[0].breakZone, gone] }, s.players[1]] }
+    ok(placed)
     const r = apply(pass(placed, 0), { type: 'pass', player: 1 })
     expect(r.events.some((e) => e.type === 'stackCancelled')).toBe(false)
     expect(power(r.state, cond)).toBe(1000)
+    ok(r.state)
   })
 })
 

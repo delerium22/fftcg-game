@@ -200,7 +200,7 @@ split out ahead of the cards. Deviations and readings from the plan:
   can pass the 5 s default timeout under full-suite load.
 
 **As built (V1-D), 2026-09-30.** Commits de41ac0 (conditional auto-abilities), aca5780 ("When you do so"), 14b0f10
-(Fire-only CP), then the cards commit (Ultima Weapon, Vincent, the SIMPLIFIED table, this note). Plan
+(Fire-only CP), fbb5efa (Ultima Weapon, Vincent, the SIMPLIFIED table, this note). Plan
 `2026-09-30-rung-v1d-fidelity.md` with its revisions R1–R6; its Task 3 (revealed searches) is rung V1-E (R1). Readings
 and choices:
 - §11.8.13: `Ability.triggerIf` is a `StaticCondition` read by `staticApplies` for the source's controller, in
@@ -220,7 +220,11 @@ and choices:
 - R2: the AI adds a reflexive clause's `effectsValue` to every pick of the chooser that fires it (`reflexiveValue` in
   `targetScore`, target-independent), so `bestSize` takes Vincent's put when the 9000 has a Forward to kill and declines
   it when nothing can be hit. `targetDelta` gives `triggerReflexive` 0. No new pending or state shape, so `keys.ts` and
-  `checkInvariants` are unchanged; strict random/greedy/ISMCTS self-play with a synthetic Vincent reaches the clause.
+  `checkInvariants` are unchanged. Strict self-play with a synthetic Vincent: random/greedy games reach the clause, and
+  ISMCTS-vs-greedy games in which it is reached complete (which seat fired it is not pinned). `triggerIf` needed no AI
+  change: the AI simulates through `apply`, so both checks hold in its rollouts.
+- Known gap: `reflexiveValue` is added per pick, so a chooser of max 2 or more that fires a reflexive clause would price
+  it once per pick, while it fires once. No pool card has that shape (Vincent's select is max 1).
 - Vincent 23-119R is two AST units (`VOL1_CLAUSES` 1 → 2): `:etb` quotes the first sentence, `:when-you-do-so` the rest;
   both are verbatim slices of the printed text. His scenario now shows the window: the opponent casts Ifrit on the
   chosen Lightning, and the 9000 ends `stackCancelled` `targetsGone`. Ultima Weapon's Water clause carries the
