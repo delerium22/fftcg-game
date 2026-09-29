@@ -64,7 +64,7 @@ describe('scenario: combat with tricks — a party, a block, a pump in the block
       'keyword:lightning:haste', 'resolve:27-127S:opponent-forward-broken',
       'power:luso:+4000', 'resolve:19-052C:pump',
       'step:damage',
-      'battle:luso>sphene:7000', 'battle:prishe>sphene:5000', 'battle:sphene>luso:7000',
+      'battle:luso+prishe>sphene:12000', 'battle:sphene>luso:7000',   // the party's damage is one packet (§15.1.1.9.8, rung V2-A1)
       'broken:luso', 'broken:sphene',
       'trigger:27-125S:damages-forward', 'push:27-125S:damages-forward',
       'trigger:27-127S:opponent-forward-broken', 'push:27-127S:opponent-forward-broken',
