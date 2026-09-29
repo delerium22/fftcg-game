@@ -194,7 +194,8 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
       case 'if': break
       // chooseTargets / chooseModes / forEach: nested, deliberately unpriced. `onSubject` (C2-5) belongs here
       // too but for a different reason — it acts on the TRIGGER EVENT's card, never on the one being chosen, so
-      // its value is independent of this ranking whatever it contains.
+      // its value is independent of this ranking whatever it contains. `onSource` (V1-A4) likewise acts on the
+      // source whichever card is picked here; `effectsValue` prices it where it stands on its own.
       default: break
     }
   }
@@ -285,6 +286,9 @@ function effectsValue(state: GameState, me: PlayerId, source: CardId, controller
       for (const id of ranked.slice(0, bestSize(scores, Math.min(eff.min, max), max))) v += targetScore(state, me, source, controller, eff.then, id)
     } else if (eff.kind === 'forEach') {
       for (const id of targetCandidates(state, source, controller, resolveChosenSpec(state, eff.from, []))) v += targetScore(state, me, source, controller, eff.do, id)
+    } else if (eff.kind === 'onSource') {
+      // "<this card> gains …" (rung V1-A4): the same grant priced on the source that a chosen own Forward would get.
+      v += targetScore(state, me, source, controller, eff.do, source)
     } else if (eff.kind === 'chooseModes') {
       const { scores } = rankBy(eff.modes.map((_, i) => i), (i) => effectsValue(state, me, source, controller, eff.modes[i]?.effects ?? []))
       const max = Math.min(eff.max, scores.length)

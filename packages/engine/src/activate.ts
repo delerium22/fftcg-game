@@ -89,7 +89,7 @@ function needsChoice(eff: Effect): boolean {
     case 'chooseTargets': return eff.select === undefined
     case 'chooseModes': return true
     case 'forEach': return eff.do.some(needsChoice)
-    case 'onSubject': return eff.do.some(needsChoice)
+    case 'onSubject': case 'onSource': return eff.do.some(needsChoice)
     // Either branch may run (rung V1-A1), so a chooser in either is a choice this ability may owe.
     case 'if': return eff.then.some(needsChoice) || (eff.else ?? []).some(needsChoice)
     default: return false

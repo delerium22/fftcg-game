@@ -201,6 +201,14 @@ export type Effect =
    */
   | { readonly kind: 'onSubject'; readonly do: readonly Effect[] }
   /**
+   * Act on the ability's own SOURCE — "<this card> gains +2000 power and Brave" (rung V1-A4, spec V1-B R1: Jecht
+   * 18-129C, LB Luso 23-130H). `onSubject`'s sibling: binds `chosen` to the source and runs `do`, so every existing
+   * effect works on it unchanged. Not a choice (§11.6.5 is about choosing; the printed text names the card), so it is
+   * never declared, never seen by a "when chosen" watcher, and `do` may not suspend. A source no longer on the field
+   * (§11.11.7) is bound all the same; the field effects on it are then no-ops.
+   */
+  | { readonly kind: 'onSource'; readonly do: readonly Effect[] }
+  /**
    * "If <condition>, <then>. Otherwise, <else>." (rung V1-A1, spec V1-D6) — Palom's "if you control a Card Name
    * Porom Forward, deal it 8000 damage instead". Read at RESOLUTION, not declaration: an `if` is not a choice, so
    * the declare stage ends at it, and a chooser inside a branch raises its prompt as the item resolves.

@@ -102,7 +102,7 @@ const nestedChosen = (filter: TargetFilter | undefined): boolean =>
  */
 export function validateEffects(defs: readonly CardDef[]): string[] {
   const problems: string[] = []
-  // `bound` is the spec the nearest enclosing chooser or `forEach` binds `chosen` from — null under `onSubject`.
+  // `bound` is the spec the nearest enclosing chooser or `forEach` binds `chosen` from — null under `onSubject`/`onSource`.
   // `byChoice`: that binding is a `chooseTargets`'s (not a `forEach`'s). `resolving`: a node here is certainly reached
   // at RESOLUTION — under a select or an `if`, where declaration has ended — so a choice here is not declared.
   const walk = (code: string, id: string, effects: readonly Effect[], bound: TargetSpec | null, byChoice: boolean, resolving: boolean): void => {
@@ -137,6 +137,11 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
           if (resolvesChosen(e.from.filter)) sameElement('on a forEach, which chooses nothing')
           walk(code, id, e.do, e.from, false, resolving); break
         case 'onSubject': walk(code, id, e.do, null, false, resolving); break
+        // Rung V1-A4: the source binding, like `onSubject`'s, is one fixed card, and a prompt inside `do` could not
+        // restore it on resume.
+        case 'onSource':
+          if (e.do.some(suspends)) problems.push(`${code}: ${id} prompts inside onSource`)
+          walk(code, id, e.do, null, false, resolving); break
         case 'if':
           if (e.when.kind === 'subjectMatches' && resolvesChosen(e.when.filter)) sameElement('in a condition')
           walk(code, id, e.then, bound, byChoice, true); walk(code, id, e.else ?? [], bound, byChoice, true); break
@@ -182,7 +187,7 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
 function suspends(e: Effect): boolean {
   switch (e.kind) {
     case 'chooseTargets': case 'chooseModes': case 'lookAtDeck': return true
-    case 'forEach': case 'onSubject': return e.do.some(suspends)
+    case 'forEach': case 'onSubject': case 'onSource': return e.do.some(suspends)
     case 'if': return e.then.some(suspends) || (e.else ?? []).some(suspends)
     default: return false
   }
