@@ -23,9 +23,7 @@ describe('the card pool', () => {
    * clause 1, Charlotte's clause 1, Porom's clause 2 and both of Yuzuki's. Exact on purpose — a gap LARGER than listed is
    * an unimplemented clause nobody declared, and a gap SMALLER is a landed clause whose entry was not updated.
    */
-  const EXPECTED_GAPS: Record<string, number> = {
-    '27-122S': 3, '27-123S': 3, '27-128S': 3, '11-121C': 2, '13-125R': 2, '18-129C': 2,
-  }
+  const EXPECTED_GAPS: Record<string, number> = { '27-122S': 1, '27-128S': 1, '11-121C': 1, '13-125R': 2 }
 
   it('implements every printed clause of every card, but for the expected gaps', () => {
     const short = Object.fromEntries(loadCards()

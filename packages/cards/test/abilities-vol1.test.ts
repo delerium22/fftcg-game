@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { CardId, Event, FieldCard, GameState } from '@fftcg/engine'
-import { activationCheck, checkInvariants, deckPickCandidates, findFieldCard, legalCommands, powerOf, viewFor } from '@fftcg/engine'
+import { activationCheck, checkInvariants, deckPickCandidates, findFieldCard, keywordsOf, legalCommands, powerOf, viewFor } from '@fftcg/engine'
 import { VOL1_ABILITIES, VOL1_CLAUSES } from '../src/abilities-vol1.js'
 import { loadCards, parseDeckFile } from '../src/index.js'
 import { DEFS, FIRE_BACKUP, WATER_BACKUP, applyNow, endPhase, makeGame, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
@@ -23,7 +23,8 @@ function cast(state: GameState, code: string, cp: string[]) {
   let s = state; let card: CardId
   ;[s, card] = withHand(s, 0, code)
   ;[s] = withCp(s, 0, cp)
-  const cmd = legalCommands(s, 0).find((c) => (c.type === 'castCharacter' || c.type === 'castSummon') && c.card === card)
+  // Paid with the Backups only: a payment that discards a hand card for CP would change what the hand holds.
+  const cmd = legalCommands(s, 0).find((c) => (c.type === 'castCharacter' || c.type === 'castSummon') && c.card === card && c.payment.discards.length === 0)
   expect(cmd, `${code} is not castable`).toBeDefined()
   return { ...apply(s, cmd!), card }
 }
@@ -641,5 +642,213 @@ describe('21-010H Taivas — "[0]: Play 1 Job Warrior or Card Name Warrior of co
     expect(handed.priority, 'player 1 holds priority on player 0\u2019s turn').toBe(1)
     expect(activationCheck(handed, 1, taivas, '21-010H:play')).toBe('21-010H:play may only be used during your turn')
     expect(offered(handed, 1, taivas, '21-010H:play')).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Specials and statics: Jecht, Zack, Wuk Lamat, Charlotte, Porom, Yuzuki
+// ---------------------------------------------------------------------------
+
+const kw = (s: GameState, id: CardId) => [...keywordsOf(s, fc(s, id)!)].sort()
+
+describe('18-129C Jecht — "[Fire][Water]: Until the end of the turn, Jecht gains Haste, First Strike and Brave. You can only use this ability during your turn."', () => {
+  it('grants Jecht himself the three keywords, for a Fire and a Water CP, on his controller\u2019s turn only', () => {
+    let s = makeGame(); let jecht: CardId
+    ;[s, jecht] = withField(s, 0, 'forwards', '18-129C', { enteredTurn: s.turn })
+    ;[s] = withCp(s, 0, [FIRE_BACKUP])
+    expect(offered(s, 0, jecht, '18-129C:gains'), 'Fire alone cannot pay [Fire][Water]').toEqual([])
+    ;[s] = withCp(s, 0, [WATER_BACKUP])
+    const cmds = offered(s, 0, jecht, '18-129C:gains')
+    expect(cmds, 'no dull icon: usable the turn he enters, and it declares no target').toHaveLength(1)
+    const r = apply(s, cmds[0]!)
+    expect(kw(r.state, jecht)).toEqual(['brave', 'firstStrike', 'haste'])
+    ok(r.state)
+    let theirs = makeGame(); let their: CardId
+    ;[theirs, their] = withField(theirs, 1, 'forwards', '18-129C')
+    ;[theirs] = withCp(theirs, 1, [FIRE_BACKUP, WATER_BACKUP])
+    const handed = apply(theirs, { type: 'pass', player: 0 }).state
+    expect(activationCheck(handed, 1, their, '18-129C:gains')).toBe('18-129C:gains may only be used during your turn')
+  })
+})
+
+describe('18-129C Jecht — "Jecht Beam [S][Dull]: Choose 1 Forward. Deal it 8000 damage."', () => {
+  it('a special ability: dull Jecht and discard another Jecht from hand; 8000 to the chosen Forward', () => {
+    let s = makeGame(); let jecht: CardId; let victim: CardId
+    ;[s, jecht] = withField(s, 0, 'forwards', '18-129C')
+    ;[s, victim] = withField(s, 1, 'forwards', '27-124S')
+    expect(offered(s, 0, jecht, '18-129C:jecht-beam'), 'no Jecht in hand: not offered (§11.7.1)').toEqual([])
+    let other: CardId
+    ;[s, other] = withHand(s, 0, '18-129C')
+    const pick = offered(s, 0, jecht, '18-129C:jecht-beam').find((c) => c.type === 'activateAbility' && c.targets.includes(victim))
+    expect(pick).toBeDefined()
+    const r = apply(s, pick!)
+    expect(r.state.players[0].breakZone, 'the same-name card was discarded').toContain(other)
+    expect(fc(r.state, jecht)?.status).toBe('dull')
+    expect(fc(r.state, victim)).toBeUndefined()
+    ok(r.state)
+  })
+})
+
+describe('27-123S Zack — "If your opponent controls 3 or more Forwards, Zack gains Haste."', () => {
+  it('has Haste exactly while the opponent controls 3 or more Forwards; LB Zack beside him never does', () => {
+    let s = makeGame(); let zack: CardId; let lbZack: CardId
+    ;[s, zack] = withField(s, 0, 'forwards', '27-123S')
+    ;[s, lbZack] = withField(s, 0, 'forwards', '22-112R')
+    for (const code of ['27-124S', '27-125S']) [s] = withField(s, 1, 'forwards', code)
+    expect(kw(s, zack), '2 Forwards').toEqual([])
+    ;[s] = withField(s, 1, 'forwards', '22-068R')
+    expect(kw(s, zack), '3 Forwards').toEqual(['haste'])
+    expect(kw(s, lbZack), 'the Haste is Zack 27-123S\u2019s own, not every Zack\u2019s (StaticScope.self)').toEqual([])
+    ;[s] = withField(s, 1, 'backups', EARTH)
+    ;[s] = withField(s, 0, 'forwards', '21-001R')
+    expect(kw(s, zack), 'Backups and his own side do not count').toEqual(['haste'])
+  })
+})
+
+const EARTH = '18-064C'
+
+describe('27-123S Zack — "When Zack enters the field or attacks, deal 1000 damage for each Backup you control to all the Forwards opponent control."', () => {
+  it('on entering: 1000 per Backup its controller controls, to every opponent Forward, and to none of his own', () => {
+    let s = makeGame(); let a: CardId; let b: CardId; let mine: CardId
+    ;[s, a] = withField(s, 1, 'forwards', '27-124S')   // Cloud, 7000
+    ;[s, b] = withField(s, 1, 'forwards', '27-127S')   // Lightning, 9000
+    ;[s, mine] = withField(s, 0, 'forwards', '21-001R')
+    ;[s] = withField(s, 1, 'backups', EARTH)            // the opponent's Backups do not count
+    const r = cast(s, '27-123S', Array<string>(5).fill(FIRE_BACKUP))   // five Backups: 5000 each
+    expect(r.state.pending, 'untargeted: no prompt').toBeNull()
+    expect(r.events.filter((e) => e.type === 'abilityDamage').map((e) => e.type === 'abilityDamage' && [e.target, e.amount]))
+      .toEqual([[a, 5000], [b, 5000]])
+    expect(fc(r.state, a)?.damage).toBe(5000)
+    expect(fc(r.state, b)?.damage).toBe(5000)
+    expect(fc(r.state, mine)?.damage).toBe(0)
+    ok(r.state)
+  })
+
+  it('on attacking: the same sweep; with no Backup it deals nothing and fires nothing', () => {
+    for (const backups of [2, 0]) {
+      let s = endPhase(makeGame()); let zack: CardId; let a: CardId
+      ;[s, zack] = withField(s, 0, 'forwards', '27-123S')
+      ;[s, a] = withField(s, 1, 'forwards', '27-124S')
+      ;[s] = withCp(s, 0, Array<string>(backups).fill(FIRE_BACKUP))
+      const r = apply(s, { type: 'declareAttack', player: 0, attackers: [zack] })
+      expect(r.events.some((e) => e.type === 'abilityTriggered' && e.abilityId === '27-123S:attack'), `${backups} Backups: the clause triggers`).toBe(true)
+      const hits = r.events.filter((e) => e.type === 'abilityDamage')
+      expect(hits.map((e) => e.type === 'abilityDamage' && e.amount), `${backups} Backups`).toEqual(backups ? [backups * 1000] : [])
+      expect(fc(r.state, a)?.damage).toBe(backups * 1000)
+      ok(r.state)
+    }
+  })
+})
+
+describe('27-122S Wuk Lamat — "When Wuk Lamat enters the field or attacks, choose 1 Forward opponent controls. If you control 5 or more Characters, deal it 7000 damage."', () => {
+  it('on entering: 7000 with 5 Characters, Wuk Lamat herself one of them; nothing with 4', () => {
+    for (const [extra, dealt] of [[1, true], [0, false]] as const) {
+      let s = makeGame(); let victim: CardId
+      ;[s, victim] = withField(s, 1, 'forwards', '27-124S')   // Cloud, 7000
+      for (let i = 0; i < extra; i++) [s] = withField(s, 0, 'forwards', '21-001R')
+      const r = cast(s, '27-122S', Array<string>(3).fill(FIRE_BACKUP))   // Wuk Lamat + 3 Backups (+ the extra)
+      expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [victim] })
+      const t = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })
+      expect(fc(t.state, victim) === undefined, `${4 + extra} Characters`).toBe(dealt)
+      ok(t.state)
+    }
+  })
+
+  it('on attacking: the same, declared as the clause is placed in the declared window', () => {
+    let s = endPhase(makeGame()); let wuk: CardId; let victim: CardId
+    ;[s, wuk] = withField(s, 0, 'forwards', '27-122S')
+    ;[s, victim] = withField(s, 1, 'forwards', '27-124S')
+    ;[s] = withCp(s, 0, Array<string>(4).fill(FIRE_BACKUP))
+    const r = apply(s, { type: 'declareAttack', player: 0, attackers: [wuk] })
+    expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [victim] })
+    const t = apply(r.state, { type: 'chooseTargets', player: 0, targets: [victim] })
+    expect(fc(t.state, victim)).toBeUndefined()
+    ok(t.state)
+  })
+
+  it('still warns for its clause 1 (rung V2): the cast reports exactly one clause missing', () => {
+    const r = cast(makeGame(), '27-122S', Array<string>(3).fill(FIRE_BACKUP))
+    expect(r.events.filter((e) => e.type === 'unimplementedAbility').map((e) => e.type === 'unimplementedAbility' && e.clauses)).toEqual([1])
+  })
+})
+
+describe('27-128S Charlotte — "The Forwards opponent controls cannot use action abilities."', () => {
+  it('bans the opponent\u2019s Forwards\u2019 action abilities, not their special abilities, and not her own side\u2019s', () => {
+    let s = makeGame(); let princess: CardId; let jecht: CardId
+    ;[s] = withField(s, 1, 'forwards', '27-128S')                // Charlotte, on player 1's side
+    ;[s, princess] = withField(s, 0, 'forwards', '19-052C')     // an action ability on player 0's Forward
+    ;[s] = withField(s, 0, 'forwards', '21-001R')               // a second Forward, so the Princess's pump has a target
+    ;[s, jecht] = withField(s, 0, 'forwards', '18-129C')        // and a special ability
+    ;[s] = withHand(s, 0, '18-129C')
+    expect(offered(s, 0, princess, '19-052C:pump'), 'an action ability of an opponent\u2019s Forward').toEqual([])
+    expect(offered(s, 0, jecht, '18-129C:jecht-beam').length, 'a special ability is not an action ability (§11.6 vs §11.7)').toBeGreaterThan(0)
+    let theirs: CardId
+    ;[s, theirs] = withField(s, 1, 'forwards', '19-052C')
+    const handed = apply(s, { type: 'pass', player: 0 }).state
+    expect(offered(handed, 1, theirs, '19-052C:pump').length, 'Charlotte\u2019s own side is not banned').toBeGreaterThan(0)
+  })
+
+  it('still warns for its clause 1 (rung V2); clause 2 is inert, so exactly one clause is reported', () => {
+    const r = cast(makeGame(), '27-128S', Array<string>(4).fill(WATER_BACKUP))
+    expect(r.events.filter((e) => e.type === 'unimplementedAbility').map((e) => e.type === 'unimplementedAbility' && e.clauses)).toEqual([1])
+  })
+})
+
+describe('11-121C Porom — "When Porom enters the field, discard 1 card from your hand. If the discarded card is not a Category IV card, draw 1 card. …"', () => {
+  function castPorom(handCodes: string[]) {
+    let s = makeGame(); const hand: CardId[] = []
+    for (const code of handCodes) { let id: CardId; [s, id] = withHand(s, 0, code); hand.push(id) }
+    const r = cast(s, '11-121C', [WATER_BACKUP, WATER_BACKUP])
+    return { r, hand }
+  }
+
+  it('the discard is a select over its controller\u2019s own hand, hidden from the other seat', () => {
+    const { r, hand } = castPorom(['21-001R', '13-013C'])
+    expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: hand })
+    const other = JSON.stringify(viewFor(r.state, 1).pending)
+    for (const id of hand) expect(other, 'no hand id in the opposing view').not.toContain(String(id))
+  })
+
+  it('a card that is not Category IV: discard it, draw 1', () => {
+    const { r, hand } = castPorom(['21-001R', '13-013C'])
+    const t = apply(r.state, { type: 'chooseTargets', player: 0, targets: [hand[0]!] })   // Ward, VIII
+    expect(t.state.players[0].breakZone).toContain(hand[0])
+    expect(t.state.players[0].hand.length, '2 − 1 + 1').toBe(2)
+    expect(t.state.pending).toBeNull()
+    ok(t.state)
+  })
+
+  it('a Category IV card: discard it, draw 2, then discard 1 more — a second select over the hand', () => {
+    const { r, hand } = castPorom(['21-001R', '13-013C'])
+    const t = apply(r.state, { type: 'chooseTargets', player: 0, targets: [hand[1]!] })   // Palom, PICTLOGICA · IV
+    expect(t.state.players[0].hand.length, '2 − 1 + 2').toBe(3)
+    expect(t.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: t.state.players[0].hand })
+    const other = JSON.stringify(viewFor(t.state, 1))
+    for (const id of t.state.players[0].hand) expect(other, 'the nested select leaks no hand id (plan R7)').not.toContain(`"candidates":[${id}`)
+    const done = apply(t.state, { type: 'chooseTargets', player: 0, targets: [hand[0]!] })
+    expect(done.state.players[0].hand.length).toBe(2)
+    expect(done.state.players[0].breakZone).toEqual(expect.arrayContaining([hand[0], hand[1]]))
+    ok(done.state)
+  })
+
+  it('with an empty hand there is nothing to discard: no prompt and no draw', () => {
+    const { r } = castPorom([])
+    expect(r.state.pending).toBeNull()
+    expect(r.state.players[0].hand).toEqual([])
+    expect(r.events.some((e) => e.type === 'drew')).toBe(false)
+  })
+
+  it('still warns for its clause 2 (rung V2)', () => {
+    const { r } = castPorom([])
+    expect(r.events.filter((e) => e.type === 'unimplementedAbility').map((e) => e.type === 'unimplementedAbility' && e.clauses)).toEqual([1])
+  })
+})
+
+describe('13-125R Yuzuki — both clauses are damage replacements (rung V2)', () => {
+  it('implements nothing yet and says so at cast (a card with no clause implemented reports no count)', () => {
+    expect(def('13-125R').abilities ?? []).toEqual([])
+    expect(def('13-125R').abilityClauses).toBe(2)
+    const r = cast(makeGame(), '13-125R', [WATER_BACKUP, FIRE_BACKUP, FIRE_BACKUP])
+    expect(r.events.filter((e) => e.type === 'unimplementedAbility')).toEqual([{ type: 'unimplementedAbility', card: r.card, code: '13-125R' }])
   })
 })
