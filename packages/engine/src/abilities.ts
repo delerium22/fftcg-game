@@ -275,6 +275,11 @@ export interface StaticScope {
   readonly controller: TargetController
   readonly excludeSource?: boolean
   readonly filter?: DefFilter
+  /**
+   * "<this card> gains …" (rung V1-A1, spec V1-D6): the source alone. A name filter would say the wrong thing —
+   * LB Zack 22-112R shares Zack 27-123S's name, and Zack's Haste is his own, not every Zack's.
+   */
+  readonly self?: true
 }
 
 export type StaticEffect =
@@ -311,6 +316,13 @@ export type ContinuousStatic = Extract<StaticEffect, { kind: (typeof CONTINUOUS_
 export type StaticCondition =
   /** "If you have received N points of damage or more" — the CASTER's damage zone (§9.4). */
   | { readonly kind: 'damageReceived'; readonly atLeast: number }
+  /**
+   * "If you control / your opponent controls N or more <filter> Characters" (rung V1-A1, spec V1-D6). Counts the
+   * Forwards and Backups on that player's field — `controller` is relative to the controller of the ability —
+   * matching `filter` by DEFINITION only: read by a static `when`, an instance axis would make the layer read
+   * its own output. No filter is any Character.
+   */
+  | { readonly kind: 'controlsAtLeast'; readonly count: number; readonly controller: 'self' | 'opponent'; readonly filter?: DefFilter }
 
 export type ActivationSourceZone = 'field' | 'hand' | 'breakZone'
 
