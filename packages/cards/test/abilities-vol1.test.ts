@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import type { CardId, FieldCard, GameState } from '@fftcg/engine'
-import { checkInvariants, deckPickCandidates, findFieldCard, legalCommands, powerOf, viewFor } from '@fftcg/engine'
+import type { CardId, Event, FieldCard, GameState } from '@fftcg/engine'
+import { activationCheck, checkInvariants, deckPickCandidates, findFieldCard, legalCommands, powerOf, viewFor } from '@fftcg/engine'
 import { VOL1_ABILITIES, VOL1_CLAUSES } from '../src/abilities-vol1.js'
 import { loadCards, parseDeckFile } from '../src/index.js'
-import { DEFS, FIRE_BACKUP, WATER_BACKUP, applyNow, endPhase, makeGame, withCp, withDeckTops, withField, withHand } from './harness.js'
+import { DEFS, FIRE_BACKUP, WATER_BACKUP, applyNow, endPhase, makeGame, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
 
 /**
  * Rung V1-B: the Starter Set 2025 Vol. 1 cards (spec 2026-09-29-rung-v1-vol1-pool.md, V1-D1/D3/D4), tested against the
@@ -380,5 +380,266 @@ describe('23-130H Luso — "When a Job Standard Unit enters your field, Luso gai
     expect(units.filter((d) => d.type !== 'backup').map((d) => d.code)).toEqual([])
     const elsewhere = loadCards().filter((d) => !vol1.has(d.code) && d.job?.split('/').includes('Standard Unit') && d.type !== 'backup')
     expect(elsewhere.map((d) => d.code), 'the known Forward Standard Unit outside Vol. 1').toEqual(['1-147C'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The field: Warrior, Alphinaud, Ultima Weapon, Vincent, Taivas (Fairy is above, with the EX BURST cards)
+// ---------------------------------------------------------------------------
+
+const offered = (s: GameState, player: 0 | 1, source: CardId, abilityId: string) =>
+  legalCommands(s, player).filter((c) => c.type === 'activateAbility' && c.source === source && c.abilityId === abilityId)
+
+describe('11-010C Warrior — "[Dull], put Warrior into the Break Zone: Choose 1 Forward. It gains +1000 power until the end of the turn."', () => {
+  it('pumps the chosen Forward by 1000, and the Warrior is paid into the Break Zone, not broken', () => {
+    let s = makeGame(); let src: CardId; let ally: CardId
+    ;[s, src] = withField(s, 0, 'backups', '11-010C')
+    ;[s, ally] = withField(s, 0, 'forwards', '21-001R')
+    const pick = offered(s, 0, src, '11-010C:pump').find((c) => c.type === 'activateAbility' && c.targets.includes(ally))
+    expect(pick).toBeDefined()
+    const r = apply(s, pick!)
+    expect(powerOfId(r.state, ally)).toBe(9000)
+    expect(r.state.players[0].breakZone).toContain(src)
+    expect(r.events.some((e) => e.type === 'brokenByAbility')).toBe(false)
+    ok(r.state)
+  })
+})
+
+describe('11-010C Warrior — "[Fire][1][Dull], put Warrior into the Break Zone: Choose 1 Forward. Deal it 5000 damage."', () => {
+  it('costs a Fire CP and one more, never its own dull; deals 5000', () => {
+    let s = makeGame(); let src: CardId; let victim: CardId
+    ;[s, src] = withField(s, 0, 'backups', '11-010C')
+    ;[s, victim] = withField(s, 1, 'forwards', '27-125S')   // Luso 27-125S, 3000
+    expect(offered(s, 0, src, '11-010C:burn'), 'no CP: not offered').toEqual([])
+    ;[s] = withCp(s, 0, [WATER_BACKUP])
+    expect(offered(s, 0, src, '11-010C:burn'), 'a Water CP and the Warrior itself cannot pay [Fire][1]').toEqual([])
+    ;[s] = withCp(s, 0, [FIRE_BACKUP])
+    const cmds = offered(s, 0, src, '11-010C:burn')
+    expect(cmds.length).toBeGreaterThan(0)
+    for (const c of cmds) if (c.type === 'activateAbility') expect(c.payment.dullBackups).not.toContain(src)
+    const r = apply(s, cmds.find((c) => c.type === 'activateAbility' && c.targets.includes(victim))!)
+    expect(fc(r.state, victim)).toBeUndefined()
+    expect(r.state.players[0].breakZone).toContain(src)
+    ok(r.state)
+  })
+})
+
+describe('1-170C Fairy — the draw goes with the target (plan R9, §11.11.2)', () => {
+  it('a Fairy whose only target was broken in response is cancelled whole: nothing is activated and nothing is drawn', () => {
+    let s = makeGame(); let leo: CardId; let fairy: CardId; let cp: CardId[]; let warrior: CardId
+    ;[s, leo] = withField(s, 0, 'forwards', '22-123R', { status: 'dull' })   // Leo, 3000
+    ;[s, fairy] = withHand(s, 0, '1-170C')
+    ;[s, cp] = withCp(s, 0, [WATER_BACKUP, WATER_BACKUP])
+    ;[s, warrior] = withField(s, 1, 'backups', '11-010C')
+    ;[s] = withCp(s, 1, [FIRE_BACKUP, FIRE_BACKUP])
+    const log: Event[] = []
+    s = step(log, s, { type: 'castSummon', player: 0, card: fairy, payment: { dullBackups: cp, discards: [] } })
+    s = step(log, s, { type: 'chooseTargets', player: 0, targets: [leo] })
+    const hand = s.players[0].hand.length
+    s = step(log, s, { type: 'pass', player: 0 })
+    const burn = offered(s, 1, warrior, '11-010C:burn').find((c) => c.type === 'activateAbility' && c.targets.includes(leo))
+    expect(burn, 'the opponent may answer with the Warrior').toBeDefined()
+    s = step(log, s, burn!)
+    for (const p of [1, 0] as const) s = step(log, s, { type: 'pass', player: p })   // the burn resolves; Leo is broken
+    expect(fc(s, leo)).toBeUndefined()
+    for (const p of [0, 1] as const) s = step(log, s, { type: 'pass', player: p })   // the Fairy resolves
+    expect(log).toContainEqual({ type: 'stackCancelled', item: { kind: 'summon', card: fairy }, reason: 'targetsGone' })
+    expect(s.players[0].hand.length, 'no draw').toBe(hand)
+    expect(log.some((e) => e.type === 'drew' && e.player === 0)).toBe(false)
+    ok(s)
+  })
+})
+
+describe('20-106R Alphinaud — "When Alphinaud enters the field, your opponent selects 1 dull Forward they control. Put it into the Break Zone."', () => {
+  it('the OPPONENT selects among their own dull Forwards; the one selected is put, not broken', () => {
+    let s = makeGame(); let a: CardId; let b: CardId; let active: CardId; let mine: CardId
+    ;[s, a] = withField(s, 1, 'forwards', '27-124S', { status: 'dull' })
+    ;[s, b] = withField(s, 1, 'forwards', '27-127S', { status: 'dull' })
+    ;[s, active] = withField(s, 1, 'forwards', '22-068R')
+    ;[s, mine] = withField(s, 0, 'forwards', '21-001R', { status: 'dull' })
+    const r = cast(s, '20-106R', Array<string>(3).fill(WATER_BACKUP))
+    expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 1, min: 1, max: 1, candidates: [a, b] })
+    const t = apply(r.state, { type: 'chooseTargets', player: 1, targets: [b] })
+    expect(t.state.players[1].breakZone).toContain(b)
+    expect([fc(t.state, a)?.id, fc(t.state, active)?.id, fc(t.state, mine)?.id]).toEqual([a, active, mine])
+    expect(t.events).toContainEqual({ type: 'putIntoBreakZone', card: b, reason: 'ability' })
+    expect(t.events.some((e) => e.type === 'brokenByAbility' || e.type === 'broken')).toBe(false)
+    ok(t.state)
+  })
+
+  it('with no dull Forward on the opponent\u2019s side it does nothing: no prompt, no "no legal target" event', () => {
+    let s = makeGame()
+    ;[s] = withField(s, 1, 'forwards', '27-124S')
+    const r = cast(s, '20-106R', Array<string>(3).fill(WATER_BACKUP))
+    expect(r.state.pending).toBeNull()
+    expect(r.events.some((e) => e.type === 'abilityNoLegalTarget')).toBe(false)
+    ok(r.state)
+  })
+})
+
+describe('20-106R Alphinaud — "Damage 3 -- Alphinaud gains +2000 power."', () => {
+  it('is +2000 while his controller has 3 points of damage or more, and only then', () => {
+    let s = makeGame(); let alph: CardId
+    ;[s, alph] = withField(s, 0, 'forwards', '20-106R')
+    const damaged = (st: GameState, n: number): GameState => {
+      const p0 = st.players[0]
+      return setPlayer(st, 0, { ...p0, deck: p0.deck.slice(n), damageZone: [...p0.damageZone, ...p0.deck.slice(0, n)] })
+    }
+    expect(powerOfId(damaged(s, 2), alph)).toBe(6000)
+    expect(powerOfId(damaged(s, 3), alph)).toBe(8000)
+    const theirs = setPlayer(s, 1, { ...s.players[1], deck: s.players[1].deck.slice(3), damageZone: s.players[1].deck.slice(0, 3) })
+    expect(powerOfId(theirs, alph), 'the opponent\u2019s damage does not count').toBe(6000)
+  })
+})
+
+describe('24-126H Ultima Weapon — its two enters-the-field clauses, each with its own condition', () => {
+  /** Cast Ultima Weapon (cost 6: five Backups and one discard for 2) with `fire` Fire and `5 - fire` Water Backups. */
+  function castUltima(s0: GameState, fire: number) {
+    let s = s0; let uw: CardId; let fodder: CardId; let cp: CardId[]
+    ;[s, uw] = withHand(s, 0, '24-126H')
+    ;[s, fodder] = withHand(s, 0, '12-005C')
+    ;[s, cp] = withCp(s, 0, [...Array<string>(fire).fill(FIRE_BACKUP), ...Array<string>(5 - fire).fill(WATER_BACKUP)])
+    const log: Event[] = []
+    const t = step(log, s, { type: 'castCharacter', player: 0, card: uw, payment: { dullBackups: cp, discards: [{ card: fodder, element: 'fire' }] } })
+    return { t, uw, log }
+  }
+  const stackIds = (s: GameState) => s.stack.map((i) => (i.kind === 'ability' ? i.frame.abilityId : 'summon'))
+
+  it('both clauses trigger; the Fire one declares its target as it is placed, and resolves first', () => {
+    let s = makeGame(); let victim: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', '27-127S')
+    const { t } = castUltima(s, 3)
+    expect(t.pending, 'clause 1 chooses its Forward at placement').toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0 }))
+    const placed = step([], t, { type: 'chooseTargets', player: 0, targets: [victim] })
+    // §11.8.7, as the engine orders one controller's simultaneous triggers (the MVP0-SIMPLIFICATION on
+    // `collectWatchers`): the first-triggered is placed last, so the printed-first Fire clause is on top.
+    expect(stackIds(placed)).toEqual(['24-126H:etb-water', '24-126H:etb-fire'])
+  })
+
+  it('Fire: 9000 with 4 Fire Characters, Ultima Weapon itself one of them; nothing with 3', () => {
+    for (const [fire, dealt] of [[3, true], [2, false]] as const) {
+      let s = makeGame(); let victim: CardId; let other: CardId
+      ;[s, victim] = withField(s, 1, 'forwards', '27-127S')   // Lightning, 9000
+      ;[s, other] = withField(s, 1, 'forwards', '27-124S')
+      const { t } = castUltima(s, fire)
+      const r = apply(t, { type: 'chooseTargets', player: 0, targets: [victim] })
+      // With 2 Fire Backups there are 3 Water ones: clause 2's select comes up too, answered away from the victim.
+      const done = r.state.pending ? apply(r.state, { type: 'chooseTargets', player: 1, targets: [other] }) : r
+      const hits = [...r.events, ...done.events].filter((e) => e.type === 'abilityDamage' && e.target === victim)
+      expect(hits.length > 0, `${fire} Fire Backups + Ultima Weapon`).toBe(dealt)
+      expect(fc(done.state, victim) === undefined).toBe(dealt)
+      ok(done.state)
+    }
+  })
+
+  it('Water: with 4 Water Characters the OPPONENT selects one of their Forwards to put into the Break Zone; with 3, nothing', () => {
+    for (const [fire, selects] of [[2, true], [3, false]] as const) {
+      let s = makeGame(); let a: CardId; let b: CardId
+      ;[s, a] = withField(s, 1, 'forwards', '27-127S')   // Lightning, 9000 — clause 1's target
+      ;[s, b] = withField(s, 1, 'forwards', '22-068R')
+      const { t } = castUltima(s, fire)
+      const r = apply(t, { type: 'chooseTargets', player: 0, targets: [a] })
+      if (selects) {
+        expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 1, min: 1, max: 1, candidates: [a, b] })
+        const done = apply(r.state, { type: 'chooseTargets', player: 1, targets: [b] })
+        expect(done.state.players[1].breakZone).toContain(b)
+        expect(done.events).toContainEqual({ type: 'putIntoBreakZone', card: b, reason: 'ability' })
+        ok(done.state)
+      } else {
+        expect(r.state.pending, '3 Water Characters: no select').toBeNull()
+        expect(fc(r.state, b), 'only the Fire clause acted').toBeDefined()
+      }
+    }
+  })
+})
+
+describe('23-119R Vincent — "When Vincent enters the field, you may put 1 Fire Backup you control into the Break Zone. When you do so, …"', () => {
+  function castVincent(s0: GameState) {
+    let s = s0; let victim: CardId
+    ;[s, victim] = withField(s, 1, 'forwards', '27-127S')   // Lightning, 9000
+    const r = cast(s, '23-119R', Array<string>(5).fill(FIRE_BACKUP))
+    return { r, victim }
+  }
+
+  it('prints First Strike as a keyword and one clause', () => {
+    const d = def('23-119R')
+    expect([d.limitBreak, d.keywords, d.abilityClauses, (d.abilities ?? []).map((a) => a.id)]).toEqual([2, ['firstStrike'], 1, ['23-119R:etb']])
+  })
+
+  it('putting a Fire Backup raises the 9000 damage choice over the opponent\u2019s Forwards', () => {
+    const { r, victim } = castVincent(makeGame())
+    expect(r.state.pending).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0, min: 0, max: 1 }))
+    if (r.state.pending?.kind !== 'chooseTargets') throw new Error('unreachable')
+    const backup = r.state.pending.candidates[0]!
+    const put = apply(r.state, { type: 'chooseTargets', player: 0, targets: [backup] })
+    expect(put.state.players[0].breakZone).toContain(backup)
+    expect(put.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [victim] })
+    const done = apply(put.state, { type: 'chooseTargets', player: 0, targets: [victim] })
+    expect(fc(done.state, victim)).toBeUndefined()
+    ok(done.state)
+  })
+
+  it('declining puts nothing and asks nothing more (onlyIfChosen)', () => {
+    const { r, victim } = castVincent(makeGame())
+    const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [] })
+    expect(done.state.pending).toBeNull()
+    expect(fc(done.state, victim)?.damage).toBe(0)
+    expect(done.state.players[0].backups).toHaveLength(5)
+    ok(done.state)
+  })
+
+  it('a Water Backup is not offered', () => {
+    let s = makeGame(); let victim: CardId; let water: CardId[]
+    ;[s, victim] = withField(s, 1, 'forwards', '27-127S')
+    ;[s, water] = withCp(s, 0, [WATER_BACKUP])
+    const r = cast(s, '23-119R', Array<string>(4).fill(FIRE_BACKUP))
+    if (r.state.pending?.kind !== 'chooseTargets') throw new Error('no select')
+    expect(r.state.pending.candidates).toHaveLength(4)
+    expect(r.state.pending.candidates).not.toContain(water[0])
+    void victim
+  })
+})
+
+describe('21-010H Taivas — "When Taivas enters the field, you may search for 1 Job Warrior or Card Name Warrior and add it to your hand."', () => {
+  it('finds a Job Warrior (multi-job included) or a card named Warrior, of any cost, and nothing else', () => {
+    let s = makeGame()
+    ;[s] = withDeckTops(s, 0, ['27-122S', '11-010C', '21-010H', '27-128S', '13-125R'])   // Wuk Lamat, Warrior, Taivas, Charlotte (Knight), Yuzuki
+    const r = cast(s, '21-010H', Array<string>(5).fill(FIRE_BACKUP))
+    const p = r.state.pending
+    if (p?.kind !== 'chooseFromDeck') throw new Error('no search')
+    expect([p.min, p.max]).toEqual([0, 1])
+    expect(deckPickCandidates(r.state, p).filter((i) => i < 5), 'not Charlotte').toEqual([0, 1, 2, 4])
+  })
+})
+
+describe('21-010H Taivas — "[0]: Play 1 Job Warrior or Card Name Warrior of cost 3 or less from your hand onto the field. …"', () => {
+  function taivasWithHand(codes: string[]) {
+    let s = makeGame(); let taivas: CardId; const hand: CardId[] = []
+    ;[s, taivas] = withField(s, 0, 'forwards', '21-010H')
+    for (const code of codes) { let id: CardId; [s, id] = withHand(s, 0, code); hand.push(id) }
+    return { s, taivas, hand }
+  }
+
+  it('plays a Warrior of cost 3 or less — Wuk Lamat (Princess/Warrior) or the Warrior Backup — and not Taivas (5) or Charlotte (Knight)', () => {
+    const { s, taivas, hand } = taivasWithHand(['27-122S', '11-010C', '21-010H', '27-128S'])
+    const [wuk, warrior] = hand as [CardId, CardId]
+    const cmds = offered(s, 0, taivas, '21-010H:play')
+    expect(cmds, 'one activation, no declared targets: the play is a select made at resolution').toHaveLength(1)
+    const r = apply(s, cmds[0]!)
+    expect(r.state.pending).toEqual({ kind: 'chooseTargets', player: 0, min: 1, max: 1, candidates: [wuk, warrior] })
+    const done = apply(r.state, { type: 'chooseTargets', player: 0, targets: [warrior] })
+    expect(done.state.players[0].backups.map((b) => b.id)).toContain(warrior)
+    expect(done.events).toContainEqual({ type: 'playedFromHand', player: 0, card: warrior })
+    ok(done.state)
+  })
+
+  it('only during its controller\u2019s turn', () => {
+    let s = makeGame(); let taivas: CardId
+    ;[s, taivas] = withField(s, 1, 'forwards', '21-010H')
+    ;[s] = withHand(s, 1, '11-010C')
+    const handed = apply(s, { type: 'pass', player: 0 }).state
+    expect(handed.priority, 'player 1 holds priority on player 0\u2019s turn').toBe(1)
+    expect(activationCheck(handed, 1, taivas, '21-010H:play')).toBe('21-010H:play may only be used during your turn')
+    expect(offered(handed, 1, taivas, '21-010H:play')).toEqual([])
   })
 })
