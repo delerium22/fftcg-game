@@ -248,6 +248,8 @@ export function searchView(state: GameState, me: PlayerId): PlayerView {
   // A Summon on the stack (rung J1) — public, in no player zone, and `viewFor` shows it too.
   for (const item of state.stack) if (item.kind === 'summon') see(item.card)
   if (state.resolution.placing?.item.kind === 'summon') see(state.resolution.placing.item.card)
+  // `pending` is NOT redacted as `viewFor` redacts a hand select (rung V1-A2): this state is a sampled world, so its
+  // candidates name sampled cards, and `pendingDigest` keys any the root cannot name by the printed bounds alone.
   return {
     me, turn: state.turn, turnPlayer: state.turnPlayer, phase: state.phase, attack: state.attack, priority: state.priority,
     pending: state.pending, resolution: state.resolution, stack: state.stack, passes: state.passes, result: state.result, hand: state.players[me].hand,
