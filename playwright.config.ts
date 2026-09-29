@@ -33,7 +33,12 @@ export default defineConfig({
     // sheet as a first-time player does.
     storageState: {
       cookies: [],
-      origins: [{ origin: 'http://localhost:5199', localStorage: [{ name: 'fftcg.howToPlay.seen', value: '1' }] }],
+      origins: [{ origin: 'http://localhost:5199', localStorage: [
+        { name: 'fftcg.howToPlay.seen', value: '1' },
+        // UI overhaul D24: the suite plays at Instant, where the presentation drains synchronously and no timer can
+        // race the driver. `how-to-play.spec.ts` replaces this whole state, so its URLs carry `motion=instant`.
+        { name: 'fftcg.settings', value: JSON.stringify({ speed: 'instant' }) },
+      ] }],
     },
   },
   webServer: {
