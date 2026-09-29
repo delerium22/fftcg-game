@@ -414,6 +414,14 @@ function verbOf(e: Effect, frame: VerbFrame): Verb | null {
  */
 function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTargets' }>, chosen: readonly CardId[] = []): Verb | null {
   const active = activeAbility(v)
+  const node = targetNode(v, pending)
+  if (!active || !node) return null
+  return nodeVerb(node, { state: stateShim(v), source: active.frame.source, controller: active.frame.controller, chosen })
+}
+
+/** The `chooseTargets` node the pending projects: the program counter's, or the one unambiguous AST match. */
+function targetNode(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTargets' }>): Extract<Effect, { kind: 'chooseTargets' }> | null {
+  const active = activeAbility(v)
   if (!active) return null
   const found: Extract<Effect, { kind: 'chooseTargets' }>[] = []
   const walk = (effects: readonly Effect[]): void => {
@@ -430,8 +438,7 @@ function targetVerb(v: PlayerView, pending: Extract<Pending, { kind: 'chooseTarg
   const exact = effectAtPath(active.ability.effects, active.frame.path, active.frame.modes)
   let node: Extract<Effect, { kind: 'chooseTargets' }> | null = exact?.kind === 'chooseTargets' ? exact : null
   if (!node) { walk(active.ability.effects); node = found.length === 1 ? found[0] ?? null : null }
-  if (!node) return null
-  return nodeVerb(node, { state: stateShim(v), source: active.frame.source, controller: active.frame.controller, chosen })
+  return node
 }
 
 /**
@@ -807,10 +814,26 @@ export const ATTACK_STEP_LABEL: Record<AttackStep, string> = {
   block: 'defence', blocked: 'defence declared', firstStrike: 'first strike', damage: 'damage dealt',
 }
 
+/** The `select` of the `chooseTargets` node the active frame is suspended on (rung V1-A2), or undefined for a choice. */
+function selectOf(v: PlayerView): 'self' | 'opponent' | undefined {
+  return v.pending?.kind === 'chooseTargets' ? targetNode(v, v.pending)?.select : undefined
+}
+
+/** "The AI selects 1 Forward it controls to put into the Break Zone" — or null when the AI is not selecting. */
+function aiSelects(v: PlayerView): string | null {
+  const pending = v.pending
+  if (v.result || pending?.kind !== 'chooseTargets' || pending.player === v.me || selectOf(v) === undefined) return null
+  const purpose = targetVerb(v, pending)?.purpose
+  const noun = candidateNoun(v, pending.candidates, pending.max !== 1).replace('the AI controls', 'it controls').replace("the AI's", 'its')
+  return `The AI selects ${countPhrase(pending.min, pending.max)} ${noun}${purpose ? ` ${purpose}` : ''}`
+}
+
 /** One line stating what the game is waiting for, derived from `pending` first, then `phase`/`attack.step`. */
 export function promptFor(v: PlayerView, legal: readonly Command[]): string {
   if (v.result) return v.result.winner === null ? 'Game over — a draw' : v.result.winner === v.me ? 'Game over — you win' : 'Game over — the AI wins'
-  if (actingIn(v) !== v.me) return 'Waiting for the opponent…'
+  // Rung V1-A2: the AI answering a SELECT — its own "you may", or "your opponent selects" on the human's clause — is
+  // named, because the human's own card is what asked and the board is about to change because of it.
+  if (actingIn(v) !== v.me) return aiSelects(v) ?? 'Waiting for the opponent…'
   if (v.pending) {
     switch (v.pending.kind) {
       case 'chooseFirst': return 'Choose who goes first'
@@ -824,7 +847,9 @@ export function promptFor(v: PlayerView, legal: readonly Command[]): string {
       case 'chooseTargets': {
         const { min, max, candidates } = v.pending
         const purpose = targetVerb(v, v.pending)?.purpose
-        return caused(v, sourced(v, `Choose ${countPhrase(min, max)} ${candidateNoun(v, candidates, max !== 1)}${purpose ? ` ${purpose}` : ''}`))
+        // §11.3.3: a select is not a choice, and the printed text says which it is.
+        const ask = selectOf(v) === undefined ? 'Choose' : 'Select'
+        return caused(v, sourced(v, `${ask} ${countPhrase(min, max)} ${candidateNoun(v, candidates, max !== 1)}${purpose ? ` ${purpose}` : ''}`))
       }
       case 'chooseMode': {
         const { min, max, labels } = v.pending

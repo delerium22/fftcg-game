@@ -1,5 +1,6 @@
 import type { CardDef, PlayerId } from './types.js'
 import { KEYWORDS, opponentOf } from './types.js'
+import type { Effect } from './abilities.js'
 import { EMPTY_RESOLUTION, FIELD_FLAGS } from './abilities.js'
 import type { CardId, CardInstance, GameState, PlayerState } from './state.js'
 import { updatePlayer } from './state.js'
@@ -74,9 +75,39 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
   return problems
 }
 
+/**
+ * Rung V1-A2: the effect shapes the executor trusts, checked once at game creation for data arriving through JSON.
+ * Walks every nesting — `then`, `do`, modes, `if` branches — since a node is as reachable deep as at the top.
+ */
+export function validateEffects(defs: readonly CardDef[]): string[] {
+  const problems: string[] = []
+  const walk = (code: string, id: string, effects: readonly Effect[]): void => {
+    for (const e of effects) {
+      switch (e.kind) {
+        case 'chooseTargets':
+          if (e.select !== undefined && !['self', 'opponent'].includes(e.select)) problems.push(`${code}: ${id} has an unknown select ${String(e.select)}`)
+          if (e.onlyIfChosen !== undefined && e.onlyIfChosen !== true) problems.push(`${code}: ${id} has an \`onlyIfChosen\` that is not true`)
+          walk(code, id, e.then)
+          break
+        case 'chooseModes': for (const m of e.modes) walk(code, id, m.effects); break
+        case 'forEach': case 'onSubject': walk(code, id, e.do); break
+        case 'if': walk(code, id, e.then); walk(code, id, e.else ?? []); break
+        // Leaves: nothing nested. Listed so a new CONTAINER kind fails to compile here instead of going unwalked.
+        case 'dull': case 'freeze': case 'damage': case 'breakCard': case 'addPower': case 'grantKeyword': case 'grantFlag':
+        case 'moveToHand': case 'draw': case 'lookAtDeck': break
+        default: { const _exhaustive: never = e; return _exhaustive }
+      }
+    }
+  }
+  for (const d of defs) for (const a of d.abilities ?? []) walk(d.code, a.id, a.effects)
+  return problems
+}
+
 export function createGame(opts: CreateGameOptions): GameState {
   const bad = validateContinuousStatics(opts.defs)
   if (bad.length) throw new Error(`invalid continuous statics: ${bad.join('; ')}`)
+  const badEffects = validateEffects(opts.defs)
+  if (badEffects.length) throw new Error(`invalid effects: ${badEffects.join('; ')}`)
   const defs = Object.fromEntries(opts.defs.map((d) => [d.code, d]))
   if (!opts.skipDeckValidation) {
     for (const p of [0, 1] as const) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_RESOLUTION, attackCheck, defOf, drainResolution, enqueueTrigger, legalCommands, type Ability, type CardDef, type CardId, type Command, type Effect, type GameState, type PlayerId } from '@fftcg/engine'
+import { EMPTY_RESOLUTION, attackCheck, defOf, drainResolution, enqueueTrigger, legalCommands, viewFor, type Ability, type CardDef, type CardId, type Command, type Effect, type GameState, type PlayerId } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
+import { GreedyAgent } from '../src/greedy.js'
 import { applyNow as apply } from '../../engine/test/helpers.js'
 import { cardValue } from '../src/cardValue.js'
 import { endPhase, VANILLA_POOL, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
@@ -447,5 +448,46 @@ describe('candidateCommands: the V1-A1 shapes', () => {
       s = arm(s, src, 0, a)
       expect(targetsOf(candidateCommands(s, 0)[0]), `${backups} Backups`).toEqual([backups === 2 ? two : three])
     }
+  })
+})
+
+/**
+ * Rung V1-A2 (spec V1-D9): a SELECT the text gives to the opponent is answered by the opponent, from THEIR side —
+ * and priced by the caster, one ply out, as that opponent's best answer, which is the caster's worst.
+ */
+describe('candidateCommands: the V1-A2 selects', () => {
+  const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
+    const q = s.players[p]
+    return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame].map((id) => s.cards[id]!.code)
+  }) as [string[], string[]]
+
+  it('your opponent selects a Forward to break: the opponent gives up its LEAST valuable one', () => {
+    const a = clause('T-ALPH:etb', [{ kind: 'chooseTargets', select: 'opponent', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'breakCard' }] }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-ALPH', a)] }), 0, 0)
+    let src: number, small: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-ALPH')
+    ;[s, small] = withField(s, 1, 'forwards', 'V-F1')   // 3000
+    ;[s] = withField(s, 1, 'forwards', 'V-F8')          // 9000
+    s = arm(s, src, 0, a)
+    expect(s.pending).toMatchObject({ kind: 'chooseTargets', player: 1 })
+    expect(candidateCommands(s, 0), 'the caster has nothing to answer').toEqual([])
+    expect(targetsOf(candidateCommands(s, 1)[0])).toEqual([small])
+    const d = new GreedyAgent({ seed: 1, decks: decksOf(s), depth: 1 }).decide(viewFor(s, 1), legalCommands(s, 1))
+    expect(targetsOf(d)).toEqual([small])
+  })
+
+  it('a mode holding an opponent select is worth the opponent answer: a sure kill of the big Forward outranks it', () => {
+    const a = clause('T-MODES:etb', [{ kind: 'chooseModes', min: 1, max: 1, modes: [
+      { label: 'Your opponent selects one to break', effects: [{ kind: 'chooseTargets', select: 'opponent', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'breakCard' }] }] },
+      { label: 'Deal 8000 to one', effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 8000 }] }] },
+    ] }])
+    let s = withHandSize(makeGame({ defs: [...VANILLA_POOL, bearer('T-MODES', a)] }), 0, 0)
+    let src: number
+    ;[s, src] = withField(s, 0, 'forwards', 'T-MODES')
+    ;[s] = withField(s, 1, 'forwards', 'V-F1')   // 3000: what the opponent would give up
+    ;[s] = withField(s, 1, 'forwards', 'V-F7')   // 8000: what 8000 damage kills
+    s = arm(s, src, 0, a)
+    // Priced as the CASTER's best pick, the select would tie the damage mode and win on index.
+    expect(modesOf(candidateCommands(s, 0)[0])).toEqual([1])
   })
 })

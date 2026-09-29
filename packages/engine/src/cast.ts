@@ -45,6 +45,8 @@ export function backAttackAllowed(state: GameState): boolean {
 export function canDeclare(state: GameState, source: CardId, controller: PlayerId, effects: readonly Effect[]): boolean {
   const head = effects[0]
   if (!head) return true
+  // A select is not a choice (§11.3.3, rung V1-A2): placement stops at it, as it does at any non-choice.
+  if (head.kind === 'chooseTargets' && head.select !== undefined) return true
   if (head.kind === 'chooseTargets') {
     const candidates = targetCandidates(state, source, controller, head.from)
     if (candidates.length < head.min) return false

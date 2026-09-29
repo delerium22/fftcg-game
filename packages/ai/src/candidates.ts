@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -252,10 +252,13 @@ function effectsValue(state: GameState, me: PlayerId, source: CardId, controller
   let v = 0
   for (const eff of effects) {
     if (eff.kind === 'chooseTargets') {
-      const { scores } = rankBy(targetCandidates(state, source, controller, eff.from), (id) => targetScore(state, me, source, controller, eff.then, id))
+      // Ranked by whoever ANSWERS, summed for `me` (rung V1-A2, spec V1-D9): "your opponent selects" is the
+      // opponent's best answer, which is the caster's worst — a min, not the max a caster's own choice is.
+      const selector = eff.select === 'opponent' ? opponentOf(controller) : me
+      const { ranked, scores } = rankBy(targetCandidates(state, source, controller, eff.from), (id) => targetScore(state, selector, source, controller, eff.then, id))
       const max = Math.min(eff.max, scores.length)
       if (eff.min > scores.length) continue   // cannot legally resolve: the executor no-ops it
-      for (let k = 0; k < bestSize(scores, Math.min(eff.min, max), max); k++) v += scores[k] as number
+      for (const id of ranked.slice(0, bestSize(scores, Math.min(eff.min, max), max))) v += targetScore(state, me, source, controller, eff.then, id)
     } else if (eff.kind === 'forEach') {
       for (const id of targetCandidates(state, source, controller, eff.from)) v += targetScore(state, me, source, controller, eff.do, id)
     } else if (eff.kind === 'chooseModes') {
