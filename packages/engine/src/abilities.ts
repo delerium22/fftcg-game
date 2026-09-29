@@ -120,6 +120,14 @@ export type Effect =
   | { readonly kind: 'freeze' }
   | { readonly kind: 'damage'; readonly amount: Amount }
   | { readonly kind: 'breakCard' }
+  /**
+   * "Put it into the Break Zone" (rung V1-A2, spec V1-D8) — Alphinaud, Ultima Weapon, Vincent. A zone movement from
+   * the field to the OWNER's Break Zone, NOT a break (§15.1.1.3.2): `cannotBeBroken` does not stop it and there is
+   * no `broken` event, but watchers of "put from the field into the Break Zone" see it and the LB sweep applies.
+   */
+  | { readonly kind: 'putIntoBreakZone' }
+  /** "Activate it" (rung V1-A2, §15.1.1.1): a dull Character turns active; activating an active one is legal and does nothing. */
+  | { readonly kind: 'activate' }
   | { readonly kind: 'addPower'; readonly amount: number }
   | { readonly kind: 'grantKeyword'; readonly keyword: Keyword }
   | { readonly kind: 'grantFlag'; readonly flag: FieldFlag }
@@ -381,8 +389,12 @@ export type StaticCondition =
 
 export type ActivationSourceZone = 'field' | 'hand' | 'breakZone'
 
-/** Mirrors `ZoneTransition.reason` (rules.ts); declared here so the trigger event can carry it without a cycle. */
-export type ZoneTransitionReason = 'zeroPower' | 'damage' | 'ability' | 'cost' | 'sameName' | 'lightDark' | 'backupLimit'
+/**
+ * Mirrors `ZoneTransition.reason` (rules.ts); declared here so the trigger event can carry it without a cycle.
+ * `ability` is an ability BREAK (`breakCard`); `putByAbility` is an effect that says "put into the Break Zone" (rung
+ * V1-A2), which is not a break (§15.1.1.3.2) — kept apart so nothing reading "was broken" off `ability` miscounts it.
+ */
+export type ZoneTransitionReason = 'zeroPower' | 'damage' | 'ability' | 'putByAbility' | 'cost' | 'sameName' | 'lightDark' | 'backupLimit'
 
 /**
  * What activating costs. Every part is paid at once or the activation is not legal at all (§11.6.10) — there

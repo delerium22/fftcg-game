@@ -78,7 +78,8 @@ export interface ZoneTransition {
   readonly from: 'forwards' | 'backups'
   readonly to: 'breakZone'
   /**
-   * `ability` is a direct `breakCard`; `zeroPower`/`damage` are the §12.4.4/§12.4.5 rule processes; `cost` is
+   * `ability` is a direct `breakCard`; `putByAbility` an effect's "put into the Break Zone" (rung V1-A2, not a
+   * break); `zeroPower`/`damage` are the §12.4.4/§12.4.5 rule processes; `cost` is
    * a card put into the Break Zone to PAY for its own activated ability (spec C3-7).
    *
    * `cost` is not a break (§15.1.1.3.2): `cannotBeBroken` does not prevent it and no `broken` event is

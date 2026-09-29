@@ -307,7 +307,8 @@ export function describeTriggerCause(v: PlayerView, ev: TriggerCause): string {
   if (ev.kind === 'enteredField') return `${ownedCard(v, ev.controller, ev.card)} entered the field`
   if (ev.kind === 'chosen') return `${qualifiedName(v, ev.card)} was chosen by ${qualifiedName(v, ev.by)}`
   if (ev.kind === 'zoneChange') {
-    const how = ev.reason === 'cost' ? 'was put into the Break Zone' : 'was broken'
+    // Rung V1-A2: an effect that says "put into the Break Zone" is not a break either.
+    const how = ev.reason === 'cost' || ev.reason === 'putByAbility' ? 'was put into the Break Zone' : 'was broken'
     return `${ownedCard(v, ev.controller, ev.card)} ${how}`
   }
   if (ev.victim !== null) return `${qualifiedName(v, ev.source)} dealt damage to ${ev.victim === v.me ? 'you' : 'the AI'}`
@@ -395,6 +396,10 @@ function verbOf(e: Effect, frame: VerbFrame): Verb | null {
     case 'freeze': return { imperative: 'Freeze', purpose: 'to freeze' }
     case 'damage': return { imperative: `Deal ${damagePhrase(e.amount, frame)} to`, purpose: `to deal ${damagePhrase(e.amount, frame)} to` }
     case 'breakCard': return { imperative: 'Break', purpose: 'to break' }
+    // Rung V1-A2. Not "break" (§15.1.1.3.2). The names follow a colon: "Put Cloud into the Break Zone" would need the
+    // object in the middle of the imperative, which the button's `<imperative> <names>` shape cannot say.
+    case 'putIntoBreakZone': return { imperative: 'Put into the Break Zone:', purpose: 'to put into the Break Zone' }
+    case 'activate': return { imperative: 'Activate', purpose: 'to activate' }
     case 'addPower': return { imperative: `Give ${signed(e.amount)} power to`, purpose: `to give ${signed(e.amount)} power` }
     case 'grantKeyword': return { imperative: `Give ${KEYWORD_LABEL[e.keyword]} to`, purpose: `to give ${KEYWORD_LABEL[e.keyword]}` }
     case 'grantFlag': return { imperative: 'Protect', purpose: FLAG_PURPOSE[e.flag] }

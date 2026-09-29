@@ -93,7 +93,7 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
         case 'forEach': case 'onSubject': walk(code, id, e.do); break
         case 'if': walk(code, id, e.then); walk(code, id, e.else ?? []); break
         // Leaves: nothing nested. Listed so a new CONTAINER kind fails to compile here instead of going unwalked.
-        case 'dull': case 'freeze': case 'damage': case 'breakCard': case 'addPower': case 'grantKeyword': case 'grantFlag':
+        case 'dull': case 'freeze': case 'damage': case 'breakCard': case 'putIntoBreakZone': case 'activate': case 'addPower': case 'grantKeyword': case 'grantFlag':
         case 'moveToHand': case 'draw': case 'lookAtDeck': break
         default: { const _exhaustive: never = e; return _exhaustive }
       }
