@@ -98,6 +98,16 @@ export function checkInvariants(state: GameState): string[] {
   if (state.attack?.step === 'firstStrike' && state.attack.firstStrikers === undefined) problems.push('a firstStrike step without the fixed First Strike set (§15.2.3.2)')
   // The held batch lives only in the window, or in the `damage` step while the blocker's post-window split is owed.
   if (state.attack?.heldDamage !== undefined && state.attack.step !== 'firstStrike' && !(state.attack.step === 'damage' && state.pending?.kind === 'assignPartyDamage')) problems.push('a held first batch outside the First Strike window')
+  // Rung V2-A1 (plan R9): a held occurrence is a damage packet AS APPLIED, queued once in the second batch and never
+  // applied again — so nothing downstream can repair a malformed one.
+  for (const h of state.attack?.heldDamage ?? []) {
+    const at = `held occurrence from ${h.source}`
+    if (!Number.isInteger(h.amount) || h.amount <= 0) problems.push(`${at}: amount ${h.amount} is not a positive integer`)
+    if ((h.target === null) === (h.victim === null)) problems.push(`${at}: exactly one of target and victim must be set`)
+    if (h.sourceController !== 0 && h.sourceController !== 1) problems.push(`${at}: sourceController ${String(h.sourceController)}`)
+    if (h.victim !== null && h.victim !== 0 && h.victim !== 1) problems.push(`${at}: victim ${String(h.victim)}`)
+    if (h.target !== null && h.targetController !== 0 && h.targetController !== 1) problems.push(`${at}: a Forward hit without its targetController`)
+  }
   if (state.result && state.pending) problems.push('pending decision after game over')
 
   // --- the resolution agenda (spec C1-A7) ---

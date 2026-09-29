@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, resolveChosenSpec, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, damageProvenance, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, resolveChosenSpec, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, previewDamagePacket, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -128,10 +128,15 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
         // it the same way when the hit lands. Zero deals nothing and is worth nothing.
         const amount = amountOf(state, controller, eff.amount)
         if (amount <= 0) break
+        // Rung V2-A1 (plan R9, spec V2-D8): priced at what the ONE application point would mark — the same number
+        // until rung V2-A2's replacement effects, and then the only number that is true. 0 is not damage: no break,
+        // no dealt-damage trigger (spec V2-D4), so it is worth nothing.
+        const { applied, final } = previewDamagePacket(state, { target: id, amount, dealers: [{ source, sourceController: controller }], ...damageProvenance(state, { source, controller }) })
+        if (!applied || final <= 0) break
         // §12.4.5: damage ≥ power breaks. Damage that actually breaks is worth the whole card; damage that does
         // not is worth only the exposure it leaves behind. C2: a source that breaks what it damages (Luso) kills
         // the target whatever its power — `cannotBeBroken` stops both routes (§12.4.5 and `breakCard` alike).
-        const lethal = power >= 1000 && loc.card.damage + amount >= power
+        const lethal = power >= 1000 && loc.card.damage + final >= power
         const breaks = (lethal || breaksWhatItDamages(state, source)) && !flagsOf(state, loc.card).has('cannotBeBroken')
         const kill = cardValue(def) + power / 1000
         if (breaks) { d -= kill; break }
@@ -147,7 +152,7 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
         // chip damage is worth literally 0 to the search, so a policy that priced it richly would chase
         // value the search then fails to confirm. It keeps a kill ahead of a chip across this pool's whole
         // power range while still preferring a bigger dent to a smaller one.
-        const dealt = Math.min(amount, Math.max(0, power - loc.card.damage))
+        const dealt = Math.min(final, Math.max(0, power - loc.card.damage))
         d -= power > 0 ? (dealt / power) * kill * 0.25 : 0
         break
       }
@@ -365,15 +370,20 @@ type Split = ReturnType<typeof legalPartyDamageAssignments>[number]
 function partyDamageCandidates(state: GameState): Split[] {
   const all = legalPartyDamageAssignments(state, PARTY_SPLIT_SCAN_CAP)
   if (all.length <= 1) return all
+  // More than one split means a blocker on the field (`legalPartyDamageAssignments` returns `[[]]` otherwise).
+  const blockerId = state.attack!.blocker as CardId
+  const blocker = { source: blockerId, sourceController: findFieldCard(state, blockerId)!.owner }
   const worth = (split: Split): { broken: number; wasted: number } => {
     let broken = 0, wasted = 0
     for (const { target, amount } of split) {
+      // Rung V2-A1 (plan R9): each assignment is one packet from the blocker, priced at what would be marked.
+      const { applied, final } = previewDamagePacket(state, { target, amount, dealers: [blocker], cause: 'battle', causeController: blocker.sourceController })
       const loc = findFieldCard(state, target)
-      if (!loc || loc.zone !== 'forwards') { wasted += amount; continue }
+      if (!applied || final <= 0 || !loc) { wasted += amount; continue }
       const power = powerOf(state, loc.card)
-      if (flagsOf(state, loc.card).has('cannotBeBroken') || power < 1000) { wasted += amount; continue }
+      if (flagsOf(state, loc.card).has('cannotBeBroken') || power < 1000) { wasted += final; continue }
       const needed = Math.max(0, power - loc.card.damage)
-      if (amount >= needed) { broken += cardValue(defOf(state, target)); wasted += amount - needed }
+      if (final >= needed) { broken += cardValue(defOf(state, target)); wasted += final - needed }
     }
     return { broken, wasted }
   }

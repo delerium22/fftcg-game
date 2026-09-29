@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Ability, Effect, Frame } from '../src/abilities.js'
-import type { CardId, GameState } from '../src/state.js'
+import type { CardId, DamageOccurrence, GameState } from '../src/state.js'
 import type { Event } from '../src/events.js'
 import type { DamagePacket } from '../src/damage.js'
 import { applyDamagePacket, damageProvenance, previewDamagePacket } from '../src/damage.js'
@@ -172,5 +172,29 @@ describe('ability damage through the applier (rung V2-A1, plan R9 exact order)',
       { type: 'abilityDamage', source: src, target: f2, original: 2000, amount: 2000, trace: [] },
       { type: 'abilityDamage', source: src, target: f1, original: 2000, amount: 2000, trace: [] },
     ])
+  })
+})
+
+describe('held First Strike occurrences are checked by the invariants (rung V2-A1, plan R9)', () => {
+  const held = (heldDamage: readonly DamageOccurrence[]): string[] => {
+    let s = makeGame(); let a: number, b: number
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    ;[s, b] = withField(s, 1, 'forwards', 'V-F3')
+    return checkInvariants({ ...s, phase: 'attack', attack: { step: 'firstStrike', attackers: [a], blocker: b, firstStrikers: [a], heldDamage } })
+      .filter((p) => p.startsWith('held occurrence'))
+  }
+  const good = { source: 1, sourceController: 0 as const, target: 2, victim: null, amount: 5000, targetController: 1 as const }
+
+  it('a well-formed held occurrence passes', () => {
+    expect(held([good])).toEqual([])
+  })
+  it('refuses a zero, fractional or negative amount, both or neither recipient, and a Forward hit without its side', () => {
+    expect(held([{ ...good, amount: 0 }])).toEqual([expect.stringContaining('positive integer')])
+    expect(held([{ ...good, amount: 2500.5 }])).toEqual([expect.stringContaining('positive integer')])
+    expect(held([{ ...good, victim: 1 }])).toEqual([expect.stringContaining('exactly one')])
+    expect(held([{ ...good, target: null }])).toEqual([expect.stringContaining('exactly one')])
+    const { targetController: _drop, ...noSide } = good
+    void _drop
+    expect(held([noSide])).toEqual([expect.stringContaining('targetController')])
   })
 })
