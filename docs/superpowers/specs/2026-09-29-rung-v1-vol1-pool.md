@@ -257,7 +257,17 @@ the three cards), 2cea883 (the agreement trace), 6d716ab (the board row and the 
   `hd5[codes]` only when a card is known (E-D3); ACTION keys still name a known opponent hand card `?` (R7).
 - R2: `toHand` (the only path from a public zone to a hand: bounce, Break Zone retrieval) learns the card for both
   players. Review Focus 1's test bounces a Forward that was never exposed, so the bit can only come from the bounce.
-- E-D4 as planned: knowledge ends only on a shuffle. No effect returns a hand card to the deck today.
+- E-D4, corrected after the fresh review (H1): knowledge ends on a shuffle, AND when a PRIVATE look (`audience:
+  'self'`) exposes a position — `forget(exposed)` runs before the controller learns them, because its controller may
+  take or rearrange those cards unseen. Without it, a card Miner had revealed and sent under, then taken by a private
+  look, surfaced in `knownHand` and was named by its unrevealed `addedToHand`; and a revealed slot left behind told the
+  opponent the take by elimination (the older C9 leak). `revealTaken` re-teaches the taken card after. No effect
+  returns a hand card to the deck today.
+- Also from that review: the web narrator names an unrevealed `addedToHand` card only when the view AFTER the move
+  carries it (M-level: it used to borrow the name from the view before); `useGame.test.ts`'s hand-leak check justifies
+  each known AI hand card by an event the human saw (a revealed take, a return to hand, or an `all` reveal then a take
+  or draw, not undone by a private look), and fails on the H1 probe without the engine fix (M1); `stepAi` returns its
+  events for that; two known same-name cards in the AI hand row number "(1)" and "(2)" (L1).
 - Narration: "The AI reveals Porom and adds it to its hand" — "its", as every other AI line says, where the plan wrote
   "their"; the name is bare, as `playedFromDeck`'s is. The AI's move label for the search stays "Take 1 card" (it is
   written from the pre-reveal position); the next line names the card.
