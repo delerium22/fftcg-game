@@ -119,7 +119,11 @@ split out ahead of the cards. Deviations and readings from the plan:
   you control" / "the AI controls"; a `characters` choice whose candidates are all Forwards still reads "Forward",
   because the noun is read from where the candidates sit.
 - Not touched (V1-D16): `describeAbilityEffect` reads the printed text; no new pending shape (`keys.ts`), no new state
-  field (`checkInvariants`), no timing-matrix row.
+  field (`checkInvariants`). Timing matrix unchanged: row 11.11.7 (a moved card read as it was) stays `simplified`,
+  because the gone-source case shows only that the field effects skip it, not last-known information.
+- Known gap: inside a chooser's `then`, `targetDelta` prices `onSource` at 0, so on a min-0 chooser `bestSize` cannot
+  see it. A "you may select …; when you do so, this card gains …" shape would decline the pick and lose the self-grant.
+  No pool card has that shape (Jecht and LB Luso are plain).
 
 ## Source and the list (V1-D1)
 

@@ -38,7 +38,7 @@ const activate = (s: GameState, source: CardId, abilityId: string) =>
   apply(s, { type: 'activateAbility', player: 0, source, abilityId, payment: FREE, targets: [] })
 
 describe('V1-A4 — onSource binds the ability\'s own card', () => {
-  it('L1 §11.6 — "[0]: this card gains +2000 power and Brave": the source is pumped, and nothing else changes', () => {
+  it('L1 §11.6.1 — "[0]: this card gains +2000 power and Brave": the source is pumped, and nothing else changes', () => {
     let s = makeGame({ defs: DEFS })
     let src: CardId, other: CardId, theirs: CardId
     ;[s, src] = withField(s, 0, 'forwards', 'T-SRC')
@@ -56,7 +56,7 @@ describe('V1-A4 — onSource binds the ability\'s own card', () => {
     ok(r.state)
   })
 
-  it('L1 §11.8 — an observer clause with onSource pumps the WATCHER, not the card that arrived', () => {
+  it('L1 §11.8.1 — an observer clause with onSource pumps the WATCHER, not the card that arrived', () => {
     let s = makeGame({ defs: DEFS })
     let watcher: CardId, arriving: CardId
     ;[s, watcher] = withField(s, 0, 'forwards', 'T-SRC-WATCH')
