@@ -51,6 +51,50 @@ readings from the plan:
 - Timing matrix: row 11.3.3 now also cites the select test ("select" is not "choose"). §7.7.4 and §15.1.1.1/.3/.4 have
   no rows (the matrix covers chapters 9–12 and 15.1.1.9); their Layer 1 cases are in `engine/test/selects.test.ts`.
 
+**As built (V1-A3), 2026-09-30.** Commits ab95c84 (`anyOf`, multi-job, `elementIn`, `sameElementAsChosen`), ad09f30
+(special abilities, `discardSameName`, R10), 1d0669b (`onlyCp`), e4cd01c (`cannotUseActionAbilities`). Deviations and
+readings from the plan and its revisions R1–R10:
+- `sameElementAsChosen` resolves to `elementIn` from the PRINTED Elements of the first chosen card, wherever that card
+  now is (no effect changes Elements). It is resolved in `runEffect` (both chooser paths and `lookAtDeck`), in
+  `chooseTargetsCheck` and in `determinise`'s hand re-sample, which read the suspended frame's `chosen`: at suspension
+  that is the enclosing binding. `anyOf: []` and `elementIn: []` match nothing.
+- R1 validation is conservative. The axis is admitted in `lookAtDeck.take.filter` under a `chooseTargets` binding, and
+  in a `chooseTargets.from.filter` bound by a choice only when the node is a select or under an `if` (both certainly
+  made at resolution). A choice after a non-choice sibling is also made at resolution but is refused; no pool card needs
+  it. The axis is refused on a `forEach`, in `subjectMatches`, in a counted amount, in an `observesEnterField` filter
+  and in any continuous scope or condition. `validateContinuousStatics` now also reads the keys of `anyOf` members.
+- A declared choice of none is skipped with its `then` at resolution (existing §11.11.2 behaviour), so Luso's "nothing
+  chosen" path is reached only under a select. The Layer 1 case uses a min-0 select for it.
+- V1-D13's cost is `discardSameName: true`, not `: 1`. `activationCheck` requires another same-name card in hand
+  ("no card with the same name in your hand (§11.7.1)"); `sameNameCheck` (activate.ts) judges `Payment.sameName` for
+  `isLegal` and `applyCosts`. The canonical payer is the first same-name hand card that the CP payment does not already
+  discard. A cast with `sameName` is refused (`CAST_SAME_NAME`, cast.ts).
+- `describeAbilityCost(cost, sourceName?)` does not render the S icon: the icon IS the discard. The web and the CLI
+  prefix the proper name ("Jecht's Jecht Beam [Dull], discard Jecht: …"); the CLI also lists the payer under "paying".
+- The Jecht-shaped cases choose an opponent's Forward only. The engine does not exclude the source from "Choose 1
+  Forward"; whether §11.6.5/§11.7.5 "cannot choose themselves" means the source card is unchanged and untested here.
+- Timing matrix: 11.7.1, 11.7.2, 11.7.2.1, 11.7.2.2, 11.7.5, 11.7.10, 11.7.11 and 11.7.12 are `tested`; 11.7.3/11.7.4
+  are `simplified` (the activate.ts marker now cites them, R5); the rest are `n/a` with the reason.
+- R2: the AI injects the canonical payer in `activationCandidates`; the discard is not priced separately.
+- R3: `canPay(req, cp)` takes the requirement (`CpToPay`); new exports `onlyAdmissible` and `payShortfall`, whose
+  message adds "(only fire CP may pay it)". The enumerators and `canAffordCast` try only admissible sources, and a
+  discard declares only the restricted Element. The web `crystals()` applies the same narrowing.
+- R3 and the plan's "a Fire/Water dual Backup counts as Fire": `backupElements` still gives a PRINTED dual Backup only
+  its first Element (the existing C6 rule, unchanged). The flexible case is therefore tested with a Water Backup that
+  also produces Fire (Moogle's shape). A Fire/Water card is discarded as Fire only.
+- Task 3's "`forcedPass` passes" is not asserted. In the turn player's own Main Phase with an empty stack
+  `isResponseWindow` is false, so `forcedPass` is null whatever is affordable. The case asserts `canAffordCast` false
+  and that no cast of Ward is listed.
+- The card sheet has no activation-refusal slot; it shows only a refused cast. The ban shows as a "No action
+  abilities" badge on the card, and the ability's button is absent, as for every other activation refusal. A
+  `grantFlag` EFFECT of the ban (none in the pool) reads "Restrict … from using action abilities" in the web.
+- R4's normalise case passes on the existing code: `stripInline` already removes `[[s]]…[[/]]` and renders 《S》 as
+  `[S]`, one line per clause.
+- Known gaps: R7 — `evaluate.ts` has no term for the ban (an AI tuning gap; a weight would change measured win rates).
+  R8 — the activation preflight with an empty payment may count the same-name card as a hand target; no pool card
+  combines a special ability with a hand target. The AI's `targetDelta` prices a `grantFlag` effect only for
+  `cannotBeBroken`, as before.
+
 ## Source and the list (V1-D1)
 
 Starter Set 2025 Vol. 1 is Fire/Water, built around Zack: 50 main-deck cards and an 8-card LB deck (official product
