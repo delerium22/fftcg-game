@@ -1,0 +1,7 @@
+# Starter Set 2025 Vol. 1 — the LB deck (§7.14 / §8.1.1.1: up to eight Limit Break cards, never shuffled).
+# UNOFFICIAL list, same source as starter-2025-vol1.txt: Materia Hunter product 229 (spec V1-D1).
+2 22-112R
+2 22-123R
+1 23-119R
+1 23-130H
+2 24-126H

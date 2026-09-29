@@ -1,6 +1,7 @@
 import type { CardId, Command, Event, FieldCard, GameState, PlayerId } from '@fftcg/engine'
 import { actingPlayer, apply as engineApply, applyChooseFirst, applyMulligan, createGame, drainResolution, hasResolutionWork, isResponseWindow } from '@fftcg/engine'
-import { loadCards } from '../src/index.js'
+import { readFileSync } from 'node:fs'
+import { loadCards, parseDeckFile } from '../src/index.js'
 
 /**
  * Rung J9: the real-card fixture helpers, shared by `abilities.test.ts` and the Layer 3 scenarios in `scenarios/`.
@@ -10,15 +11,24 @@ import { loadCards } from '../src/index.js'
 
 export const DEFS = loadCards()
 
-/** 50 cards, ≤3 copies of each of the 22 main-deck codes (§8.1.1.1–2); the LB cards are the LB deck (§8.1.3, rung J8). */
+/**
+ * Rung V1-B (plan R3): the fixtures stay on the Vol. 2 pool. The pool now holds Vol. 1 too, so "every card in `DEFS`"
+ * would change the deck (and every seed-pinned fixture) and double every LB card (14 > 8, §8.1.3). The codes come from
+ * the Vol. 2 deck files; the construction below is unchanged, so `DECK` and `LB_DECK` are what they were.
+ */
+const VOL2 = new Set(['starter-2025-vol2.txt', 'starter-2025-vol2-lb.txt']
+  .flatMap((f) => parseDeckFile(readFileSync(new URL(`../../../decks/${f}`, import.meta.url), 'utf8'))))
+const VOL2_DEFS = DEFS.filter((d) => VOL2.has(d.code))
+
+/** 50 cards, ≤3 copies of each of the 22 Vol. 2 main-deck codes (§8.1.1.1–2); the LB cards are the LB deck (§8.1.3, rung J8). */
 export const DECK: string[] = (() => {
-  const codes = DEFS.filter((d) => d.limitBreak === undefined).map((d) => d.code)
+  const codes = VOL2_DEFS.filter((d) => d.limitBreak === undefined).map((d) => d.code)
   const out: string[] = []
   for (let i = 0; out.length < 50; i++) out.push(codes[i % codes.length] as string)
   return out
 })()
-/** The LB deck both seats play in these fixtures: every LB card in the pool, twice (rung J8). */
-export const LB_DECK: string[] = DEFS.filter((d) => d.limitBreak !== undefined).flatMap((d) => [d.code, d.code])
+/** The LB deck both seats play in these fixtures: every Vol. 2 LB card, twice (rung J8). */
+export const LB_DECK: string[] = VOL2_DEFS.filter((d) => d.limitBreak !== undefined).flatMap((d) => [d.code, d.code])
 
 export function makeGame(): GameState {
   let s = createGame({ seed: 1, decks: [DECK, DECK], defs: DEFS, lbDecks: [LB_DECK, LB_DECK] })
@@ -70,6 +80,8 @@ export function withBreakZone(state: GameState, player: PlayerId, code: string):
 /** `n` active generic Backups of one element, as CP sources. Backups produce their FIRST printed element. */
 export const EARTH_BACKUP = '18-064C'      // Geomancer, generic
 export const LIGHTNING_BACKUP = '18-069C'  // Red Mage, generic
+export const FIRE_BACKUP = '18-003C'       // Machinist, generic (rung V1-B; a Job Standard Unit, which LB Luso watches)
+export const WATER_BACKUP = '18-094C'      // Geomancer 18-094C, generic (rung V1-B; also a Job Standard Unit)
 export function withCp(state: GameState, player: PlayerId, codes: string[]): [GameState, CardId[]] {
   let s = state
   const ids: CardId[] = []

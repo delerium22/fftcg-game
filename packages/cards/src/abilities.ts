@@ -1,4 +1,5 @@
 import type { Ability, CardDef, CardType } from '@fftcg/engine'
+import { VOL1_ABILITIES, VOL1_CLAUSES, VOL1_INERT } from './abilities-vol1.js'
 
 /**
  * The hand-written ability ASTs: the five rung-C1 clauses (spec C1-1/C1-10) plus C2's five (C2-12).
@@ -26,6 +27,11 @@ import type { Ability, CardDef, CardType } from '@fftcg/engine'
  * A clause is one ability, not one printed line: Shantotto and Ramuh each print their modes on their own
  * lines but are a single modal clause, so they count 1. Cards whose two clauses are a static/continuous
  * one plus an activated one (Odin, Sphene) count both.
+ *
+ * Rung V1-B (plan R2): where ONE printed clause is encoded as SEVERAL abilities — "When Zack enters the field or
+ * attacks" is an `:etb` and an `:attack` — the count is of those AST units, not of the printed clause. Counting the
+ * printed text would let the extra encoded half cover a real gap elsewhere on the card. The Vol. 1 counts live in
+ * `abilities-vol1.ts` and are spread in at the end.
  */
 export const ABILITY_CLAUSES: Record<string, number> = {
   '22-119R': 1,   // ETB pump + Brave (rung J8; the LB line and the reminder are not clauses)
@@ -49,6 +55,7 @@ export const ABILITY_CLAUSES: Record<string, number> = {
   '27-125S': 2,   // on damaging a Forward: break it | on damaging the opponent: modal — both C2, so 0 warnings
   '27-126S': 2,   // static Break Zone protection | [0]: retrieve
   '27-127S': 2,   // EX BURST ETB break | when an opponent's Forward is broken — both C2 stage 1, so 0 warnings
+  ...VOL1_CLAUSES,   // rung V1-B
 }
 
 // ---------------------------------------------------------------------------
@@ -768,6 +775,7 @@ export const ABILITIES: Record<string, readonly Ability[]> = {
   // removes an OPPONENT's card, so it has nothing to protect against. See the README.
   '27-126S': [SPHENE_RETRIEVE],
   '27-127S': [LIGHTNING_ETB, LIGHTNING_OPPONENT_BROKEN],
+  ...VOL1_ABILITIES,   // rung V1-B
 }
 
 /**
@@ -788,6 +796,7 @@ export const INERT_CLAUSES: Record<string, { readonly count: number; readonly wh
   // only removal is the `selfRemoveFromGame` COST — a card paying with itself, out of its own Break Zone,
   // which is neither an opponent's doing nor something this clause would stop.
   '27-126S': { count: 1, why: "no effect in the pool removes a card from the game; the only removal is a card's own cost" },
+  ...VOL1_INERT,   // rung V1-B
 }
 
 export function withAbilities(defs: readonly CardDef[]): CardDef[] {

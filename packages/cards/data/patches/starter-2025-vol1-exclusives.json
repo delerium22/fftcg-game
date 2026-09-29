@@ -1,0 +1,14 @@
+[
+  { "code": "27-122S", "name": "Wuk Lamat", "type": "forward", "elements": ["fire"], "cost": 3, "power": 7000, "keywords": [], "generic": false, "exBurst": false, "hasAbilities": true,
+    "job": "Princess/Warrior", "categories": ["XIV"],
+    "text": "If you control 7 or more Characters, Wuk Lamat gains \"If a Forward you control deals damage to a Forward, the damage increases by 2000 instead.\"\nWhen Wuk Lamat enters the field or attacks, choose 1 Forward opponent controls. If you control 5 or more Characters, deal it 7000 damage." },
+  { "code": "27-123S", "name": "Zack", "type": "forward", "elements": ["fire"], "cost": 5, "power": 9000, "keywords": [], "generic": false, "exBurst": false, "hasAbilities": true,
+    "job": "SOLDIER", "categories": ["VII"],
+    "text": "If your opponent controls 3 or more Forwards, Zack gains Haste.\nWhen Zack enters the field or attacks, deal 1000 damage for each Backup you control to all the Forwards opponent control." },
+  { "code": "27-128S", "name": "Charlotte", "type": "forward", "elements": ["water"], "cost": 4, "power": 8000, "keywords": [], "generic": false, "exBurst": false, "hasAbilities": true,
+    "job": "Knight", "categories": ["FFBE"],
+    "text": "If Charlotte is dealt damage, reduce the damage by 1000 instead.\nThe Forwards you control cannot be chosen by your opponent's Summons of cost 1.\nThe Forwards opponent controls cannot use action abilities." },
+  { "code": "27-129S", "name": "Yuna", "type": "forward", "elements": ["water"], "cost": 4, "power": 7000, "keywords": [], "generic": false, "exBurst": false, "hasAbilities": true,
+    "job": "Gullwings", "categories": ["X"],
+    "text": "When Yuna enters the field, you may play 1 Forward of cost 3 from your hand onto the field.\nWhen Yuna attacks, look at the top 3 cards of your deck. Add 1 card among them to your hand and return the other cards to the bottom of your deck in any order." }
+]

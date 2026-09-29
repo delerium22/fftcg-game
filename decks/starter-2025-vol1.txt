@@ -1,0 +1,20 @@
+# Starter Set 2025 Vol. 1 — Fire/Water (Zack). Main deck only; the LB deck is starter-2025-vol1-lb.txt.
+# UNOFFICIAL list: Square Enix does not publish it. Source: Materia Hunter product 229, whose sibling product 230
+# matched the retail Vol. 2 list card for card (spec 2026-09-29-rung-v1-vol1-pool.md, V1-D1).
+3 27-122S
+3 27-123S
+3 27-128S
+3 27-129S
+3 1-170C
+3 3-143C
+3 11-010C
+3 11-121C
+3 12-005C
+3 13-013C
+3 13-125R
+3 18-003C
+3 18-094C
+3 18-129C
+2 20-106R
+3 21-001R
+3 21-010H
