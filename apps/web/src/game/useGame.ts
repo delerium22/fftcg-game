@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, actionMenu, apply, canAffordCast, createGame, defOf, forcedDecision, isResponseWindow, legalCommands, viewFor,
-  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldCard, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta } from '@fftcg/engine'
+  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldCard, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta, observesType } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECKS, LB_DECKS } from '../deck.js'
 import { ATTACK_STEP_LABEL, bareName, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
@@ -282,7 +282,7 @@ function causeOf(
     // queue across a prompt) got its cause from the other route. Two paths, disagreeing.
     const wants = (controller: PlayerId): boolean =>
       trigger.whose === 'any' || (trigger.whose === 'self') === (controller === e.player)
-    const hit = enterHits.find((h) => !h.used && h.type === trigger.of && wants(h.controller))
+    const hit = enterHits.find((h) => !h.used && observesType(trigger.of, h.type) && wants(h.controller))
     if (!hit) return null
     hit.used = true
     return { kind: 'enteredField', card: hit.card, controller: hit.controller }
