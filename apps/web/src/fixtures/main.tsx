@@ -3,6 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { bootstrap } from '../bootstrap.js'
 import { Gallery } from './Gallery.js'
 import '../styles.css'
+import '@fontsource/barlow/500.css'
+import '@fontsource/barlow/600.css'
+import '@fontsource/barlow-condensed/600.css'
+import '@fontsource/barlow-condensed/800.css'
+import '@fontsource/barlow-condensed/900.css'
+import '@fontsource/barlow-condensed/900-italic.css'
+import '../tokens.css'
 import './fixtures.css'
 
 // The same page-load setup as the game, so `?art=off&motion=instant` means the same thing here.

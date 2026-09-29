@@ -13,6 +13,8 @@
     "@fftcg/ai": "workspace:*",
     "@fftcg/cards": "workspace:*",
     "@fftcg/engine": "workspace:*",
+    "@fontsource/barlow": "5.3.0",
+    "@fontsource/barlow-condensed": "5.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
