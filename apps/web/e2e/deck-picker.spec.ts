@@ -10,8 +10,9 @@ import { expect, test } from '@playwright/test'
  * an amber warning in the log.
  *
  * ROUTE PINNED BY A FINDER, not played: who makes the first-player choice is the seed's call whatever the decks
- * (a finder over `createWebGame` for every pair: seeds 2, 4, 5, 7 give it to the AI), and seed 5 gives it to the
- * AI — so the AI's first move is a real search with no human click before it.
+ * (`createGame` draws it after both shuffles, whose RNG use depends only on the lists' length, 50 for both; a finder
+ * over `createWebGame`: seeds 2, 4, 5, 7 give it to the AI), and seed 5 gives it to the AI — so the AI's first move
+ * is a real search with no human click before it.
  */
 
 test('the default pair: the AI plays Vol. 1 through the real worker, with no fallback', async ({ page }) => {
