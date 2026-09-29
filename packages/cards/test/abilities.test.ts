@@ -443,16 +443,18 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
     expect(raw.some((d) => d.abilities !== undefined || d.abilityClauses !== undefined)).toBe(false)
   })
 
-  it('loadCards merges the thirty implemented clauses on, and only those thirty', () => {
+  it('loadCards merges the implemented clauses on, and only those', () => {
     // Five from C1, five from C2, six from C3's activated abilities, two from C4 (both of Odin's), one from
     // C5 (Cloud's Attack-Phase clause), one from C6 (Moogle's colour fixing), one from C7 (Undead Princess's
     // removal), one from C8 (Hugh Yurg's enters-field observer), three from C9 (Reeve's look, Miner's reveal and Hugh Yurg's search) and one from C10 (Sphene's
-    // retrieve), one from J3 (Shiva's EX Burst) and two from J8 (Maat's and Noctis's ETBs). Any
-    // clause added without a test lands here first.
+    // retrieve), one from J3 (Shiva's EX Burst) and two from J8 (Maat's and Noctis's ETBs) — thirty for Vol. 2 —
+    // then the Vol. 1 clauses of rung V1-B, listed after them. Any clause added without a test lands here first.
     const implemented = DEFS.filter((d) => (d.abilities?.length ?? 0) > 0).map((d) => d.code).sort()
     expect(implemented).toEqual([
       '1-038R', '1-121C', '12-120C', '13-072R', '16-092C', '18-064C', '18-069C', '18-124C', '19-052C', '20-074C',
       '20-103H', '20-105C', '22-068R', '22-119R', '23-125R', '24-063H', '27-124S', '27-125S', '27-126S', '27-127S', '9-074C',
+      // rung V1-B
+      '1-170C', '12-005C', '21-001R', '3-143C',
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
@@ -463,6 +465,8 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '20-105C:etb', '22-068R:chosen', '22-068R:damages-opponent', '24-063H:cheap-forward', '24-063H:search', '27-126S:retrieve',
       '27-124S:attack-phase', '27-124S:etb', '27-125S:damages-forward', '27-125S:damages-opponent',
       '27-127S:etb', '27-127S:opponent-forward-broken', '9-074C:lightning-cp',
+      // rung V1-B
+      '1-170C:summon', '12-005C:summon', '21-001R:etb', '21-001R:only-fire', '3-143C:etb',
     ].sort())
   })
 

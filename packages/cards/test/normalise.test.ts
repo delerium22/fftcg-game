@@ -78,9 +78,10 @@ describe('cleanText / hasAbilities', () => {
 
 import { cardDb } from '../src/index.js'
 describe('cards.json', () => {
-  it('contains the Vol. 2 pool with the exclusives patched in', () => {
+  it('contains the Vol. 2 and Vol. 1 pools with the exclusives patched in', () => {
     const db = cardDb()
-    expect(db.size).toBe(24)
+    expect(db.size).toBe(24 + 22)   // rung V1-B: the Vol. 1 pool (its cards are pinned in abilities-vol1.test.ts)
+    expect(db.get('27-123S')?.name).toBe('Zack')
     expect(db.get('27-124S')?.name).toBe('Cloud')
     expect(db.get('12-120C')?.elements).toEqual(['earth', 'lightning'])
     expect(db.get('9-074C')?.power).toBeNull()

@@ -1,8 +1,12 @@
 {
-  "fetchedAt": "2026-09-15T18:51:15.609Z",
+  "fetchedAt": "2026-09-29T16:27:39.209Z",
   "endpoint": "https://fftcg.square-enix-games.com/en/get-cards",
-  "count": 24,
+  "count": 46,
   "patched": [
+    "27-122S",
+    "27-123S",
+    "27-128S",
+    "27-129S",
     "27-124S",
     "27-125S",
     "27-126S",

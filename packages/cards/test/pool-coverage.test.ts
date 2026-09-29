@@ -17,11 +17,23 @@ import { loadCards } from '../src/index.js'
  * a real player rather than to a fixture.
  */
 describe('the card pool', () => {
-  it('implements every printed clause of every card', () => {
-    const short = loadCards()
-      .map((d) => ({ code: d.code, name: d.name, missing: unimplementedClauseCount(d) }))
-      .filter((r) => r.missing > 0)
-    expect(short, 'a card prints clauses this build does not implement — the details panel will now caveat it, and the log warns at cast time').toEqual([])
+  /**
+   * Rung V1-B (plan B-D3, R4): the gaps this build KNOWS about, by card, and nothing else. The Vol. 1 clauses that need
+   * damage-modifying replacement effects (spec V1-D4) are finished in rung V2, which empties this table: Wuk Lamat's
+   * clause 1, Charlotte's clause 1, Porom's clause 2 and both of Yuzuki's. Exact on purpose — a gap LARGER than listed is
+   * an unimplemented clause nobody declared, and a gap SMALLER is a landed clause whose entry was not updated.
+   */
+  const EXPECTED_GAPS: Record<string, number> = {
+    '27-122S': 3, '27-123S': 3, '27-128S': 3, '27-129S': 2, '11-010C': 2, '11-121C': 2, '13-013C': 1, '13-125R': 2,
+    '18-003C': 1, '18-094C': 1, '18-129C': 2, '20-106R': 2, '21-010H': 2, '22-112R': 1, '22-123R': 1, '23-119R': 1,
+    '23-130H': 2, '24-126H': 2,
+  }
+
+  it('implements every printed clause of every card, but for the expected gaps', () => {
+    const short = Object.fromEntries(loadCards()
+      .map((d) => [d.code, unimplementedClauseCount(d)] as const)
+      .filter(([, missing]) => missing > 0))
+    expect(short, 'a card prints clauses this build does not implement — the details panel will now caveat it, and the log warns at cast time').toEqual(EXPECTED_GAPS)
   })
 
   it('marks exactly one EX BURST clause on every card that prints one (rung G3)', () => {

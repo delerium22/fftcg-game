@@ -77,6 +77,24 @@
     ]
   },
   {
+    "code": "1-170C",
+    "name": "Fairy",
+    "type": "summon",
+    "elements": [
+      "water"
+    ],
+    "cost": 2,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "text": "EX BURST Choose 1 Forward. Activate it. Draw 1 card.",
+    "hasAbilities": true,
+    "categories": [
+      "FFT"
+    ]
+  },
+  {
     "code": "2-085H",
     "name": "Scarmiglione",
     "type": "forward",
@@ -93,6 +111,25 @@
     "text": "Back Attack (Like Summons and abilities, this card can be played during either player's Attack Phase or Main Phase.)",
     "hasAbilities": false,
     "job": "Archfiend",
+    "categories": [
+      "IV"
+    ]
+  },
+  {
+    "code": "3-143C",
+    "name": "Leonora",
+    "type": "backup",
+    "elements": [
+      "water"
+    ],
+    "cost": 3,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "text": "EX BURST When Leonora enters the field, you may search for 1 Card Name Palom or Card Name Porom and add it to your hand.",
+    "hasAbilities": true,
+    "job": "Epopt",
     "categories": [
       "IV"
     ]
@@ -117,6 +154,62 @@
     ]
   },
   {
+    "code": "11-010C",
+    "name": "Warrior",
+    "type": "backup",
+    "elements": [
+      "fire"
+    ],
+    "cost": 2,
+    "power": null,
+    "keywords": [],
+    "generic": true,
+    "exBurst": false,
+    "text": "[Dull], put Warrior into the Break Zone: Choose 1 Forward. It gains +1000 power until the end of the turn.\n[Fire][1][Dull], put Warrior into the Break Zone: Choose 1 Forward. Deal it 5000 damage.",
+    "hasAbilities": true,
+    "job": "Standard Unit",
+    "categories": [
+      "I"
+    ]
+  },
+  {
+    "code": "11-121C",
+    "name": "Porom",
+    "type": "backup",
+    "elements": [
+      "water"
+    ],
+    "cost": 2,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "When Porom enters the field, discard 1 card from your hand. If the discarded card is not a Category IV card, draw 1 card. If the discarded card is a Category IV card, draw 2 cards then discard 1 card from your hand.\n[Dull], put Porom into the Break Zone: Choose 1 Forward. During this turn, the next damage dealt to it is reduced by 2000 instead.",
+    "hasAbilities": true,
+    "job": "White Mage",
+    "categories": [
+      "IV"
+    ]
+  },
+  {
+    "code": "12-005C",
+    "name": "Ifrit",
+    "type": "summon",
+    "elements": [
+      "fire"
+    ],
+    "cost": 5,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "text": "EX BURST Choose 1 Forward. Deal it 9000 damage.",
+    "hasAbilities": true,
+    "categories": [
+      "FFEX"
+    ]
+  },
+  {
     "code": "12-120C",
     "name": "Shantotto",
     "type": "forward",
@@ -138,6 +231,26 @@
     ]
   },
   {
+    "code": "13-013C",
+    "name": "Palom",
+    "type": "backup",
+    "elements": [
+      "fire"
+    ],
+    "cost": 2,
+    "power": null,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "When Palom enters the field, choose 1 Forward. Deal it 4000 damage. If you control a Card Name Porom Forward, deal it 8000 damage instead.",
+    "hasAbilities": true,
+    "job": "Black Mage",
+    "categories": [
+      "PICTLOGICA",
+      "IV"
+    ]
+  },
+  {
     "code": "13-072R",
     "name": "Odin",
     "type": "summon",
@@ -153,6 +266,26 @@
     "hasAbilities": true,
     "categories": [
       "FFEX"
+    ]
+  },
+  {
+    "code": "13-125R",
+    "name": "Yuzuki",
+    "type": "forward",
+    "elements": [
+      "water",
+      "fire"
+    ],
+    "cost": 3,
+    "power": 7000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "If a Fire Forward you control is dealt damage by your opponent's abilities, the damage becomes 0 instead.\nIf a Water Forward you control is dealt damage, reduce the damage by 2000 instead.",
+    "hasAbilities": true,
+    "job": "Warrior",
+    "categories": [
+      "TYPE-0"
     ]
   },
   {
@@ -172,6 +305,25 @@
     "job": "Commando",
     "categories": [
       "XIII"
+    ]
+  },
+  {
+    "code": "18-003C",
+    "name": "Machinist",
+    "type": "backup",
+    "elements": [
+      "fire"
+    ],
+    "cost": 1,
+    "power": null,
+    "keywords": [],
+    "generic": true,
+    "exBurst": false,
+    "text": "[Fire], discard Machinist: Draw 1 card. You can only use this ability if Machinist is in your hand.",
+    "hasAbilities": true,
+    "job": "Standard Unit",
+    "categories": [
+      "FFEX"
     ]
   },
   {
@@ -213,6 +365,25 @@
     ]
   },
   {
+    "code": "18-094C",
+    "name": "Geomancer",
+    "type": "backup",
+    "elements": [
+      "water"
+    ],
+    "cost": 1,
+    "power": null,
+    "keywords": [],
+    "generic": true,
+    "exBurst": false,
+    "text": "[Water], discard Geomancer: Draw 1 card. You can only use this ability if Geomancer is in your hand.",
+    "hasAbilities": true,
+    "job": "Standard Unit",
+    "categories": [
+      "XI"
+    ]
+  },
+  {
     "code": "18-124C",
     "name": "Billy Bob",
     "type": "forward",
@@ -230,6 +401,27 @@
     "job": "AVALANCHE Operative",
     "categories": [
       "VII"
+    ]
+  },
+  {
+    "code": "18-129C",
+    "name": "Jecht",
+    "type": "forward",
+    "elements": [
+      "water",
+      "fire"
+    ],
+    "cost": 4,
+    "power": 9000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "[Fire][Water]: Until the end of the turn, Jecht gains Haste, First Strike and Brave. You can only use this ability during your turn.\nJecht Beam [S][Dull]: Choose 1 Forward. Deal it 8000 damage.",
+    "hasAbilities": true,
+    "job": "Guardian",
+    "categories": [
+      "DFF",
+      "X"
     ]
   },
   {
@@ -308,6 +500,63 @@
     ]
   },
   {
+    "code": "20-106R",
+    "name": "Alphinaud",
+    "type": "forward",
+    "elements": [
+      "water"
+    ],
+    "cost": 3,
+    "power": 6000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "When Alphinaud enters the field, your opponent selects 1 dull Forward they control. Put it into the Break Zone.\nDamage 3 -- Alphinaud gains +2000 power.",
+    "hasAbilities": true,
+    "job": "Scion of the Seventh Dawn",
+    "categories": [
+      "XIV"
+    ]
+  },
+  {
+    "code": "21-001R",
+    "name": "Ward",
+    "type": "forward",
+    "elements": [
+      "fire"
+    ],
+    "cost": 3,
+    "power": 8000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": true,
+    "text": "You can only pay with Fire CP to cast Ward.\nEX BURST When Ward enters the field, choose 1 Forward. Deal it 7000 damage.",
+    "hasAbilities": true,
+    "job": "Warrior",
+    "categories": [
+      "VIII"
+    ]
+  },
+  {
+    "code": "21-010H",
+    "name": "Taivas",
+    "type": "forward",
+    "elements": [
+      "fire"
+    ],
+    "cost": 5,
+    "power": 9000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "When Taivas enters the field, you may search for 1 Job Warrior or Card Name Warrior and add it to your hand.\n[0]: Play 1 Job Warrior or Card Name Warrior of cost 3 or less from your hand onto the field. You can only use this ability during your turn and only once per turn.",
+    "hasAbilities": true,
+    "job": "Warrior",
+    "categories": [
+      "FFBE"
+    ]
+  },
+  {
     "code": "22-068R",
     "name": "Prishe",
     "type": "forward",
@@ -325,6 +574,26 @@
     "categories": [
       "THEATRHYTHM",
       "XI"
+    ]
+  },
+  {
+    "code": "22-112R",
+    "name": "Zack",
+    "type": "forward",
+    "elements": [
+      "fire"
+    ],
+    "cost": 3,
+    "power": 7000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "(Cards with [LB] cannot be included in your main deck.)\nLimit Break -- 1\nWhen Zack enters the field, choose 1 Forward. Deal it 3000 damage.",
+    "hasAbilities": true,
+    "limitBreak": 1,
+    "job": "SOLDIER",
+    "categories": [
+      "VII"
     ]
   },
   {
@@ -350,6 +619,48 @@
     ]
   },
   {
+    "code": "22-123R",
+    "name": "Leo",
+    "type": "forward",
+    "elements": [
+      "water"
+    ],
+    "cost": 3,
+    "power": 3000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "(Cards with [LB] cannot be included in your main deck.)\nLimit Break -- 1\nWhen Leo enters the field, draw 1 card.",
+    "hasAbilities": true,
+    "limitBreak": 1,
+    "job": "King",
+    "categories": [
+      "FFCC"
+    ]
+  },
+  {
+    "code": "23-119R",
+    "name": "Vincent",
+    "type": "forward",
+    "elements": [
+      "fire"
+    ],
+    "cost": 5,
+    "power": 8000,
+    "keywords": [
+      "firstStrike"
+    ],
+    "generic": false,
+    "exBurst": false,
+    "text": "Limit Break -- 2\nFirst Strike\nWhen Vincent enters the field, you may put 1 Fire Backup you control into the Break Zone. When you do so, choose 1 Forward opponent controls. Deal it 9000 damage.",
+    "hasAbilities": true,
+    "limitBreak": 2,
+    "job": "Galian Beast",
+    "categories": [
+      "VII"
+    ]
+  },
+  {
     "code": "23-125R",
     "name": "Noctis",
     "type": "forward",
@@ -370,6 +681,26 @@
     ]
   },
   {
+    "code": "23-130H",
+    "name": "Luso",
+    "type": "forward",
+    "elements": [
+      "light"
+    ],
+    "cost": 5,
+    "power": 5000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "Limit Break -- 1\nWhen Luso enters the field, choose 1 Character you control. You may search for 1 Job Standard Unit of the same Element as the chosen Character and add it to your hand.\nWhen a Job Standard Unit enters your field, Luso gains +4000 power until the end of the turn.",
+    "hasAbilities": true,
+    "limitBreak": 1,
+    "job": "Clan Gully Member",
+    "categories": [
+      "FFTA2"
+    ]
+  },
+  {
     "code": "24-063H",
     "name": "Hugh Yurg",
     "type": "forward",
@@ -387,6 +718,65 @@
     "categories": [
       "FFCC"
     ]
+  },
+  {
+    "code": "24-126H",
+    "name": "Ultima Weapon",
+    "type": "forward",
+    "elements": [
+      "water",
+      "fire"
+    ],
+    "cost": 6,
+    "power": 9000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "text": "Limit Break -- 2\nWhen Ultima Weapon enters the field, choose 1 Forward. If you control 4 or more Fire Characters, deal it 9000 damage.\nWhen Ultima Weapon enters the field, if you control 4 or more Water Characters, your opponent selects 1 Forward they control. Put it into the Break Zone.",
+    "hasAbilities": true,
+    "limitBreak": 2,
+    "job": "Weapon",
+    "categories": [
+      "X"
+    ]
+  },
+  {
+    "code": "27-122S",
+    "name": "Wuk Lamat",
+    "type": "forward",
+    "elements": [
+      "fire"
+    ],
+    "cost": 3,
+    "power": 7000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "hasAbilities": true,
+    "job": "Princess/Warrior",
+    "categories": [
+      "XIV"
+    ],
+    "text": "If you control 7 or more Characters, Wuk Lamat gains \"If a Forward you control deals damage to a Forward, the damage increases by 2000 instead.\"\nWhen Wuk Lamat enters the field or attacks, choose 1 Forward opponent controls. If you control 5 or more Characters, deal it 7000 damage."
+  },
+  {
+    "code": "27-123S",
+    "name": "Zack",
+    "type": "forward",
+    "elements": [
+      "fire"
+    ],
+    "cost": 5,
+    "power": 9000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "hasAbilities": true,
+    "job": "SOLDIER",
+    "categories": [
+      "VII"
+    ],
+    "text": "If your opponent controls 3 or more Forwards, Zack gains Haste.\nWhen Zack enters the field or attacks, deal 1000 damage for each Backup you control to all the Forwards opponent control."
   },
   {
     "code": "27-124S",
@@ -447,5 +837,43 @@
     "exBurst": true,
     "hasAbilities": true,
     "text": "EX BURST When Lightning enters the field, choose 1 Forward of cost 4 or less opponent controls. Break it.\nWhen a Forward opponent controls is put from the field into the Break Zone, choose 1 Forward you control. It gains Haste until the end of the turn."
+  },
+  {
+    "code": "27-128S",
+    "name": "Charlotte",
+    "type": "forward",
+    "elements": [
+      "water"
+    ],
+    "cost": 4,
+    "power": 8000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "hasAbilities": true,
+    "job": "Knight",
+    "categories": [
+      "FFBE"
+    ],
+    "text": "If Charlotte is dealt damage, reduce the damage by 1000 instead.\nThe Forwards you control cannot be chosen by your opponent's Summons of cost 1.\nThe Forwards opponent controls cannot use action abilities."
+  },
+  {
+    "code": "27-129S",
+    "name": "Yuna",
+    "type": "forward",
+    "elements": [
+      "water"
+    ],
+    "cost": 4,
+    "power": 7000,
+    "keywords": [],
+    "generic": false,
+    "exBurst": false,
+    "hasAbilities": true,
+    "job": "Gullwings",
+    "categories": [
+      "X"
+    ],
+    "text": "When Yuna enters the field, you may play 1 Forward of cost 3 from your hand onto the field.\nWhen Yuna attacks, look at the top 3 cards of your deck. Add 1 card among them to your hand and return the other cards to the bottom of your deck in any order."
   }
 ]
