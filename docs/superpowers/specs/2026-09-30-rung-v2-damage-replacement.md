@@ -24,7 +24,7 @@ The `pool-coverage` gap table (rung V1-B) names exactly these:
   apply again as a result of itself (§11.12.5.5).
 - §11.12.5.7: several replacements on one event — self-replacements first, then the controller of the affected card
   (or the affected player) CHOOSES the order of the rest.
-- Official notice 2020-03-18 ("Change to the 'doesn't/don't receive damage' effect"): "doesn't receive damage" became
+- Official notice 2020-03-18 ("Change to the 'doesn't/don't receive damage' effect"), quoted: "The '1000 damage increase' effect and the 'if dealt damage, the damage becomes 0' effect will be applied during the same step, so applying the latter effect before the attack will prevent your power 8000 Forward from incurring any damage." "doesn't receive damage" became
   "if dealt damage, the damage becomes 0", and the damage INCREASE and the "becomes 0" effect are applied "during the
   same step" — its example: 7000 increased by 1000 against Minwu's effect → 0.
 
@@ -126,7 +126,7 @@ with its revisions R1–R10. Differences from the design above, and readings:
 
 Every case in the Codex review's list: each meaningful Wuk/Yuzuki/Porom order including deliberately non-minimal
 choices; two Porom shields; Yuzuki-first shield preservation; reduced-to-0 fires no trigger; Summon vs ability vs EX
-Burst; party aggregate reduction with per-contributor Wuk; blocker splits; First Strike applied once; shield expiry
+Burst; party aggregate reduction with Wuk's +2000 applied once per packet (§11.12.5.5); blocker splits; First Strike applied once; shield expiry
 and leave/re-enter; the final `DamageOccurrence.amount`; §12.4.5 breaker attribution; player damage unchanged; AI
 keys/candidates; zero-damage narration; the shield badge's accessible name.
 
