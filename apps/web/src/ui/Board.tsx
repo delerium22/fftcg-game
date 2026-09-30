@@ -63,6 +63,7 @@ function fieldCardProps(v: PlayerView, c: FieldCard, actionable: boolean, size: 
     damage: c.damage,
     dull: c.status === 'dull',
     frozen: c.frozen === true,
+    ...(c.shields?.length ? { shields: c.shields.map((sh) => sh.reduce) } : {}),
     actionable,
     size,
     ...(d?.text === undefined ? {} : { text: d.text }),

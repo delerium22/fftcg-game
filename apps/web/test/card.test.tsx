@@ -39,6 +39,13 @@ describe('Card', () => {
     expect(html(cloud)).not.toContain('is-dull')
   })
 
+  it('wears a shield badge per shield, and says so in its name (rung V2-A2)', () => {
+    const out = html({ ...cloud, shields: [2000] })
+    expect(out).toContain('>Shield −2000<')
+    expect(out).toContain('shielded — the next damage dealt to it this turn is reduced by 2000')
+    expect(html(cloud)).not.toContain('Shield')
+  })
+
   it('wears a Frozen badge and says so in its name (rung J3, §15.2.4)', () => {
     const out = html({ ...cloud, frozen: true })
     expect(out).toContain('>Frozen<')

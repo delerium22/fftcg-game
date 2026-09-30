@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
-import { actingPlayer, apply, createGame, legalCommands, viewFor, type CardDef, type Event, type PlayerView } from '@fftcg/engine'
+import { actingPlayer, apply, createGame, legalCommands, viewFor, type CardDef, type DamageTraceStep, type Event, type PlayerView } from '@fftcg/engine'
 import { askingBecause, describeCommand, eventCardName, renderView } from './render.js'
 
 export interface HotseatIo {
@@ -29,13 +29,25 @@ export function describeEvent(v: PlayerView, e: Event): string | null {
     case 'playerDamaged': return `  P${e.player} takes 1 damage`
     case 'broken': return `  ${eventCardName(v, e.card)} is broken`
     // Rung V2-A1: one line per damage packet — a blocked party's damage to its blocker is one total (§15.1.1.9.8).
-    case 'battleDamage': return `  ${e.dealers.map((id) => eventCardName(v, id)).join(' and ')} deal${e.dealers.length === 1 ? 's' : ''} ${e.amount} to ${eventCardName(v, e.target)}`
+    case 'battleDamage': return `  ${e.dealers.map((id) => eventCardName(v, id)).join(' and ')} deal${e.dealers.length === 1 ? 's' : ''} ${replaced(e)} to ${eventCardName(v, e.target)}${replacedBy(v, e.trace)}`
     // Worded apart from combat's "deals N to", which the hotseat test reads as the combat line.
-    case 'abilityDamage': return `  ${eventCardName(v, e.target)} takes ${e.amount} damage from ${eventCardName(v, e.source)}'s ability`
-    case 'damageReducedToZero': return `  ${e.dealers.map((id) => eventCardName(v, id)).join(' and ')}'s ${e.original} damage to ${eventCardName(v, e.target)} is reduced to 0`
+    case 'abilityDamage': return `  ${eventCardName(v, e.target)} takes ${replaced(e)} damage from ${eventCardName(v, e.source)}'s ability${replacedBy(v, e.trace)}`
+    case 'damageReducedToZero': return `  ${e.dealers.map((id) => eventCardName(v, id)).join(' and ')}'s ${e.original} damage to ${eventCardName(v, e.target)} is reduced to 0${replacedBy(v, e.trace)}`
+    // Rung V2-A2 (plan A2-D2): Porom's shield.
+    case 'shieldGranted': return `  ${eventCardName(v, e.card)} is shielded: the next damage dealt to it this turn is reduced by ${e.amount}`
     case 'gameOver': return `  GAME OVER`
     default: return null
   }
+}
+
+/** Rung V2-A2 (plan A2-D7): "5000 → 4000" when replacement effects changed the amount, the amount alone otherwise. */
+function replaced(e: { original: number; amount: number; trace: readonly unknown[] }): string {
+  return e.trace.length > 0 ? `${e.original} → ${e.amount}` : `${e.amount}`
+}
+
+/** " (by [7] Charlotte)" — the cards whose effects changed the amount, in the order they applied. */
+function replacedBy(v: PlayerView, trace: readonly DamageTraceStep[]): string {
+  return trace.length > 0 ? ` (by ${trace.map((t) => eventCardName(v, t.by)).join(', then ')})` : ''
 }
 
 /**
