@@ -134,18 +134,43 @@ body {
  * the viewport instead of being cropped by it. */
 .table {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--rail-w);
-  /* Rung V1-C: the deck picker's toolbar is a thin auto row over the board column; the rail keeps its full height. */
-  grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  /* Rung U2b (UI overhaul spec section 6): named areas, so pieces are PLACED rather than moved — DOM order is the
+   * reading and tab order the accessibility rungs fixed. Columns: the lead (tracker + phase pill), the board, the
+   * actions (as wide as its buttons, or the payment tray), the rail. The hand row is a fixed track: the fan lifts into
+   * its headroom. */
+  grid-template-columns: auto minmax(0, 1fr) auto var(--rail-w);
+  grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr) calc(clamp(112px, 16vh, 179px) + 24px);
   grid-template-areas:
-    'toolbar  rail'
-    'opponent rail'
-    'prompt   rail'
-    'player   rail'
-    'hand     rail';
+    'toolbar  toolbar  toolbar  toolbar'
+    'opponent opponent opponent stack'
+    'lead     centre   actions  rail'
+    'player   player   player   rail'
+    'hand     hand     hand     rail';
   height: 100%;
   gap: 0;
+  background:
+    radial-gradient(60% 50% at 50% 50%, color-mix(in oklab, var(--stage-3) 55%, transparent), transparent 75%),
+    linear-gradient(180deg, var(--stage-1), var(--stage-0));
 }
+
+/* The centre line: a band across the board's middle, drawn by the grid container itself (a pseudo-element is a grid
+ * item), under the lead, the prompt text and the actions that sit in it. */
+.table::before {
+  content: '';
+  grid-row: 3;
+  grid-column: 1 / 4;
+  border-block: 1px solid color-mix(in oklab, var(--accent-act) 30%, transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent-act) 9%, transparent), transparent);
+}
+
+/* The prompt strip's own box goes away; its children are placed into the areas above (rung U2b). */
+.table__prompt.prompt { display: contents; }
+.prompt__lead { grid-area: lead; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 3px; padding: var(--s1) var(--s4); z-index: 1; }
+.table__stack { grid-area: stack; display: flex; flex-direction: column; padding: var(--s3); border-left: 1px solid var(--line); background: color-mix(in oklab, var(--stage-0) 80%, transparent); }
+.table__stack-title { font-family: var(--font-display); font-weight: 800; font-size: 11px; letter-spacing: 0.14em; color: var(--ink-3); }
+.phase-track { display: flex; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.phase-track__step { padding: 1px 7px; border-radius: 999px; font-family: var(--font-display); font-weight: 600; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.phase-track__step--now { background: var(--accent-act); color: var(--stage-0); font-weight: 800; }
 
 .table__hand {
   grid-area: hand;
@@ -178,7 +203,6 @@ body {
  * both directions — it needs the status bar to be a direct child of the seat. */
 .table__seat > .seat { margin-bottom: auto; }
 
-.table__prompt { grid-area: prompt; }
 
 .table__rail {
   grid-area: rail;
@@ -320,6 +344,12 @@ body {
 }
 
 /* Backup rows hold `small` cards, so they do not need the forward row's reserved height. */
+/* A pile's sheet (rung U2b, spec section 6): the card sheet's surface, wide enough for a row of small cards that wraps.
+ * After `.zone__cards {`: card-details.test.tsx slices the stylesheet from that rule's FIRST occurrence. */
+.zone-sheet { width: min(92vw, 960px); }
+.zone-sheet__body { padding: var(--s5); display: flex; flex-direction: column; gap: var(--s4); }
+.zone-sheet .zone__cards { justify-content: flex-start; flex-wrap: wrap; overflow-x: visible; max-height: 60vh; overflow-y: auto; margin-top: 0; }
+
 .zone__cards--compact { min-height: calc(clamp(56px, 7.5vh, 89px) + 4px); }
 
 .zone__cards--empty::before {
@@ -383,17 +413,6 @@ body {
 
 /* ============================ prompt strip ============================ */
 
-.prompt {
-  display: flex;
-  align-items: center;
-  gap: var(--s4);
-  padding: var(--s3) var(--s5);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, rgb(11 18 22 / 92%), rgb(11 18 22 / 70%));
-  box-shadow: 0 -12px 30px -18px rgb(0 0 0 / 90%), 0 12px 30px -18px rgb(0 0 0 / 90%);
-}
-
 .prompt__phase {
   flex: none;
   padding: var(--s1) var(--s3);
@@ -413,16 +432,31 @@ body {
 }
 
 .prompt__text {
-  font-size: var(--t-md);
+  grid-area: centre;
+  align-self: center;
+  justify-self: center;
+  z-index: 1;
+  max-width: 70ch;
+  padding: var(--s2) var(--s4);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 15px;
   letter-spacing: 0.01em;
+  text-align: center;
 }
 
 /* Rung J1-D15: the stack, bottom to top, beside the prompt. */
 .stack-row {
+  /* Rung U2b: placed in the stack column, over its panel. */
+  grid-area: stack;
+  z-index: 1;
+  align-self: start;
+  margin: calc(var(--s3) + 18px) var(--s3) var(--s3);
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 0;
   padding: var(--s1) var(--s3);
   list-style: none;
   border: 1px solid var(--line-strong);
@@ -439,6 +473,11 @@ body {
 }
 
 .prompt__actions {
+  /* Rung U2b: the actions sit at the right of the centre line; the payment tray renders here too, and widens the column. */
+  grid-area: actions;
+  align-self: center;
+  z-index: 1;
+  padding: var(--s2) var(--s4);
   display: flex;
   gap: var(--s2);
   margin-left: auto;
@@ -718,7 +757,7 @@ body {
   align-items: center;
   gap: var(--s2) var(--s3);
   flex-wrap: wrap;
-  padding: var(--s2) var(--s5);
+  padding: var(--s1) var(--s5);
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -1070,3 +1109,14 @@ body {
 }
 
 .card__paying--chosen { background: var(--gold); color: #000; }
+
+/* Rung U2b: the centre line's primary actions, in the Crystal Arena gold. */
+.prompt__actions .btn--primary {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.06em;
+  color: #1a1200;
+  background: linear-gradient(180deg, #ffe08a, var(--accent-gold) 55%, #d99a12);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 30%) inset, 0 0 18px var(--accent-gold-glow);
+}
