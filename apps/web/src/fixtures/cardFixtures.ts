@@ -52,7 +52,8 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
   { group: 'Board state', name: 'cannot be broken', props: props(forward, { flags: ['cannotBeBroken'] }) },
   { group: 'Interaction', name: 'selectable', props: props(forward, { actionable: true }) },
   { group: 'Interaction', name: 'selected', props: props(forward, { selected: true }) },
-  { group: 'Interaction', name: 'chosen for a set', props: props(forward, { chosen: true }) },
+  // As the board passes them: a chosen card and a taken payment source are still pressable (press to put back).
+  { group: 'Interaction', name: 'chosen for a set', props: props(forward, { chosen: true, actionable: true }) },
   { group: 'Targeting (U5)', name: 'targetable', props: props(forward, { role: 'targetable' }) },
   { group: 'Targeting (U5)', name: 'targeted', props: props(forward, { role: 'targeted' }) },
   { group: 'Targeting (U5)', name: 'not a legal target', props: props(forward, { role: 'invalid' }) },
@@ -60,9 +61,9 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
   { group: 'Emphasis (U4, U6)', name: 'blocking', props: props(forward, { emphasis: 'blocking' }) },
   { group: 'Emphasis (U4, U6)', name: 'on the stack', props: props(summon, { emphasis: 'on-stack', size: 'hand' }) },
   { group: 'Emphasis (U4, U6)', name: 'just played', props: props(forward, { emphasis: 'just-played' }) },
-  { group: 'Payment', name: 'paying by dulling', props: props(backup, { paying: 'dull' }) },
-  { group: 'Payment', name: 'paying by discarding', props: props(forward, { size: 'hand', paying: 'discard' }) },
-  { group: 'Payment', name: 'paying by an LB flip', props: props(lbCard, { lb: 'down', paying: 'flip', size: 'small' }) },
+  { group: 'Payment', name: 'paying by dulling', props: props(backup, { paying: 'dull', actionable: true }) },
+  { group: 'Payment', name: 'paying by discarding', props: props(forward, { size: 'hand', paying: 'discard', actionable: true }) },
+  { group: 'Payment', name: 'paying by an LB flip', props: props(lbCard, { lb: 'down', paying: 'flip', size: 'small', actionable: true }) },
   { group: 'Limit Break', name: 'LB face down', props: props(lbCard, { lb: 'down', size: 'small' }) },
   { group: 'Limit Break', name: 'LB spent', props: props(lbCard, { lb: 'up', size: 'small' }) },
   // Every card of both pools once, so each one's generative art is on the baseline (UI overhaul U1, D17).

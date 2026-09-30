@@ -579,7 +579,13 @@ multiplayer stay possible later.
   props for U4–U6. The playable glow is an `::after` animated by opacity, static at Instant. The gallery covers every
   state and every pool card. Deviations: buff badges sit top-left under the gem (at the bottom they crowded the power);
   the gallery tolerance is 100 pixels, not 0.1% of the page (the ratio hid that moved badge); the pure module is
-  `crystalArt.ts`, because macOS resolves `./CardArt` case-insensitively.
+  `crystalArt.ts`, because macOS resolves `./CardArt` case-insensitively. The U1 review (Fable; Codex was out of quota)
+  found four regressions, fixed with browser checks in `e2e/card-states.spec.ts`: focus is now a white ring 6px out
+  (it was the playable ring's cyan), a taken payment source no longer shows the playable pulse, a card chosen for a set
+  has the gold ring (keyed on `data-role='selected'`), and a loaded scan cross-fades over the crystal art (a `settled`
+  status on `transitionend`). Carried: U4 must stop `:hover` erasing the `data-emphasis` rings before it sets them.
+  Deferred minors: the card code label sits under the power number; the grain overlay also paints over loaded scans;
+  uppercase names truncate sooner on small cards.
 
 ## Questions for your review
 
