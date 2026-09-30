@@ -1,7 +1,7 @@
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { DamageChange, DamageScope, Frame } from './abilities.js'
-import type { CardId, DamageOccurrence, GameState } from './state.js'
+import type { CardId, DamageOccurrence, FieldCard, GameState } from './state.js'
 import { defOf, findFieldCard, updatePlayer } from './state.js'
 import type { DamageTraceStep, Event } from './events.js'
 import { matchesDefFilter } from './filters.js'
@@ -74,10 +74,11 @@ const NOT_APPLIED = { applied: false, final: 0, trace: [], occurrences: [], even
 
 /**
  * One replacement effect waiting for a packet (rung V2-A2, plan A2-D3): a `damageReplacement` static of a card on the
- * field. `id` is `<card id>:<clause id>` — card ids on the field are public, so it names the same effect in every
- * determinised world — and `by` is the card, for the trace and for the order prompt's wording.
+ * field, its id `<card id>:<effect id>` — card ids on the field are public, so it names the same effect in every
+ * determinised world — or a SHIELD on the damaged Forward (plan A2-D2), its id the shield's. `by` is the card whose
+ * effect it is (for a shield, the card that granted it), for the trace and for the order prompt's wording.
  */
-export interface Replacement { readonly id: string; readonly by: CardId; readonly change: DamageChange }
+export interface Replacement { readonly id: string; readonly by: CardId; readonly change: DamageChange; readonly shield?: true }
 
 /** Does the static's scope admit this packet? Relative to `controller`, the controller of `source`, which carries it. */
 function scopeAdmits(state: GameState, source: CardId, controller: PlayerId, scope: DamageScope, packet: DamagePacket, targetController: PlayerId): boolean {
@@ -116,11 +117,13 @@ export function replacementsFor(state: GameState, packet: DamagePacket): Replace
       }
     }
   }
+  // A shield is a replacement of the damaged Forward's own (plan A2-D2): every damage to it is a candidate.
+  for (const sh of loc.card.shields ?? []) out.push({ id: sh.id, by: sh.source, change: { reduce: sh.reduce }, shield: true })
   return out.sort((a, b) => a.by - b.by || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
 
-/** What one order of replacements does to an amount (plan A2-D3). */
-export interface OrderOutcome { readonly final: number; readonly trace: readonly DamageTraceStep[] }
+/** What one order of replacements does to an amount (plan A2-D3): the final amount, the steps, the shields it uses up. */
+export interface OrderOutcome { readonly final: number; readonly trace: readonly DamageTraceStep[]; readonly consumes: readonly string[] }
 
 /**
  * §4.3 arithmetic (plan A2-D3, spec V2-D3): the replacements change a RUNNING amount in `order`, which may go negative
@@ -130,12 +133,19 @@ export interface OrderOutcome { readonly final: number; readonly trace: readonly
 export function applyInOrder(amount: number, order: readonly Replacement[]): OrderOutcome {
   let v = amount
   const trace: DamageTraceStep[] = []
+  const consumes: string[] = []
   for (const r of order) {
+    // A shield replaces DAMAGE (plan R2): once the running amount is 0 or less there is no damage left for it to
+    // replace (ruling 2021-08-19, "damage is not damage"), so it is not applied — and survives for the next packet.
+    if (r.shield) {
+      if (v <= 0) continue
+      consumes.push(r.id)
+    }
     const before = v
     v = 'add' in r.change ? v + r.change.add : 'reduce' in r.change ? v - r.change.reduce : 0
     trace.push({ by: r.by, before, after: v })
   }
-  return { final: Math.max(0, v), trace }
+  return { final: Math.max(0, v), trace, consumes }
 }
 
 /** The canonical order's outcome: what a packet with no choice to make does (plan A2-D4). */
@@ -170,12 +180,22 @@ export function applyDamagePacket(state: GameState, packet: DamagePacket): Damag
   const loc = findFieldCard(state, packet.target)
   if (!loc || loc.zone !== 'forwards') return { state, ...NOT_APPLIED }
   if (packet.amount <= 0) return { state, applied: true, final: 0, trace: [], occurrences: [], events: [] }
-  const { final, trace } = outcomeOf(state, packet)
+  const { final, trace, consumes } = outcomeOf(state, packet)
   const dealers = packet.dealers.map((d) => d.source)
-  if (final <= 0) {
-    return { state, applied: true, final: 0, trace, occurrences: [], events: [{ type: 'damageReducedToZero', target: packet.target, dealers, original: packet.amount, trace }] }
+  // The shields this order used up are gone, whatever the final amount: they replaced the event (plan A2-D5).
+  const spent = (c: FieldCard): FieldCard => {
+    if (consumes.length === 0 || !c.shields) return c
+    const left = c.shields.filter((sh) => !consumes.includes(sh.id))
+    if (left.length > 0) return { ...c, shields: left }
+    const rest: FieldCard = { ...c }
+    delete rest.shields
+    return rest
   }
-  const s = updatePlayer(state, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === packet.target ? { ...c, damage: c.damage + final } : c)) }))
+  const mark = (amount: number): GameState => updatePlayer(state, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === packet.target ? { ...spent(c), damage: c.damage + amount } : c)) }))
+  if (final <= 0) {
+    return { state: consumes.length ? mark(0) : state, applied: true, final: 0, trace, occurrences: [], events: [{ type: 'damageReducedToZero', target: packet.target, dealers, original: packet.amount, trace }] }
+  }
+  const s = mark(final)
   const event: Event = packet.cause === 'battle'
     ? { type: 'battleDamage', target: packet.target, dealers, original: packet.amount, amount: final, trace }
     : { type: 'abilityDamage', source: (packet.dealers[0] as DamageDealer).source, target: packet.target, original: packet.amount, amount: final, trace }

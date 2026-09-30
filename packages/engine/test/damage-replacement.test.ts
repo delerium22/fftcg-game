@@ -8,7 +8,9 @@ import { applyDamagePacket, applyInOrder, damageProvenance, previewDamagePacket,
 import { findFieldCard } from '../src/state.js'
 import { createGame } from '../src/setup.js'
 import { checkInvariants } from '../src/invariants.js'
-import { attackInto, blockWith, DEFAULT_DECK, endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
+import { drainResolution, enqueueTrigger, putOntoField, removeFromField } from '../src/resolve.js'
+import { finishEndPhase } from '../src/phases.js'
+import { applyNow, attackInto, blockWith, DEFAULT_DECK, endPhase, makeDef, makeGame, VANILLA_POOL, withField, withHand } from './helpers.js'
 
 /**
  * Rung V2-A2, Task 1 (plan A2-D1, A2-D3, A2-D5; spec V2-D3, V2-D4, V2-D6): damage-modifying replacement statics on
@@ -58,7 +60,7 @@ const fromFrame = (s: GameState, target: CardId, source: CardId, controller: 0 |
 describe('§4.3 arithmetic (plan A2-D3, spec V2-D3)', () => {
   const r = (by: number, change: DamageChange): Replacement => ({ id: `${by}`, by, change })
   it('a running amount may go negative between steps and keeps its sign: 1000 − 2000 + 2000 = 1000, either order', () => {
-    expect(applyInOrder(1000, [r(1, { reduce: 2000 }), r(2, { add: 2000 })])).toEqual({ final: 1000, trace: [{ by: 1, before: 1000, after: -1000 }, { by: 2, before: -1000, after: 1000 }] })
+    expect(applyInOrder(1000, [r(1, { reduce: 2000 }), r(2, { add: 2000 })])).toEqual({ final: 1000, consumes: [], trace: [{ by: 1, before: 1000, after: -1000 }, { by: 2, before: -1000, after: 1000 }] })
     expect(applyInOrder(1000, [r(2, { add: 2000 }), r(1, { reduce: 2000 })]).final).toBe(1000)
   })
   it('a final amount below 0 is 0', () => {
@@ -232,5 +234,100 @@ describe('game creation validates a damage replacement (plan A2-D1)', () => {
     ['an unknown dealer controller', { target: 'self', bySource: { controller: 'opponent', filter: {} } }, { reduce: 1000 }],
   ])('refuses %s', (_, affects, change) => {
     expect(create(bad(affects, change))).toThrow(/invalid continuous statics/)
+  })
+})
+
+describe("shields — Porom's one-shot reduction (rung V2-A2, plan A2-D2, R2, R9)", () => {
+  /** Porom's shape: "Choose 1 Forward. During this turn, the next damage dealt to it is reduced by 2000 instead." */
+  const POROM_ETB: Ability = { id: 'R-POR:etb', trigger: { kind: 'enterField' }, text: 'synthetic',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'shieldNextDamage', amount: 2000 }] }] }
+  const POROM = withStatic(makeDef({ code: 'R-POR', type: 'backup', power: null }), POROM_ETB)
+  const SPOOL = [...POOL, POROM]
+  const shielded = (s0: GameState, target: CardId, n = 1): { s: GameState; porom: CardId } => {
+    let s = s0; let porom = -1
+    for (let i = 0; i < n; i++) {
+      ;[s, porom] = withField(s, 0, 'backups', 'R-POR')
+      s = drainResolution(enqueueTrigger(s, porom, 0, POROM_ETB))[0]
+      s = applyNow(s, { type: 'chooseTargets', player: 0, targets: [target] }).state
+    }
+    return { s, porom }
+  }
+  const shieldsOf = (s: GameState, id: CardId) => findFieldCard(s, id)?.card.shields
+
+  it('puts a shield on the chosen Forward, named by source, turn and count; the invariants hold', () => {
+    let s = makeGame({ defs: SPOOL }); let f: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F3')
+    const { s: t, porom } = shielded(s, f)
+    expect(shieldsOf(t, f)).toEqual([{ id: `${porom}:${t.turn}:0`, reduce: 2000, source: porom }])
+    expect(checkInvariants(t)).toEqual([])
+  })
+
+  it('the next damage is reduced and the shield is used up; a later hit the same turn meets no shield', () => {
+    let s = makeGame({ defs: SPOOL }); let f: CardId, a: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8')
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    const { s: t, porom } = shielded(s, f)
+    const r = applyDamagePacket(t, battle(f, [[a, 0]], 5000))
+    expect(r.events[0]).toMatchObject({ type: 'battleDamage', original: 5000, amount: 3000, trace: [{ by: porom, before: 5000, after: 3000 }] })
+    expect(shieldsOf(r.state, f)).toBeUndefined()
+    expect(applyDamagePacket(r.state, battle(f, [[a, 0]], 5000)).final).toBe(5000)
+  })
+
+  it('a shield larger than the hit: reduced to 0, not damage, and the shield is still used up (it replaced the event)', () => {
+    let s = makeGame({ defs: SPOOL }); let f: CardId, a: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8')
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    const r = applyDamagePacket(shielded(s, f).s, battle(f, [[a, 0]], 1000))
+    expect(r.events.map((e) => e.type)).toEqual(['damageReducedToZero'])
+    expect(r.occurrences).toEqual([])
+    expect(findFieldCard(r.state, f)?.card).toMatchObject({ damage: 0 })
+    expect(shieldsOf(r.state, f)).toBeUndefined()
+  })
+
+  it('two shields and a hit both change: 5000 − 2000 − 2000 = 1000, both used up, no order to choose', () => {
+    let s = makeGame({ defs: SPOOL }); let f: CardId, a: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8')
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    const t = shielded(s, f, 2).s
+    expect(shieldsOf(t, f)?.map((sh) => sh.id.split(':')[2])).toEqual(['0', '1'])
+    const r = applyDamagePacket(t, battle(f, [[a, 0]], 5000))
+    expect(r.final).toBe(1000)
+    expect(shieldsOf(r.state, f)).toBeUndefined()
+  })
+
+  it('plan R2: a shield meets no damage once the running amount is 0 or less — not applied, not used up', () => {
+    const sh = (id: string): Replacement => ({ id, by: 1, change: { reduce: 2000 }, shield: true })
+    const zero: Replacement = { id: 'y', by: 2, change: { becomes: 0 } }
+    expect(applyInOrder(1000, [sh('a'), sh('b')])).toMatchObject({ final: 0, consumes: ['a'] })
+    expect(applyInOrder(7000, [zero, sh('a')])).toMatchObject({ final: 0, consumes: [], trace: [{ by: 2, before: 7000, after: 0 }] })
+    expect(applyInOrder(7000, [sh('a'), zero])).toMatchObject({ final: 0, consumes: ['a'] })
+  })
+
+  it('§9.5.1.3.2: an unused shield ends with the turn — absent, not empty', () => {
+    let s = makeGame({ defs: SPOOL }); let f: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8')
+    const [t] = finishEndPhase(shielded(s, f).s)
+    expect(findFieldCard(t, f)?.card).not.toHaveProperty('shields')
+  })
+
+  it('leaving the field ends it: the card comes back a new object (§7.4) with no shield', () => {
+    let s = makeGame({ defs: SPOOL }); let f: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8')
+    let t = removeFromField(shielded(s, f).s, f)
+    t = putOntoField(t, f, 1, [])
+    expect(findFieldCard(t, f)?.card).not.toHaveProperty('shields')
+  })
+
+  it('the invariants refuse a malformed shield', () => {
+    let s = makeGame({ defs: SPOOL }); let f: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8', { shields: [{ id: 'x', reduce: 0, source: 1 }, { id: 'x', reduce: 1500.5, source: 1 }] })
+    expect(checkInvariants(s).join('\n')).toMatch(/reducing by 0[\s\S]*reducing by 1500.5[\s\S]*two shields with one id/)
+    expect(f).toBeGreaterThan(0)
+  })
+
+  it('game creation refuses a shield that is not a positive whole number', () => {
+    const bad = withStatic(makeDef({ code: 'R-BADSH', type: 'backup', power: null }), { ...POROM_ETB, id: 'R-BADSH:etb',
+      effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'shieldNextDamage', amount: 0 }] }] })
+    expect(() => createGame({ seed: 1, decks: [DEFAULT_DECK, DEFAULT_DECK], defs: [...VANILLA_POOL, bad] })).toThrow(/invalid effects: .*shield of 0/)
   })
 })
