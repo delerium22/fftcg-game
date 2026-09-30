@@ -1,5 +1,5 @@
 import {
-  HAND_SIZE_LIMIT, abilityCpRequirement, amountOf, castBlocker, conditionHolds, describeAbilityCost, describeAbilityEffect, effectAtPath, effectivePower, flagsOf, keywordsOf, pickedDeckCards, seedRng,
+  HAND_SIZE_LIMIT, abilityCpRequirement, amountOf, castBlocker, conditionHolds, describeAbilityCost, describeAbilityEffect, describeReplacementOrder, effectAtPath, effectivePower, flagsOf, keywordsOf, pickedDeckCards, seedRng,
   type Ability, type Amount, type CardDef, type CardId, type Command, type Effect, type FieldCard, type FieldFlag, type Frame,
   type GameResult, type GameState, type Keyword, type Payment, type Pending, type PlayerId, type PlayerState, type PlayerView,
   type ZoneTransitionReason, type CastBlocker, type StackItem, type AttackStep } from '@fftcg/engine'
@@ -677,6 +677,9 @@ export function describeChoice(v: PlayerView, c: Command, opts: { payment?: bool
     case 'assignPartyDamage': return `Assign damage: ${c.assignments.map((a) => `${a.amount} → ${choiceName(v, a.target)}`).join(', ')}`
     case 'discardToHandSize': return `Discard ${c.cards.map((id) => choiceName(v, id)).join(', ')}`
     case 'breakExcessBackups': return `Put ${c.cards.map((id) => choiceName(v, id)).join(', ')} into the Break Zone`
+    // Rung V2-A2 (plan A2-D7): each order and where it ends — the engine's one wording, shared with the terminal.
+    case 'chooseReplacementOrder':
+      return v.pending?.kind === 'chooseReplacementOrder' ? describeReplacementOrder(v.pending, c.order, (id) => choiceName(v, id)) : `Order ${c.order + 1}`
     case 'pass': return 'Pass'
     case 'concede': return 'Concede'
   }
@@ -882,6 +885,9 @@ export function promptFor(v: PlayerView, legal: readonly Command[]): string {
       // exactly what the strip would otherwise say while the only legal answers are use and decline.
       case 'chooseExBurst':
         return `${capitalise(qualifiedName(v, v.pending.card))} has EX Burst — use it?`
+      // Rung V2-A2 (§11.12.5.7): the damaged Forward's controller orders the effects replacing its damage.
+      case 'chooseReplacementOrder':
+        return `Choose the order of the effects replacing the ${v.pending.original} damage to ${qualifiedName(v, v.pending.target)}`
       case 'chooseFromDeck': {
         const { min, max, count, to } = v.pending
         const what = to === 'field' ? 'to play onto the field' : 'to add to your hand'
@@ -1013,7 +1019,8 @@ function subjectsOf(c: Command): CardId[] {
     // are strip buttons.
     // G3's `chooseExBurst` is a strip button too: its card sits in the damage zone, which is not a pressable
     // row, so hanging the choice off a card would put it on nothing.
-    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst':
+    // Rung V2-A2: a replacement order is a strip button too — each option is a whole sequence, not a card.
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst': case 'chooseReplacementOrder':
     case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }
@@ -1155,6 +1162,8 @@ export function sameCommand(a: Command, b: Command): boolean {
     // Compares the ANSWER, not just the type — two chooseExBurst commands differ precisely in the boolean,
     // and treating them as the same command would let a click on "Decline" be matched against "Use".
     case 'chooseExBurst': return a.use === (b as typeof a).use
+    // Rung V2-A2: the answer is the index, so two orders are the same command exactly when their indices are.
+    case 'chooseReplacementOrder': return a.order === (b as typeof a).order
     case 'pass': case 'concede': return true
     default: { const _exhaustive: never = a; return _exhaustive }
   }

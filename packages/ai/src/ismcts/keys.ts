@@ -263,6 +263,10 @@ export function actionKey(view: PlayerView, command: Command): ActionKey {
     case 'chooseMode':
       // Mode answers are indices into the pending's printed `labels`, not ids — already world-independent.
       return `${head}${FIELD}${[...command.modes].sort((a, b) => a - b).join(',')}`
+    // Rung V2-A2: an index into the pending's options, which are built from the public field and so are the same in
+    // every world (the pending digest names them).
+    case 'chooseReplacementOrder':
+      return `${head}${FIELD}${command.order}`
     case 'chooseFromDeck': {
       // The CARD, not the position — the same rule the rest of this file follows, and for the same reason.
       //
@@ -332,6 +336,13 @@ const DECODERS: Record<Command['type'], Decoder> = {
     if (!pendingIs('mulligan')) return null
     const v = args[0]
     return v === 'redraw' || v === 'keep' ? { type: 'mulligan', player, redraw: v === 'redraw' } : null
+  },
+  chooseReplacementOrder: ({ player, args, pendingIs }) => {
+    const pending = pendingIs('chooseReplacementOrder')
+    const raw = args[0] ?? ''
+    const order = Number(raw)
+    if (!pending || pending.player !== player || !/^\d+$/.test(raw) || order >= pending.options.length) return null
+    return { type: 'chooseReplacementOrder', player, order }
   },
   chooseExBurst: ({ player, args, pendingIs }) => {
     if (!pendingIs('chooseExBurst')) return null
@@ -588,7 +599,10 @@ function frameDigest(view: PlayerView, f: Frame | null): string {
   // `origin` (rung V2-A1, plan R9): an EX Burst frame's damage is a different packet (spec V2-D6), and a burst runs
   // off the stack — two frames differing only in it are different positions. Absent keys as `triggered`, its meaning.
   const declared = (f.declared ?? []).map((d) => `${d.path.join('.')}=${joinRefs(d.targets.map(r))}`).join('|')
-  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.'), f.stage ?? 'resolve', declared, f.modesDeclared ? 'md' : '-', f.origin ?? 'triggered'].join('/')
+  // `replacementOrders` (rung V2-A2): the answers a suspended damage node has so far — appended only when present, so
+  // every other frame keys exactly as before.
+  const orders = f.replacementOrders?.length ? [`ro${f.replacementOrders.join('.')}`] : []
+  return [f.abilityId, r(f.source), f.controller, f.path.join('.'), joinRefs(f.chosen.map(r)), triggerDigest(view, f.triggerEvent), f.modes.join('.'), f.stage ?? 'resolve', declared, f.modesDeclared ? 'md' : '-', f.origin ?? 'triggered', ...orders].join('/')
 }
 
 /** The stack, top last (rung J1): each item's kind, its card ref, and its frames — a different stack is a different position. */
@@ -646,6 +660,13 @@ function pendingDigest(view: PlayerView, pending: Pending | null): string {
       const filter = f === undefined ? '-' : JSON.stringify(Object.keys(f).sort().map((k) => [k, (f as Record<string, unknown>)[k]]))
       return `${head}/${pending.min}-${pending.max}/n${pending.count}/f${filter}/${pending.to}`
     }
+    // Rung V2-A2 (plan A2-D4, R6): the damaged Forward, the amount, and each option as its replacements in order with
+    // its outcome. A replacement is named by its card's ref and its change — never by its id, which carries card ids.
+    case 'chooseReplacementOrder': {
+      const token = new Map(pending.replacements.map((x) => [x.id, `${x.shield ? 'sh.' : ''}${r(x.by)}.${JSON.stringify(x.change)}`]))
+      const options = pending.options.map((o, i) => `${o.map((id) => token.get(id) ?? '?').join('>')}=${pending.outcomes[i]?.final ?? '?'}:${(pending.outcomes[i]?.consumes ?? []).map((id) => token.get(id) ?? '?').join('+')}`)
+      return `${head}/${pending.owner}/${r(pending.target)}/${pending.original}/${options.join(',')}`
+    }
     default: { const _exhaustive: never = pending; return _exhaustive }
   }
 }
@@ -669,7 +690,10 @@ function firstStrikeDigest(view: PlayerView, at: NonNullable<PlayerView['attack'
   const fs = at.firstStrikers === undefined ? '' : `/fs[${joinRefs(at.firstStrikers.map(r))}]`
   const held = at.heldDamage === undefined ? '' : `/held[${at.heldDamage
     .map((h) => `${r(h.source)}>${h.target === null ? `p${h.victim ?? '-'}` : r(h.target)}:${h.amount}`).sort(cmpStr).join(',')}]`
-  return fs + held
+  // Rung V2-A2 (plan R4): a batch asking its replacement orders holds the answers so far and the blocker's split.
+  const orders = at.replacementOrders === undefined ? '' : `/ro[${at.replacementOrders.join('.')}]`
+  const split = at.blockerAssignments === undefined ? '' : `/ba[${at.blockerAssignments.map((a) => `${r(a.target)}:${a.amount}`).join(',')}]`
+  return fs + held + orders + split
 }
 
 export function observationKey(view: PlayerView): ObservationKey {

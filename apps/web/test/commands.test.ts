@@ -1150,3 +1150,46 @@ describe('a Character choice is named "Character" (rung V1-A4)', () => {
     expect(promptFor(mixed(2), [])).toBe('Noel: choose 2 Characters you control to give +2000 power')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Rung V2-A2 (plan A2-D7, R5): the replacement-order prompt
+// ---------------------------------------------------------------------------
+
+describe('the replacement-order prompt (rung V2-A2, §11.12.5.7)', () => {
+  const WUK = '27-122S', YUZUKI = '13-125R'
+  function orderView(): PlayerView {
+    const v = viewFor(dealtGame(1), HUMAN)
+    const target = instance(v, 900, CLOUD)
+    const wuk = instance(v, 901, WUK, AI)
+    const yuzuki = instance(v, 902, YUZUKI)
+    v.fields[HUMAN].forwards = [fieldCard(target), fieldCard(yuzuki)]
+    v.fields[AI].forwards = [fieldCard(wuk)]
+    v.pending = {
+      kind: 'chooseReplacementOrder', player: HUMAN, owner: 'frame', target, original: 5000,
+      replacements: [{ id: '901:wuk', by: wuk, change: { add: 2000 } }, { id: '902:fire', by: yuzuki, change: { becomes: 0 } }],
+      options: [['901:wuk', '902:fire'], ['902:fire', '901:wuk']],
+      outcomes: [{ final: 0, consumes: [] }, { final: 2000, consumes: [] }],
+    }
+    return v
+  }
+  const order = (i: number): Command => ({ type: 'chooseReplacementOrder', player: HUMAN, order: i })
+
+  it('each option names the effects in order and where the damage ends', () => {
+    const v = orderView()
+    expect(describeChoice(v, order(0))).toMatch(/Wuk Lamat's \+2000, then .*Yuzuki's reduction to 0 → 0$/)
+    expect(describeChoice(v, order(1))).toMatch(/Yuzuki's reduction to 0, then .*Wuk Lamat's \+2000 → 2000$/)
+  })
+
+  it('the prompt names the damage and the Forward; every option is a strip button', () => {
+    const v = orderView()
+    const set = buildChoiceSet(v, [order(0), order(1)])
+    expect(set.prompt).toMatch(/^Choose the order of the effects replacing the 5000 damage to .*Cloud/)
+    expect(set.byCard.size).toBe(0)
+    expect(set.loose.map((c) => c.command)).toEqual([order(0), order(1)])
+  })
+
+  it('sameCommand compares the answer', () => {
+    expect(sameCommand(order(1), order(1))).toBe(true)
+    expect(sameCommand(order(0), order(1))).toBe(false)
+  })
+})

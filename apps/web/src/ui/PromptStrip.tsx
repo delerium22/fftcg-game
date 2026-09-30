@@ -21,7 +21,8 @@ const ABILITY_BTN: CSSProperties = {
   textTransform: 'none', letterSpacing: '0.01em', fontWeight: 500,
   maxWidth: '26rem', whiteSpace: 'normal', textAlign: 'left',
 }
-const isAbility = (c: Choice): boolean => c.command.type === 'chooseMode' || c.command.type === 'chooseTargets'
+// Rung V2-A2: a replacement order's button is a whole sentence too ("Yuzuki's reduction to 0, then …").
+const isAbility = (c: Choice): boolean => c.command.type === 'chooseMode' || c.command.type === 'chooseTargets' || c.command.type === 'chooseReplacementOrder'
 
 /**
  * The strip is the app's answer to "what am I supposed to do?" — spec B5 requires it to always say whose turn

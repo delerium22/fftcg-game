@@ -144,8 +144,9 @@ const isForcedDecision = (state: GameState): boolean => {
   // whose card queues nothing — a decline, or Reeve looking at a deck — leaves `hasResolutionWork` false, so
   // the fallback would hand `evaluate` a board with an unanswered offer sitting on it and price a position
   // that cannot occur in play.
+  // Rung V2-A2: a replacement order is owed mid-battle as often as mid-frame, and a battle's leaves no resolution work.
   if (kind === 'declareBlock' || kind === 'assignPartyDamage' || kind === 'chooseTargets' || kind === 'chooseMode'
-    || kind === 'chooseExBurst') return true
+    || kind === 'chooseExBurst' || kind === 'chooseReplacementOrder') return true
   return hasResolutionWork(state.resolution)
 }
 
@@ -400,7 +401,8 @@ function commandCardIds(c: Command): CardId[] {
     case 'activateAbility': return [c.source, ...c.payment.dullBackups, ...c.payment.discards.map((d) => d.card)]
     // `chooseFromDeck` answers with INDICES, so like `chooseMode` it carries no card id to check.
     // G3's `chooseExBurst` is a bare boolean, so like `chooseMode` it names no card to validate.
-    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst':
+    // Rung V2-A2: a replacement order is an index into the pending's options, like `chooseMode`.
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst': case 'chooseReplacementOrder':
     case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }
