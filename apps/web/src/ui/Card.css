@@ -470,14 +470,14 @@
   opacity: 0;
 }
 
-.card[data-role='selectable'] .card__face::after,
+.card[data-role='selectable'][data-paying='none'] .card__face::after,
 .card[data-role='targetable'] .card__face::after {
   opacity: 0.8;
   box-shadow: 0 0 0 2px var(--accent-act), 0 0 18px var(--accent-act-glow);
   animation: act-pulse calc(1600ms * var(--motion-scale, 1)) ease-in-out infinite;
 }
 
-.card[data-role='selectable']:hover .card__face::after {
+.card[data-role='selectable'][data-paying='none']:hover .card__face::after {
   opacity: 1;
   animation: none;
 }
@@ -487,7 +487,9 @@
   50% { opacity: 1; }
 }
 
-html[data-reduced-motion='true'] .card .card__face::after { animation: none; opacity: 0.9; }
+html[data-reduced-motion='true'] .card .card__face::after { animation: none; }
+html[data-reduced-motion='true'] .card[data-role='selectable'][data-paying='none'] .card__face::after,
+html[data-reduced-motion='true'] .card[data-role='targetable'] .card__face::after { opacity: 0.9; }
 
 /* The roles targeting (U5) will set, and the emphasis the motion rungs (U4, U6) will set. */
 .card[data-role='targeted'] .card__face::after {
@@ -504,19 +506,21 @@ html[data-reduced-motion='true'] .card .card__face::after { animation: none; opa
 
 /* Selected is persistent and unmistakable: a solid gold ring plus a warm bloom that survives being
  * laid over full-bleed art, where a border alone would disappear into a bright illustration. */
-.card.is-selected .card__face {
+.card[data-role='selected'] .card__face {
   box-shadow: var(--shadow-lift), 0 0 0 3px var(--accent-gold), 0 0 26px -4px var(--accent-gold-glow);
 }
 
-.card.is-selected .card__plate {
+.card[data-role='selected'] .card__plate {
   border-top-color: var(--accent-gold);
   background: linear-gradient(180deg, #241d0f, #17120a);
 }
 
 .card.is-selected { z-index: 4; }
 
+/* White, and 6px out: the cyan playable ring reaches 5px outside the face, so focus must be another colour and sit
+ * clear of it, or a keyboard player tabbing across candidates cannot see which one has focus (U1 review). */
 .card:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 4px;
+  outline: 2px solid #fff;
+  outline-offset: 6px;
   border-radius: calc(var(--cw) * 0.07);
 }

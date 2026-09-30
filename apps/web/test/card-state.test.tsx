@@ -61,10 +61,14 @@ describe('<Card> attributes and art', () => {
     expect(el.querySelector('img.card__img')).toBeNull()
   })
 
-  it('drops the generative art once the scan has loaded (Review Focus 4)', () => {
+  it('keeps the generative art under the scan while it fades in, and drops it after (Review Focus 4, U1 review)', () => {
     const el = render(base)
     const img = el.querySelector('img.card__img') as HTMLImageElement
     act(() => { img.dispatchEvent(new Event('load')) })
+    // Loaded but still fading in: the art stays underneath, so the card cross-fades rather than blinking.
+    expect(el.querySelector('svg.card__genart')).not.toBeNull()
+    expect(img.classList.contains('is-loaded')).toBe(true)
+    act(() => { img.dispatchEvent(new Event('transitionend', { bubbles: true })) })
     expect(el.querySelector('svg.card__genart')).toBeNull()
   })
 })

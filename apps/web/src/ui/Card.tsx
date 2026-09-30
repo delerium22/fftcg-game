@@ -195,7 +195,9 @@ export function Card(props: CardProps): JSX.Element {
   // for a different card re-attempts that card's art instead of inheriting the previous failure. The
   // module-level miss cache covers the other direction: a code that already 404'd this session skips
   // the `<img>` on every later mount, so no copy of it ever flashes a broken image again.
-  const [art, setArt] = useState<{ code: string; status: 'ok' | 'failed' }>({ code: '', status: 'failed' })
+  // `settled`: the scan has loaded AND finished fading in (U1 review). Until then the generative art stays underneath,
+  // so a card cross-fades from its crystal art to its scan instead of blinking to a flat background first.
+  const [art, setArt] = useState<{ code: string; status: 'ok' | 'failed' | 'settled' }>({ code: '', status: 'failed' })
   const status = isArtMissing(code) ? 'failed' : art.code === code ? art.status : 'loading'
 
   const remaining = power === null ? null : power - damage
@@ -236,17 +238,18 @@ export function Card(props: CardProps): JSX.Element {
     <span className="card__frame">
       <span className="card__body">
         <span className="card__art">
-          {status !== 'ok' && <CardArt code={code} elements={elements} />}
+          {status !== 'settled' && <CardArt code={code} elements={elements} />}
           <span className="card__code">{code}</span>
           {status !== 'failed' && (
             // Art lies over the finished text card and fades in, so a missing file (B9) or a slow
             // one is never a hole — `alt` is empty because the plate below already names the card.
             <img
-              className={status === 'ok' ? 'card__img is-loaded' : 'card__img'}
+              className={status === 'ok' || status === 'settled' ? 'card__img is-loaded' : 'card__img'}
               src={artUrl(code)}
               alt=""
               draggable={false}
               onLoad={() => setArt({ code, status: 'ok' })}
+              onTransitionEnd={() => setArt((cur) => (cur.code === code && cur.status === 'ok' ? { code, status: 'settled' } : cur))}
               onError={() => {
                 markArtMissing(code)
                 setArt({ code, status: 'failed' })
