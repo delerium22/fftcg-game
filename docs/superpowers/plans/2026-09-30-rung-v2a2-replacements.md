@@ -61,3 +61,44 @@
   `damageReducedToZero` instead — so the held-occurrence invariant (`amount > 0`) and the applier agree.
 - The AI's `damageProvenance` call (`candidates.ts` ~120) passes the frame's `origin`, so a priced EX Burst is
   `exBurst: true` where Yuzuki's clause reads it.
+
+---
+
+## Revisions after the plan review (2026-09-30)
+
+Fresh Fable reviewer (Codex out of quota until 12:29); adjudication in `2026-09-30-rung-v2a2-replacements.codex-review.md`.
+These override the plan above.
+
+- **R1 (C1)** — the `damage` node never suspends mid-loop: it builds EVERY packet it will deal (all chosen targets, and
+  every `forEach` iteration — Zack's sweep), raises every needed order prompt, and lands nothing until all answers are
+  in (the same simultaneity rule as a battle batch). The frame stores the answers (like `picks`); on resume the node
+  re-builds its packets from the SAME state and lands them once. A `damage` under `forEach` therefore needs the loop to
+  be driven by the node, not by `forEach`'s per-iteration `runEffects` — design it so `forEach` + `damage` asks before
+  any iteration lands, and pin with a Zack-shaped test. `needsChoice` (activate.ts) does NOT gain `damage`: the prompt
+  is resolution-time.
+- **R2 (H1)** — the SPEC's reading stands: a shield ordered after a `becomes: 0` is NOT applied (0 damage is not damage
+  — ruling 2021-08-19 — so there is no event left for it to replace) and survives. Shields are consumed only when they
+  change a positive running amount. Review Focus 2 is rewritten accordingly; the distinct-outcomes rule compares
+  `(final, consumed shield ids)`.
+- **R3 (H2)** — the pending carries `owner: 'battle' | 'frame'`; `apply`, the invariants and `suspendedNode` dispatch on
+  it (a Summon resolving in the blocked window is `frame`, not battle).
+- **R4 (H3)** — `attack.blockerAssignments` holds a blocker split across the prompt; both it and
+  `attack.replacementOrders` are digested in `firstStrikeDigest`; `invariants.ts` admits the new pending beside
+  `assignPartyDamage` while `heldDamage` is set.
+- **R5 (M1)** — Task 3 includes every exhaustive consumer of the new pending and command: web `sameCommand`, verbs and
+  selection; keys `pendingDigest`/`commandKey`/decoder; greedy `isForcedDecision`; CLI hotseat.
+- **R6 (M2)** — the pending carries `outcomes: { final: number; consumes: string[] }[]` parallel to `options`; greedy
+  takes the argmin for its own Forward; labels read it; keys digest it. `previewDamagePacket(state, packet, order?)`:
+  with no order it uses the AFFECTED controller's best (least damage, then fewest shields consumed) — the applier
+  passes the chosen order explicitly.
+- **R7 (M3)** — the spec quotes the 2020-03-18 notice exactly and states the reading: the notice fixes that increase
+  and "becomes 0" apply in the same step; WHO orders them is §11.12.5.7 (the affected card's controller). So the prompt
+  fires when outcomes differ.
+- **R8 (M4, M5)** — Wuk Lamat's increase applies ONCE per packet (§11.12.5.5: the same replacement cannot apply again
+  to one event); spec line "per-contributor Wuk" corrected. `bySource: { controller: 'self' }` on a packet requires
+  EVERY dealer to match (a mixed-controller packet does not arise in this pool — stated). Ability damage from your
+  Forward's ability to your OWN Forward matches Wuk's clause — tested.
+- **R9 (LOW)** — `FieldCard.shields?` optional (absent = none); cleared in End Phase for Forwards and Backups alike
+  (`phases.ts` ~145); no `expires` field; shield id = `${sourceCardId}:${turn}:${n}` with `n` the count of shields the
+  target already carries; the evaluator weight is a named `Weights` key and the frozen-score corpus (no shields) is
+  unaffected; `DamageTraceStep.by` for a shield is the Porom card (in the Break Zone) — naming only.
