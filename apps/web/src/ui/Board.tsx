@@ -589,6 +589,8 @@ export function Board({ game, onHelp }: {
 
   return (
     <div className="table">
+      {/* Rung U2b: the stack column's panel. Visual only — the stack itself is the prompt strip's list, placed here. */}
+      <div className="table__stack" aria-hidden="true"><span className="table__stack-title">Stack</span></div>
       <section className="table__seat table__seat--opponent">
         <Seat
           seat={model.seats[AI]} p={AI} active={model.active[AI]}
