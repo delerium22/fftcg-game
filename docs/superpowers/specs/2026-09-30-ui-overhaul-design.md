@@ -570,6 +570,16 @@ multiplayer stay possible later.
   moves the raw `@media (prefers-reduced-motion)` block in `styles.css` to `[data-reduced-motion='true']`, so the
   in-app "Off" override works; the legacy `MediaQueryList.addListener` fallback and a real-browser reduced-motion
   test are deferred minors.
+- **U1** (branch `feat/u1-tokens-card`, plan `docs/superpowers/plans/2026-09-30-rung-u1-tokens-card.md`): `tokens.css`
+  (Crystal Arena palette, re-saturated elements, z-layers, shadows, motion durations times `--motion-scale`, easings)
+  and its JS mirror `motion.ts`, with a test that keeps the two equal; Barlow and Barlow Condensed 5.3.0 self-hosted;
+  generative crystal art (`crystalArt.ts`, `CardArt.tsx`) for any card without a loaded scan; the card restyled
+  (metallic element frame, stroked italic power number over the art, larger cost gem, crystal pips, our own back); and
+  the `data-orientation`/`data-face`/`data-role`/`data-emphasis`/`data-paying` state model, with `role` and `emphasis`
+  props for U4–U6. The playable glow is an `::after` animated by opacity, static at Instant. The gallery covers every
+  state and every pool card. Deviations: buff badges sit top-left under the gem (at the bottom they crowded the power);
+  the gallery tolerance is 100 pixels, not 0.1% of the page (the ratio hid that moved badge); the pure module is
+  `crystalArt.ts`, because macOS resolves `./CardArt` case-insensitively.
 
 ## Questions for your review
 
