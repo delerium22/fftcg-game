@@ -123,6 +123,8 @@ export type Event =
    * nothing. Declared in rung V2-A1 with its narration; emitted since rung V2-A2 by `applyDamagePacket`.
    */
   | { type: 'damageReducedToZero'; target: CardId; dealers: readonly CardId[]; original: number; trace: readonly DamageTraceStep[] }
+  /** Rung V2-A2 (plan A2-D2): `source`'s effect put a one-shot damage reduction of `amount` on the Forward `card`. */
+  | { type: 'shieldGranted'; card: CardId; source: CardId; amount: number }
   | { type: 'powerModified'; card: CardId; amount: number }
   | { type: 'keywordGranted'; card: CardId; keyword: Keyword }
   | { type: 'flagGranted'; card: CardId; flag: FieldFlag }

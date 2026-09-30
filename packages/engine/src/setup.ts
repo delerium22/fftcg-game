@@ -195,6 +195,10 @@ export function validateEffects(defs: readonly CardDef[]): string[] {
           break
         }
         // Leaves: nothing nested. Listed so a new CONTAINER kind fails to compile here instead of going unwalked.
+        // Rung V2-A2 (plan A2-D2): a shield's reduction is a positive whole number, as a static's is.
+        case 'shieldNextDamage':
+          if (!Number.isInteger(e.amount) || e.amount <= 0) problems.push(`${code}: ${id} has a shield of ${String(e.amount)}; it must be a whole number > 0`)
+          break
         case 'dull': case 'freeze': case 'breakCard': case 'putIntoBreakZone': case 'activate': case 'discard': case 'addPower': case 'grantKeyword': case 'grantFlag':
         case 'moveToHand': case 'draw': break
         // Rung V1-D: a reflexive clause of THIS card. Checked per card below, where the card's clauses are known.

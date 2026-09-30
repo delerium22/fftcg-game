@@ -531,6 +531,9 @@ function fieldDigest(view: PlayerView, p: PlayerId): string {
     // §15.2.4 (J3 second review): a frozen card skips its next activation. Appended only when set, so every
     // unfrozen card keys exactly as before and absent/false (`frozen` is optional) cannot split a node.
     ...(c.frozen === true ? ['fz'] : []),
+    // Rung V2-A2 (plan A2-D2): shields in grant order, by their source's code and amount — no id, as above. Appended
+    // only when present, so a card without one keys exactly as before.
+    ...(c.shields?.length ? [`sh${c.shields.map((sh) => `${code(sh.source)}@${sh.reduce}`).join('+')}`] : []),
   ].join('/')
   // Break Zone entries carry an eligibility BIT beside the code, positionally (spec C10-2). By code alone,
   // two copies of one card in the Break Zone digest identically while only one is retrievable — and `z0:0`

@@ -662,6 +662,16 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         ctx.state = putOntoField(ctx.state, id, owner, ctx.events)
       }
       return
+    case 'shieldNextDamage':
+      // Porom (rung V2-A2, plan A2-D2): a one-shot replacement on each chosen Forward still on the field. Its id is
+      // deterministic (plan R9): the source, the turn, and how many the Forward already carries.
+      for (const id of ctx.chosen) {
+        const loc = findFieldCard(ctx.state, id)
+        if (!loc || loc.zone !== 'forwards') continue
+        ctx.state = setFieldCard(ctx.state, id, (c) => ({ ...c, shields: [...(c.shields ?? []), { id: `${ctx.source}:${ctx.state.turn}:${(c.shields ?? []).length}`, reduce: eff.amount, source: ctx.source }] }))
+        ctx.events.push({ type: 'shieldGranted', card: id, source: ctx.source, amount: eff.amount })
+      }
+      return
     case 'addPower':
       for (const id of ctx.chosen) {
         if (!findFieldCard(ctx.state, id)) continue
