@@ -501,7 +501,9 @@ The flags `?motion=instant` and `?art=off` are production-safe query parameters.
 |---|---|---|---|
 | **U0** Harness and baseline | Settings store; `--motion-scale`; `?motion=instant`, `?art=off`; Playwright `storageState` sets Instant; the `fixtures.html` entry skeleton; a dev frame/long-task overlay (`?perf=1`); baseline screenshots and a perf trace of today's UI | new `bootstrap.ts` and `settings.ts` wired from `main.tsx`, `art.ts`, `playwright.config.ts`, `vite.config.ts`, new `fixtures.html` | **now** |
 | **U1** Tokens and the card | `tokens.css`, fonts, the icon sprite; the card redesign with the `data-*` state model, generative text-card art and the card back; the fixture gallery covering every card state | new `tokens.css` imported from `main.tsx`, `Card.tsx`, `Card.css`, fixture files (not `styles.css`, which V1-C edits) | **now** |
-| **U2** Board layout | `project(view)` → `BoardModel`, with the Board rendering from it (identical output). The viewport-fit grid, the top bar (hosting V1-C's picker) with an always-available Concede, piles and `ZoneSheet`, the LB fan, damage crystals, the stack column, the centre line, the primary-action button, the log drawer, the hover preview and the settings popover. `Board.tsx` (713 lines) splits into zone components | `Board.tsx`, `PromptStrip`, `EventLog`, `CardDetails`, `styles.css`, new `board/` | after U1 (V1-C merged as PR #12) |
+| **U2a** Render projection | `project(view)` → `BoardModel` (cards, seats, keyed stack, scalars); the Board draws every card's display props and the seat counters from it, with identical output | new `presentation/boardModel.ts`, `Board.tsx` | after U1 |
+| **U2b** Board layout | The viewport-fit grid, the top bar (hosting V1-C's picker) with an always-available Concede, piles and `ZoneSheet`, the LB fan, damage crystals, the stack column, the centre line, the primary-action button. `Board.tsx` splits into zone components | `Board.tsx`, `PromptStrip`, `styles.css`, new `board/` | after U2a |
+| **U2c** Drawer, preview, settings | The log drawer, the hover preview (replacing the `CardDetails` rail) and the settings popover | `EventLog`, `CardDetails`, new `board/` | after U2b |
 | **U3** Director foundation | Per-apply `PresentationStep`s with redaction and the exhaustive event classification; the director, displayed model, settle beat, convergence gating, skip, speed, Instant draining synchronously, restart and game generation; the coordinator's `whenIdle` gate; the convergence property test. **Every step drains synchronously, as at Instant, until U4 adds durations: the game plays exactly as today, with no timers** | `useGame.ts`, `coordinator.ts`, `types.ts`, new `presentation/` | after U2 |
 | **U4** Core motion | Add `motion`; zone moves (draw, play, break, discard, return, damage); dull and untap; hand fan springs; hover and inspect; turn and phase banners; AI telegraph reveals; the thinking indicator; art preload | presentation, UI | after U3 |
 | **U5** Targeting and payment | Target arrows (SVG Bézier), highlight and dim, CP crystals flowing to the meter, clear confirm and cancel | `SelectionTray`, `PaymentTray`, board | after U4 |
@@ -586,6 +588,14 @@ multiplayer stay possible later.
   status on `transitionend`). Carried: U4 must stop `:hover` erasing the `data-emphasis` rings before it sets them.
   Deferred minors: the card code label sits under the power number; the grain overlay also paints over loaded scans;
   uppercase names truncate sooner on small cards.
+- **U2a** (branch `feat/u2a-board-model`, plan `docs/superpowers/plans/2026-09-30-rung-u2a-board-model.md`, reviewed
+  by Fable): `presentation/boardModel.ts` — `project(view)` → `BoardModel` with a record per visible card (zone, index,
+  face, LB state), the seats' counters and zone lists, a keyed stack, and the scalars U3 diffs (turn, turn player,
+  phase, attack step, priority, pending kind and owner, result). The Board takes every card's display props and the
+  seat counters from it; interaction stays view-based. A corpus test (four Greedy games, over 200 positions) checks the
+  section 4.3 invariants and that it reached pumped Forwards, known hand cards, spent LB cards, cards in no zone, the
+  Break and Damage Zones and a non-empty stack. Identical output was proved by pinning the Board's markup at all 460
+  corpus positions before the refactor and matching it byte for byte after.
 
 ## Questions for your review
 
@@ -662,3 +672,6 @@ can be overturned here.
   slot. Neither reflows its row.
 - **D30 — The ladder is strictly sequential,** one rung at a time.
 - **D31 — Concede is always available** from the top bar menu, because gameplay controls lock during playback.
+- **D32 — U2 is three rungs** (decided while building, 2026-09-30). U2a: the projection, with no visible change. U2b:
+  the layout. U2c: the log drawer, the hover preview and the settings popover. One rung was a data-model refactor, a
+  layout rewrite and three new components at once; each part now ships and is reviewed on its own.
