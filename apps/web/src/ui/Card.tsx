@@ -58,6 +58,8 @@ export interface CardProps {
   dull?: boolean | undefined
   /** §15.2.4 (rung J3): frozen — it will not activate in its controller's next Active Phase. A badge, like the buffs. */
   frozen?: boolean | undefined
+  /** Rung V2-A2 (plan A2-D7): the one-shot damage reductions on this Forward, by amount, in grant order. A badge each. */
+  shields?: readonly number[] | undefined
   /** Rung J8 (§7.14): a card of an LB deck — face down (castable from there), or face up (spent). A badge. */
   lb?: 'down' | 'up' | undefined
   /**
@@ -147,7 +149,7 @@ export interface CardProps {
  * a Backup, but the component's contract allows it — and a +3000 badge on a card with no power is no more
  * meaningful than the sentence, so both stand down together.
  */
-function cardBuffs({ power, powerBonus = 0, granted = [], flags = [], frozen = false, lb }: CardProps): { badge: string; said: string }[] {
+function cardBuffs({ power, powerBonus = 0, granted = [], flags = [], frozen = false, shields = [], lb }: CardProps): { badge: string; said: string }[] {
   const modifier = powerBonus === 0 || power === null ? []
     : [{
         badge: powerBonus > 0 ? `+${powerBonus}` : `${powerBonus}`,
@@ -160,6 +162,7 @@ function cardBuffs({ power, powerBonus = 0, granted = [], flags = [], frozen = f
     ...granted.map((k) => ({ badge: KEYWORD_LABEL[k], said: `${KEYWORD_LABEL[k]} granted` })),
     ...flags.map((f) => ({ badge: FLAG_LABEL[f], said: FLAG_LABEL[f].toLowerCase() })),
     ...(frozen ? [{ badge: 'Frozen', said: 'frozen — will not activate next turn' }] : []),
+    ...shields.map((n) => ({ badge: `Shield −${n}`, said: `shielded — the next damage dealt to it this turn is reduced by ${n}` })),
     ...(lb === 'down' ? [{ badge: 'LB', said: 'in the LB deck, face down' }] : lb === 'up' ? [{ badge: 'Spent', said: 'in the LB deck, face up — spent' }] : []),
   ]
 }

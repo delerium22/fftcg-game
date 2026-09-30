@@ -20,7 +20,7 @@ export type ZoneKey = 'hand' | 'forwards' | 'backups' | 'lbDeck' | 'knownHand' |
 export interface CardFace {
   code: string; name: string; cost: number; elements: Element[]; type: CardType; power: number | null
   powerBonus?: number; granted?: readonly Keyword[]; flags?: readonly FieldFlag[]
-  damage?: number; dull?: boolean; frozen?: boolean; text?: string
+  damage?: number; dull?: boolean; frozen?: boolean; shields?: readonly number[]; text?: string
 }
 
 export interface CardModel {
@@ -96,6 +96,7 @@ function fieldFace(v: PlayerView, c: FieldCard, shim: ReturnType<typeof stateShi
     ...printedFace(v, c.id),
     power: shown.power, powerBonus: shown.powerBonus, granted: shown.granted, flags: shown.flags,
     damage: c.damage, dull: c.status === 'dull', frozen: c.frozen === true,
+    ...(c.shields?.length ? { shields: c.shields.map((sh) => sh.reduce) } : {}),
   }
 }
 

@@ -289,6 +289,13 @@ describe('hotseat damage narration (rung V2-A1)', () => {
     expect(describeEvent(v, { type: 'abilityDamage', source: a, target: c, original: 3000, amount: 3000, trace: [] })).toBe(`  ${name(c)} takes 3000 damage from ${name(a)}'s ability`)
   })
 
+  it('rung V2-A2: the amount before and after replacement effects, and whose they were; a shield', () => {
+    expect(describeEvent(v, { type: 'battleDamage', target: c, dealers: [a], original: 5000, amount: 4000, trace: [{ by: c, before: 5000, after: 4000 }] })).toBe(`  ${name(a)} deals 5000 → 4000 to ${name(c)} (by ${name(c)})`)
+    expect(describeEvent(v, { type: 'abilityDamage', source: a, target: c, original: 3000, amount: 5000, trace: [{ by: b, before: 3000, after: 5000 }] })).toBe(`  ${name(c)} takes 3000 → 5000 damage from ${name(a)}'s ability (by ${name(b)})`)
+    expect(describeEvent(v, { type: 'damageReducedToZero', target: c, dealers: [a], original: 5000, trace: [{ by: b, before: 5000, after: 0 }] })).toBe(`  ${name(a)}'s 5000 damage to ${name(c)} is reduced to 0 (by ${name(b)})`)
+    expect(describeEvent(v, { type: 'shieldGranted', card: c, source: a, amount: 2000 })).toBe(`  ${name(c)} is shielded: the next damage dealt to it this turn is reduced by 2000`)
+  })
+
   it('a packet reduced to 0 (declared now, emitted from rung V2-A2)', () => {
     expect(describeEvent(v, { type: 'damageReducedToZero', target: c, dealers: [a], original: 5000, trace: [] })).toBe(`  ${name(a)}'s 5000 damage to ${name(c)} is reduced to 0`)
   })

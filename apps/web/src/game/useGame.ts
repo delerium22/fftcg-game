@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   actingPlayer, actionMenu, apply, canAffordCast, createGame, defOf, forcedDecision, isResponseWindow, legalCommands, viewFor,
-  type AbilityTrigger, type CardId, type CardType, type Command, type Event, type FieldCard, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta, observesType } from '@fftcg/engine'
+  type AbilityTrigger, type CardId, type CardType, type Command, type DamageTraceStep, type Event, type FieldCard, type FieldFlag, type Frame, type GameState, type Keyword, type PlayerId, type PlayerView, type ZoneTransitionReason, isLegal, legalCommandsWithMeta, observesType } from '@fftcg/engine'
 import type { Agent } from '@fftcg/ai'
 import { CARD_DEFS, DECK_CHOICES, DEFAULT_DECKS, deckLists, type DeckPair } from '../deck.js'
 import { ATTACK_STEP_LABEL, bareName, buildChoiceSet, capitalise, describeChoice, paymentAlternatives, describeResult, describeTriggerCause, ownedCard, preferredChoices, qualifiedName, type TriggerCause } from './commands.js'
@@ -131,7 +131,7 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
       return { kind: 'event', text: `${who(v, e.player)} decline${e.player === v.me ? '' : 's'} the EX Burst on ${ownedCard(v, e.player, e.card)}` }
     // Rung V2-A1: one line per damage PACKET — a blocked party's damage to the blocker is one total (§15.1.1.9.8),
     // so "Cloud and Luso deal 8000 damage to X", never one line per member.
-    case 'battleDamage': return { kind: 'event', text: `${nameList(v, e.dealers)} deal${e.dealers.length === 1 ? 's' : ''} ${e.amount} damage to ${qualifiedName(v, e.target)}` }
+    case 'battleDamage': return { kind: 'event', text: `${nameList(v, e.dealers)} deal${e.dealers.length === 1 ? 's' : ''} ${replacedAmount(e)} damage to ${qualifiedName(v, e.target)}${replacedBy(v, e.trace)}` }
     case 'playerDamaged': return { kind: 'event', text: `${who(v, e.player)} take${e.player === v.me ? '' : 's'} 1 damage` }
     case 'broken': return { kind: 'event', text: `${qualifiedName(v, e.card)} is broken` }
     case 'putIntoBreakZone': return { kind: 'event', text: `${qualifiedName(v, e.card)} is put into the Break Zone (${BREAK_ZONE_WHY[e.reason]})` }
@@ -213,9 +213,11 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     case 'lbReturned': return { kind: 'event', text: `${qualifiedName(v, e.card)} goes back to ${whoDoes(v, e.player, 'your', "the AI's")} LB deck face up` }
     case 'frozen': return { kind: 'event', text: `${qualifiedName(v, e.card)} is frozen — it will not activate next turn` }
     case 'thawed': return { kind: 'event', text: `${qualifiedName(v, e.card)} ${fieldStatus(v, e.card) === 'dull' ? 'stays dull' : 'is no longer frozen'} — it was frozen` }
-    case 'abilityDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${e.amount} damage to ${qualifiedName(v, e.target)}` }
+    case 'abilityDamage': return { kind: 'event', text: `${qualifiedName(v, e.source)} deals ${replacedAmount(e)} damage to ${qualifiedName(v, e.target)}${replacedBy(v, e.trace)}` }
     // Spec V2-D4 (declared in rung V2-A1, emitted from V2-A2): 0 is not damage, so this is the only line it gets.
-    case 'damageReducedToZero': return { kind: 'event', text: `${nameList(v, e.dealers)}'s ${e.original} damage to ${qualifiedName(v, e.target)} is reduced to 0` }
+    case 'damageReducedToZero': return { kind: 'event', text: `${nameList(v, e.dealers)}'s ${e.original} damage to ${qualifiedName(v, e.target)} is reduced to 0${replacedBy(v, e.trace)}` }
+    // Rung V2-A2 (plan A2-D2): Porom's shield.
+    case 'shieldGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} is shielded — the next damage dealt to it this turn is reduced by ${e.amount}` }
     case 'powerModified': return { kind: 'event', text: `${qualifiedName(v, e.card)} gets ${e.amount >= 0 ? '+' : ''}${e.amount} power until the end of the turn` }
     case 'keywordGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} gains ${KEYWORD_LABEL[e.keyword]} until the end of the turn` }
     case 'flagGranted': return { kind: 'event', text: `${qualifiedName(v, e.card)} ${FLAG_LABEL[e.flag]}` }
@@ -227,6 +229,16 @@ export function describeEvent(v: PlayerView, e: Event, cause: TriggerCause | nul
     // `summonResolvedNoEffect` are noise (the latter doubles up on `unimplementedAbility` for every summon in the pool).
     default: return null
   }
+}
+
+/** Rung V2-A2 (plan A2-D7): "5000 → 4000" when replacement effects changed the amount, the amount alone otherwise. */
+function replacedAmount(e: { original: number; amount: number; trace: readonly unknown[] }): string {
+  return e.trace.length > 0 ? `${e.original} → ${e.amount}` : `${e.amount}`
+}
+
+/** " (Charlotte)", " (Porom and Wuk Lamat)" — the cards whose effects changed the amount, in the order they applied. */
+function replacedBy(v: PlayerView, trace: readonly DamageTraceStep[]): string {
+  return trace.length > 0 ? ` (${nameList(v, trace.map((t) => t.by))})` : ''
 }
 
 /** "A", "A and B", "A, B and C" — a damage packet's dealers, named as the other event lines name a card. */

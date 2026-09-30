@@ -236,3 +236,16 @@ describe('render — an event names the card the way the board does', () => {
     expect(eventCardName(viewFor(s, 0), 99_999)).toBe('#99999')
   })
 })
+
+describe('render — a shield on the board (rung V2-A2)', () => {
+  it('prints each shield by the amount it reduces the next damage', () => {
+    const base = viewFor(createGame({ seed: 1, decks: [deck, deck], defs: loadCards() }), 0)
+    const id = 901
+    const v: PlayerView = {
+      ...base,
+      cards: { ...base.cards, [id]: { id, code: deck[0]!, owner: 0 as const } },
+      fields: [{ ...base.fields[0], forwards: [{ id, status: 'active', damage: 0, enteredTurn: 1, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [], shields: [{ id: '5:1:0', reduce: 2000, source: 5 }] }] }, base.fields[1]],
+    }
+    expect(renderView(v)).toMatch(/\[901\] .*\{SHIELD-2000\}/)
+  })
+})

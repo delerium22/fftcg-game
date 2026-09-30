@@ -50,6 +50,12 @@ export interface Weights {
    * can only be changed by editing source cannot be A/B'd at all.
    */
   damageCurve: number
+  /**
+   * Rung V2-A2 (plan A2-D6): an unused shield (Porom's "the next damage dealt to it is reduced by 2000") on a Forward,
+   * per 1000 it reduces — half of a point of power per 1000, against `forwardPower`'s 1.2: it protects once, and only
+   * against damage that comes. Zero on a board with no shield, so every existing score is unchanged.
+   */
+  shield: number
 }
 
 export const DEFAULT_WEIGHTS: Weights = {
@@ -69,6 +75,7 @@ export const DEFAULT_WEIGHTS: Weights = {
   temporaryPower: 0.4,
   expiredThreat: 0,
   damageCurve: 0,
+  shield: 0.5,
 }
 
 /**
@@ -138,6 +145,11 @@ export function protectionValue(state: GameState, c: FieldCard, isForward: boole
   return (0.25 + 0.75 * exposure) * (cardValue(defOf(state, c.id)) + power / 1000)
 }
 
+/** What a shield reducing the next damage by `reduce` is worth on a Forward (rung V2-A2) — `evaluate`'s term, shared with the target policy. */
+export function shieldValue(reduce: number, w: Weights = DEFAULT_WEIGHTS): number {
+  return w.shield * (reduce / 1000)
+}
+
 /**
  * Rung C1: the until-end-of-turn qualities `material` cannot see. Without them every Haste target and every
  * `cannotBeBroken` target scores identically and the AI falls back to first-in-order (Codex MAJOR).
@@ -184,6 +196,7 @@ function material(state: GameState, p: PlayerId, w: Weights): number {
     const threatPower = spent ? permanent + temporary * w.expiredThreat : total
     if (c.status === 'active') v += (threatPower / 1000) * w.threat
     v += abilityTerms(state, p, c, true, w)
+    for (const sh of c.shields ?? []) v += shieldValue(sh.reduce, w)
   }
   for (const c of ps.backups) v += abilityTerms(state, p, c, false, w)
   v += Math.min(ps.backups.length, MAX_BACKUPS) * w.backup

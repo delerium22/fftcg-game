@@ -1,6 +1,6 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, damageProvenance, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, resolveChosenSpec, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, preferredOrder, previewDamagePacket, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, damageProvenance, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, resolveChosenSpec, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, preferredOrder, previewDamagePacket, targetCandidates, type CardId, type Command, type Effect, type Frame, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
-import { hasteUnlock, protectionValue } from './evaluate.js'
+import { hasteUnlock, protectionValue, shieldValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
 
 const ATTACK_SET_EXPLOSION_THRESHOLD = 6
@@ -102,7 +102,7 @@ function breaksWhatItDamages(state: GameState, source: CardId): boolean {
  * Only the effects directly under the chooser are priced. A nested chooser's value is not knowable one ply out
  * and every C1 clause is flat, so unknown shapes contribute 0 rather than a guess.
  */
-function targetDelta(state: GameState, source: CardId, controller: PlayerId, effects: readonly Effect[], id: CardId): number {
+function targetDelta(state: GameState, source: CardId, controller: PlayerId, effects: readonly Effect[], id: CardId, origin?: Frame['origin']): number {
   const loc = findFieldCard(state, id)
   const def = defOf(state, id)
   const power = loc ? powerOf(state, loc.card) : (def.power ?? 0)
@@ -131,7 +131,8 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
         // Rung V2-A1 (plan R9, spec V2-D8): priced at what the ONE application point would mark — the same number
         // until rung V2-A2's replacement effects, and then the only number that is true. 0 is not damage: no break,
         // no dealt-damage trigger (spec V2-D4), so it is worth nothing.
-        const { applied, final } = previewDamagePacket(state, { target: id, amount, dealers: [{ source, sourceController: controller }], ...damageProvenance(state, { source, controller }) })
+        // The frame's `origin` (V2-A1 review L5): an EX Burst's damage is its own provenance, which Yuzuki's clause reads.
+        const { applied, final } = previewDamagePacket(state, { target: id, amount, dealers: [{ source, sourceController: controller }], ...damageProvenance(state, { source, controller, ...(origin ? { origin } : {}) }) })
         if (!applied || final <= 0) break
         // §12.4.5: damage ≥ power breaks. Damage that actually breaks is worth the whole card; damage that does
         // not is worth only the exposure it leaves behind. C2: a source that breaks what it damages (Luso) kills
@@ -184,6 +185,10 @@ function targetDelta(state: GameState, source: CardId, controller: PlayerId, eff
       case 'addPower':
         if (loc) d += eff.amount / 1000
         break
+      // Rung V2-A2 (plan A2-D6): a shield on a Forward is priced as `evaluate` prices one it already carries.
+      case 'shieldNextDamage':
+        if (loc && loc.zone === 'forwards') d += shieldValue(eff.amount)
+        break
       case 'grantKeyword':
         // Priced by the SAME helpers `evaluate` uses, so the value the policy targets is the value the search
         // then sees. Granting a keyword the card already has is a no-op — score it as one.
@@ -232,8 +237,8 @@ function liveEffects(state: GameState, source: CardId, controller: PlayerId, eff
   return out
 }
 
-const targetScore = (state: GameState, me: PlayerId, source: CardId, controller: PlayerId, effects: readonly Effect[], id: CardId): number =>
-  (sideOf(state, id) === me ? 1 : -1) * targetDelta(state, source, controller, effects, id)
+const targetScore = (state: GameState, me: PlayerId, source: CardId, controller: PlayerId, effects: readonly Effect[], id: CardId, origin?: Frame['origin']): number =>
+  (sideOf(state, id) === me ? 1 : -1) * targetDelta(state, source, controller, effects, id, origin)
   + reflexiveValue(state, me, source, controller, liveEffects(state, source, controller, effects, [id]))
 
 /**
@@ -298,7 +303,7 @@ function policyChoices(ranked: readonly number[], scores: readonly number[], min
  * `chooseModes` (they are only distinguishable by what their branches would do). A chooser inside a mode is
  * priced as the policy's own best answer to it.
  */
-function effectsValue(state: GameState, me: PlayerId, source: CardId, controller: PlayerId, effects: readonly Effect[]): number {
+function effectsValue(state: GameState, me: PlayerId, source: CardId, controller: PlayerId, effects: readonly Effect[], origin?: Frame['origin']): number {
   let v = 0
   for (const eff of effects) {
     if (eff.kind === 'chooseTargets') {
@@ -307,22 +312,22 @@ function effectsValue(state: GameState, me: PlayerId, source: CardId, controller
       const selector = eff.select === 'opponent' ? opponentOf(controller) : me
       // No card is bound at this level, so `sameElementAsChosen` resolves against nothing (`elementIn: []`) rather than
       // reaching a filter unresolved and throwing (review L4).
-      const { ranked, scores } = rankBy(targetCandidates(state, source, controller, resolveChosenSpec(state, eff.from, [])), (id) => targetScore(state, selector, source, controller, eff.then, id))
+      const { ranked, scores } = rankBy(targetCandidates(state, source, controller, resolveChosenSpec(state, eff.from, [])), (id) => targetScore(state, selector, source, controller, eff.then, id, origin))
       const max = Math.min(eff.max, scores.length)
       if (eff.min > scores.length) continue   // cannot legally resolve: the executor no-ops it
-      for (const id of ranked.slice(0, bestSize(scores, Math.min(eff.min, max), max))) v += targetScore(state, me, source, controller, eff.then, id)
+      for (const id of ranked.slice(0, bestSize(scores, Math.min(eff.min, max), max))) v += targetScore(state, me, source, controller, eff.then, id, origin)
     } else if (eff.kind === 'forEach') {
-      for (const id of targetCandidates(state, source, controller, resolveChosenSpec(state, eff.from, []))) v += targetScore(state, me, source, controller, eff.do, id)
+      for (const id of targetCandidates(state, source, controller, resolveChosenSpec(state, eff.from, []))) v += targetScore(state, me, source, controller, eff.do, id, origin)
     } else if (eff.kind === 'onSource') {
       // "<this card> gains …" (rung V1-A4): the same grant priced on the source that a chosen own Forward would get.
-      v += targetScore(state, me, source, controller, eff.do, source)
+      v += targetScore(state, me, source, controller, eff.do, source, origin)
     } else if (eff.kind === 'chooseModes') {
-      const { scores } = rankBy(eff.modes.map((_, i) => i), (i) => effectsValue(state, me, source, controller, eff.modes[i]?.effects ?? []))
+      const { scores } = rankBy(eff.modes.map((_, i) => i), (i) => effectsValue(state, me, source, controller, eff.modes[i]?.effects ?? [], origin))
       const max = Math.min(eff.max, scores.length)
       for (let k = 0; k < bestSize(scores, Math.min(eff.min, max), max); k++) v += scores[k] as number
     } else if (eff.kind === 'if') {
       // The branch that would run now (rung V1-A1). No card is bound at this level, so `subjectMatches` reads false.
-      v += effectsValue(state, me, source, controller, conditionHolds({ state, source, controller }, eff.when, []) ? eff.then : (eff.else ?? []))
+      v += effectsValue(state, me, source, controller, conditionHolds({ state, source, controller }, eff.when, []) ? eff.then : (eff.else ?? []), origin)
     } else if (eff.kind === 'triggerReflexive') {
       // "When you do so" at this level (rung V1-D, R2): the reflexive clause's own worth.
       v += reflexiveValue(state, me, source, controller, [eff])
@@ -336,7 +341,7 @@ function chooseTargetsCandidates(state: GameState, player: PlayerId, pending: Ex
   const frame = state.resolution.active
   const node = suspendedEffect(state)
   if (!frame || node?.kind !== 'chooseTargets') return legalCommands(state, player).filter((c) => c.type === 'chooseTargets')
-  const { ranked, scores } = rankBy(pending.candidates, (id) => targetScore(state, player, frame.source, frame.controller, node.then, id))
+  const { ranked, scores } = rankBy(pending.candidates, (id) => targetScore(state, player, frame.source, frame.controller, node.then, id, frame.origin))
   const picks = policyChoices(ranked, scores, pending.min, Math.min(pending.max, ranked.length))
   // Sorted so the emitted command is structurally identical to the one `legalCommands` lists for the same set.
   // Target order is semantically irrelevant (`applyChooseTargets` is order-insensitive), but any consumer that
@@ -349,7 +354,7 @@ function chooseModeCandidates(state: GameState, player: PlayerId, pending: Extra
   const frame = state.resolution.active
   const node = suspendedEffect(state)
   if (!frame || node?.kind !== 'chooseModes') return legalCommands(state, player).filter((c) => c.type === 'chooseMode')
-  const { ranked, scores } = rankBy(node.modes.map((_, i) => i), (i) => effectsValue(state, player, frame.source, frame.controller, node.modes[i]?.effects ?? []))
+  const { ranked, scores } = rankBy(node.modes.map((_, i) => i), (i) => effectsValue(state, player, frame.source, frame.controller, node.modes[i]?.effects ?? [], frame.origin))
   const picks = policyChoices(ranked, scores, pending.min, Math.min(pending.max, ranked.length))
   return picks.map((modes) => ({ type: 'chooseMode', player, modes: [...modes].sort((a, b) => a - b) }))
 }
