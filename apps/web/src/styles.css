@@ -320,6 +320,12 @@ body {
 }
 
 /* Backup rows hold `small` cards, so they do not need the forward row's reserved height. */
+/* A pile's sheet (rung U2b, spec section 6): the card sheet's surface, wide enough for a row of small cards that wraps.
+ * After `.zone__cards {`: card-details.test.tsx slices the stylesheet from that rule's FIRST occurrence. */
+.zone-sheet { width: min(92vw, 960px); }
+.zone-sheet__body { padding: var(--s5); display: flex; flex-direction: column; gap: var(--s4); }
+.zone-sheet .zone__cards { justify-content: flex-start; flex-wrap: wrap; overflow-x: visible; max-height: 60vh; overflow-y: auto; margin-top: 0; }
+
 .zone__cards--compact { min-height: calc(clamp(56px, 7.5vh, 89px) + 4px); }
 
 .zone__cards--empty::before {
