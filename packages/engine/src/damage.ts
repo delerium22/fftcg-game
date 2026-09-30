@@ -1,8 +1,11 @@
 import type { PlayerId } from './types.js'
-import type { Frame } from './abilities.js'
+import { opponentOf } from './types.js'
+import type { DamageChange, DamageScope, Frame } from './abilities.js'
 import type { CardId, DamageOccurrence, GameState } from './state.js'
 import { defOf, findFieldCard, updatePlayer } from './state.js'
 import type { DamageTraceStep, Event } from './events.js'
+import { matchesDefFilter } from './filters.js'
+import { staticApplies } from './layer.js'
 
 /**
  * Rung V2-A1 (spec V2-D1): every damage to a FORWARD — battle, ability, Summon, either First Strike batch — is one
@@ -57,28 +60,105 @@ export interface DamageApplication {
   readonly state: GameState
   /** False when the target is no longer a Forward on the field: nothing marked, nothing emitted (plan R3). */
   readonly applied: boolean
-  /** The amount marked — the packet's amount until rung V2-A2 adds replacement effects; 0 when not applied. */
+  /** The amount marked after the replacement effects (rung V2-A2); 0 when not applied, or when reduced to 0. */
   readonly final: number
-  /** The replacement steps applied, in order. Always empty in rung V2-A1. */
+  /** The replacement steps applied, in order (rung V2-A2). */
   readonly trace: readonly DamageTraceStep[]
-  /** One per dealer, each carrying `final`, for the dealt-damage triggers — never re-applied (a held First Strike batch). */
+  /** One per dealer, each carrying `final`, for the dealt-damage triggers — never re-applied (a held First Strike batch).
+   *  None when the final amount is 0: 0 damage is not damage (spec V2-D4, ruling 2021-08-19). */
   readonly occurrences: readonly DamageOccurrence[]
   readonly events: readonly Event[]
 }
 
 const NOT_APPLIED = { applied: false, final: 0, trace: [], occurrences: [], events: [] } as const
 
+/**
+ * One replacement effect waiting for a packet (rung V2-A2, plan A2-D3): a `damageReplacement` static of a card on the
+ * field. `id` is `<card id>:<clause id>` — card ids on the field are public, so it names the same effect in every
+ * determinised world — and `by` is the card, for the trace and for the order prompt's wording.
+ */
+export interface Replacement { readonly id: string; readonly by: CardId; readonly change: DamageChange }
+
+/** Does the static's scope admit this packet? Relative to `controller`, the controller of `source`, which carries it. */
+function scopeAdmits(state: GameState, source: CardId, controller: PlayerId, scope: DamageScope, packet: DamagePacket, targetController: PlayerId): boolean {
+  if (scope.target === 'self') { if (packet.target !== source) return false }
+  else {
+    if (scope.target.controller === 'self' && targetController !== controller) return false
+    if (scope.target.filter && !matchesDefFilter(defOf(state, packet.target), scope.target.filter)) return false
+  }
+  if (scope.byCause === 'ability' && packet.cause !== 'ability') return false
+  if (scope.byController === 'opponent' && packet.causeController !== opponentOf(controller)) return false
+  // Plan R8: EVERY dealer is a card of the static's controller matching the filter. A mixed-controller packet does not
+  // arise in this pool (a party is one player's), so "every" and "any" agree on every packet the pool can build.
+  const by = scope.bySource
+  if (by && !packet.dealers.every((d) => d.sourceController === controller && matchesDefFilter(defOf(state, d.source), by.filter))) return false
+  return true
+}
+
+/**
+ * Every replacement effect that applies to `packet` (rung V2-A2, plan A2-D3), in the stable CANONICAL order — by the
+ * card carrying it, then by id. Read from the cards on the FIELD only (§11.12.5.3: it must exist before the event),
+ * each at most once per packet however many dealers the packet has (§11.12.5.5, plan R8). Empty when the target is not
+ * a Forward on the field.
+ */
+export function replacementsFor(state: GameState, packet: DamagePacket): Replacement[] {
+  const loc = findFieldCard(state, packet.target)
+  if (!loc || loc.zone !== 'forwards') return []
+  const out: Replacement[] = []
+  for (const p of [0, 1] as const) {
+    for (const c of [...state.players[p].forwards, ...state.players[p].backups]) {
+      for (const a of defOf(state, c.id).abilities ?? []) {
+        if (a.trigger.kind !== 'static' || a.trigger.effect.kind !== 'damageReplacement') continue
+        const eff = a.trigger.effect
+        if (!scopeAdmits(state, c.id, p, eff.affects, packet, loc.owner)) continue
+        if (!staticApplies({ state, source: c.id, controller: p }, eff.when)) continue
+        out.push({ id: `${c.id}:${eff.id}`, by: c.id, change: eff.change })
+      }
+    }
+  }
+  return out.sort((a, b) => a.by - b.by || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+/** What one order of replacements does to an amount (plan A2-D3). */
+export interface OrderOutcome { readonly final: number; readonly trace: readonly DamageTraceStep[] }
+
+/**
+ * §4.3 arithmetic (plan A2-D3, spec V2-D3): the replacements change a RUNNING amount in `order`, which may go negative
+ * between steps and keeps its sign for the next change; the final amount below 0 is 0. `becomes: 0` sets it to 0, and
+ * a later increase still applies to that 0 (plan Review Focus 1: Yuzuki first, then Wuk Lamat's +2000, is 2000).
+ */
+export function applyInOrder(amount: number, order: readonly Replacement[]): OrderOutcome {
+  let v = amount
+  const trace: DamageTraceStep[] = []
+  for (const r of order) {
+    const before = v
+    v = 'add' in r.change ? v + r.change.add : 'reduce' in r.change ? v - r.change.reduce : 0
+    trace.push({ by: r.by, before, after: v })
+  }
+  return { final: Math.max(0, v), trace }
+}
+
+/** The canonical order's outcome: what a packet with no choice to make does (plan A2-D4). */
+function outcomeOf(state: GameState, packet: DamagePacket): OrderOutcome {
+  return applyInOrder(packet.amount, replacementsFor(state, packet))
+}
+
 /** The amount `applyDamagePacket` would mark, without marking it — the AI's price for damage (plan R9, spec V2-D8). */
 export function previewDamagePacket(state: GameState, packet: DamagePacket): { applied: boolean; final: number } {
   const loc = findFieldCard(state, packet.target)
   if (!loc || loc.zone !== 'forwards') return { applied: false, final: 0 }
-  return { applied: true, final: packet.amount }
+  if (packet.amount <= 0) return { applied: true, final: 0 }
+  return { applied: true, final: outcomeOf(state, packet).final }
 }
 
 /**
  * Mark a packet's damage on its target, and say so: one `battleDamage` (naming every dealer) or `abilityDamage`
  * event, and one `DamageOccurrence` per dealer for the dealt-damage triggers. The caller queues those — and runs
  * the §12.4.5 rule process — only once its whole simultaneous batch has landed (§10.1.4.2).
+ *
+ * Rung V2-A2: the replacement effects apply first (plan A2-D3). A final amount of 0 is not damage (spec V2-D4, the
+ * official ruling of 2021-08-19): nothing is marked, no damage event and no occurrence — so no dealt-damage trigger —
+ * and a `damageReducedToZero` narrates it. A packet of 0 or less to begin with (no pool path builds one) emits nothing.
  *
  * MVP0-SIMPLIFICATION (§12.4.5 breaker attribution): the occurrences feed dealt-damage triggers only. Nothing records
  * which source broke a Forward by the rule process (`ZoneTransition.cause` is null for it); no pool card reads that,
@@ -87,13 +167,17 @@ export function previewDamagePacket(state: GameState, packet: DamagePacket): { a
 export function applyDamagePacket(state: GameState, packet: DamagePacket): DamageApplication {
   if (packet.dealers.length === 0) throw new Error(`a damage packet to ${packet.target} has no dealer`)
   if (packet.cause !== 'battle' && packet.dealers.length !== 1) throw new Error(`a ${packet.cause} damage packet has exactly one dealer, got ${packet.dealers.length}`)
-  const { applied, final } = previewDamagePacket(state, packet)
   const loc = findFieldCard(state, packet.target)
-  if (!applied || !loc) return { state, ...NOT_APPLIED }
-  const trace: DamageTraceStep[] = []
+  if (!loc || loc.zone !== 'forwards') return { state, ...NOT_APPLIED }
+  if (packet.amount <= 0) return { state, applied: true, final: 0, trace: [], occurrences: [], events: [] }
+  const { final, trace } = outcomeOf(state, packet)
+  const dealers = packet.dealers.map((d) => d.source)
+  if (final <= 0) {
+    return { state, applied: true, final: 0, trace, occurrences: [], events: [{ type: 'damageReducedToZero', target: packet.target, dealers, original: packet.amount, trace }] }
+  }
   const s = updatePlayer(state, loc.owner, (ps) => ({ ...ps, forwards: ps.forwards.map((c) => (c.id === packet.target ? { ...c, damage: c.damage + final } : c)) }))
   const event: Event = packet.cause === 'battle'
-    ? { type: 'battleDamage', target: packet.target, dealers: packet.dealers.map((d) => d.source), original: packet.amount, amount: final, trace }
+    ? { type: 'battleDamage', target: packet.target, dealers, original: packet.amount, amount: final, trace }
     : { type: 'abilityDamage', source: (packet.dealers[0] as DamageDealer).source, target: packet.target, original: packet.amount, amount: final, trace }
   // `targetController` is the damaged Forward's side NOW: a held First Strike occurrence's target may be gone by the
   // time its trigger is placed (§15.2.3.3).
