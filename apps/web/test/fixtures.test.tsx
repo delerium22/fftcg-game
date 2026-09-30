@@ -30,6 +30,18 @@ describe('the fixture gallery', () => {
     for (const lb of ['down', 'up'] as const) expect(has((f) => f.props.lb === lb), lb).toBe(true)
   })
 
+  it('covers the roles and emphasis states the board will set (U1)', () => {
+    const has = (pred: (f: (typeof CARD_FIXTURES)[number]) => boolean): boolean => CARD_FIXTURES.some(pred)
+    for (const role of ['targetable', 'targeted', 'invalid'] as const) expect(has((f) => f.props.role === role), role).toBe(true)
+    for (const e of ['attacking', 'blocking', 'on-stack', 'just-played'] as const) expect(has((f) => f.props.emphasis === e), e).toBe(true)
+  })
+
+  it('shows every card in both pools once, so the generative art of each is on the baseline', () => {
+    const pool = CARD_FIXTURES.filter((f) => f.group === 'Every pool card')
+    expect(pool.length).toBeGreaterThan(20)
+    expect(new Set(pool.map((f) => f.props.code)).size).toBe(pool.length)
+  })
+
   it('renders one labelled figure per fixture, each holding a card', () => {
     const host = document.body.appendChild(document.createElement('div'))
     root = createRoot(host)
