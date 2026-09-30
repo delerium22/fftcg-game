@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type JSX, useMemo } from 'react'
-import type { CardId, Element, FieldCard, GameState, Payment, PlayerId, PlayerView } from '@fftcg/engine'
-import { castBlockerText, displayName, fieldCardDisplay, headline, stateShim } from '../game/commands.js'
+import type { CardId, Element, Payment, PlayerId, PlayerView } from '@fftcg/engine'
+import { castBlockerText, displayName, headline } from '../game/commands.js'
+import { project, type CardFace, type SeatModel } from '../game/presentation/boardModel.js'
 import { candidatesFor, commandFor, completedChoice as completedSelection, extendableWith, refusal, selectionText, setKindFor, toggled, type Selection } from '../game/selection.js'
 import { SelectionTray } from './SelectionTray.js'
 import {
@@ -38,38 +39,6 @@ function defOf(v: PlayerView, id: CardId) {
 }
 
 /**
- * Everything a field card renders and announces, built ONCE.
- *
- * The card element and its grid cell both need this: inside a `CardGrid`, a card with no button of its own
- * is focused through the cell, so the cell carries the accessible name — and it must be the same name, from
- * the same numbers. Two spellings would drift somewhere only a screen-reader user ever goes.
- */
-function fieldCardProps(v: PlayerView, c: FieldCard, actionable: boolean, size: 'field' | 'small', shim: GameState): CardProps {
-  const d = defOf(v, c.id)
-  // Spec C1-7: `effectivePower` (via `fieldCardDisplay`) is the ONE power authority, and the board is a
-  // consumer of it. Passing printed `def.power` here would show a pumped Forward the wrong power AND the wrong
-  // damage ratio, because `Card` derives remaining power and the damage bar from whatever number it is given.
-  const shown = fieldCardDisplay(v, c, shim)
-  return {
-    code: d?.code ?? '?',
-    name: displayName(v, c.id),
-    cost: d?.cost ?? 0,
-    elements: d?.elements ?? [],
-    type: d?.type ?? 'forward',
-    power: shown.power,
-    powerBonus: shown.powerBonus,
-    granted: shown.granted,
-    flags: shown.flags,
-    damage: c.damage,
-    dull: c.status === 'dull',
-    frozen: c.frozen === true,
-    actionable,
-    size,
-    ...(d?.text === undefined ? {} : { text: d.text }),
-  }
-}
-
-/**
  * One labelled row of the board, navigable by keyboard.
  *
  * Every zone is a `CardGrid` for the same reason the hand is: a card nobody can click is a `role="img"` div
@@ -101,14 +70,14 @@ const PILE_LABEL: Record<PileKind, string> = {
   breakZone: 'Break Zone', damageZone: 'Damage', removedFromGame: 'Removed from game',
 }
 
-function Seat({ v, p, active, open, onToggle }: {
-  v: PlayerView; p: PlayerId; active: boolean
+function Seat({ seat, p, active, open, onToggle }: {
+  /** Rung U2a: the seat's counters come from the render projection, as every zone's cards do. */
+  seat: SeatModel; p: PlayerId; active: boolean
   open: PileKind | null
   onToggle: (kind: PileKind) => void
 }): JSX.Element {
-  const f = v.fields[p]
   const you = p === HUMAN
-  const damage = f.damageZone.length
+  const damage = seat.damageZone.length
 
   /**
    * A count that can be opened and read.
@@ -145,9 +114,9 @@ function Seat({ v, p, active, open, onToggle }: {
     <div className={active ? 'seat seat--active' : 'seat'}>
       <span className={you ? 'seat__name seat__name--you' : 'seat__name'}>{you ? 'You' : 'AI'}</span>
       <div className="seat__stats">
-        <span className="stat"><span className="stat__label">Deck</span><span className="stat__value">{f.deck.length}</span></span>
-        <span className="stat"><span className="stat__label">Hand</span><span className="stat__value">{you ? v.hand.length : f.handCount}</span></span>
-        {pile('breakZone', f.breakZone.length, <span className="stat__value">{f.breakZone.length}</span>)}
+        <span className="stat"><span className="stat__label">Deck</span><span className="stat__value">{seat.deckCount}</span></span>
+        <span className="stat"><span className="stat__label">Hand</span><span className="stat__value">{seat.handCount}</span></span>
+        {pile('breakZone', seat.breakZone.length, <span className="stat__value">{seat.breakZone.length}</span>)}
         {pile('damageZone', damage, (
           // `aria-hidden`: inside a disclosure button the pip track would be announced twice, once as the
           // button's own name and once as this image. Outside one it is still the only thing that says
@@ -158,8 +127,8 @@ function Seat({ v, p, active, open, onToggle }: {
             ))}
           </span>
         ))}
-        {f.removedFromGame.length > 0
-          && pile('removedFromGame', f.removedFromGame.length, <span className="stat__value">{f.removedFromGame.length}</span>)}
+        {seat.removedFromGame.length > 0
+          && pile('removedFromGame', seat.removedFromGame.length, <span className="stat__value">{seat.removedFromGame.length}</span>)}
       </div>
     </div>
   )
@@ -200,8 +169,12 @@ export function Board({ game, onHelp }: {
   onHelp?: (() => void) | undefined
 }): JSX.Element {
   const { view, choices, log, aiThinking, choose, restart } = game
-  // Rung J6-D7: one engine shim per render for the three readers (power, keywords, flags), not one per card.
-  const shim = useMemo(() => stateShim(view), [view])
+  // Rung U2a (UI overhaul spec section 4.1): every card's DISPLAY comes from the render projection — computed once per
+  // view, the engine's shim and all (rung J6-D7) — and every INTERACTION prop stays here, from the choices.
+  const model = useMemo(() => project(view), [view])
+  /** A card's display props from the model; `size` and every interaction prop are the caller's. */
+  const faceOf = (id: CardId): CardFace =>
+    model.cards[id]?.face ?? { code: '?', name: displayName(view, id), cost: 0, elements: [], type: 'forward', power: null }
   /** The card whose sheet is open (rung I1), or null. */
   const [sheet, setSheet] = useState<CardId | null>(null)
   // The card the player last pointed at, by CODE rather than by instance id: the panel shows what the CARD
@@ -301,20 +274,7 @@ export function Board({ game, onHelp }: {
    * about what they are called. Four rows now, one namer.
    */
   const pileItems = (p: PlayerId, kind: PileKind): GridItem[] =>
-    view.fields[p][kind].map((id) => {
-      const d = defOf(view, id)
-      return gridItem(id, {
-        code: d?.code ?? '?',
-        name: displayName(view, id),
-        cost: d?.cost ?? 0,
-        elements: d?.elements ?? [],
-        type: d?.type ?? 'forward',
-        power: d?.power ?? null,
-        actionable: false,
-        size: 'small',
-        ...(d?.text === undefined ? {} : { text: d.text }),
-      })
-    })
+    model.seats[p][kind].map((id) => gridItem(id, { ...faceOf(id), actionable: false, size: 'small' }))
 
   /**
    * Forget an open pile once it has emptied.
@@ -529,17 +489,19 @@ export function Board({ game, onHelp }: {
   const payingRole = (id: CardId): 'dull' | 'discard' | 'flip' | undefined => sourceState(id).role ?? undefined
 
   const field = (p: PlayerId, kind: 'forwards' | 'backups'): GridItem[] =>
-    view.fields[p][kind].map((c) => {
+    model.seats[p][kind].map((id) => {
       // The action, which a field card never carried. A Forward whose sole choice is `Block with Luso`
       // announced only its power — the same silence as a hand card, on the row where the decision is most
       // often irreversible.
       const props: CardProps = {
-        ...fieldCardProps(view, c, glows(c.id), kind === 'backups' ? 'small' : 'field', shim),
-        ...(actionFor(c.id) === undefined ? {} : { action: actionFor(c.id) }),
-        ...(payingRole(c.id) === undefined ? {} : { paying: payingRole(c.id) }),
-        ...(chosenNow(c.id) ? { chosen: true } : {}),
+        ...faceOf(id),
+        actionable: glows(id),
+        size: kind === 'backups' ? 'small' : 'field',
+        ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
+        ...(payingRole(id) === undefined ? {} : { paying: payingRole(id) }),
+        ...(chosenNow(id) ? { chosen: true } : {}),
       }
-      return gridItem(c.id, props, { selected: sheet === c.id })
+      return gridItem(id, props, { selected: sheet === id })
     })
 
   /**
@@ -547,40 +509,18 @@ export function Board({ game, onHelp }: {
    * from the field — face up. The rest of that hand stays the Seat's count; the label says how many of it you know.
    */
   const knownHandItems = (): GridItem[] =>
-    view.fields[AI].knownHand.map((id) => {
-      const d = defOf(view, id)
-      return gridItem(id, {
-        code: d?.code ?? '?',
-        name: displayName(view, id),
-        cost: d?.cost ?? 0,
-        elements: d?.elements ?? [],
-        type: d?.type ?? 'forward',
-        power: d?.power ?? null,
-        actionable: false,
-        size: 'small',
-        ...(d?.text === undefined ? {} : { text: d.text }),
-      }, { selected: sheet === id })
-    })
+    model.seats[AI].knownHand.map((id) => gridItem(id, { ...faceOf(id), actionable: false, size: 'small' }, { selected: sheet === id }))
 
   /** Rung J8: a seat's LB deck (§7.14) — face-down cards castable from it glow like a hand card; face-up ones are spent. */
   const lbItems = (p: PlayerId): GridItem[] =>
-    view.fields[p].lbDeck.map((x) => {
-      const d = defOf(view, x.id)
-      return gridItem(x.id, {
-        code: d?.code ?? '?',
-        name: displayName(view, x.id),
-        cost: d?.cost ?? 0,
-        elements: d?.elements ?? [],
-        type: d?.type ?? 'forward',
-        power: d?.power ?? null,
-        actionable: glows(x.id),
-        size: 'small',
-        lb: x.faceUp ? 'up' : 'down',
-        ...(d?.text === undefined ? {} : { text: d.text }),
-        ...(actionFor(x.id) === undefined ? {} : { action: actionFor(x.id) }),
-        ...(payingRole(x.id) === undefined ? {} : { paying: payingRole(x.id) }),
-      }, { selected: sheet === x.id })
-    })
+    model.seats[p].lbDeck.map((id) => gridItem(id, {
+      ...faceOf(id),
+      actionable: glows(id),
+      size: 'small',
+      lb: model.cards[id]?.lbFaceUp ? 'up' : 'down',
+      ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
+      ...(payingRole(id) === undefined ? {} : { paying: payingRole(id) }),
+    }, { selected: sheet === id }))
 
   // Every clickable choice must be reachable, or the game dead-ends: Billy Bob's ETB targets your BREAK ZONE,
   // which the board otherwise shows only as a count, so its answer lived entirely in `byCard` under an id no
@@ -589,17 +529,10 @@ export function Board({ game, onHelp }: {
   // give it a row. That closes the class (C2/C3 target more hidden zones) instead of this one instance.
   const orphanTargets = orphanTargetIds(view, choices)
   const orphanCards: GridItem[] = orphanTargets.map((id) => {
-    const d = defOf(view, id)
     return gridItem(id, {
-      code: d?.code ?? '?',
-      name: displayName(view, id),
-      cost: d?.cost ?? 0,
-      elements: d?.elements ?? [],
-      type: d?.type ?? 'forward',
-      power: d?.power ?? null,
+      ...faceOf(id),
       actionable: true,
       size: 'small',
-      ...(d?.text === undefined ? {} : { text: d.text }),
       // And here too. Every card in this row is actionable BY CONSTRUCTION — it exists only because a choice
       // named it — so one that says nothing about its action is the worst case of the three: a card the
       // player has never seen, in a row that appeared for reasons the board does not explain, offering a
@@ -616,10 +549,8 @@ export function Board({ game, onHelp }: {
   const sheetProps = (id: CardId): JSX.Element | null => {
     const d = defOf(view, id)
     if (!d) return null
-    const onField = ([0, 1] as const).flatMap((p) => [...view.fields[p].forwards, ...view.fields[p].backups]).find((c) => c.id === id)
-    const face: CardProps = onField
-      ? fieldCardProps(view, onField, false, 'field', shim)
-      : { code: d.code, name: displayName(view, id), cost: d.cost, elements: d.elements, type: d.type, power: d.power, ...(d.text === undefined ? {} : { text: d.text }) }
+    const zone = model.cards[id]?.zone
+    const face: CardProps = zone === 'forwards' || zone === 'backups' ? { ...faceOf(id), actionable: false, size: 'field' } : faceOf(id)
     const forCard = paying || selecting ? [] : (choices.byCard.get(id) ?? [])
     // Rung J7-D3: when the decision is a SET this card may join, its several-member commands collapse into
     // one "Choose several…" action that starts the picker with this card; a singleton stays a plain commit.
@@ -657,7 +588,7 @@ export function Board({ game, onHelp }: {
     <div className="table">
       <section className="table__seat table__seat--opponent">
         <Seat
-          v={view} p={AI} active={view.priority === AI || view.pending?.player === AI}
+          seat={model.seats[AI]} p={AI} active={model.active[AI]}
           open={openPile?.p === AI ? openPile.kind : null}
           onToggle={(kind) => togglePile(AI, kind)}
         />
@@ -682,7 +613,7 @@ export function Board({ game, onHelp }: {
           your own, then your hand, then the buttons. */}
       <section className="table__seat table__seat--player">
         <Seat
-          v={view} p={HUMAN} active={view.priority === HUMAN || view.pending?.player === HUMAN}
+          seat={model.seats[HUMAN]} p={HUMAN} active={model.active[HUMAN]}
           open={openPile?.p === HUMAN ? openPile.kind : null}
           onToggle={(kind) => togglePile(HUMAN, kind)}
         />
@@ -701,22 +632,15 @@ export function Board({ game, onHelp }: {
           label="Your hand"
           className="hand"
           onLookAt={look}
-          items={view.hand.map((id) => {
-            const d = defOf(view, id)
+          items={model.hand.map((id) => {
             // The SAME occurrence marker the buttons use. A button saying "Discard Shantotto (2)" is only
             // useful if the player can see which rendered card is Shantotto (2) — a disambiguator that
             // appears on one side of the interface and not the other is worse than none, because it looks
             // like an answer.
             return gridItem(id, {
-              code: d?.code ?? '?',
-              name: displayName(view, id),
-              cost: d?.cost ?? 0,
-              elements: d?.elements ?? [],
-              type: d?.type ?? 'forward',
-              power: d?.power ?? null,
+              ...faceOf(id),
               actionable: glows(id),
               size: 'hand',
-              ...(d?.text === undefined ? {} : { text: d.text }),
               ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
               ...(payingRole(id) === undefined ? {} : { paying: payingRole(id) }),
               ...(chosenNow(id) ? { chosen: true } : {}),
