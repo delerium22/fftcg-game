@@ -2,8 +2,9 @@
 
 > **STATUS: DESIGN, 2026-09-30.** Under the user's standing instruction (loop, recommended option at a crossroads, CR
 > letter, split large mechanics into their own PRs). Decisions marked V2-D are mine and recorded to be overturned here.
-> **V2-A1 built 2026-09-30** (the packet refactor; see "As built (V2-A1)" below). V2-A2 and V2-B are not started, and
-> the pool-coverage gap table is unchanged (V2-D10).
+> **V2-A1 built 2026-09-30** (the packet refactor; see "As built (V2-A1)" below). **V2-A2 built 2026-09-30** (the
+> replacement machinery on synthetic cards; see "As built (V2-A2)"). V2-B is not started, and the pool-coverage gap
+> table is unchanged (V2-D10).
 
 ## The clauses
 
@@ -121,6 +122,39 @@ with its revisions R1–R10. Differences from the design above, and readings:
   in the full state hash, all with a blocked party, and 0 differ once damage-occurrence amounts (held occurrences
   and damage trigger events) are blanked. The scenario goldens' board assertions are unchanged; only the party
   trace lines changed (combat-tricks).
+
+## As built (V2-A2)
+
+Commits 58dfa1d (statics, §4.3 arithmetic, 0 is not damage), ea047dc (shields), 800d69f (the order choice and every
+consumer), 7c15770 (AI pricing, web and CLI). Plan `2026-09-30-rung-v2a2-replacements.md` with revisions R1–R9. The
+card pool is unchanged; every test uses synthetic cards. Differences from the plan, and readings:
+- Readings (the plan's, recorded because the CR text does not settle them): a static keeps applying to a running 0
+  after "becomes 0" (Yuzuki first, then Wuk Lamat's +2000, is 2000 — plan Review Focus 1); a SHIELD applies only while
+  the running amount is positive, otherwise it is not applied and survives (R2, ruling 2021-08-19). Distinct outcomes
+  compare `(final, consumed shield ids)` literally, so two equal shields and a hit smaller than one of them prompt for
+  which shield is used — pinned by a test; an amount-equivalence rule would remove that prompt.
+- The pending carries, beyond R3/R6's `owner`/`options`/`outcomes`: `target`, `original`, and `replacements`
+  (`{ id, by, change, shield? }`) so both front ends word an option without recomputing it —
+  `describeReplacementOrder` in `damage.ts` is the one wording. The static's id is `<card id>:<effect id>` (effect ids
+  unique per card, validated); a shield's is `<source>:<turn>:<n>` and it also carries `source` (V2-D5's shape).
+- Added event `shieldGranted { card, source, amount }` for the log. `applyDamagePacket(state, packet, order?)` THROWS
+  when a choice is owed and no order is given; more than 6 replacements on one packet throws (none reachable).
+- R1 as built: the `damage` node builds every packet, asks every unanswered order (answers on `Frame.replacementOrders`,
+  consumed in packet order, cleared on landing), and lands nothing until all are in. `forEach`, `onSubject` and `onSource`
+  run their body as a transaction (`damageScope` in resolve.ts): a replacement order inside rolls the whole body back —
+  state, events, steps — and suspends at the container, which re-runs from its first card on resume. Any other prompt
+  inside still throws. A `chooseTargets` resuming through a deeper damage prompt no longer records its targets twice.
+- R4 as built: a battle batch's answers and the blocker's split ride on `attack.replacementOrders`/`blockerAssignments`
+  (absent otherwise, checked by invariants), digested in `firstStrikeDigest`; the answer re-deals through `dealAfterSplit`.
+- §11.12.5.6 (self-replacements first) is not modelled: none of the five clauses is one.
+- V2-A1 review L5: the AI's damage preview passes the frame's `origin`; no replacement in this pool reads `exBurst`, so it
+  changes no price today.
+- AI: `evaluate` weight `shield` = 0.5 per 1000 reduced (zero with no shield); the policy prices a granted shield the
+  same way and lists the least-damage order first (then fewest shields used).
+- Oracle (the V2-A1 R7 harness, 247 seeded games, scratchpad `v2a2-oracle.mts`): before ee79078 against after 7c15770 —
+  0 differences in winner, cause, turns, command count, command sequence, and 0 in the full post-command state hash.
+  Strict self-play and `pnpm test:browser` were not run for this note (session ended); the unit suites were green at
+  every commit.
 
 ## Tests (acceptance)
 
