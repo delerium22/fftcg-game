@@ -595,7 +595,12 @@ multiplayer stay possible later.
   seat counters from it; interaction stays view-based. A corpus test (four Greedy games, over 200 positions) checks the
   section 4.3 invariants and that it reached pumped Forwards, known hand cards, spent LB cards, cards in no zone, the
   Break and Damage Zones and a non-empty stack. Identical output was proved by pinning the Board's markup at all 460
-  corpus positions before the refactor and matching it byte for byte after.
+  corpus positions before the refactor and matching it byte for byte after. The Fable review approved it (it
+  independently re-ran the markup proof and a click-through of piles, sheets and the orphan row). Carried to U2b: the AI
+  hand row label and the LB row guards still read `view` rather than the model; the corpus test does not tally
+  `removedFromGame`, never reaches a `#n` stack key, and does not assert a record's side or index; a stale comment in
+  `card-details.test.tsx` names the deleted `fieldCardProps`. Spec section 4.1's per-record `face` is derivable from the
+  zone and `lbFaceUp` today; U3 makes it explicit if its hidden-card actors need it.
 
 ## Questions for your review
 
