@@ -32,7 +32,8 @@ function commandCardIds(c: Command): readonly CardId[] {
     case 'activateAbility': return [c.source, ...c.payment.dullBackups, ...c.payment.discards.map((d) => d.card)]
     // `chooseFromDeck` answers with INDICES, so like `chooseMode` it carries no card id to check.
     // G3's `chooseExBurst` is a bare boolean, so like `chooseMode` it names no card to validate.
-    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst':
+    // Rung V2-A2: a replacement order is an index into the pending's options, like `chooseMode`.
+    case 'chooseFirst': case 'mulligan': case 'chooseMode': case 'chooseFromDeck': case 'chooseExBurst': case 'chooseReplacementOrder':
     case 'pass': case 'concede': return []
     default: { const _exhaustive: never = c; return _exhaustive }
   }

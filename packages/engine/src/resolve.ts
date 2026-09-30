@@ -17,7 +17,7 @@ import type { CardDef, PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { Event, StackRef } from './events.js'
 import { IllegalCommandError } from './errors.js'
-import { applyDamagePacket, damageProvenance, type DamageProvenance } from './damage.js'
+import { applyDamagePacket, damageProvenance, packetOrders, replacementOrderCheck, replacementOrderPending, type DamagePacket, type DamageProvenance } from './damage.js'
 
 /**
  * The ability executor (spec C1-3). No card-specific code lives here: this is an interpreter for the `Effect`
@@ -280,6 +280,18 @@ interface Ctx {
   modes: number[]
   /** Indices answered to a `chooseFromDeck` (spec C9-1). */
   picks: number[]
+  /**
+   * Rung V2-A2 (plan R1): the answers to the replacement-order prompts of the damage the frame is suspended at, and how
+   * many of them this run has used. Cleared once that damage lands outside any `damageScope`.
+   */
+  orders: number[]
+  orderCursor: number
+  /**
+   * How many binding containers (`forEach`, `onSubject`, `onSource`) enclose the node running now. Inside one, damage
+   * that owes an order rolls the WHOLE container back and suspends at it (plan R1): nothing in it lands until every
+   * order is in, and the container re-runs from its first card on resume.
+   */
+  txDepth: number
   /** What fired this clause, for `onSubject` and narration; null for self-triggers (spec C2-5). */
   triggerEvent: TriggerEvent | null
   /** What this frame's damage counts as — a Summon's or an ability's, EX Burst or not (rung V2-A1, plan R5). */
@@ -377,6 +389,28 @@ function settleLook(ctx: Ctx, eff: Extract<Effect, { kind: 'lookAtDeck' }>, expo
   }
 }
 
+/**
+ * Run a binding container's body (`forEach`, `onSubject`, `onSource`) as ONE transaction (rung V2-A2, plan R1). Its
+ * binding cannot survive a suspension, so the only prompt allowed inside is a damage replacement order, and that
+ * one rolls the whole body back — state, events, step count — and suspends at the container itself, with the
+ * enclosing binding restored: nothing in the body has landed, and on resume it runs again from its first card with
+ * the answers so far. Once it completes, its answers are spent.
+ */
+function damageScope(ctx: Ctx, kind: string, body: () => void): void {
+  const saved = { chosen: ctx.chosen, state: ctx.state, events: ctx.events.length, steps: ctx.steps, path: [...ctx.path], cursor: ctx.orderCursor }
+  ctx.txDepth++
+  try { body() } finally { ctx.txDepth-- }
+  if (ctx.suspend) {
+    if (ctx.suspend.kind !== 'chooseReplacementOrder') throw new Error(`ability ${ctx.abilityId}: ${kind}.do must not contain a suspending effect`)
+    ctx.state = saved.state
+    ctx.events.length = saved.events
+    ctx.steps = saved.steps
+    ctx.path = saved.path
+    ctx.orderCursor = saved.cursor
+  } else if (ctx.txDepth === 0) { ctx.orders = []; ctx.orderCursor = 0 }
+  ctx.chosen = saved.chosen
+}
+
 function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): void {
   // Rung J1-D3: the declare stage walks CHOICE nodes only. The first effect that is not one ends declaration —
   // the item is fully declared and goes on the stack; everything from here runs when it resolves.
@@ -393,7 +427,9 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
         // the inner one in this `then` must act on this node's targets (V1-A1 review M1).
         const here = ctx.resume.length === depth + 2
         const own = here ? [...ctx.answer] : ctx.declared.find((d) => samePath(d.path, ctx.path))?.targets ?? [...ctx.chosen]
-        if (here) ctx.declared.push({ path: [...ctx.path], targets: [...own] })
+        // A prompt deeper in `then` can resume on a path of the same length (a damage replacement order, rung V2-A2), so
+        // the node records its targets once.
+        if (here && !ctx.declared.some((d) => samePath(d.path, ctx.path))) ctx.declared.push({ path: [...ctx.path], targets: [...own] })
         // "When you do so" (rung V1-A2, spec V1-D10): nothing picked, nothing nested runs.
         if (eff.onlyIfChosen && own.length === 0) return
         const outer = ctx.chosen
@@ -510,39 +546,34 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
     }
     case 'forEach': {
       // Untargeted, so it raises no prompt — and it must not contain one either: `Frame.chosen` is a single
-      // innermost binding, so a suspension inside `do` could not restore the per-iteration card on resume.
-      const saved = ctx.chosen
-      for (const id of targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)) {
-        ctx.chosen = [id]
-        runEffects(ctx, eff.do, depth + 1, false)
-        if (ctx.suspend) throw new Error(`ability ${ctx.abilityId}: forEach.do must not contain a suspending effect`)
-      }
-      ctx.chosen = saved
+      // innermost binding, so a suspension inside `do` could not restore the per-iteration card on resume. The one
+      // exception is damage owing a replacement order (rung V2-A2, plan R1, Zack's sweep): `damageScope` rolls the
+      // whole loop back and suspends HERE, so every order is asked before any iteration lands.
+      damageScope(ctx, eff.kind, () => {
+        for (const id of targetCandidates(ctx.state, ctx.source, ctx.controller, eff.from)) {
+          ctx.chosen = [id]
+          runEffects(ctx, eff.do, depth + 1, false)
+          if (ctx.suspend) return
+        }
+      })
       return
     }
     case 'onSubject': {
       // The card the trigger was ABOUT — Luso's "break it" (spec C2-5). Same fixed-binding shape as
       // `forEach`, so `do` may not suspend: `Frame.chosen` holds one innermost binding and a prompt inside
-      // `do` could not restore the subject on resume. A trigger with no card subject is a no-op.
+      // `do` could not restore the subject on resume (a replacement order excepted, as for `forEach`). A trigger with
+      // no card subject is a no-op.
       const ev = ctx.triggerEvent
       const subject = ev === null ? null : ev.kind === 'damage' ? ev.target : ev.card
       if (subject === null) return
-      const saved = ctx.chosen
-      ctx.chosen = [subject]
-      runEffects(ctx, eff.do, depth + 1, false)
-      if (ctx.suspend) throw new Error(`ability ${ctx.abilityId}: onSubject.do must not contain a suspending effect`)
-      ctx.chosen = saved
+      damageScope(ctx, eff.kind, () => { ctx.chosen = [subject]; runEffects(ctx, eff.do, depth + 1, false) })
       return
     }
     case 'onSource': {
       // "<this card> gains …" (rung V1-A4): the ability's own card, named by the printed text — not a choice, so no
       // "when chosen" watcher sees it. `onSubject`'s shape, so `do` may not suspend (game creation refuses it too).
       // A source that has left the field (§11.11.7) is bound anyway: the field effects skip a card not on the field.
-      const saved = ctx.chosen
-      ctx.chosen = [ctx.source]
-      runEffects(ctx, eff.do, depth + 1, false)
-      if (ctx.suspend) throw new Error(`ability ${ctx.abilityId}: onSource.do must not contain a suspending effect`)
-      ctx.chosen = saved
+      damageScope(ctx, eff.kind, () => { ctx.chosen = [ctx.source]; runEffects(ctx, eff.do, depth + 1, false) })
       return
     }
     case 'dull':
@@ -571,13 +602,21 @@ function runEffect(ctx: Ctx, eff: Effect, depth: number, answered: boolean): voi
       // Rung V2-A1 (spec V2-D1): one packet per chosen target, in chosen order, through the one application point.
       // A target that is not a Forward on the field is not applied — only Forwards carry damage. `forEach` re-enters
       // this case once per card, so it is routed here too.
+      const packets: DamagePacket[] = ctx.chosen.map((id) => ({ target: id, amount, dealers: [{ source: ctx.source, sourceController: ctx.controller }], ...ctx.provenance }))
+      // Rung V2-A2 (plan A2-D4, R1): every packet's replacement order is asked BEFORE any of them lands — the hits are
+      // one simultaneous effect. An unanswered one suspends the frame here (or at the enclosing container, which rolls
+      // back); on resume this node re-builds the same packets from the same state and takes the answers in order.
+      const { orders, used, ask } = packetOrders(ctx.state, packets, ctx.orders.slice(ctx.orderCursor))
+      if (ask) { ctx.suspend = replacementOrderPending(ctx.state, ask.packet, ask.choice, 'frame'); return }
+      ctx.orderCursor += used
       const hits: DamageOccurrence[] = []
-      for (const id of ctx.chosen) {
-        const r = applyDamagePacket(ctx.state, { target: id, amount, dealers: [{ source: ctx.source, sourceController: ctx.controller }], ...ctx.provenance })
+      packets.forEach((p, i) => {
+        const r = applyDamagePacket(ctx.state, p, orders[i])
         ctx.state = r.state
         ctx.events.push(...r.events)
         hits.push(...r.occurrences)
-      }
+      })
+      if (ctx.txDepth === 0) { ctx.orders = []; ctx.orderCursor = 0 }
       ctx.state = enqueueDamageTriggers(ctx.state, hits)   // ability damage triggers exactly as combat damage does (spec C2-7)
       // §12.4.5 turns this into a break; `settle` runs the rule processes, which honour `cannotBeBroken`. Because
       // `drainResolution` yields between frames (spec C2-6), that process resolves BEFORE the trigger just queued.
@@ -740,7 +779,7 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
     // An `observesChosen` clause runs with the CHOSEN card bound, as C11's inline execution bound it: "Prishe
     // gains +2000 power" is an `addPower` over the binding, and the binding is Prishe herself.
     chosen: frame.chosen.length ? [...frame.chosen] : frame.triggerEvent?.kind === 'chosen' ? [frame.triggerEvent.card] : [],
-    modes: [...frame.modes], picks: [...(frame.picks ?? [])],
+    modes: [...frame.modes], picks: [...(frame.picks ?? [])], orders: [...(frame.replacementOrders ?? [])], orderCursor: 0, txDepth: 0,
     triggerEvent: frame.triggerEvent, provenance: damageProvenance(state, frame),
     resume: frame.path, suspend: null, steps: state.resolution.steps,
     stage, declared: (frame.declared ?? []).map((d) => ({ path: [...d.path], targets: [...d.targets] })),
@@ -771,8 +810,31 @@ function runFrame(state: GameState, frame: Frame): FrameResult {
   runEffects(ctx, ability.effects, 0, frame.path.length > 0)
   return {
     state: ctx.state, events: ctx.events, pending: ctx.suspend, steps: ctx.steps, cancelled: ctx.cancelled,
-    frame: { ...frame, path: ctx.path, chosen: ctx.chosen, modes: ctx.modes, stage, declared: ctx.declared, modesDeclared: ctx.modesDeclared },
+    frame: withOrders({ ...frame, path: ctx.path, chosen: ctx.chosen, modes: ctx.modes, stage, declared: ctx.declared, modesDeclared: ctx.modesDeclared }, ctx.orders),
   }
+}
+
+/** `frame` carrying `orders` as its replacement-order answers — absent when there are none (rung V2-A2). */
+function withOrders(frame: Frame, orders: readonly number[]): Frame {
+  if (orders.length > 0) return { ...frame, replacementOrders: [...orders] }
+  if (frame.replacementOrders === undefined) return frame
+  const rest: { -readonly [K in keyof Frame]: Frame[K] } = { ...frame }
+  delete rest.replacementOrders
+  return rest
+}
+
+/**
+ * The answer to a frame's `chooseReplacementOrder` (rung V2-A2, plan R1/R3): appended to the frame's answers, with its
+ * program counter unchanged — the suspended node (the `damage` node, or the container that rolled back around it)
+ * runs again and re-builds its packets from this same state.
+ */
+export function applyFrameReplacementOrder(state: GameState, player: PlayerId, order: number): [GameState, Event[]] {
+  const why = replacementOrderCheck(state, player, order)
+  if (why) throw new IllegalCommandError(why)
+  const frame = state.resolution.active
+  if (state.pending?.kind !== 'chooseReplacementOrder' || state.pending.owner !== 'frame' || !frame) throw new IllegalCommandError('no ability is waiting for a replacement order')
+  const active: Frame = { ...frame, replacementOrders: [...(frame.replacementOrders ?? []), order] }
+  return [{ ...state, pending: null, resolution: { ...state.resolution, active } }, []]
 }
 
 // ---------------------------------------------------------------------------

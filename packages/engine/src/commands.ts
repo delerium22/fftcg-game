@@ -37,6 +37,8 @@ export type Command =
    * information-set semantics ISMCTS wants.
    */
   | { type: 'chooseFromDeck'; player: PlayerId; picks: readonly number[] }
+  /** Answers a `chooseReplacementOrder` pending (rung V2-A2, §11.12.5.7): an index into its `options`. */
+  | { type: 'chooseReplacementOrder'; player: PlayerId; order: number }
   /**
    * Use an activated ability (spec C3-1).
    *

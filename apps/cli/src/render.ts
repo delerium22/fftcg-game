@@ -1,5 +1,5 @@
 import type { Ability, CardId, Command, FieldCard, PlayerId, PlayerView } from '@fftcg/engine'
-import { describeAbilityCost, describeAbilityEffect, pickedDeckCards } from '@fftcg/engine'
+import { describeAbilityCost, describeAbilityEffect, describeReplacementOrder, pickedDeckCards } from '@fftcg/engine'
 
 const PHASE_LABEL: Record<string, string> = { setup: 'Setup', active: 'Active Phase', draw: 'Draw Phase', main1: 'Main Phase 1', attack: 'Attack Phase', main2: 'Main Phase 2', end: 'End Phase' }
 
@@ -50,6 +50,8 @@ function fieldCard(v: PlayerView, c: FieldCard): string {
  * already says it, and `describeAbilityEffect` already extracts the effect half.
  */
 export function askingBecause(v: PlayerView): string | null {
+  // Rung V2-A2 (§11.12.5.7): the damaged Forward's controller orders its replacement effects — whoever's damage it is.
+  if (v.pending?.kind === 'chooseReplacementOrder') return `  Order the effects replacing the ${v.pending.original} damage to ${cardName(v, v.pending.target)}`
   const frame = v.resolution.active
   if (!frame) return null
   const code = v.cards[frame.source]?.code
@@ -150,6 +152,9 @@ export function describeCommand(v: PlayerView, c: Command): string {
       const clause = does === null ? `${cost} ability` : `${cost}: ${does}`
       return `Use ${cardName(v, c.source)}'s ${clause}${pay.length ? ` paying: ${pay.join(', ')}` : ''}`
     }
+    // Rung V2-A2 (plan A2-D7): the order and where it ends — the engine's one wording, shared with the browser.
+    case 'chooseReplacementOrder':
+      return v.pending?.kind === 'chooseReplacementOrder' ? `Order: ${describeReplacementOrder(v.pending, c.order, (id) => cardName(v, id))}` : `Order ${c.order + 1}`
     case 'pass': return 'Pass'
     case 'concede': return 'Concede'
   }

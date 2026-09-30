@@ -7,7 +7,7 @@ import type { Event } from './events.js'
 import { IllegalCommandError } from './errors.js'
 import { dealPlayerDamage, runRuleProcesses } from './rules.js'
 import { dispatchTrigger, enqueueDamageTriggers } from './resolve.js'
-import { applyDamagePacket, type DamageDealer, type DamagePacket } from './damage.js'
+import { applyDamagePacket, packetOrders, replacementOrderCheck, replacementOrderPending, type DamageDealer, type DamagePacket } from './damage.js'
 
 const IDLE: AttackState = { step: 'declaration', attackers: [], blocker: null }
 type Assignment = { target: CardId; amount: number }
@@ -299,18 +299,50 @@ function packetsFor(state: GameState, blockerAssignments: Assignment[], batch: B
   return packets
 }
 
-/** Land `packets` in order through the one application point: the damage, its events, and the occurrences for the triggers. */
-function landPackets(state: GameState, packets: readonly DamagePacket[]): [GameState, Event[], DamageOccurrence[]] {
-  let s = state
+/**
+ * Land `packets` in order through the one application point: the damage, its events, and the occurrences for the
+ * triggers — or, when a packet's replacement effects owe an order (§11.12.5.7, rung V2-A2, plan A2-D4, R4), the
+ * prompt for the first unanswered one, with NOTHING landed: the batch is simultaneous (§10.1.4.2), so every order is
+ * asked before any of it lands. The blocker's split is held on the attack state across the prompt; the answer re-enters
+ * through `dealAfterSplit`, which re-builds the same packets from the same state.
+ */
+function landPackets(state: GameState, packets: readonly DamagePacket[], blockerAssignments: readonly Assignment[]): [GameState, Event[], DamageOccurrence[]] | { asked: GameState } {
+  const at = state.attack!
+  const { orders, ask } = packetOrders(state, packets, at.replacementOrders ?? [])
+  if (ask) return { asked: { ...state, pending: replacementOrderPending(state, ask.packet, ask.choice, 'battle'), attack: { ...at, blockerAssignments } } }
+  // The batch is answered: its answers and the held split are done with.
+  let s: GameState = { ...state, attack: withoutOrders(at) }
   const events: Event[] = []
   const landed: DamageOccurrence[] = []
-  for (const p of packets) {
-    const r = applyDamagePacket(s, p)
+  packets.forEach((p, i) => {
+    const r = applyDamagePacket(s, p, orders[i])
     s = r.state
     events.push(...r.events)
     landed.push(...r.occurrences)
-  }
+  })
   return [s, events, landed]
+}
+
+/** The attack state without a batch's order answers and held split (absent, not empty — plan R4). */
+function withoutOrders(at: AttackState): AttackState {
+  if (at.replacementOrders === undefined && at.blockerAssignments === undefined) return at
+  const rest: AttackState = { ...at }
+  delete rest.replacementOrders
+  delete rest.blockerAssignments
+  return rest
+}
+
+/**
+ * The answer to a battle's `chooseReplacementOrder` (rung V2-A2, plan R3/R4): recorded on the attack state, and the
+ * batch that asked is dealt again — `dealAfterSplit` knows which one it was — with the split it held.
+ */
+export function applyBattleReplacementOrder(state: GameState, player: PlayerId, order: number): [GameState, Event[]] {
+  const why = replacementOrderCheck(state, player, order)
+  if (why) throw new IllegalCommandError(why)
+  const at = state.attack
+  if (state.pending?.kind !== 'chooseReplacementOrder' || state.pending.owner !== 'battle' || !at) throw new IllegalCommandError('no battle is waiting for a replacement order')
+  const s: GameState = { ...state, pending: null, attack: { ...at, replacementOrders: [...(at.replacementOrders ?? []), order] } }
+  return dealAfterSplit(s, [...(at.blockerAssignments ?? [])])
 }
 
 /**
@@ -319,7 +351,9 @@ function landPackets(state: GameState, packets: readonly DamagePacket[]): [GameS
  * batch; and the First Strike window opens with priority to the turn player.
  */
 function landFirstStrike(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
-  const [hit, events, landed] = landPackets(state, packetsFor(state, blockerAssignments, 'first'))
+  const dealt = landPackets(state, packetsFor(state, blockerAssignments, 'first'), blockerAssignments)
+  if ('asked' in dealt) return [dealt.asked, []]
+  const [hit, events, landed] = dealt
   // Battle damage to Forwards cannot end the game or owe a §12.4.8 decision, so `ruled.result`/`pending` need no
   // guard here (unlike `resolveDamage`, whose player damage can).
   const [ruled, ruleEvents] = runRuleProcesses(hit)
@@ -338,7 +372,9 @@ function landFirstStrike(state: GameState, blockerAssignments: Assignment[]): [G
  */
 function landSecondBatch(state: GameState, blockerAssignments: Assignment[]): [GameState, Event[]] {
   const at = state.attack!
-  const [hit, events, landed] = landPackets(state, at.attackers.length === 0 ? [] : packetsFor(state, blockerAssignments, 'second'))
+  const dealt = landPackets(state, at.attackers.length === 0 ? [] : packetsFor(state, blockerAssignments, 'second'), blockerAssignments)
+  if ('asked' in dealt) return [dealt.asked, []]
+  const [hit, events, landed] = dealt
   let s = enqueueDamageTriggers(hit, [...(at.heldDamage ?? []), ...landed])
   const [ruled, ruleEvents] = runRuleProcesses(s)
   s = ruled; events.push(...ruleEvents)
@@ -369,7 +405,9 @@ function resolveDamage(state: GameState, blockerAssignments: Assignment[]): [Gam
     // One simultaneous batch (no First Strike, or everyone has it — §15.2.3.2 has no "other Forwards" then): all
     // of it lands, THEN every source's `dealtDamage` clause queues. Draining is `settle`'s job, so the §12.4.5
     // process below still runs first (spec C2-6).
-    const [hit, hitEvents, landed] = landPackets(s, packetsFor(s, blockerAssignments, 'all'))
+    const dealt = landPackets(s, packetsFor(s, blockerAssignments, 'all'), blockerAssignments)
+    if ('asked' in dealt) return [dealt.asked, events]
+    const [hit, hitEvents, landed] = dealt
     s = enqueueDamageTriggers(hit, landed)
     events.push(...hitEvents)
   }

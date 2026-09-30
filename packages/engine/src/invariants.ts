@@ -103,7 +103,11 @@ export function checkInvariants(state: GameState): string[] {
   if (state.attack?.step === 'firstStrike' && (state.attack.blocker === null || state.attack.heldDamage === undefined)) problems.push('a firstStrike step without a blocked battle or a held first batch')
   if (state.attack?.step === 'firstStrike' && state.attack.firstStrikers === undefined) problems.push('a firstStrike step without the fixed First Strike set (§15.2.3.2)')
   // The held batch lives only in the window, or in the `damage` step while the blocker's post-window split is owed.
-  if (state.attack?.heldDamage !== undefined && state.attack.step !== 'firstStrike' && !(state.attack.step === 'damage' && state.pending?.kind === 'assignPartyDamage')) problems.push('a held first batch outside the First Strike window')
+  // Rung V2-A2 (plan R4): or while the second batch asks a replacement order before it lands.
+  const secondBatchOwes = state.pending?.kind === 'assignPartyDamage' || (state.pending?.kind === 'chooseReplacementOrder' && state.pending.owner === 'battle')
+  if (state.attack?.heldDamage !== undefined && state.attack.step !== 'firstStrike' && !(state.attack.step === 'damage' && secondBatchOwes)) problems.push('a held first batch outside the First Strike window')
+  // A batch's order answers and held split live only while that batch is asking (plan R4).
+  if ((state.attack?.replacementOrders !== undefined || state.attack?.blockerAssignments !== undefined) && !(state.pending?.kind === 'chooseReplacementOrder' && state.pending.owner === 'battle')) problems.push('replacement-order answers held with no battle asking for one')
   // Rung V2-A1 (plan R9): a held occurrence is a damage packet AS APPLIED, queued once in the second batch and never
   // applied again — so nothing downstream can repair a malformed one.
   for (const h of state.attack?.heldDamage ?? []) {
@@ -141,12 +145,16 @@ export function checkInvariants(state: GameState): string[] {
   // G3's `chooseExBurst` is deliberately NOT here. It is asked BEFORE any frame exists — that is the whole
   // reason it needed its own kind — so pairing it with an active frame would report every legitimate offer as
   // an orphan.
+  // Rung V2-A2 (plan R3): a replacement order is the frame's when its `owner` says so, and the damage step's otherwise.
   const ABILITY_PENDINGS = ['chooseTargets', 'chooseMode', 'chooseFromDeck'] as const
-  const abilityPending = ABILITY_PENDINGS.some((k) => state.pending?.kind === k)
+  const frameOrder = state.pending?.kind === 'chooseReplacementOrder' && state.pending.owner === 'frame'
+  const abilityPending = ABILITY_PENDINGS.some((k) => state.pending?.kind === k) || frameOrder
+  if (state.pending?.kind === 'chooseReplacementOrder' && state.pending.owner === 'battle' && (state.phase !== 'attack' || state.attack?.step !== 'damage')) problems.push('a battle replacement order outside the damage step')
   if (abilityPending && !r.active) problems.push(`pending ${state.pending?.kind} with no active frame`)
   if (r.active && !abilityPending) problems.push(`active frame ${r.active.abilityId} with no ability pending`)
   // The one exception (rung V1-A2, spec V1-D9): "your opponent selects" is owed by the frame controller's opponent.
-  if (abilityPending && r.active && state.pending && state.pending.player !== r.active.controller && !(state.pending.player === opponentOf(r.active.controller) && suspendedSelect(state, r.active) === 'opponent')) {
+  // And (rung V2-A2, §11.12.5.7): a replacement order is owed by the damaged Forward's controller, whoever's frame it is.
+  if (abilityPending && !frameOrder && r.active && state.pending && state.pending.player !== r.active.controller && !(state.pending.player === opponentOf(r.active.controller) && suspendedSelect(state, r.active) === 'opponent')) {
     problems.push(`pending ${state.pending.kind} is owed by P${state.pending.player} but the frame is controlled by P${r.active.controller}`)
   }
   if (state.pending?.kind === 'chooseTargets') {
@@ -154,6 +162,15 @@ export function checkInvariants(state: GameState): string[] {
     if (new Set(candidates).size !== candidates.length) problems.push('chooseTargets candidates contain a duplicate')
     if (!(min <= max && max <= candidates.length)) problems.push(`chooseTargets bounds ${min}..${max} over ${candidates.length} candidates`)
     for (const id of candidates) if (!state.cards[id]) problems.push(`chooseTargets candidate ${id} is not a card`)
+  }
+  if (state.pending?.kind === 'chooseReplacementOrder') {
+    const { options, outcomes, replacements, target, player } = state.pending
+    const ids = replacements.map((x) => x.id).sort()
+    if (options.length < 2) problems.push(`chooseReplacementOrder offers ${options.length} order(s); one is no choice`)
+    if (outcomes.length !== options.length) problems.push('chooseReplacementOrder outcomes are not parallel to its options')
+    for (const o of options) if (o.length !== ids.length || [...o].sort().some((id, i) => id !== ids[i])) problems.push(`chooseReplacementOrder option [${o.join(', ')}] is not an order of its replacements`)
+    const loc = state.players[player].forwards.some((c) => c.id === target)
+    if (!loc) problems.push(`chooseReplacementOrder is owed by P${player}, who does not control Forward ${target}`)
   }
   if (state.pending?.kind === 'chooseMode') {
     const { min, max, labels } = state.pending

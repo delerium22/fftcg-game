@@ -171,6 +171,7 @@ export function isLegal(state: GameState, command: Command): string | null {
           case 'chooseExBurst': return a.use === (b as typeof a).use
           case 'chooseMode': return sameSet(a.modes, (b as typeof a).modes)
           case 'chooseFromDeck': return sameSet(a.picks, (b as typeof a).picks)
+          case 'chooseReplacementOrder': return a.order === (b as typeof a).order
           case 'pass': case 'concede': return true
           default: return JSON.stringify(a) === JSON.stringify(b)
         }
@@ -324,6 +325,10 @@ export function legalCommandsWithMeta(state: GameState, player: PlayerId, setCap
         // controlled by ANYONE, so with only your own Forward on the board, using the burst breaks it.
         // Declining only ever wastes the burst, which is the strictly recoverable mistake.
         out.push({ type: 'chooseExBurst', player, use: false }, { type: 'chooseExBurst', player, use: true })
+        break
+      // Rung V2-A2: one answer per distinct order — at most 24, and in practice two or three.
+      case 'chooseReplacementOrder':
+        pending.options.forEach((_, order) => out.push({ type: 'chooseReplacementOrder', player, order }))
         break
       case 'chooseMode':
         // Σ C(modes, k). `modes` is a printed list of 2–3, so this is a handful of commands.
