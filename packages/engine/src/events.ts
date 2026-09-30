@@ -78,7 +78,7 @@ export type Event =
   | { type: 'blockDeclared'; player: PlayerId; blocker: CardId | null }
   /**
    * One damage PACKET landing on a Forward in battle (rung V2-A1, spec V2-D1). A blocked party's damage to the
-   * blocker is ONE packet whose `dealers` are every member that dealt it, in declaration order — §15.1.1.9.8 makes it
+   * blocker is ONE packet whose `dealers` are every member that dealt it, in `attack.attackers` order (ascending id) — §15.1.1.9.8 makes it
    * one total, not one hit per member. `original` is the amount before replacement effects and `trace` the steps
    * between (equal and empty until rung V2-A2).
    */
