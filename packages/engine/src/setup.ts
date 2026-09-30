@@ -1,6 +1,6 @@
 import type { CardDef, PlayerId } from './types.js'
 import { ELEMENTS, KEYWORDS, opponentOf } from './types.js'
-import type { Effect, TargetFilter, TargetSpec } from './abilities.js'
+import type { DamageScope, Effect, StaticEffect, TargetFilter, TargetSpec } from './abilities.js'
 import { EMPTY_RESOLUTION, FIELD_FLAGS } from './abilities.js'
 import type { CardId, CardInstance, GameState, PlayerState } from './state.js'
 import { updatePlayer } from './state.js'
@@ -52,6 +52,9 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
   const problems: string[] = []
   const instanceAxes = INSTANCE_AXES
   for (const d of defs) {
+    // Rung V2-A2: a damage replacement's id names it in an order prompt, so two on one card may not share one.
+    const replacementIds = (d.abilities ?? []).flatMap((a) => (a.trigger.kind === 'static' && a.trigger.effect.kind === 'damageReplacement' ? [a.trigger.effect.id] : []))
+    if (new Set(replacementIds).size !== replacementIds.length) problems.push(`${d.code}: two damage replacements share an id`)
     for (const a of d.abilities ?? []) {
       if (a.trigger.kind !== 'static') continue
       const e = a.trigger.effect
@@ -63,6 +66,7 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
         if (!['self', 'opponent', 'any'].includes(e.to.controller)) problems.push(`${d.code}: ${a.id} has an unknown scope controller`)
         if (e.to.self !== undefined && e.to.self !== true) problems.push(`${d.code}: ${a.id} has a scope \`self\` that is not true`)
       }
+      if (e.kind === 'damageReplacement') problems.push(...damageReplacementProblems(`${d.code}: ${a.id}`, e))
       // Rung V1-A1 (spec V1-D6): a condition's filter is definition-only, like a scope's, and its count a whole number ≥ 1.
       // Rung V1-A3: `onlyCp` names an Element, and has no condition.
       if (e.kind === 'onlyCp' && !ELEMENTS.includes(e.element)) problems.push(`${d.code}: ${a.id} restricts payment to unknown element ${String(e.element)}`)
@@ -73,6 +77,33 @@ export function validateContinuousStatics(defs: readonly CardDef[]): string[] {
         if (!['self', 'opponent'].includes(when.controller)) problems.push(`${d.code}: ${a.id} has an unknown condition controller`)
       }
     }
+  }
+  return problems
+}
+
+/**
+ * Rung V2-A2 (plan A2-D1): a damage replacement that arrived through JSON — a named effect, a known change by a positive
+ * whole amount, a known scope whose filters are definition-only (the collector reads them per packet, off the printing).
+ */
+function damageReplacementProblems(where: string, e: Extract<StaticEffect, { kind: 'damageReplacement' }>): string[] {
+  const problems: string[] = []
+  if (typeof e.id !== 'string' || e.id.length === 0) problems.push(`${where} has a damage replacement without an id`)
+  const c = e.change as Record<string, unknown>
+  const keys = Object.keys(c ?? {})
+  const positive = (n: unknown): boolean => typeof n === 'number' && Number.isInteger(n) && n > 0
+  const known = keys.length === 1 && ((keys[0] === 'add' && positive(c.add)) || (keys[0] === 'reduce' && positive(c.reduce)) || (keys[0] === 'becomes' && c.becomes === 0))
+  if (!known) problems.push(`${where} has an unknown damage change ${JSON.stringify(e.change)}; it must be { add: n }, { reduce: n } (a whole number > 0) or { becomes: 0 }`)
+  const scope = e.affects as DamageScope | undefined
+  if (!scope) { problems.push(`${where} has no damage scope`); return problems }
+  if (scope.target !== 'self') {
+    if (typeof scope.target !== 'object' || scope.target === null || !['self', 'any'].includes(scope.target.controller)) problems.push(`${where} has an unknown damaged-Forward scope`)
+    else for (const k of filterKeys(scope.target.filter)) if (INSTANCE_AXES.includes(k)) problems.push(`${where} scopes the damaged Forward on instance axis ${k}`)
+  }
+  if (scope.byCause !== undefined && scope.byCause !== 'ability') problems.push(`${where} has an unknown byCause ${String(scope.byCause)}`)
+  if (scope.byController !== undefined && scope.byController !== 'opponent') problems.push(`${where} has an unknown byController ${String(scope.byController)}`)
+  if (scope.bySource !== undefined) {
+    if (scope.bySource.controller !== 'self' || typeof scope.bySource.filter !== 'object' || scope.bySource.filter === null) problems.push(`${where} has an unknown bySource`)
+    else for (const k of filterKeys(scope.bySource.filter)) if (INSTANCE_AXES.includes(k)) problems.push(`${where} scopes the dealer on instance axis ${k}`)
   }
   return problems
 }

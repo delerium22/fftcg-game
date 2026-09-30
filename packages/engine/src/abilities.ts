@@ -444,6 +444,34 @@ export type StaticEffect =
   | { readonly kind: 'grantKeyword'; readonly keyword: Keyword; readonly to: StaticScope; readonly when?: StaticCondition }
   /** "Your Forwards cannot be broken" — read by `flagsOf`. */
   | { readonly kind: 'grantFlag'; readonly flag: FieldFlag; readonly to: StaticScope; readonly when?: StaticCondition }
+  /**
+   * A damage-modifying REPLACEMENT effect (§11.12.5, rung V2-A2, plan A2-D1): "If <a Forward> is dealt damage, reduce the
+   * damage by N instead" (Charlotte, Yuzuki), "… the damage becomes 0 instead" (Yuzuki), "If a Forward you control deals
+   * damage to a Forward, the damage increases by N instead" (Wuk Lamat). Not a continuous effect: it changes a damage
+   * EVENT, so it is read only by `damage.ts`'s collector, from a source on the FIELD. `id` names it in an order prompt.
+   */
+  | { readonly kind: 'damageReplacement'; readonly id: string; readonly affects: DamageScope; readonly change: DamageChange; readonly when?: StaticCondition }
+
+/**
+ * What a damage replacement does to the running amount (§4.3, plan A2-D3): add, subtract, or set it to 0. `add` and
+ * `reduce` are positive whole numbers (validated at game creation).
+ */
+export type DamageChange = { readonly add: number } | { readonly reduce: number } | { readonly becomes: 0 }
+
+/**
+ * Which damage a replacement waits for (rung V2-A2, plan A2-D1), relative to the controller of the card carrying it.
+ * `target` is the damaged Forward: the source itself (`self`, Charlotte), or a Forward of `controller` matching a
+ * definition-only `filter` (Yuzuki's "a Water Forward you control"; Wuk Lamat's "a Forward" is `any`). The rest narrow
+ * the DAMAGE: `byCause: 'ability'` is an ability's damage, never a Summon's (spec V2-D6); `byController: 'opponent'` is
+ * dealt by the opponent; `bySource` requires EVERY dealer of the packet to be a card of `controller` matching `filter`
+ * (plan R8 — Wuk Lamat's "a Forward you control deals damage").
+ */
+export interface DamageScope {
+  readonly target: 'self' | { readonly controller: 'self' | 'any'; readonly filter?: DefFilter }
+  readonly byCause?: 'ability'
+  readonly byController?: 'opponent'
+  readonly bySource?: { readonly controller: 'self'; readonly filter: DefFilter }
+}
 
 /** The continuous kinds — what `layer.ts` indexes; `costReduction`, `produceElement` and `onlyCp` keep their own readers. */
 export const CONTINUOUS_STATIC_KINDS = ['modifyPower', 'grantKeyword', 'grantFlag'] as const
