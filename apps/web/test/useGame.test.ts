@@ -750,6 +750,11 @@ describe('describeEvent narrates ability resolution (rung C1)', () => {
     expect(text({ type: 'brokenByAbility', card: anyCard, source: anyCard })).toContain('is broken by')
     // Spec V2-D4, declared in rung V2-A1 and first emitted in V2-A2: 0 is not damage, and this is its only line.
     expect(text({ type: 'damageReducedToZero', target: anyCard, dealers: [anyCard], original: 5000, trace: [] })).toMatch(/5000 damage to .* is reduced to 0$/)
+    // Rung V2-A2 (plan A2-D7): what replacement effects did, and whose they were.
+    expect(text({ type: 'abilityDamage', source: anyCard, target: anyCard, original: 5000, amount: 4000, trace: [{ by: anyCard, before: 5000, after: 4000 }] })).toBe('Ramuh deals 5000 → 4000 damage to Ramuh (Ramuh)')
+    expect(text({ type: 'battleDamage', target: anyCard, dealers: [anyCard], original: 5000, amount: 7000, trace: [{ by: anyCard, before: 5000, after: 7000 }] })).toBe('Ramuh deals 5000 → 7000 damage to Ramuh (Ramuh)')
+    expect(text({ type: 'damageReducedToZero', target: anyCard, dealers: [anyCard], original: 5000, trace: [{ by: anyCard, before: 5000, after: 0 }] })).toBe("Ramuh's 5000 damage to Ramuh is reduced to 0 (Ramuh)")
+    expect(text({ type: 'shieldGranted', card: anyCard, source: anyCard, amount: 2000 })).toBe('Ramuh is shielded — the next damage dealt to it this turn is reduced by 2000')
     expect(text({ type: 'breakPrevented', card: anyCard, flag: 'cannotBeBroken' })).toContain('survives')
     expect(text({ type: 'returnedToHand', player: HUMAN, card: anyCard })).toContain('returns to your hand')
     expect(text({ type: 'returnedToHand', player: AI, card: anyCard })).toContain("returns to the AI's hand")

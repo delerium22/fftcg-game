@@ -408,6 +408,8 @@ function verbOf(e: Effect, frame: VerbFrame): Verb | null {
     // "Play" and not "Cast": no cost is paid (§15.1.1.7).
     case 'playOntoField': return { imperative: 'Play', purpose: 'to play onto the field' }
     case 'addPower': return { imperative: `Give ${signed(e.amount)} power to`, purpose: `to give ${signed(e.amount)} power` }
+    // Rung V2-A2 (plan A2-D7): Porom's shield. After a colon, as `putIntoBreakZone` is, so the names end the label.
+    case 'shieldNextDamage': return { imperative: `Shield (next damage −${e.amount}):`, purpose: `to reduce the next damage dealt to it this turn by ${e.amount}` }
     case 'grantKeyword': return { imperative: `Give ${KEYWORD_LABEL[e.keyword]} to`, purpose: `to give ${KEYWORD_LABEL[e.keyword]}` }
     case 'grantFlag': return { imperative: e.flag === 'cannotUseActionAbilities' ? 'Restrict' : 'Protect', purpose: FLAG_PURPOSE[e.flag] }
     case 'moveToHand': return { imperative: 'Return', purpose: 'to return to hand' }

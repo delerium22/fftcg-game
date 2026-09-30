@@ -1193,3 +1193,16 @@ describe('the replacement-order prompt (rung V2-A2, §11.12.5.7)', () => {
     expect(sameCommand(order(0), order(1))).toBe(false)
   })
 })
+
+describe("Porom's shield on a target button (rung V2-A2)", () => {
+  const SHIELD_ONE: Ability = {
+    id: 'test:shield', trigger: { kind: 'enterField' }, text: 'Choose 1 Forward. During this turn, the next damage dealt to it is reduced by 2000 instead.',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'shieldNextDamage', amount: 2000 }] }],
+  }
+  it('names what the shield does, on the button and in the prompt', () => {
+    const v = dullView(SHIELD_ONE, [CLOUD])
+    const id = (v.pending as Extract<Pending, { kind: 'chooseTargets' }>).candidates[0]!
+    expect(describeChoice(v, targets([id]))).toMatch(/^Shield \(next damage −2000\): .*Cloud/)
+    expect(promptFor(v, [targets([id])])).toContain('to reduce the next damage dealt to it this turn by 2000')
+  })
+})

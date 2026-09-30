@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  apply, determinise, isLegal, legalCommands, seedRng, viewFor,
+  apply, determinise, drainResolution, enqueueTrigger, isLegal, legalCommands, seedRng, viewFor,
   type Ability, type CardDef, type CardId, type Command, type DamageChange, type DamageScope, type GameState,
 } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
+import { DEFAULT_WEIGHTS, evaluate, resolveWeights } from '../src/evaluate.js'
 import { GreedyAgent } from '../src/greedy.js'
 import { IsmctsAgent } from '../src/ismcts/agent.js'
 import { actionKey, decodeAction, observationKey } from '../src/ismcts/keys.js'
@@ -77,5 +78,47 @@ describe('the AI and a replacement order (rung V2-A2)', () => {
     const p = s.pending as Extract<GameState['pending'], { kind: 'chooseReplacementOrder' }>
     const other = { ...v, pending: { ...p, outcomes: p.outcomes.map((o) => ({ ...o, final: o.final + 1000 })) } }
     expect(observationKey(other)).not.toBe(observationKey(v))
+  })
+})
+
+describe('pricing damage and shields (rung V2-A2, plan A2-D6)', () => {
+  /** Charlotte's shape: "reduce the damage by 1000" — a 1000 hit on her is 0, which is not damage. */
+  const CHAR = withAbilities(makeDef({ code: 'A-CHAR', power: 1000 }), replacement('A-CHAR', 'self', { target: 'self' }, { reduce: 1000 }))
+  const PING: Ability = { id: 'A-PING:etb', trigger: { kind: 'enterField' }, text: 'synthetic',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'opponent' }, then: [{ kind: 'damage', amount: 1000 }] }] }
+  const PINGER = withAbilities(makeDef({ code: 'A-PING', type: 'backup', power: null }), PING)
+  const SHIELD: Ability = { id: 'A-SH:etb', trigger: { kind: 'enterField' }, text: 'synthetic',
+    effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'shieldNextDamage', amount: 2000 }] }] }
+  const SHIELDER = withAbilities(makeDef({ code: 'A-SH', type: 'backup', power: null }), SHIELD)
+  const PPOOL = [...POOL, CHAR, PINGER, SHIELDER, makeDef({ code: 'A-ONE', power: 1000 })]
+
+  it("the target policy prices damage after the replacements: 1000 into Charlotte's shape is nothing, so the plain 1000 Forward comes first", () => {
+    let s = makeGame({ defs: PPOOL }); let src: CardId, ch: CardId, plain: CardId
+    ;[s, src] = withField(s, 0, 'backups', 'A-PING')
+    ;[s, ch] = withField(s, 1, 'forwards', 'A-CHAR')
+    ;[s, plain] = withField(s, 1, 'forwards', 'A-ONE')
+    s = drainResolution(enqueueTrigger(s, src, 0, PING))[0]
+    expect(s.pending?.kind).toBe('chooseTargets')
+    expect(candidateCommands(s, 0)[0]).toEqual({ type: 'chooseTargets', player: 0, targets: [plain] })
+    expect(ch).toBeGreaterThan(0)
+  })
+
+  it("a shield is worth something to its Forward's side: the policy shields its own Forward, not the opponent's", () => {
+    let s = makeGame({ defs: PPOOL }); let src: CardId, mine: CardId
+    ;[s, src] = withField(s, 0, 'backups', 'A-SH')
+    ;[s] = withField(s, 1, 'forwards', 'V-F2')        // the lower id: a tie would pick it
+    ;[s, mine] = withField(s, 0, 'forwards', 'V-F2')
+    s = drainResolution(enqueueTrigger(s, src, 0, SHIELD))[0]
+    expect(candidateCommands(s, 0)[0]).toEqual({ type: 'chooseTargets', player: 0, targets: [mine] })
+  })
+
+  it('evaluate: a shield adds `shield` × reduce/1000, and nothing when there is none (the frozen corpus has none)', () => {
+    let s = makeGame({ defs: PPOOL }); let f: CardId
+    ;[s, f] = withField(s, 0, 'forwards', 'V-F2')
+    const shielded: GameState = { ...s, players: [{ ...s.players[0], forwards: s.players[0].forwards.map((c) => (c.id === f ? { ...c, shields: [{ id: 'x:1:0', reduce: 2000, source: f }] } : c)) }, s.players[1]] }
+    expect(DEFAULT_WEIGHTS.shield).toBe(0.5)
+    // `evaluate` is mine × 2(1 − aggression) − theirs × 2·aggression; at aggression 0 it is twice my material.
+    expect(evaluate(shielded, 0, DEFAULT_WEIGHTS, 0) - evaluate(s, 0, DEFAULT_WEIGHTS, 0)).toBeCloseTo(2 * 0.5 * 2)
+    expect(evaluate(shielded, 0, resolveWeights({ shield: 0 }), 0)).toBe(evaluate(s, 0, DEFAULT_WEIGHTS, 0))
   })
 })
