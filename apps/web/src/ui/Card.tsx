@@ -1,24 +1,36 @@
 import { useId, useState, type CSSProperties, type JSX } from 'react'
 import type { CardType, Element, FieldFlag, Keyword } from '@fftcg/engine'
 import { artUrl, isArtMissing, markArtMissing } from '../game/art.js'
+import { CardArt } from './CardArt.js'
 import './Card.css'
 
 const KEYWORD_LABEL: Record<Keyword, string> = { haste: 'Haste', brave: 'Brave', firstStrike: 'First Strike', backAttack: 'Back Attack' }
 // `cannotUseActionAbilities` (rung V1-A3): Charlotte's ban. "Action", not "abilities": a special ability stays usable.
 const FLAG_LABEL: Record<FieldFlag, string> = { cannotBeBroken: 'Unbreakable', cannotBeReturnedByOpponent: 'Unreturnable', cannotUseActionAbilities: 'No action abilities' }
 
-/*
- * Until-end-of-turn modifiers ride as badges over the art. They are styled inline rather than in Card.css
- * because this rung owns Card.tsx and not the stylesheet; the values are the same design tokens the sheet uses.
- */
-const BUFF_ROW: CSSProperties = {
-  position: 'absolute', left: '3px', bottom: '6px', zIndex: 1,
-  display: 'flex', flexWrap: 'wrap', gap: '2px', maxWidth: 'calc(100% - 6px)',
+/** Spec section 5: who may do what with this card right now. Derived from the props unless the board names it. */
+export type CardRole = 'none' | 'selectable' | 'selected' | 'targetable' | 'targeted' | 'invalid'
+/** Spec section 5: why this card is the centre of attention in the current beat. Set by the board (U4, U6). */
+export type CardEmphasis = 'none' | 'attacking' | 'blocking' | 'on-stack' | 'just-played'
+
+export interface CardVisualState {
+  orientation: 'active' | 'dull'
+  face: 'up' | 'down'
+  role: CardRole
+  emphasis: CardEmphasis
+  paying: 'none' | 'dull' | 'discard' | 'flip'
 }
-const BUFF: CSSProperties = {
-  padding: '0 3px', borderRadius: '3px', background: 'var(--gold)', color: '#0b1216',
-  fontFamily: 'var(--font-condensed)', fontSize: '8px', fontWeight: 700, letterSpacing: '0.06em',
-  textTransform: 'uppercase', lineHeight: '12px', whiteSpace: 'nowrap',
+
+/** The card's visual state, derived and never stored (spec section 5). CSS styles it through `data-*` attributes. */
+export function cardVisualState(p: CardProps): CardVisualState {
+  const derivedRole: CardRole = p.selected || p.chosen ? 'selected' : p.actionable ? 'selectable' : 'none'
+  return {
+    orientation: p.dull || p.paying === 'dull' ? 'dull' : 'active',
+    face: p.faceDown ? 'down' : 'up',
+    role: p.role ?? derivedRole,
+    emphasis: p.emphasis ?? 'none',
+    paying: p.paying ?? 'none',
+  }
 }
 
 export interface CardProps {
@@ -63,6 +75,10 @@ export interface CardProps {
   paying?: 'dull' | 'discard' | 'flip' | undefined
   /** Rung J7: picked into the set being built (an attack party, a target set) — press again to put back. */
   chosen?: boolean | undefined
+  /** Overrides the role derived from `actionable`/`selected`/`chosen` — targeting (U5) names targetable and targeted. */
+  role?: CardRole | undefined
+  /** The beat's emphasis on this card (U4, U6). */
+  emphasis?: CardEmphasis | undefined
   faceDown?: boolean | undefined
   size?: 'hand' | 'field' | 'small' | 'large' | undefined
   onClick?: (() => void) | undefined
@@ -199,6 +215,10 @@ export function Card(props: CardProps): JSX.Element {
     paying === 'dull' ? 'is-paying-dull' : paying === 'discard' ? 'is-paying-discard' : paying === 'flip' ? 'is-paying-flip' : '', chosen ? 'is-chosen' : '',
   ].filter(Boolean).join(' ')
   const label = cardAccessibleName(props)
+  // Spec section 5: the visual state as data-* attributes, for CSS and tests. The classes above stay: the older tests
+  // and the e2e driver read them.
+  const visual = cardVisualState(props)
+  const dataAttrs = { 'data-orientation': visual.orientation, 'data-face': visual.face, 'data-role': visual.role, 'data-emphasis': visual.emphasis, 'data-paying': visual.paying }
 
   // A stable id per rendered card, so `aria-describedby` points at this card's own text and not another's.
   const localId = useId()
@@ -216,7 +236,7 @@ export function Card(props: CardProps): JSX.Element {
     <span className="card__frame">
       <span className="card__body">
         <span className="card__art">
-          <span className="card__crystal" />
+          {status !== 'ok' && <CardArt code={code} elements={elements} />}
           <span className="card__code">{code}</span>
           {status !== 'failed' && (
             // Art lies over the finished text card and fades in, so a missing file (B9) or a slow
@@ -234,9 +254,9 @@ export function Card(props: CardProps): JSX.Element {
             />
           )}
           {buffs.length > 0 && (
-            <span className="card__buffs" style={BUFF_ROW}>
+            <span className="card__buffs">
               {buffs.map((b) => (
-                <span key={b.badge} style={BUFF}>{b.badge}</span>
+                <span key={b.badge} className="card__buff">{b.badge}</span>
               ))}
             </span>
           )}
@@ -281,7 +301,7 @@ export function Card(props: CardProps): JSX.Element {
     return (
       <>
         <button
-          type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label}
+          type="button" className={className} style={vars as CSSProperties} title={label} aria-label={label} {...dataAttrs}
           {...(described ? { 'aria-describedby': descId } : {})}
           {...(tabIndex === undefined ? {} : { tabIndex })}
           aria-pressed={chosen || selected} onClick={onClick} onMouseEnter={onInspect} onFocus={onInspect}
@@ -295,7 +315,7 @@ export function Card(props: CardProps): JSX.Element {
   return (
     <>
       <div
-        className={className} style={vars as CSSProperties} title={label}
+        className={className} style={vars as CSSProperties} title={label} {...dataAttrs}
         {...(presentational
           ? { 'aria-hidden': true }
           : { role: 'img', 'aria-label': label, ...(described ? { 'aria-describedby': descId } : {}) })}
