@@ -639,6 +639,13 @@ export interface Frame {
   /** Indices answered to a `chooseFromDeck` (spec C9-1). Separate from `modes`: a different question. */
   readonly picks?: readonly number[]
   /**
+   * Rung V2-A2 (plan A2-D4, R1): the answers to the `chooseReplacementOrder` prompts of the `damage` node (or the
+   * `forEach`/`onSubject`/`onSource` around it) the frame is suspended at, in the order its packets asked them. That
+   * node lands nothing until every answer is in; it re-builds its packets from the same state on resume, and clears
+   * this once it lands. Absent when empty.
+   */
+  readonly replacementOrders?: readonly number[]
+  /**
    * How this frame came to exist. Absent means `'triggered'`, which every C1/C2 frame is.
    *
    * It exists so the log can stop calling an activation a trigger. An activated ability's action frame runs

@@ -1,4 +1,4 @@
-import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, damageProvenance, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, resolveChosenSpec, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, previewDamagePacket, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
+import { abilityCpRequirement, abilityOf, actingPlayer, actionMenu, activationCheck, activationTargetSets, amountOf, attackCheck, conditionHolds, damageProvenance, defOf, effectAtPath, findFieldCard, flagsOf, keywordsOf, powerOf, legalAttackSets, resolveChosenSpec, sameNameCards, legalBlockers, legalCommands, legalPartyDamageAssignments, opponentOf, preferredOrder, previewDamagePacket, targetCandidates, type CardId, type Command, type Effect, type GameState, type Pending, type PlayerId } from '@fftcg/engine'
 import { cardValue } from './cardValue.js'
 import { hasteUnlock, protectionValue } from './evaluate.js'
 import { preferredPayment, preferredPaymentFor } from './payment.js'
@@ -438,6 +438,13 @@ export function candidateCommands(state: GameState, player: PlayerId): Command[]
       // pricing the rest, so a budget-starved rollout takes whichever answer `legalCommands` lists first.
       // That is why it lists decline first — see the reasoning there.
       case 'chooseExBurst': return legalCommands(state, player).filter((c) => c.type === 'chooseExBurst')
+      // Rung V2-A2 (plan A2-D6, R6): every order — at most a handful — with the one that lets the least damage through
+      // (then uses the fewest shields) FIRST, so a budget-starved `greedyStep` plays what the policy wants. The Forward is
+      // always the asker's own (§11.12.5.7).
+      case 'chooseReplacementOrder': {
+        const best = preferredOrder(pending)
+        return [best, ...pending.options.map((_, i) => i).filter((i) => i !== best)].map((order) => ({ type: 'chooseReplacementOrder' as const, player, order }))
+      }
       // W3: exhaustive — a new Pending kind must fail to compile here rather than silently falling through to phase generation.
       default: { const _exhaustive: never = pending; return _exhaustive }
     }

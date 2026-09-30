@@ -9,9 +9,9 @@ import { actingPlayer } from './legal.js'
 import { applyChooseFirst, applyMulligan } from './setup.js'
 import { applyDiscardToHandSize, applyPass, finishEndPhase } from './phases.js'
 import { applyCastCharacter, applyCastSummon } from './cast.js'
-import { applyAssignPartyDamage, applyChooseExBurst, applyDeclareAttack, applyDeclareBlock } from './attack.js'
+import { applyAssignPartyDamage, applyBattleReplacementOrder, applyChooseExBurst, applyDeclareAttack, applyDeclareBlock } from './attack.js'
 import { applyBreakExcessBackups, runRuleProcesses, sweepLimitBreak } from './rules.js'
-import { advanceAgenda, applyChooseFromDeck, applyChooseMode, applyChooseTargets, clearStackAtGameOver } from './resolve.js'
+import { advanceAgenda, applyChooseFromDeck, applyChooseMode, applyChooseTargets, applyFrameReplacementOrder, clearStackAtGameOver } from './resolve.js'
 
 export interface ApplyResult { state: GameState; events: Event[] }
 
@@ -92,6 +92,12 @@ export function apply(state: GameState, command: Command): ApplyResult {
       case 'chooseExBurst': [s, events] = applyChooseExBurst(state, command.player, command.use); break
       case 'chooseMode': [s, events] = applyChooseMode(state, command.player, command.modes); break
       case 'chooseFromDeck': [s, events] = applyChooseFromDeck(state, command.player, command.picks); break
+      // Rung V2-A2 (plan R3): the pending says who is waiting — the damage step's batch, or the active frame.
+      case 'chooseReplacementOrder':
+        [s, events] = state.pending?.kind === 'chooseReplacementOrder' && state.pending.owner === 'battle'
+          ? applyBattleReplacementOrder(state, command.player, command.order)
+          : applyFrameReplacementOrder(state, command.player, command.order)
+        break
       case 'activateAbility':
         [s, events] = applyActivateAbility(state, command.player, command.source, command.abilityId, command.payment, command.targets); break
       case 'pass': [s, events] = applyPass(state, command.player); break

@@ -1,6 +1,6 @@
 import type { Rng } from './rng.js'
 import type { PlayerId, CardDef, Keyword } from './types.js'
-import type { FieldFlag, Frame, Resolution, TargetFilter } from './abilities.js'
+import type { DamageChange, FieldFlag, Frame, Resolution, TargetFilter } from './abilities.js'
 import { layerFor } from './layer.js'
 
 export type CardId = number
@@ -116,6 +116,14 @@ export interface AttackState {
   /** §15.2.3.2: the First Strike combatants, FIXED at the beginning of the Damage Resolution Step — never recomputed
    *  over the survivors (a mixed party that lost its plain member is not "all First Strike" after the fact). */
   firstStrikers?: readonly CardId[]
+  /**
+   * Rung V2-A2 (plan A2-D4, R4): the answers to this batch's `chooseReplacementOrder` prompts so far, in the order the
+   * packets asked them. A batch builds every packet, asks every order it needs, and lands nothing until all are in
+   * (§10.1.4.2: the damage is simultaneous). Absent outside a batch that is asking.
+   */
+  replacementOrders?: readonly number[]
+  /** The blocker's party split, held while this batch asks its orders (plan R4) — the answer it re-deals with. */
+  blockerAssignments?: readonly { readonly target: CardId; readonly amount: number }[]
 }
 /** Decisions owed by a specific player that are NOT priority actions (§11.1): setup choices, the defender's step actions in the Attack Phase, and the choices an ability suspends on (spec C1-6). */
 export type Pending =
@@ -187,6 +195,20 @@ export type Pending =
   // is equally true of a top-3 peek at a 3-card deck, so a peek was described as a search on exactly the turns
   // a deck is running out (Codex MAJOR). Mirrors `deckExposed.scope`, and comes from the same `eff.count`.
   | { kind: 'chooseFromDeck'; player: PlayerId; min: number; max: number; count: number; scope: 'deck' | 'top'; filter?: TargetFilter; to: 'hand' | 'field' }
+  /**
+   * Rung V2-A2 (§11.12.5.7, plan A2-D4, R3, R6): several replacement effects apply to one damage packet and their order
+   * changes the result, so the controller of the damaged Forward `target` orders them. `options` are the orders with
+   * DISTINCT outcomes (each a list of `replacements` ids), `outcomes` parallel to them; the answer is an index.
+   * `owner` says who is waiting: the damage step's batch (`battle`, its answers on `attack.replacementOrders`) or the
+   * active frame's `damage` node (`frame`, its answers on `Frame.replacementOrders`). All of it is public — the field
+   * and its shields are. `original` is the packet's amount, for the wording.
+   */
+  | {
+      kind: 'chooseReplacementOrder'; player: PlayerId; owner: 'battle' | 'frame'; target: CardId; original: number
+      replacements: readonly { readonly id: string; readonly by: CardId; readonly change: DamageChange; readonly shield?: true }[]
+      options: readonly (readonly string[])[]
+      outcomes: readonly { readonly final: number; readonly consumes: readonly string[] }[]
+    }
 /**
  * How a game ended, as a fact rather than as prose.
  *

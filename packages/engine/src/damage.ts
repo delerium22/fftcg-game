@@ -1,7 +1,7 @@
 import type { PlayerId } from './types.js'
 import { opponentOf } from './types.js'
 import type { DamageChange, DamageScope, Frame } from './abilities.js'
-import type { CardId, DamageOccurrence, FieldCard, GameState } from './state.js'
+import type { CardId, DamageOccurrence, FieldCard, GameState, Pending } from './state.js'
 import { defOf, findFieldCard, updatePlayer } from './state.js'
 import type { DamageTraceStep, Event } from './events.js'
 import { matchesDefFilter } from './filters.js'
@@ -148,17 +148,142 @@ export function applyInOrder(amount: number, order: readonly Replacement[]): Ord
   return { final: Math.max(0, v), trace, consumes }
 }
 
-/** The canonical order's outcome: what a packet with no choice to make does (plan A2-D4). */
-function outcomeOf(state: GameState, packet: DamagePacket): OrderOutcome {
-  return applyInOrder(packet.amount, replacementsFor(state, packet))
+/**
+ * The §11.12.5.7 choice a packet owes, if any (rung V2-A2, plan A2-D4, R2, R6). When two or more replacements apply
+ * and their orders do not all give the same `(final, consumed shield ids)`, the controller of the damaged Forward
+ * chooses. `options` holds ONE order per distinct outcome — the first in permutation order, which begins with the
+ * canonical order — each as replacement ids; `outcomes` is parallel to it. The notice of 2020-03-18 puts an increase
+ * and "becomes 0" in the same step; who orders them is §11.12.5.7.
+ */
+export interface ReplacementChoice {
+  readonly replacements: readonly Replacement[]
+  readonly options: readonly (readonly string[])[]
+  readonly outcomes: readonly { readonly final: number; readonly consumes: readonly string[] }[]
 }
 
-/** The amount `applyDamagePacket` would mark, without marking it — the AI's price for damage (plan R9, spec V2-D8). */
-export function previewDamagePacket(state: GameState, packet: DamagePacket): { applied: boolean; final: number } {
+/** More replacements than this on one packet is 5040+ orders — far past anything the pool can build; refused loudly. */
+const MAX_ORDERED_REPLACEMENTS = 6
+
+function permutations<T>(items: readonly T[]): T[][] {
+  if (items.length <= 1) return [[...items]]
+  return items.flatMap((x, i) => permutations([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [x, ...rest]))
+}
+
+/** Every distinct outcome of `replacements` on `amount`, each with its first order (plan A2-D4). */
+function distinctOrders(amount: number, replacements: readonly Replacement[]): ReplacementChoice {
+  if (replacements.length > MAX_ORDERED_REPLACEMENTS) throw new Error(`${replacements.length} replacement effects on one damage packet; at most ${MAX_ORDERED_REPLACEMENTS} can be ordered`)
+  const options: string[][] = []
+  const outcomes: { final: number; consumes: string[] }[] = []
+  const seen = new Set<string>()
+  for (const order of permutations(replacements)) {
+    const o = applyInOrder(amount, order)
+    const consumes = [...o.consumes].sort()
+    const key = `${o.final}|${consumes.join(',')}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    options.push(order.map((r) => r.id))
+    outcomes.push({ final: o.final, consumes })
+  }
+  return { replacements, options, outcomes }
+}
+
+/** The choice `packet` owes on `state`, or null when there is none — fewer than two replacements, or one outcome. */
+export function replacementChoice(state: GameState, packet: DamagePacket): ReplacementChoice | null {
+  if (packet.amount <= 0) return null
+  const replacements = replacementsFor(state, packet)
+  if (replacements.length < 2) return null
+  const choice = distinctOrders(packet.amount, replacements)
+  return choice.options.length > 1 ? choice : null
+}
+
+/**
+ * The replacements in `order` (ids), or the canonical order when `order` is absent. An order must name exactly the
+ * replacements that apply — the caller asked on this same state — and one is required when there is a choice.
+ */
+function ordered(state: GameState, packet: DamagePacket, order: readonly string[] | undefined): Replacement[] {
+  const replacements = replacementsFor(state, packet)
+  if (order === undefined) {
+    if (replacementChoice(state, packet)) throw new Error(`the damage to ${packet.target} owes an order of its replacement effects (§11.12.5.7); none was given`)
+    return replacements
+  }
+  const byId = new Map(replacements.map((r) => [r.id, r]))
+  const out = order.map((id) => byId.get(id))
+  if (out.length !== replacements.length || new Set(order).size !== order.length || out.some((r) => r === undefined)) {
+    throw new Error(`order [${order.join(', ')}] is not an order of the replacement effects on ${packet.target}: [${replacements.map((r) => r.id).join(', ')}]`)
+  }
+  return out as Replacement[]
+}
+
+/**
+ * The amount `applyDamagePacket` would mark, without marking it — the AI's price for damage (plan R9, spec V2-D8).
+ * With an `order` it prices that order; without one it prices what the damaged Forward's controller would choose
+ * (plan R6): the least damage, then the fewest shields used up — the canonical order when there is no choice.
+ */
+export function previewDamagePacket(state: GameState, packet: DamagePacket, order?: readonly string[]): { applied: boolean; final: number } {
   const loc = findFieldCard(state, packet.target)
   if (!loc || loc.zone !== 'forwards') return { applied: false, final: 0 }
   if (packet.amount <= 0) return { applied: true, final: 0 }
-  return { applied: true, final: outcomeOf(state, packet).final }
+  if (order !== undefined) return { applied: true, final: applyInOrder(packet.amount, ordered(state, packet, order)).final }
+  const choice = replacementChoice(state, packet)
+  if (!choice) return { applied: true, final: applyInOrder(packet.amount, replacementsFor(state, packet)).final }
+  return { applied: true, final: Math.min(...choice.outcomes.map((o) => o.final)) }
+}
+
+/**
+ * The prompt a packet's choice raises (plan A2-D4, R3): owed by the controller of the damaged Forward — the affected
+ * card's controller orders them (§11.12.5.7), whoever dealt the damage.
+ */
+export function replacementOrderPending(state: GameState, packet: DamagePacket, choice: ReplacementChoice, owner: 'battle' | 'frame'): Extract<Pending, { kind: 'chooseReplacementOrder' }> {
+  const loc = findFieldCard(state, packet.target)
+  if (!loc) throw new Error(`a replacement order for ${packet.target}, which is not on the field`)
+  return {
+    kind: 'chooseReplacementOrder', player: loc.owner, owner, target: packet.target, original: packet.amount,
+    replacements: choice.replacements.map((r) => ({ id: r.id, by: r.by, change: r.change, ...(r.shield ? { shield: true as const } : {}) })),
+    options: choice.options, outcomes: choice.outcomes,
+  }
+}
+
+/**
+ * The orders for a set of simultaneous packets (plan A2-D4, R1, R4): each packet that owes a choice takes the next of
+ * `answers`, in packet order. Built on ONE state, before any packet lands, so an answer given for a prompt names the
+ * same options when the packets are re-built from that state. `ask` is the first choice still unanswered, if any.
+ */
+export function packetOrders(state: GameState, packets: readonly DamagePacket[], answers: readonly number[]):
+  { readonly orders: readonly (readonly string[] | undefined)[]; readonly used: number; readonly ask: { packet: DamagePacket; choice: ReplacementChoice } | null } {
+  const orders: (readonly string[] | undefined)[] = []
+  let used = 0
+  for (const packet of packets) {
+    const choice = replacementChoice(state, packet)
+    if (!choice) { orders.push(undefined); continue }
+    const answer = answers[used]
+    const order = answer === undefined ? undefined : choice.options[answer]
+    if (order === undefined) return { orders, used, ask: { packet, choice } }
+    used++
+    orders.push(order)
+  }
+  return { orders, used, ask: null }
+}
+
+/** Why an answer to a `chooseReplacementOrder` would be refused, or null — the exact test both owners' `apply` runs. */
+export function replacementOrderCheck(state: GameState, player: PlayerId, order: number): string | null {
+  if (state.result) return 'game is over'
+  const pending = state.pending
+  if (pending?.kind !== 'chooseReplacementOrder' || pending.player !== player) return 'no replacement order owed by this player'
+  if (!Number.isInteger(order) || order < 0 || order >= pending.options.length) return `${order} is not one of the ${pending.options.length} orders`
+  return null
+}
+
+/**
+ * The index of the option the damaged Forward's controller prefers (plan R6): the least damage, then the fewest
+ * shields used up, then the first listed. Greedy's answer and the preview's assumption — one rule, so they agree.
+ */
+export function preferredOrder(choice: Pick<ReplacementChoice, 'outcomes'>): number {
+  let best = 0
+  choice.outcomes.forEach((o, i) => {
+    const b = choice.outcomes[best] as { final: number; consumes: readonly string[] }
+    if (o.final < b.final || (o.final === b.final && o.consumes.length < b.consumes.length)) best = i
+  })
+  return best
 }
 
 /**
@@ -166,7 +291,8 @@ export function previewDamagePacket(state: GameState, packet: DamagePacket): { a
  * event, and one `DamageOccurrence` per dealer for the dealt-damage triggers. The caller queues those — and runs
  * the §12.4.5 rule process — only once its whole simultaneous batch has landed (§10.1.4.2).
  *
- * Rung V2-A2: the replacement effects apply first (plan A2-D3). A final amount of 0 is not damage (spec V2-D4, the
+ * Rung V2-A2: the replacement effects apply first (plan A2-D3), in `order` (replacement ids) — required when the packet
+ * owes a choice (`replacementChoice`), the canonical order otherwise. A final amount of 0 is not damage (spec V2-D4, the
  * official ruling of 2021-08-19): nothing is marked, no damage event and no occurrence — so no dealt-damage trigger —
  * and a `damageReducedToZero` narrates it. A packet of 0 or less to begin with (no pool path builds one) emits nothing.
  *
@@ -174,13 +300,13 @@ export function previewDamagePacket(state: GameState, packet: DamagePacket): { a
  * which source broke a Forward by the rule process (`ZoneTransition.cause` is null for it); no pool card reads that,
  * so it is unobservable here. A real attribution ledger is backlog (plan R1).
  */
-export function applyDamagePacket(state: GameState, packet: DamagePacket): DamageApplication {
+export function applyDamagePacket(state: GameState, packet: DamagePacket, order?: readonly string[]): DamageApplication {
   if (packet.dealers.length === 0) throw new Error(`a damage packet to ${packet.target} has no dealer`)
   if (packet.cause !== 'battle' && packet.dealers.length !== 1) throw new Error(`a ${packet.cause} damage packet has exactly one dealer, got ${packet.dealers.length}`)
   const loc = findFieldCard(state, packet.target)
   if (!loc || loc.zone !== 'forwards') return { state, ...NOT_APPLIED }
   if (packet.amount <= 0) return { state, applied: true, final: 0, trace: [], occurrences: [], events: [] }
-  const { final, trace, consumes } = outcomeOf(state, packet)
+  const { final, trace, consumes } = applyInOrder(packet.amount, ordered(state, packet, order))
   const dealers = packet.dealers.map((d) => d.source)
   // The shields this order used up are gone, whatever the final amount: they replaced the event (plan A2-D5).
   const spent = (c: FieldCard): FieldCard => {
@@ -203,4 +329,26 @@ export function applyDamagePacket(state: GameState, packet: DamagePacket): Damag
   // time its trigger is placed (§15.2.3.3).
   const occurrences = packet.dealers.map((d): DamageOccurrence => ({ source: d.source, sourceController: d.sourceController, target: packet.target, victim: null, amount: final, targetController: loc.owner }))
   return { state: s, applied: true, final, trace, occurrences, events: [event] }
+}
+
+/** One replacement's change as the prompt and the log say it (plan A2-D7): "+2000", "−1000", "reduction to 0", "shield −2000". */
+export function describeDamageChange(change: DamageChange, shield = false): string {
+  const said = 'add' in change ? `+${change.add}` : 'reduce' in change ? `−${change.reduce}` : 'reduction to 0'
+  return shield ? `shield ${said}` : said
+}
+
+/**
+ * One option of a `chooseReplacementOrder`, worded for a button (plan A2-D7): "Yuzuki's reduction to 0, then Wuk
+ * Lamat's +2000 → 2000". A shield the order leaves unused says so — which one survives is the difference. ONE
+ * wording, so the browser and the terminal cannot describe the same option differently. `nameOf` names a card.
+ */
+export function describeReplacementOrder(pending: Extract<Pending, { kind: 'chooseReplacementOrder' }>, order: number, nameOf: (id: CardId) => string): string {
+  const byId = new Map(pending.replacements.map((r) => [r.id, r]))
+  const steps = (pending.options[order] ?? []).map((id) => {
+    const r = byId.get(id)
+    return r ? `${nameOf(r.by)}'s ${describeDamageChange(r.change, r.shield === true)}` : id
+  })
+  const outcome = pending.outcomes[order]
+  const kept = pending.replacements.filter((r) => r.shield && !(outcome?.consumes ?? []).includes(r.id)).map((r) => `${nameOf(r.by)}'s shield`)
+  return `${steps.join(', then ')} → ${outcome?.final ?? '?'}${kept.length ? ` (${kept.join(' and ')} kept)` : ''}`
 }

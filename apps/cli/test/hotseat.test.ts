@@ -5,6 +5,7 @@ import { loadCards } from '@fftcg/cards'
 import { createGame, nextInt, seedRng, viewFor, type PlayerView, type Rng } from '@fftcg/engine'
 import { parseDeckFile } from '../src/deck.js'
 import { describeEvent, hotseat, type HotseatIo } from '../src/hotseat.js'
+import { askingBecause, describeCommand } from '../src/render.js'
 
 describe('hotseat', () => {
   it('plays a complete game end to end through a scripted io', async () => {
@@ -290,5 +291,30 @@ describe('hotseat damage narration (rung V2-A1)', () => {
 
   it('a packet reduced to 0 (declared now, emitted from rung V2-A2)', () => {
     expect(describeEvent(v, { type: 'damageReducedToZero', target: c, dealers: [a], original: 5000, trace: [] })).toBe(`  ${name(a)}'s 5000 damage to ${name(c)} is reduced to 0`)
+  })
+})
+
+// Rung V2-A2 (plan A2-D7, R5): the replacement-order prompt in the terminal — the engine's one wording.
+describe('hotseat replacement order (rung V2-A2)', () => {
+  const deck = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
+  const [t, w, y] = [901, 902, 903] as const
+  const base = viewFor(createGame({ seed: 1, decks: [deck, deck], defs: loadCards() }), 0)
+  const v: PlayerView = {
+    ...base,
+    cards: { ...base.cards, [t]: { id: t, code: deck[0]!, owner: 0 as const }, [w]: { id: w, code: '27-122S', owner: 1 as const }, [y]: { id: y, code: '13-125R', owner: 0 as const } },
+    pending: {
+      kind: 'chooseReplacementOrder', player: 0, owner: 'battle', target: t, original: 5000,
+      replacements: [{ id: `${w}:wuk`, by: w, change: { add: 2000 } }, { id: `${y}:fire`, by: y, change: { becomes: 0 } }],
+      options: [[`${w}:wuk`, `${y}:fire`], [`${y}:fire`, `${w}:wuk`]],
+      outcomes: [{ final: 0, consumes: [] }, { final: 2000, consumes: [] }],
+    },
+  }
+  const name = (id: number): string => v.defs[v.cards[id]!.code]!.name
+
+  it('each option reads as its effects in order and the result', () => {
+    expect(describeCommand(v, { type: 'chooseReplacementOrder', player: 0, order: 1 })).toMatch(new RegExp(`^Order: ${name(y)}.*'s reduction to 0, then ${name(w)}.*'s \\+2000 → 2000$`))
+  })
+  it('says why it is asking', () => {
+    expect(askingBecause(v)).toMatch(new RegExp(`^  Order the effects replacing the 5000 damage to ${name(t)}`))
   })
 })
