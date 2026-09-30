@@ -18,6 +18,7 @@ test('the card fixture gallery matches its baseline', async ({ page }) => {
   await expect(page.locator('figure[data-fixture]').first()).toBeVisible()
   // Fail closed: a regression in ?art=off must stop the recording, not write a card scan into git.
   await expectNoArt(page, art)
-  // A tiny tolerance for font antialiasing between runs; a changed card is far above it.
-  await expect(page).toHaveScreenshot('card-gallery.png', { fullPage: true, maxDiffPixelRatio: 0.001 })
+  // A tolerance in PIXELS, for font antialiasing between runs. Not a ratio: 0.1% of this tall page is ~3,000 px, which
+  // let a moved badge pass unnoticed (found in U1). A real change to one card is well over 100 px.
+  await expect(page).toHaveScreenshot('card-gallery.png', { fullPage: true, maxDiffPixels: 100 })
 })

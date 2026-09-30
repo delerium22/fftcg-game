@@ -293,11 +293,12 @@
   -webkit-text-stroke-width: 0.2em;
 }
 
-/* Until-end-of-turn badges, bottom-left of the art, clear of the power number on the right. */
+/* Until-end-of-turn badges, top-left of the art under the cost gem, clear of the power number at the bottom right
+ * (at the bottom they crowded the number on every small card — seen in the U1 gallery baseline). */
 .card__buffs {
   position: absolute;
   left: calc(var(--cw) * 0.04);
-  bottom: calc(var(--cw) * 0.06);
+  top: clamp(14px, calc(var(--cw) * 0.28), 40px);
   z-index: 1;
   display: flex;
   flex-wrap: wrap;
