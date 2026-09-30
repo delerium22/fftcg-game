@@ -20,6 +20,7 @@ import { EventLog } from './EventLog.js'
 import { GameOverDialog } from './GameOverDialog.js'
 import { PaymentTray } from './PaymentTray.js'
 import { PromptStrip } from './PromptStrip.js'
+import { ZoneSheet } from './ZoneSheet.js'
 
 /**
  * The payment being built (rung I2): the move, the sources picked so far, and a two-element discard waiting
@@ -65,9 +66,9 @@ function Zone({ label, items, compact, onLookAt }: {
 }
 
 /** The public piles a player can open and read. Face-down zones (deck, the opponent's hand) are not here. */
-export type PileKind = 'breakZone' | 'damageZone' | 'removedFromGame'
+export type PileKind = 'breakZone' | 'damageZone' | 'removedFromGame' | 'lbDeck'
 const PILE_LABEL: Record<PileKind, string> = {
-  breakZone: 'Break Zone', damageZone: 'Damage', removedFromGame: 'Removed from game',
+  breakZone: 'Break Zone', damageZone: 'Damage', removedFromGame: 'Removed from game', lbDeck: 'LB deck',
 }
 
 function Seat({ seat, p, active, open, onToggle }: {
@@ -93,13 +94,15 @@ function Seat({ seat, p, active, open, onToggle }: {
    */
   const pile = (kind: PileKind, count: number, inner: JSX.Element): JSX.Element => (
     <span className="stat">
-      <span className="stat__label">{kind === 'damageZone' ? 'Damage' : kind === 'breakZone' ? 'Break' : 'Removed'}</span>
+      <span className="stat__label">{kind === 'damageZone' ? 'Damage' : kind === 'breakZone' ? 'Break' : kind === 'lbDeck' ? 'LB' : 'Removed'}</span>
       {count === 0
         ? inner
         : (
           <button
             type="button"
             className="stat__open"
+            // Rung U2b: it opens a sheet over the board (`ZoneSheet`); `aria-expanded` stays, as the tests pin it.
+            aria-haspopup="dialog"
             aria-expanded={open === kind}
             aria-label={`${you ? 'Your' : "the AI's"} ${PILE_LABEL[kind]}, ${count} ${count === 1 ? 'card' : 'cards'}`}
             onClick={() => onToggle(kind)}
@@ -129,18 +132,20 @@ function Seat({ seat, p, active, open, onToggle }: {
         ))}
         {seat.removedFromGame.length > 0
           && pile('removedFromGame', seat.removedFromGame.length, <span className="stat__value">{seat.removedFromGame.length}</span>)}
+        {/* Rung U2b (D28): the AI's LB deck is a pile, opened like the others; yours sits beside your hand. */}
+        {!you && seat.lbDeck.length > 0 && pile('lbDeck', seat.lbDeck.length, <span className="stat__value">{seat.lbDeck.length}</span>)}
       </div>
     </div>
   )
 }
 
-/** The card ids the board draws in its named zones: both fields, your hand, and the AI's hand cards you know. */
+/** The card ids the board draws in its named zones: both fields, your hand and LB deck, and the AI's hand cards you know. */
 export function boardCardIds(view: PlayerView): Set<CardId> {
   return new Set<CardId>([
     ...view.hand,
     ...view.fields[AI].knownHand,   // rung V1-E: the AI hand row
     ...([0, 1] as const).flatMap((p) => [...view.fields[p].forwards, ...view.fields[p].backups].map((c) => c.id)),
-    ...([0, 1] as const).flatMap((p) => view.fields[p].lbDeck.map((x) => x.id)),   // rung J8: both LB decks are drawn
+    ...view.fields[HUMAN].lbDeck.map((x) => x.id),   // rung J8; rung U2b: the AI's LB deck is a pile, not drawn on the board
   ])
 }
 
@@ -274,7 +279,7 @@ export function Board({ game, onHelp }: {
    * about what they are called. Four rows now, one namer.
    */
   const pileItems = (p: PlayerId, kind: PileKind): GridItem[] =>
-    model.seats[p][kind].map((id) => gridItem(id, { ...faceOf(id), actionable: false, size: 'small' }))
+    kind === 'lbDeck' ? lbItems(p) : model.seats[p][kind].map((id) => gridItem(id, { ...faceOf(id), actionable: false, size: 'small' }))
 
   /**
    * Forget an open pile once it has emptied.
@@ -285,17 +290,15 @@ export function Board({ game, onHelp }: {
    * itself, `aria-expanded="true"`, with the player never having asked. Clearing it is the actual fix.
    */
   useEffect(() => {
-    if (openPile !== null && view.fields[openPile.p][openPile.kind].length === 0) setOpenPile(null)
-  }, [view, openPile])
+    if (openPile !== null && model.seats[openPile.p][openPile.kind].length === 0) setOpenPile(null)
+  }, [model, openPile])
 
-  /** The opened pile's row, rendered under the seat that owns it. */
-  const pileRow = (p: PlayerId): JSX.Element | null => {
-    if (openPile === null || openPile.p !== p) return null
-    const items = pileItems(p, openPile.kind)
-    if (items.length === 0) return null
-    const label = `${p === HUMAN ? 'Your' : "The AI's"} ${PILE_LABEL[openPile.kind]}`
-    return <Zone label={label} compact items={items} onLookAt={look} />
-  }
+  /**
+   * The opened pile's title — its sheet's heading and its grid's label (rung U2b). The AI's LB deck keeps the grid label it
+   * had as a row, `AI LB deck`, which the tests and the e2e driver know.
+   */
+  const pileTitle = (o: { p: PlayerId; kind: PileKind }): string =>
+    o.kind === 'lbDeck' && o.p === AI ? 'AI LB deck' : `${o.p === HUMAN ? 'Your' : "The AI's"} ${PILE_LABEL[o.kind]}`
 
   /**
    * What pressing this card offers — its sole choice's headline, or how many choices its sheet will list.
@@ -592,12 +595,10 @@ export function Board({ game, onHelp }: {
           open={openPile?.p === AI ? openPile.kind : null}
           onToggle={(kind) => togglePile(AI, kind)}
         />
-        {pileRow(AI)}
         {/* Only while you know one: a row that is always there would move every position on the board (V1-C's note). */}
-        {view.fields[AI].knownHand.length > 0 && (
-          <Zone label={`AI hand — ${view.fields[AI].knownHand.length} of ${view.fields[AI].handCount} known`} compact items={knownHandItems()} onLookAt={look} />
+        {model.seats[AI].knownHand.length > 0 && (
+          <Zone label={`AI hand — ${model.seats[AI].knownHand.length} of ${model.seats[AI].handCount} known`} compact items={knownHandItems()} onLookAt={look} />
         )}
-        {view.fields[AI].lbDeck.length > 0 && <Zone label="AI LB deck" compact items={lbItems(AI)} onLookAt={look} />}
         <Zone label="AI Backups" compact items={field(AI, 'backups')} onLookAt={look} />
         <Zone label="AI Forwards" items={field(AI, 'forwards')} onLookAt={look} />
       </section>
@@ -617,14 +618,14 @@ export function Board({ game, onHelp }: {
           open={openPile?.p === HUMAN ? openPile.kind : null}
           onToggle={(kind) => togglePile(HUMAN, kind)}
         />
-        {pileRow(HUMAN)}
-        {view.fields[HUMAN].lbDeck.length > 0 && <Zone label="Your LB deck" compact items={lbItems(HUMAN)} onLookAt={look} />}
         <Zone label="Your Backups" compact items={field(HUMAN, 'backups')} onLookAt={look} />
         <Zone label="Your Forwards" items={field(HUMAN, 'forwards')} onLookAt={look} />
       </section>
 
       <section className="table__hand">
         {orphanCards.length > 0 && <Zone label="Choose a card" compact items={orphanCards} onLookAt={look} />}
+        {/* Rung U2b (D28): your LB deck beside your hand — casts from outside it, read just before it. */}
+        {model.seats[HUMAN].lbDeck.length > 0 && <Zone label="Your LB deck" compact items={lbItems(HUMAN)} onLookAt={look} />}
         {/* The hand is a keyboard GRID: one tab stop, arrow keys within. Without it the mulligan cannot be
             reached by keyboard at all — no hand card is selectable there, so every one is a `role="img"`
             div outside the tab order, and the opening decision of the game is made blind. */}
@@ -657,6 +658,13 @@ export function Board({ game, onHelp }: {
       />
 
       {sheet !== null && sheetProps(sheet)}
+
+      {/* Rung U2b: an opened pile is a sheet over the board, not a row inside it. */}
+      {openPile !== null && pileItems(openPile.p, openPile.kind).length > 0 && (
+        <ZoneSheet title={pileTitle(openPile)} onClose={() => setOpenPile(null)}>
+          <Zone label={pileTitle(openPile)} compact items={pileItems(openPile.p, openPile.kind)} onLookAt={look} />
+        </ZoneSheet>
+      )}
 
 
       <aside className="table__rail">
