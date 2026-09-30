@@ -22,6 +22,12 @@ function checkFieldCard(problems: string[], where: string, c: FieldCard, state: 
   for (const f of c.flags) if (!FIELD_FLAGS.includes(f)) problems.push(`card ${c.id} has unknown flag ${String(f)}`)
   if (new Set(c.flags).size !== c.flags.length) problems.push(`card ${c.id} has duplicate flags`)
   for (const k of c.granted) if (!KEYWORDS.includes(k)) problems.push(`card ${c.id} has unknown granted keyword ${String(k)}`)
+  // Rung V2-A2 (plan A2-D2): a shield reduces by a positive whole amount, and its id names one shield.
+  for (const sh of c.shields ?? []) {
+    if (!Number.isInteger(sh.reduce) || sh.reduce <= 0) problems.push(`card ${c.id} in ${where} has a shield reducing by ${sh.reduce}`)
+    if (!state.cards[sh.source]) problems.push(`card ${c.id} in ${where} has a shield from unknown card ${sh.source}`)
+  }
+  if (c.shields && new Set(c.shields.map((sh) => sh.id)).size !== c.shields.length) problems.push(`card ${c.id} in ${where} has two shields with one id`)
 }
 
 function checkFrame(problems: string[], where: string, f: Frame, state: GameState): void {

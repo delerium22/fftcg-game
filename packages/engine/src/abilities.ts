@@ -159,6 +159,12 @@ export type Effect =
    */
   | { readonly kind: 'playOntoField' }
   | { readonly kind: 'addPower'; readonly amount: number }
+  /**
+   * "During this turn, the next damage dealt to it is reduced by N instead" — Porom 11-121C (rung V2-A2, plan A2-D2). A
+   * one-shot replacement effect put on each chosen Forward (`FieldCard.shields`): consumed when it changes a positive
+   * running amount of one damage packet (plan R2), gone at the end of the turn or when the Forward leaves the field.
+   */
+  | { readonly kind: 'shieldNextDamage'; readonly amount: number }
   | { readonly kind: 'grantKeyword'; readonly keyword: Keyword }
   | { readonly kind: 'grantFlag'; readonly flag: FieldFlag }
   | { readonly kind: 'moveToHand' }

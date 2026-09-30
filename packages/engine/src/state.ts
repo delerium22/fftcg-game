@@ -28,7 +28,21 @@ export interface FieldCard {
    * cards by hand in a dozen places, and the engine writes it explicitly on every path that sets or clears it.
    */
   frozen?: boolean
+  /**
+   * Rung V2-A2 (plan A2-D2, R9): the one-shot damage reductions an effect has put on this Forward this turn (Porom's
+   * "the next damage dealt to it is reduced by 2000"), in the order granted. Each is a replacement effect of its own,
+   * consumed only when it changes a positive running amount (plan R2). Cleared in the End Phase with the other "until
+   * the end of the turn" effects (§9.5.1.3.2), and gone with the FieldCard when the card leaves the field. Optional,
+   * absent meaning none, like `frozen`. Public, like everything on the field.
+   */
+  shields?: readonly Shield[]
 }
+/**
+ * One shield (rung V2-A2, plan R9): `id` is `<source card id>:<turn>:<n>`, `n` the number the Forward already carries —
+ * deterministic, so a determinised world names it the same way. `source` is the card that granted it (Porom, by then in
+ * the Break Zone), which the trace and the prompt name.
+ */
+export interface Shield { readonly id: string; readonly reduce: number; readonly source: CardId }
 /** One card of the LB deck (§7.14, rung J8): face down until it pays a Limit Break cost or comes back spent. */
 export interface LbCard { id: CardId; faceUp: boolean }
 export interface PlayerState {

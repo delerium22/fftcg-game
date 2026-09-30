@@ -134,6 +134,14 @@ export function applyDiscardToHandSize(state: GameState, player: PlayerId, cards
   return [t, [...events, ...more]]
 }
 
+/** `c` without its shields — absent, not empty, so a card that never had one keys and hashes as before (plan R9). */
+function withoutShields(c: FieldCard): FieldCard {
+  if (c.shields === undefined) return c
+  const rest: FieldCard = { ...c }
+  delete rest.shields
+  return rest
+}
+
 export function finishEndPhase(state: GameState): [GameState, Event[]] {
   // §9.5.1.3.1 remove damage; §9.5.1.3.2 end EVERY "until end of turn" effect — granted keywords, `powerBonus`
   // and the protection `flags` (spec C1-7) all expire together; reset per-turn flags
@@ -141,8 +149,9 @@ export function finishEndPhase(state: GameState): [GameState, Event[]] {
   for (const p of [0, 1] as const) {
     s = updatePlayer(s, p, (ps) => ({
       ...ps,
-      forwards: ps.forwards.map((c) => ({ ...c, damage: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })),
-      backups: ps.backups.map((c) => ({ ...c, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })),
+      // Rung V2-A2 (plan R9): an unused shield ends with the turn too — Forwards and Backups alike.
+      forwards: ps.forwards.map((c) => ({ ...withoutShields(c), damage: 0, attackedThisTurn: false, granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })),
+      backups: ps.backups.map((c) => ({ ...withoutShields(c), granted: [], powerBonus: 0, flags: [], usedThisTurn: [] })),
     }))
   }
   const [ruled, events] = runRuleProcesses(s)   // §9.5.1.4

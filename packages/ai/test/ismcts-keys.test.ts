@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   SYNTHETIC_ID_BASE, actingPlayer, apply, createGame, determinise, drainResolution, enqueueTrigger, isLegal, learn, legalCommands, seedRng, viewFor,
-  type Ability, type CardDef, type CardId, type Command, type Effect, type Frame, type GameState, type Payment, type PlayerId, type PlayerView, type TargetFilter,
+  type Ability, type CardDef, type CardId, type Command, type Effect, type FieldCard, type Frame, type GameState, type Payment, type PlayerId, type PlayerView, type TargetFilter,
 } from '@fftcg/engine'
 import { candidateCommands } from '../src/candidates.js'
 import { GreedyAgent } from '../src/greedy.js'
@@ -686,6 +686,17 @@ describe('observationKey reads Freeze and the First Strike step (J3 second revie
     const setFrozen = (frozen: boolean): PlayerView => ({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, frozen } : c)) }, view.fields[1]] })
     expect(observationKey(setFrozen(true)), 'frozen').not.toBe(key)
     expect(observationKey(setFrozen(false)), 'false is absent').toBe(key)
+  })
+
+  it('differs when a Forward carries a shield, by amount, and keys absent as before (rung V2-A2)', () => {
+    const { view, ids } = richView()
+    const key = observationKey(view)
+    const f0 = view.fields[0]
+    const setShields = (shields: FieldCard['shields']): PlayerView => ({ ...view, fields: [{ ...f0, forwards: f0.forwards.map((c, i) => (i === 0 ? { ...c, ...(shields ? { shields } : {}) } : c)) }, view.fields[1]] })
+    const two = observationKey(setShields([{ id: `${ids.a1!}:1:0`, reduce: 2000, source: ids.a1! }]))
+    expect(two, 'shielded').not.toBe(key)
+    expect(observationKey(setShields([{ id: `${ids.a1!}:1:0`, reduce: 1000, source: ids.a1! }])), 'by amount').not.toBe(two)
+    expect(observationKey(setShields(undefined)), 'absent').toBe(key)
   })
 
   it('differs in the fixed First Strike set and in the held first batch', () => {
