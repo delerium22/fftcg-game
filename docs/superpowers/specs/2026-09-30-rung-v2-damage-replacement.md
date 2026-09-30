@@ -104,7 +104,7 @@ with its revisions R1–R10. Differences from the design above, and readings:
 - Provenance (R5): `damageProvenance` reads the source's printed type — a Summon's frames, cast or burst, run with
   the Summon card as source (`cast.ts`) — plus `Frame.origin === 'exBurst'`. It is unit-tested on frames for all five
   cases; no event carries `cause`, so the resolve wiring (`Ctx.provenance`) is not observable until V2-A2 reads it.
-- The one rules change (§15.1.1.9.8): a blocked party deals its blocker ONE packet, dealers in declaration order,
+- The one rules change (§15.1.1.9.8): a blocked party deals its blocker ONE packet, dealers in `attack.attackers` order (ascending id),
   so each member's dealt-damage occurrence (and its trigger's `TriggerEvent.amount`) carries the TOTAL. Visible in
   the web's cause line ("Luso dealt 12000 damage to …" for a party) and in the ISMCTS key of a queued trigger.
 - First Strike (R6): the batch is chosen at party level before packets are built; held occurrences are the applied
