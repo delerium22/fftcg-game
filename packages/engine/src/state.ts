@@ -38,8 +38,8 @@ export interface FieldCard {
   shields?: readonly Shield[]
 }
 /**
- * One shield (rung V2-A2, plan R9): `id` is `<source card id>:<turn>:<n>`, `n` the number the Forward already carries —
- * deterministic, so a determinised world names it the same way. `source` is the card that granted it (Porom, by then in
+ * One shield (rung V2-A2, plan R9): `id` is `<source card id>:<turn>:<n>`, `n` the number the Forward already carries,
+ * counted on past an id still in use — deterministic, so a determinised world names it the same way. `source` is the card that granted it (Porom, by then in
  * the Break Zone), which the trace and the prompt name.
  */
 export interface Shield { readonly id: string; readonly reduce: number; readonly source: CardId }

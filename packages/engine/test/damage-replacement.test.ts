@@ -295,6 +295,21 @@ describe("shields — Porom's one-shot reduction (rung V2-A2, plan A2-D2, R2, R9
     expect(shieldsOf(r.state, f)).toBeUndefined()
   })
 
+  it('a source that grants again after one of its shields is used up never repeats an id (code review L1)', () => {
+    let s = makeGame({ defs: SPOOL }); let f: CardId, a: CardId, porom: CardId
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8')
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
+    ;[s, porom] = withField(s, 0, 'backups', 'R-POR')
+    const grant = (t: GameState): GameState => applyNow(drainResolution(enqueueTrigger(t, porom, 0, POROM_ETB))[0], { type: 'chooseTargets', player: 0, targets: [f] }).state
+    s = grant(grant(s))
+    s = applyDamagePacket(s, battle(f, [[a, 0]], 1000)).state
+    expect(shieldsOf(s, f)?.map((sh) => sh.id)).toEqual([`${porom}:${s.turn}:1`])
+    s = grant(s)
+    expect(shieldsOf(s, f)?.map((sh) => sh.id)).toEqual([`${porom}:${s.turn}:1`, `${porom}:${s.turn}:2`])
+    expect(checkInvariants(s)).toEqual([])
+    expect(shieldsOf(applyDamagePacket(s, battle(f, [[a, 0]], 1000)).state, f)).toHaveLength(1)
+  })
+
   it('plan R2: a shield meets no damage once the running amount is 0 or less — not applied, not used up', () => {
     const sh = (id: string): Replacement => ({ id, by: 1, change: { reduce: 2000 }, shield: true })
     const zero: Replacement = { id: 'y', by: 2, change: { becomes: 0 } }
