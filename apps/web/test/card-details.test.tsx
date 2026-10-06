@@ -534,10 +534,10 @@ describe('the field zones as keyboard grids (rung E3b-2)', () => {
   })
 
   it('announces a field card’s pumps, damage and dullness, not just its printed numbers', () => {
-    // The refactor routes every field card through `fieldCardProps`. Deleting `powerBonus`, `granted`,
-    // `flags`, `damage` or `dull` from it left the whole suite green, because the props and the component
-    // were only ever tested apart. This mounts a real Board on a field card carrying all of them and pins
-    // the exact string its focused cell announces.
+    // Every field card's face comes from the render projection's `fieldFace` (rung U2a; it replaced `fieldCardProps`).
+    // Deleting `powerBonus`, `granted`, `flags`, `damage` or `dull` from it once left the whole suite green, because the
+    // props and the component were only ever tested apart. This mounts a real Board on a field card carrying all of
+    // them and pins the exact string its focused cell announces.
     // A FORWARD specifically. `fieldState()` casts the first castable character, which at this seed is a
     // Backup with `power === null` — so the power assertions below sat behind an `if` that never ran, and
     // dropping `powerBonus` or `damage` from the props survived. A conditional that silently skips is the
