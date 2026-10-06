@@ -54,21 +54,11 @@
   box-shadow: 0 2px 0 color-mix(in oklab, var(--el-a) 45%, black), var(--shadow-2);
 }
 
-/* Dull means the card is turned sideways (CR: a dull card is rotated 90°). The wrapper swaps its
- * width and height so the row still lays out correctly, and only the face rotates inside it. */
-.card.is-dull {
-  width: var(--ch);
-  height: var(--cw);
-}
-
-.card.is-dull .card__face {
-  inset: auto;
-  top: 50%;
-  left: 50%;
-  width: var(--cw);
-  height: var(--ch);
-  transform: translate(-50%, -50%) rotate(90deg);
-}
+/* Dull (CR: a dull card is turned sideways) WITHOUT reflow (D29): a Forward keeps its portrait slot and its face turns and
+ * shrinks to fit the slot's width (0.716 is the card's aspect ratio); a Backup's slot is square so it turns at full size;
+ * the sheet's large card stays upright, because it is there to be read. */
+.card.is-dull:not(.card--large) .card__face { inset: auto; top: 50%; left: 50%; width: var(--cw); height: var(--ch); transform: translate(-50%, -50%) rotate(90deg) scale(0.716); }
+.zone--square .card.is-dull .card__face { transform: translate(-50%, -50%) rotate(90deg); }
 
 /* ---------------- frame ---------------- */
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX, useMemo } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type JSX, useMemo } from 'react'
 import type { CardId, Element, Payment, PlayerId, PlayerView } from '@fftcg/engine'
 import { castBlockerText, displayName, headline } from '../game/commands.js'
 import { project, type CardFace, type SeatModel } from '../game/presentation/boardModel.js'
@@ -47,16 +47,18 @@ function defOf(v: PlayerView, id: CardId) {
  * An EMPTY zone renders no grid at all — a grid with no cells has no tab stop to give and nothing to say,
  * and the four always-rendered field rows are empty for most of a game.
  */
-function Zone({ label, items, compact, onLookAt }: {
+function Zone({ label, items, compact, square, onLookAt }: {
   label: string
   items: readonly GridItem[]
   compact?: boolean
+  /** Rung U2b (D29): square card slots, so a Backup turns to dull without pushing its neighbours. */
+  square?: boolean
   onLookAt: (id: CardId) => void
 }): JSX.Element {
   const empty = items.length === 0
   const cls = ['zone__cards', empty ? 'zone__cards--empty' : '', compact ? 'zone__cards--compact' : ''].filter(Boolean).join(' ')
   return (
-    <div className="zone">
+    <div className={square ? 'zone zone--square' : 'zone'}>
       <div className="zone__label">{label}</div>
       {empty
         ? <div className={cls} />
@@ -597,11 +599,14 @@ export function Board({ game, onHelp }: {
           open={openPile?.p === AI ? openPile.kind : null}
           onToggle={(kind) => togglePile(AI, kind)}
         />
-        {/* Only while you know one: a row that is always there would move every position on the board (V1-C's note). */}
-        {model.seats[AI].knownHand.length > 0 && (
-          <Zone label={`AI hand — ${model.seats[AI].knownHand.length} of ${model.seats[AI].handCount} known`} compact items={knownHandItems()} onLookAt={look} />
-        )}
-        <Zone label="AI Backups" compact items={field(AI, 'backups')} onLookAt={look} />
+        {/* Rung U2b: the known hand shares the Backups' line, so revealing a card moves no row. */}
+        <div className="seat-row">
+          {/* Only while you know one: a row that is always there would move every position on the board (V1-C's note). */}
+          {model.seats[AI].knownHand.length > 0 && (
+            <Zone label={`AI hand — ${model.seats[AI].knownHand.length} of ${model.seats[AI].handCount} known`} compact items={knownHandItems()} onLookAt={look} />
+          )}
+          <Zone label="AI Backups" compact square items={field(AI, 'backups')} onLookAt={look} />
+        </div>
         <Zone label="AI Forwards" items={field(AI, 'forwards')} onLookAt={look} />
       </section>
 
@@ -620,7 +625,7 @@ export function Board({ game, onHelp }: {
           open={openPile?.p === HUMAN ? openPile.kind : null}
           onToggle={(kind) => togglePile(HUMAN, kind)}
         />
-        <Zone label="Your Backups" compact items={field(HUMAN, 'backups')} onLookAt={look} />
+        <Zone label="Your Backups" compact square items={field(HUMAN, 'backups')} onLookAt={look} />
         <Zone label="Your Forwards" items={field(HUMAN, 'forwards')} onLookAt={look} />
       </section>
 
@@ -635,19 +640,21 @@ export function Board({ game, onHelp }: {
           label="Your hand"
           className="hand"
           onLookAt={look}
-          items={model.hand.map((id) => {
+          items={model.hand.map((id, i) => {
             // The SAME occurrence marker the buttons use. A button saying "Discard Shantotto (2)" is only
             // useful if the player can see which rendered card is Shantotto (2) — a disambiguator that
             // appears on one side of the interface and not the other is worse than none, because it looks
             // like an answer.
-            return gridItem(id, {
+            // Rung U2b: the card's place in the fan (spec section 6), read by `.hand`'s cell rule.
+            const cellStyle = { '--i': i, '--n': model.hand.length } as CSSProperties
+            return { cellStyle, ...gridItem(id, {
               ...faceOf(id),
               actionable: glows(id),
               size: 'hand',
               ...(actionFor(id) === undefined ? {} : { action: actionFor(id) }),
               ...(payingRole(id) === undefined ? {} : { paying: payingRole(id) }),
               ...(chosenNow(id) ? { chosen: true } : {}),
-            }, { selected: sheet === id })
+            }, { selected: sheet === id }) }
           })}
         />
       </section>
