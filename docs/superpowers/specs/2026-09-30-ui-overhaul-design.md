@@ -503,7 +503,7 @@ The flags `?motion=instant` and `?art=off` are production-safe query parameters.
 | **U1** Tokens and the card | `tokens.css`, fonts, the icon sprite; the card redesign with the `data-*` state model, generative text-card art and the card back; the fixture gallery covering every card state | new `tokens.css` imported from `main.tsx`, `Card.tsx`, `Card.css`, fixture files (not `styles.css`, which V1-C edits) | **now** |
 | **U2a** Render projection | `project(view)` → `BoardModel` (cards, seats, keyed stack, scalars); the Board draws every card's display props and the seat counters from it, with identical output | new `presentation/boardModel.ts`, `Board.tsx` | after U1 |
 | **U2b** Board layout | The viewport-fit grid (named areas), the side HUD, piles and `ZoneSheet`, the LB fan beside your hand and the AI's LB pile, damage crystals, square Backup slots and dull without reflow, the hand fan, the stack column, the centre line (phase tracker, prompt, actions) (D33) | `Board.tsx`, `PromptStrip`, `ZoneSheet`, `styles.css`, `Card.css` | after U2a |
-| **U2c** Drawer, preview, menu, settings | The log drawer and the hover preview (replacing the `CardDetails` rail; the stack column then runs full height), the top-bar menu with an always-available Concede and How to play, the settings popover, the AI hand as fanned backs, and `Board.tsx` split into zone components (D33) | `EventLog`, `CardDetails`, `Board.tsx`, new `board/` | after U2b |
+| **U2c** Drawer, preview, menu, settings | The log drawer and the hover preview (replacing the `CardDetails` rail; the stack column then runs full height, its entries top-first), the top-bar menu with an always-available Concede and How to play, the settings popover, the AI hand as fanned backs, and `Board.tsx` split into zone components (D33) | `EventLog`, `CardDetails`, `Board.tsx`, new `board/` | after U2b |
 | **U3** Director foundation | Per-apply `PresentationStep`s with redaction and the exhaustive event classification; the director, displayed model, settle beat, convergence gating, skip, speed, Instant draining synchronously, restart and game generation; the coordinator's `whenIdle` gate; the convergence property test. **Every step drains synchronously, as at Instant, until U4 adds durations: the game plays exactly as today, with no timers** | `useGame.ts`, `coordinator.ts`, `types.ts`, new `presentation/` | after U2 |
 | **U4** Core motion | Add `motion`; zone moves (draw, play, break, discard, return, damage); dull and untap; hand fan springs; hover and inspect; turn and phase banners; AI telegraph reveals; the thinking indicator; art preload | presentation, UI | after U3 |
 | **U5** Targeting and payment | Target arrows (SVG Bézier), highlight and dim, CP crystals flowing to the meter, clear confirm and cancel | `SelectionTray`, `PaymentTray`, board | after U4 |
@@ -609,15 +609,25 @@ multiplayer stay possible later.
   card moves no other card (D29). Piles (Break Zone, Damage, Removed, the AI's LB deck) open a `ZoneSheet` dialog,
   and focus returns to the pile on close (`useReturnFocus`, which captures focus at first render because StrictMode
   runs effects twice). Your LB deck sits beside your hand. The centre line holds a phase tracker (hidden from
-  assistive technology; the phase pill stays the spoken one), the prompt and the actions. Each seat's HUD is a 200px
+  assistive technology; the phase pill stays the spoken one), the prompt (at least 16ch wide) and the actions. Seats
+  scroll rather than clip if the centre line grows. Each seat's HUD is a 200px
   side column with damage as seven crystals; zone labels are visually hidden but stay in the DOM. Backups sit in
   square slots; a dull Forward turns and scales to 0.716 inside its portrait slot; empty rows keep a filled row's
-  height. The hand is a fan (`GridItem.cellStyle` passes each card's `--i`/`--n`): a 20% overlap, 2.5° per step, and
-  a centre lift capped at 12px; a hovered card straightens and comes forward. Final values: seat padding 8px 24px,
+  height. The hand is a fan (`GridItem.cellStyle` passes each card's `--i`/`--n`): a 20% overlap, 2.5° per step with
+  the outer cards turned at most 10°, and a centre lift capped at 12px; a hovered card straightens and comes forward.
+  Your LB deck is a compact fan (half overlap); it and the orphan row shrink and scroll before the hand does. Final
+  values: seat padding 8px 24px,
   HUD gap 8px, toolbar unchanged, hand track `clamp(112px, 16vh, 179px) + 32px` with the hand padded 16px below for
   the fan's turned corners. Deviations: card sizes still come from the `vh` clamps, not container query units; the
   top-bar menu and an always-available Concede are U2c's (D33). The U2a carried minors are closed (side and index
-  for every listed card, a doubled ability's `#1` stack key, `removedFromGame` tallied, the stale comment).
+  for every listed card, a doubled ability's `#1` stack key, `removedFromGame` tallied, the stale comment). Reviewed by
+  Fable and Codex: no Critical findings. Fixed, each with a `layout.spec.ts` check that failed first: a crowded strip
+  wrapped the prompt text one word per line over the phase tracker; seats clipped instead of scrolling; 10- and
+  12-card hands overflowed their row; an 8-card LB deck or a long orphan row pushed the hand into a scroll. Carried:
+  the stack column lists the resolving item last (top-first goes with the column's completion in U2c); focus falls to
+  the page when a sheet's opener leaves the DOM (pre-existing; a fallback target is open); piles show a count, not
+  the top card; a focused and hovered fan card stacks both lifts at 2560×1440; a pile sheet's row scrolls rather than
+  wraps; no gallery fixture draws a Backup in its square slot; the log rail is short at 720 until U2c's drawer.
 
 ## Questions for your review
 
