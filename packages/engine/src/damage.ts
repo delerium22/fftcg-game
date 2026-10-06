@@ -169,16 +169,23 @@ function permutations<T>(items: readonly T[]): T[][] {
   return items.flatMap((x, i) => permutations([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [x, ...rest]))
 }
 
-/** Every distinct outcome of `replacements` on `amount`, each with its first order (plan A2-D4). */
+/**
+ * Every distinct outcome of `replacements` on `amount`, each with its first order (plan A2-D4). Two orders are the SAME
+ * outcome when they give the same final amount and use up the same MULTISET of shield amounts: shields of one amount
+ * are interchangeable (all expire in the same End Phase; a shield's source only names it), so two equal shields and a
+ * small hit do not ask which one goes. Comparing the total used up would not do — 2000 against shields of 1000, 1000
+ * and 2000 leaves {1000, 1000} or {2000}, and the second 1000 hit this turn tells them apart.
+ */
 function distinctOrders(amount: number, replacements: readonly Replacement[]): ReplacementChoice {
   if (replacements.length > MAX_ORDERED_REPLACEMENTS) throw new Error(`${replacements.length} replacement effects on one damage packet; at most ${MAX_ORDERED_REPLACEMENTS} can be ordered`)
   const options: string[][] = []
   const outcomes: { final: number; consumes: string[] }[] = []
+  const reduceOf = new Map(replacements.map((r) => [r.id, 'reduce' in r.change ? r.change.reduce : 0]))
   const seen = new Set<string>()
   for (const order of permutations(replacements)) {
     const o = applyInOrder(amount, order)
     const consumes = [...o.consumes].sort()
-    const key = `${o.final}|${consumes.join(',')}`
+    const key = `${o.final}|${consumes.map((id) => reduceOf.get(id) ?? 0).sort((a, b) => a - b).join(',')}`
     if (seen.has(key)) continue
     seen.add(key)
     options.push(order.map((r) => r.id))

@@ -131,8 +131,11 @@ card pool is unchanged; every test uses synthetic cards. Differences from the pl
 - Readings (the plan's, recorded because the CR text does not settle them): a static keeps applying to a running 0
   after "becomes 0" (Yuzuki first, then Wuk Lamat's +2000, is 2000 — plan Review Focus 1); a SHIELD applies only while
   the running amount is positive, otherwise it is not applied and survives (R2, ruling 2021-08-19). Distinct outcomes
-  compare `(final, consumed shield ids)` literally, so two equal shields and a hit smaller than one of them prompt for
-  which shield is used — pinned by a test; an amount-equivalence rule would remove that prompt.
+  compare `(final, the multiset of consumed shield AMOUNTS)` — decided 2026-10-06, replacing the literal shield-id
+  comparison: shields of one amount are interchangeable (one End Phase expiry; the source only names it), so two equal
+  shields and a small hit do not prompt, and the canonical order spends the first. Not the TOTAL consumed: 2000 against
+  shields of 1000, 1000 and 2000 leaves {2000}, {1000} or {1000, 1000}, which a second hit this turn tells apart. Every
+  shield the pool will grant is Porom's 2000, so on reachable boards the two rules agree. Pinned by tests.
 - The pending carries, beyond R3/R6's `owner`/`options`/`outcomes`: `target`, `original`, and `replacements`
   (`{ id, by, change, shield? }`) so both front ends word an option without recomputing it —
   `describeReplacementOrder` in `damage.ts` is the one wording. The static's id is `<card id>:<effect id>` (effect ids
