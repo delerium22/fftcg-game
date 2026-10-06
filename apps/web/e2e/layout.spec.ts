@@ -8,8 +8,8 @@ import { playToTheEnd } from './drive'
 type Box = { x: number; y: number; width: number; height: number }
 const overlaps = (a: Box, b: Box): boolean => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 
-async function turn3(page: Page): Promise<void> {
-  await page.goto('/?seed=1&decks=vol2,vol2&art=off')
+async function turn3(page: Page, decks = 'vol2,vol2'): Promise<void> {
+  await page.goto(`/?seed=1&decks=${decks}&art=off`)
   await playToTheEnd(page, 90_000, async () => /Turn 3\b/.test((await page.locator('.prompt__phase').textContent().catch(() => '')) ?? ''))
 }
 
@@ -48,4 +48,85 @@ test('dulling a card moves no other card (D29)', async ({ page }) => {
   const dull = await page.locator('figure[data-fixture="forward, dull"] .card').boundingBox()
   expect(dull!.width).toBeCloseTo(active!.width, 0)
   expect(dull!.height).toBeCloseTo(active!.height, 0)
+})
+
+/*
+ * The final review's stresses (U2b): states turn 3 of seed 1 does not reach, built in the live DOM at 1280×720 and measured
+ * at once, before anything re-renders. Each guards one review finding.
+ */
+const scrolls = (sel: string) => `[...document.querySelectorAll('${sel}')].map((e) => ({ x: e.scrollWidth > e.clientWidth + 1, y: e.scrollHeight > e.clientHeight + 1 }))`
+
+test('five more strip buttons leave the prompt text readable and the seats whole (review F1)', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await turn3(page)
+  await page.evaluate(`(() => {
+    const actions = document.querySelector('.prompt__actions')
+    const proto = actions.querySelector('button')
+    for (let i = 0; i < 5; i++) { const b = proto.cloneNode(true); b.textContent = 'Use ability: Class Tenth Moogle ' + i; actions.append(b) }
+  })()`)
+  const text = (await page.locator('.prompt__text').boundingBox())!
+  const track = (await page.locator('.phase-track').boundingBox())!
+  // The centre column's floor is 16ch (about 139px here): three short lines, not one word per line.
+  expect(text.width, 'the prompt text keeps a readable width').toBeGreaterThanOrEqual(130)
+  expect(overlaps(text, track), 'the prompt text runs over the phase tracker').toBe(false)
+  expect(await page.evaluate(scrolls('.table__seat'))).toEqual([{ x: false, y: false }, { x: false, y: false }])
+})
+
+test('a seat that overflows can still be scrolled (review F2)', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await turn3(page)
+  await page.evaluate(`document.querySelector('.prompt__lead').append(Object.assign(document.createElement('div'), { style: 'height: 200px' }))`)
+  const seats = await page.evaluate(`[...document.querySelectorAll('.table__seat')].map((s) => ({ over: s.scrollHeight > s.clientHeight + 1, y: getComputedStyle(s).overflowY }))`) as { over: boolean; y: string }[]
+  expect(seats.some((s) => s.over), 'the spacer did not make a seat overflow').toBe(true)
+  for (const s of seats.filter((x) => x.over)) expect(['auto', 'scroll']).toContain(s.y)
+})
+
+for (const [w, h, n] of [[1280, 720, 10], [2560, 1440, 12]] as const) {
+  test(`a ${n}-card hand fans inside its row at ${w}×${h} (review F3)`, async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.setViewportSize({ width: w, height: h })
+    await turn3(page)
+    await page.evaluate(`(() => {
+      const row = document.querySelector('.hand .grid__row')
+      const cells = [...row.children]
+      for (let i = 0; row.children.length < ${n}; i++) row.append(cells[i % cells.length].cloneNode(true))
+      ;[...row.children].forEach((c, i) => { c.style.setProperty('--i', String(i)); c.style.setProperty('--n', '${n}') })
+    })()`)
+    expect(await page.evaluate(scrolls('.hand'))).toEqual([{ x: false, y: false }])
+    const hand = (await page.locator('.hand').boundingBox())!
+    const cards = await page.locator('.hand .card').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON() as Box))
+    expect(cards).toHaveLength(n)
+    expect(Math.min(...cards.map((c) => c.x)), 'the first card leaves the hand on the left').toBeGreaterThanOrEqual(hand.x - 1)
+    expect(Math.max(...cards.map((c) => c.x + c.width)), 'the last card leaves the hand on the right').toBeLessThanOrEqual(hand.x + hand.width + 1)
+  })
+}
+
+test('an 8-card LB deck sits beside a full hand without either scrolling (review C1)', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await turn3(page, 'vol1,vol2')
+  const lb = page.locator('.table__hand .zone').filter({ has: page.locator('.zone__label', { hasText: 'Your LB deck' }) })
+  expect(await lb.locator('.card').count(), 'Vol. 1 brings eight LB cards').toBe(8)
+  expect(await page.evaluate(scrolls('.hand, .table__hand .zone__cards'))).toEqual([{ x: false, y: false }, { x: false, y: false }])
+})
+
+test('a long orphan row gives way before the hand does (review F4)', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await turn3(page)
+  await page.evaluate(`(() => {
+    const lb = [...document.querySelectorAll('.table__hand .zone')].find((z) => z.querySelector('.zone__label').textContent === 'Your LB deck')
+    const orphan = lb.cloneNode(true)
+    orphan.className = 'zone'
+    orphan.querySelector('.zone__label').textContent = 'Choose a card'
+    const row = orphan.querySelector('.grid__row')
+    const cells = [...row.children]
+    for (let i = 0; row.children.length < 8; i++) row.append(cells[i % cells.length].cloneNode(true))
+    lb.parentElement.prepend(orphan)
+  })()`)
+  expect(await page.evaluate(scrolls('.hand')), 'the hand scrolls').toEqual([{ x: false, y: false }])
+  const orphan = (await page.locator('.table__hand .zone').first().boundingBox())!
+  expect(orphan.width, 'the orphan row keeps room for its choices').toBeGreaterThanOrEqual(120)
 })

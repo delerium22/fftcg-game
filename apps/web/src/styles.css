@@ -136,9 +136,11 @@ body {
   display: grid;
   /* Rung U2b (UI overhaul spec section 6): named areas, so pieces are PLACED rather than moved — DOM order is the
    * reading and tab order the accessibility rungs fixed. Columns: the lead (tracker + phase pill), the board, the
-   * actions (as wide as its buttons, or the payment tray), the rail. The hand row is a fixed track: the fan lifts into
-   * its headroom. */
-  grid-template-columns: auto minmax(0, 1fr) auto var(--rail-w);
+   * actions (as wide as its buttons, or the payment tray; beyond the space left they wrap), the rail. The prompt text
+   * keeps at least 16ch: with a zero floor, a wide row of buttons took the whole width and wrapped the text one word per
+   * line over the phase tracker (U2b review). A wider floor costs height instead — at 24ch the buttons wrapped to six
+   * lines and a seat overflowed (measured at 1280×720). The hand row is a fixed track: the fan lifts into its headroom. */
+  grid-template-columns: auto minmax(16ch, 1fr) auto var(--rail-w);
   grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr) calc(clamp(112px, 16vh, 179px) + 32px);
   grid-template-areas:
     'toolbar  toolbar  toolbar  toolbar'
@@ -177,10 +179,10 @@ body {
 /* A seat (spec section 6): the HUD is a side column, the rows are the rest. The AI's rows read top-down, yours bottom-up,
  * so both Forward rows meet across the centre line.
  *
- * `hidden`, no longer `auto` (rung U2b): the row budget now fits 1280×720 (hidden labels, side HUD, actions in the centre
- * line), and `layout.spec.ts` asserts no seat overflows at 1280×720, 1440×900 and 1920×1080 — so a scrollbar here would
- * only ever be a regression to catch, not a way to reach a Forward's power. */
-.table__seat { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--s4); align-items: center; min-height: 0; padding: var(--s2) var(--s5); overflow: hidden; }
+ * `auto`, never `hidden`: at 1280×720 each seat has about 57px to spare (U2b review, measured), and a centre line that
+ * grows — five ability buttons once took row 3 to 136px — must leave a Forward's power reachable by scrolling, not cut
+ * it off. `layout.spec.ts` asserts no seat overflows in the positions it drives. */
+.table__seat { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--s4); align-items: center; min-height: 0; padding: var(--s2) var(--s5); overflow-y: auto; }
 .table__seat > .seat { grid-column: 1; grid-row: 1 / span 3; flex-direction: column; align-items: stretch; gap: var(--s2); width: 200px; margin: 0; }
 .table__seat > .seat .seat__stats { flex-wrap: wrap; gap: var(--s1) var(--s4); margin-left: 0; }
 .table__seat > .zone, .table__seat > .seat-row { grid-column: 2; }
@@ -372,14 +374,23 @@ body {
   --o: calc(var(--i, 0) - (var(--n, 1) - 1) / 2);
   --m: calc((var(--n, 1) - 1) / 2);
   --lift: calc((var(--o) * var(--o) - var(--m) * var(--m)) * min(2px, 12px / max(1, var(--m) * var(--m))));
+  /* 2.5° per card, but the outer cards never turn past 10°: beyond 9 cards the swing would carry them out of the row. */
+  --turn: min(2.5deg, 10deg / max(1, var(--m)));
   margin-inline-start: calc(clamp(112px, 16vh, 179px) * 0.716 * -0.2);
-  transform: translateY(var(--lift)) rotate(calc(var(--o) * 2.5deg));
+  transform: translateY(var(--lift)) rotate(calc(var(--o) * var(--turn)));
   transform-origin: 50% 120%;
   transition: transform var(--dur-fast) var(--ease-out);
 }
 .hand [role='gridcell']:first-child { margin-inline-start: 0; }
+/* Room at each end for the outer cards' turn: their top corners swing out by about a fifth of a card's height. */
+.hand > .grid__row { padding-inline: calc(12px + clamp(112px, 16vh, 179px) * 0.2); }
 /* The hand takes the width beside your LB deck, so the outer cards' turn stays inside its box rather than clipped. */
-.table__hand > .hand { flex: 1 1 auto; min-width: 0; }
+.table__hand > .hand { flex: 1 0 auto; max-width: 100%; }
+/* The orphan row and your LB deck give way first, scrolling inside themselves: the hand keeps its width (U2b review). */
+.table__hand > .zone { flex: 0 1 auto; min-width: 0; }
+/* Your LB deck as a compact fan (D28): small cards overlapping by half; the hovered or focused card comes to the front. */
+.zone--fan [role='gridcell'] + [role='gridcell'] { margin-inline-start: calc(clamp(56px, 7.5vh, 89px) * 0.716 * -0.5); }
+.zone--fan [role='gridcell']:hover, .zone--fan [role='gridcell']:focus-within { z-index: 5; }
 .hand [role='gridcell']:hover { z-index: 5; transform: translateY(var(--lift)); }
 .hand [role='gridcell']:focus-within { z-index: 5; transform: translateY(calc(var(--lift) - 10px)); }
 

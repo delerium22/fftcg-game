@@ -47,18 +47,20 @@ function defOf(v: PlayerView, id: CardId) {
  * An EMPTY zone renders no grid at all — a grid with no cells has no tab stop to give and nothing to say,
  * and the four always-rendered field rows are empty for most of a game.
  */
-function Zone({ label, items, compact, square, onLookAt }: {
+function Zone({ label, items, compact, square, fan, onLookAt }: {
   label: string
   items: readonly GridItem[]
   compact?: boolean
   /** Rung U2b (D29): square card slots, so a Backup turns to dull without pushing its neighbours. */
   square?: boolean
+  /** Rung U2b (D28): the cards overlap as a compact fan — your LB deck beside your hand. */
+  fan?: boolean
   onLookAt: (id: CardId) => void
 }): JSX.Element {
   const empty = items.length === 0
   const cls = ['zone__cards', empty ? 'zone__cards--empty' : '', compact ? 'zone__cards--compact' : ''].filter(Boolean).join(' ')
   return (
-    <div className={square ? 'zone zone--square' : 'zone'}>
+    <div className={['zone', square ? 'zone--square' : '', fan ? 'zone--fan' : ''].filter(Boolean).join(' ')}>
       <div className="zone__label">{label}</div>
       {empty
         ? <div className={cls} />
@@ -611,8 +613,8 @@ export function Board({ game, onHelp }: {
       </section>
 
 
-      {/* `.table__seat--player` is column-reverse, so this list reads bottom-up on screen: the status bar sits
-          at the outer edge and forwards end up nearest the prompt strip, meeting the AI's across it. */}
+      {/* `.table__seat--player` places your Forwards (last here) first, so on screen they sit nearest the centre line,
+          meeting the AI's across it; the status bar is the seat's side column. */}
       {/* DOM ORDER IS THE READING AND TAB ORDER, and it deliberately differs from the visual layout: the
           grid places every section by explicit `grid-area`, so moving these in the markup moves nothing on
           screen. The prompt used to come FIRST, which meant a keyboard player at the mulligan reached
@@ -632,7 +634,7 @@ export function Board({ game, onHelp }: {
       <section className="table__hand">
         {orphanCards.length > 0 && <Zone label="Choose a card" compact items={orphanCards} onLookAt={look} />}
         {/* Rung U2b (D28): your LB deck beside your hand — casts from outside it, read just before it. */}
-        {model.seats[HUMAN].lbDeck.length > 0 && <Zone label="Your LB deck" compact items={lbItems(HUMAN)} onLookAt={look} />}
+        {model.seats[HUMAN].lbDeck.length > 0 && <Zone label="Your LB deck" compact fan items={lbItems(HUMAN)} onLookAt={look} />}
         {/* The hand is a keyboard GRID: one tab stop, arrow keys within. Without it the mulligan cannot be
             reached by keyboard at all — no hand card is selectable there, so every one is a `role="img"`
             div outside the tab order, and the opening decision of the game is made blind. */}
