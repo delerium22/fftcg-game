@@ -299,7 +299,7 @@ describe('ability damage: the frame suspends and lands nothing until every order
 })
 
 describe('when there is a choice at all (plan A2-D4, R2)', () => {
-  const shield = (id: string, source: CardId) => ({ id, reduce: 2000, source })
+  const shield = (id: string, source: CardId, reduce = 2000) => ({ id, reduce, source })
   it('no prompt when every order gives the same result: 1000 − 2000 + 2000 either way (spec V2-D3)', () => {
     let s = game(); let a: CardId, f: CardId
     ;[s] = withField(s, 0, 'forwards', 'O-WUK')
@@ -309,17 +309,35 @@ describe('when there is a choice at all (plan A2-D4, R2)', () => {
     expect(replacementChoice(s, p)).toBeNull()
     expect(applyDamagePacket(s, p).final).toBe(1000)
   })
-  it('plan R2 read literally: two shields and a 1000 hit — which shield is used up differs, so the controller is asked', () => {
+  it('two equal shields and a 1000 hit: either is used up, the same outcome — no prompt, the canonical order spends the first', () => {
     let s = game(); let a: CardId, f: CardId
     ;[s, a] = withField(s, 0, 'forwards', 'V-F6')
     ;[s, f] = withField(s, 1, 'forwards', 'V-F8', { shields: [shield('p:1:0', 5), shield('q:1:0', 6)] })
+    const p = { target: f, amount: 1000, cause: 'battle' as const, causeController: 0 as const, dealers: [{ source: a, sourceController: 0 as const }] }
+    expect(replacementChoice(s, p)).toBeNull()
+    const r = applyDamagePacket(s, p)
+    expect(r.final).toBe(0)
+    expect(findFieldCard(r.state, f)?.card.shields).toEqual([shield('q:1:0', 6)])
+    expect(previewDamagePacket(s, p)).toEqual({ applied: true, final: 0 })
+  })
+  it('shields of 1000 and 2000 and a 1000 hit: which amount survives differs, so the controller is asked', () => {
+    let s = game(); let a: CardId, f: CardId
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F6')
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8', { shields: [shield('p:1:0', 5, 1000), shield('q:1:0', 6)] })
     const p = { target: f, amount: 1000, cause: 'battle' as const, causeController: 0 as const, dealers: [{ source: a, sourceController: 0 as const }] }
     const choice = replacementChoice(s, p)
     expect(choice?.outcomes).toEqual([{ final: 0, consumes: ['p:1:0'] }, { final: 0, consumes: ['q:1:0'] }])
     expect(() => applyDamagePacket(s, p)).toThrow(/owes an order/)
     const r = applyDamagePacket(s, p, choice!.options[1])
-    expect(findFieldCard(r.state, f)?.card.shields).toEqual([shield('p:1:0', 5)])
-    expect(previewDamagePacket(s, p)).toEqual({ applied: true, final: 0 })
+    expect(findFieldCard(r.state, f)?.card.shields).toEqual([shield('p:1:0', 5, 1000)])
+  })
+  it('the same total used up is not the same outcome: 2000 against shields of 1000, 1000 and 2000 leaves {2000}, {1000} or {1000, 1000}', () => {
+    let s = game(); let a: CardId, f: CardId
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F6')
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8', { shields: [shield('p:1:0', 5, 1000), shield('q:1:0', 6, 1000), shield('r:1:0', 7)] })
+    const p = { target: f, amount: 2000, cause: 'battle' as const, causeController: 0 as const, dealers: [{ source: a, sourceController: 0 as const }] }
+    const choice = replacementChoice(s, p)
+    expect(choice?.outcomes).toEqual([{ final: 0, consumes: ['p:1:0', 'q:1:0'] }, { final: 0, consumes: ['p:1:0', 'r:1:0'] }, { final: 0, consumes: ['r:1:0'] }])
   })
   it('an order that is not an order of the replacements is refused', () => {
     let s = game(); let a: CardId, b: CardId
