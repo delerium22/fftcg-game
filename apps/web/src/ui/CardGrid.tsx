@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type JSX, type KeyboardEvent } from 'react'
 import type { CardId } from '@fftcg/engine'
 
 export interface GridItem {
@@ -26,6 +26,8 @@ export interface GridItem {
    */
   readonly cellName?: string | undefined
   readonly cellDescribedBy?: string | undefined
+  /** Inline style for the CELL (rung U2b): the hand passes its fan position as `--i` / `--n`. */
+  readonly cellStyle?: CSSProperties | undefined
 }
 
 /**
@@ -124,6 +126,7 @@ export function CardGrid({ label, items, className, onLookAt }: {
             key={item.id}
             role="gridcell"
             data-card-id={item.id}
+            style={item.cellStyle}
             {...(item.selectable ? {} : {
               ...(item.cellName === undefined ? {} : { 'aria-label': item.cellName }),
               ...(item.cellDescribedBy === undefined ? {} : { 'aria-describedby': item.cellDescribedBy }),
