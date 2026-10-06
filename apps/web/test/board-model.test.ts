@@ -35,6 +35,13 @@ function expectWellFormed(v: PlayerView, m: BoardModel): void {
   const listed: number[] = [...m.hand, ...m.seats.flatMap((s) => [...s.forwards, ...s.backups, ...s.lbDeck, ...s.knownHand, ...s.breakZone, ...s.damageZone, ...s.removedFromGame])]
   expect(new Set(listed).size).toBe(listed.length)
   for (const id of listed) expect(m.cards[id]?.zone).not.toBe('elsewhere')
+  // Every listed id's record says where it is: whose side, which zone, which position (U2a review minor, carried to U2b).
+  m.hand.forEach((id, i) => expect(m.cards[id], `hand card ${id}`).toMatchObject({ side: v.me, zone: 'hand', index: i }))
+  for (const p of [0, 1] as const) {
+    for (const zone of ['forwards', 'backups', 'lbDeck', 'knownHand', 'breakZone', 'damageZone', 'removedFromGame'] as const) {
+      m.seats[p][zone].forEach((id, i) => expect(m.cards[id], `${zone} card ${id}`).toMatchObject({ side: p, zone, index: i }))
+    }
+  }
   for (const p of [0, 1] as const) {
     const f = v.fields[p]
     const seat = m.seats[p]
@@ -54,6 +61,15 @@ function expectWellFormed(v: PlayerView, m: BoardModel): void {
 }
 
 describe('project (spec section 4.1)', () => {
+  it('keys the same ability on the stack twice apart, so U3 can diff the stack (spec section 4.3)', () => {
+    const v0 = viewFor(game(1), HUMAN)
+    const source = Number(Object.keys(v0.cards)[0])
+    expect(v0.cards[source], 'a visible card to be the source').toBeDefined()
+    const frame = { abilityId: 'twice', source, controller: HUMAN, path: [], chosen: [], triggerEvent: null, modes: [] }
+    const v: PlayerView = { ...v0, stack: [{ kind: 'ability', frame }, { kind: 'ability', frame }] }
+    expect(project(v).stack.map((e) => e.key)).toEqual([`a:${source}:twice`, `a:${source}:twice#1`])
+  })
+
   it('projects the opening position', () => {
     const v = viewFor(game(1), HUMAN)
     const m = project(v)
@@ -66,7 +82,7 @@ describe('project (spec section 4.1)', () => {
   it('holds the invariants, the names and the layered power over a self-play corpus (Review Focus 1-5)', () => {
     let positions = 0
     // What the corpus must reach, or the assertions below prove nothing about it (plan review finding 2).
-    const saw = { pumped: false, knownHand: false, lbFaceUp: false, elsewhere: false, breakZone: false, damageZone: false, stack: false }
+    const saw = { pumped: false, knownHand: false, lbFaceUp: false, elsewhere: false, breakZone: false, damageZone: false, removedFromGame: false, stack: false }
     for (const seed of [1, 2, 3, 4]) {
       for (const v of views(seed)) {
         const m = project(v)
@@ -92,6 +108,7 @@ describe('project (spec section 4.1)', () => {
         if (recs.some((r) => r.zone === 'elsewhere')) saw.elsewhere = true
         if (recs.some((r) => r.zone === 'breakZone')) saw.breakZone = true
         if (recs.some((r) => r.zone === 'damageZone')) saw.damageZone = true
+        if (recs.some((r) => r.zone === 'removedFromGame')) saw.removedFromGame = true
         if (m.stack.length > 0) saw.stack = true
         positions++
       }

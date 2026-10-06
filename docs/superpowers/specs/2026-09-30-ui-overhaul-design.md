@@ -502,8 +502,8 @@ The flags `?motion=instant` and `?art=off` are production-safe query parameters.
 | **U0** Harness and baseline | Settings store; `--motion-scale`; `?motion=instant`, `?art=off`; Playwright `storageState` sets Instant; the `fixtures.html` entry skeleton; a dev frame/long-task overlay (`?perf=1`); baseline screenshots and a perf trace of today's UI | new `bootstrap.ts` and `settings.ts` wired from `main.tsx`, `art.ts`, `playwright.config.ts`, `vite.config.ts`, new `fixtures.html` | **now** |
 | **U1** Tokens and the card | `tokens.css`, fonts, the icon sprite; the card redesign with the `data-*` state model, generative text-card art and the card back; the fixture gallery covering every card state | new `tokens.css` imported from `main.tsx`, `Card.tsx`, `Card.css`, fixture files (not `styles.css`, which V1-C edits) | **now** |
 | **U2a** Render projection | `project(view)` → `BoardModel` (cards, seats, keyed stack, scalars); the Board draws every card's display props and the seat counters from it, with identical output | new `presentation/boardModel.ts`, `Board.tsx` | after U1 |
-| **U2b** Board layout | The viewport-fit grid, the top bar (hosting V1-C's picker) with an always-available Concede, piles and `ZoneSheet`, the LB fan, damage crystals, the stack column, the centre line, the primary-action button. `Board.tsx` splits into zone components | `Board.tsx`, `PromptStrip`, `styles.css`, new `board/` | after U2a |
-| **U2c** Drawer, preview, settings | The log drawer, the hover preview (replacing the `CardDetails` rail) and the settings popover | `EventLog`, `CardDetails`, new `board/` | after U2b |
+| **U2b** Board layout | The viewport-fit grid (named areas), the side HUD, piles and `ZoneSheet`, the LB fan beside your hand and the AI's LB pile, damage crystals, square Backup slots and dull without reflow, the hand fan, the stack column, the centre line (phase tracker, prompt, actions) (D33) | `Board.tsx`, `PromptStrip`, `ZoneSheet`, `styles.css`, `Card.css` | after U2a |
+| **U2c** Drawer, preview, menu, settings | The log drawer and the hover preview (replacing the `CardDetails` rail; the stack column then runs full height), the top-bar menu with an always-available Concede and How to play, the settings popover, the AI hand as fanned backs, and `Board.tsx` split into zone components (D33) | `EventLog`, `CardDetails`, `Board.tsx`, new `board/` | after U2b |
 | **U3** Director foundation | Per-apply `PresentationStep`s with redaction and the exhaustive event classification; the director, displayed model, settle beat, convergence gating, skip, speed, Instant draining synchronously, restart and game generation; the coordinator's `whenIdle` gate; the convergence property test. **Every step drains synchronously, as at Instant, until U4 adds durations: the game plays exactly as today, with no timers** | `useGame.ts`, `coordinator.ts`, `types.ts`, new `presentation/` | after U2 |
 | **U4** Core motion | Add `motion`; zone moves (draw, play, break, discard, return, damage); dull and untap; hand fan springs; hover and inspect; turn and phase banners; AI telegraph reveals; the thinking indicator; art preload | presentation, UI | after U3 |
 | **U5** Targeting and payment | Target arrows (SVG Bézier), highlight and dim, CP crystals flowing to the meter, clear confirm and cancel | `SelectionTray`, `PaymentTray`, board | after U4 |
@@ -601,6 +601,23 @@ multiplayer stay possible later.
   `removedFromGame`, never reaches a `#n` stack key, and does not assert a record's side or index; a stale comment in
   `card-details.test.tsx` names the deleted `fieldCardProps`. Spec section 4.1's per-record `face` is derivable from the
   zone and `lbFaceUp` today; U3 makes it explicit if its hidden-card actors need it.
+- **U2b** (branch `feat/u2b-board-area`, plan `docs/superpowers/plans/2026-09-30-rung-u2b-board-area.md`, its plan
+  reviewed by Fable): the board is a CSS grid with named areas (toolbar; opponent and stack column; lead, centre and
+  actions on the centre line; player; hand; the rail), placed by `grid-area` so DOM order stays the reading and tab
+  order. `layout.spec.ts` (UO-A1) drives seed 1 to turn 3 and checks no page, seat or hand scroll, both Forward rows
+  on screen, and no card under the prompt text or actions, at 1280×720, 1440×900 and 1920×1080; and that dulling a
+  card moves no other card (D29). Piles (Break Zone, Damage, Removed, the AI's LB deck) open a `ZoneSheet` dialog,
+  and focus returns to the pile on close (`useReturnFocus`, which captures focus at first render because StrictMode
+  runs effects twice). Your LB deck sits beside your hand. The centre line holds a phase tracker (hidden from
+  assistive technology; the phase pill stays the spoken one), the prompt and the actions. Each seat's HUD is a 200px
+  side column with damage as seven crystals; zone labels are visually hidden but stay in the DOM. Backups sit in
+  square slots; a dull Forward turns and scales to 0.716 inside its portrait slot; empty rows keep a filled row's
+  height. The hand is a fan (`GridItem.cellStyle` passes each card's `--i`/`--n`): a 20% overlap, 2.5° per step, and
+  a centre lift capped at 12px; a hovered card straightens and comes forward. Final values: seat padding 8px 24px,
+  HUD gap 8px, toolbar unchanged, hand track `clamp(112px, 16vh, 179px) + 32px` with the hand padded 16px below for
+  the fan's turned corners. Deviations: card sizes still come from the `vh` clamps, not container query units; the
+  top-bar menu and an always-available Concede are U2c's (D33). The U2a carried minors are closed (side and index
+  for every listed card, a doubled ability's `#1` stack key, `removedFromGame` tallied, the stale comment).
 
 ## Questions for your review
 
@@ -680,3 +697,9 @@ can be overturned here.
 - **D32 — U2 is three rungs** (decided while building, 2026-09-30). U2a: the projection, with no visible change. U2b:
   the layout. U2c: the log drawer, the hover preview and the settings popover. One rung was a data-model refactor, a
   layout rewrite and three new components at once; each part now ships and is reviewed on its own.
+- **D33 — What U2b holds and what moves to U2c** (decided in the U2b plan review, 2026-09-30). Piles, the `ZoneSheet`
+  and the LB fan and pile join the layout in U2b: without them no row model fits 1280×720. The actions stay in the
+  centre line rather than a bottom-right dock: a dock sets the hand row's height, and the payment tray needs the width.
+  U2c keeps the rail's replacement (the log drawer and the hover preview; the stack column becomes full height when the
+  rail goes), the top-bar menu (Concede, How to play), the settings popover, the AI hand as fanned backs, and splitting
+  `Board.tsx` into zone components.

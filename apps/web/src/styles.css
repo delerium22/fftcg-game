@@ -134,51 +134,62 @@ body {
  * the viewport instead of being cropped by it. */
 .table {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--rail-w);
-  /* Rung V1-C: the deck picker's toolbar is a thin auto row over the board column; the rail keeps its full height. */
-  grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  /* Rung U2b (UI overhaul spec section 6): named areas, so pieces are PLACED rather than moved — DOM order is the
+   * reading and tab order the accessibility rungs fixed. Columns: the lead (tracker + phase pill), the board, the
+   * actions (as wide as its buttons, or the payment tray), the rail. The hand row is a fixed track: the fan lifts into
+   * its headroom. */
+  grid-template-columns: auto minmax(0, 1fr) auto var(--rail-w);
+  grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr) calc(clamp(112px, 16vh, 179px) + 32px);
   grid-template-areas:
-    'toolbar  rail'
-    'opponent rail'
-    'prompt   rail'
-    'player   rail'
-    'hand     rail';
+    'toolbar  toolbar  toolbar  toolbar'
+    'opponent opponent opponent stack'
+    'lead     centre   actions  rail'
+    'player   player   player   rail'
+    'hand     hand     hand     rail';
   height: 100%;
   gap: 0;
+  background:
+    radial-gradient(60% 50% at 50% 50%, color-mix(in oklab, var(--stage-3) 55%, transparent), transparent 75%),
+    linear-gradient(180deg, var(--stage-1), var(--stage-0));
 }
 
-.table__hand {
-  grid-area: hand;
-  padding: 0 var(--s5) var(--s3);
+/* The centre line: a band across the board's middle, drawn by the grid container itself (a pseudo-element is a grid
+ * item), under the lead, the prompt text and the actions that sit in it. */
+.table::before {
+  content: '';
+  grid-row: 3;
+  grid-column: 1 / 4;
+  border-block: 1px solid color-mix(in oklab, var(--accent-act) 30%, transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent-act) 9%, transparent), transparent);
 }
 
-.table__seat {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s3);
-  min-height: 0;
-  padding: var(--s3) var(--s5);
-  /* `auto`, never `hidden`: the clamps above are tuned so a >=900px-tall viewport needs no scrollbar, but on
-   * anything shorter the player must still be able to reach a forward's power — with `hidden` those pixels
-   * were silently gone, and attack/block decisions are made on exactly that number. */
-  overflow-y: auto;
-}
+/* The prompt strip's own box goes away; its children are placed into the areas above (rung U2b). */
+.table__prompt.prompt { display: contents; }
+.prompt__lead { grid-area: lead; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 3px; padding: var(--s1) var(--s4); z-index: 1; }
+.table__stack { grid-area: stack; display: flex; flex-direction: column; padding: var(--s3); border-left: 1px solid var(--line); background: color-mix(in oklab, var(--stage-0) 80%, transparent); }
+.table__stack-title { font-family: var(--font-display); font-weight: 800; font-size: 11px; letter-spacing: 0.14em; color: var(--ink-3); }
+.phase-track { display: flex; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.phase-track__step { padding: 1px 7px; border-radius: 999px; font-family: var(--font-display); font-weight: 600; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.phase-track__step--now { background: var(--accent-act); color: var(--stage-0); font-weight: 800; }
 
-/* The opponent reads top-down (status, backups, then forwards nearest the middle); the player
- * mirrors it, so both players' forwards meet across the prompt strip as they would on a table. */
-.table__seat--opponent { grid-area: opponent; }
+.table__hand { grid-area: hand; display: flex; align-items: flex-end; justify-content: center; gap: var(--s5); min-height: 0; padding: 0 var(--s5); }
 
-.table__seat--player {
-  grid-area: player;
-  flex-direction: column-reverse;
-}
+/* A seat (spec section 6): the HUD is a side column, the rows are the rest. The AI's rows read top-down, yours bottom-up,
+ * so both Forward rows meet across the centre line.
+ *
+ * `hidden`, no longer `auto` (rung U2b): the row budget now fits 1280×720 (hidden labels, side HUD, actions in the centre
+ * line), and `layout.spec.ts` asserts no seat overflows at 1280×720, 1440×900 and 1920×1080 — so a scrollbar here would
+ * only ever be a regression to catch, not a way to reach a Forward's power. */
+.table__seat { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--s4); align-items: center; min-height: 0; padding: var(--s2) var(--s5); overflow: hidden; }
+.table__seat > .seat { grid-column: 1; grid-row: 1 / span 3; flex-direction: column; align-items: stretch; gap: var(--s2); width: 200px; margin: 0; }
+.table__seat > .seat .seat__stats { flex-wrap: wrap; gap: var(--s1) var(--s4); margin-left: 0; }
+.table__seat > .zone, .table__seat > .seat-row { grid-column: 2; }
+.table__seat--opponent { grid-area: opponent; align-content: end; }
+/* Your Forwards (last in the DOM, which is the reading order) are placed first, so they sit next to the centre line. */
+.table__seat--player { grid-area: player; align-content: start; }
+.table__seat--player > .zone:last-child { order: -1; }
+.seat-row { display: flex; gap: var(--s5); align-items: flex-end; justify-content: center; }
 
-/* Both seats' cards hug the prompt strip and the status bars sit at the outer edges, so the two
- * boards face each other across the middle instead of drifting apart. One auto margin does it in
- * both directions — it needs the status bar to be a direct child of the seat. */
-.table__seat > .seat { margin-bottom: auto; }
-
-.table__prompt { grid-area: prompt; }
 
 .table__rail {
   grid-area: rail;
@@ -250,49 +261,21 @@ body {
   gap: 3px;
 }
 
-.damage-pip {
-  width: 14px;
-  height: 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 1px;
-  background: var(--surface-sunken);
-}
-
-.damage-pip.is-filled {
-  border-color: #a8382f;
-  background: linear-gradient(180deg, #e0685a, #b03528);
-  box-shadow: 0 0 8px -2px rgb(216 87 74 / 70%);
-}
-
-/* The seventh pip is the one that ends the game; weight it so the count reads at a glance. */
-.damage-pip:last-child { border-right-width: 2px; }
+/* Damage as seven crystals, cracked red when filled. */
+.damage-pip { width: 11px; height: 15px; border: 0; border-radius: 0; clip-path: polygon(50% 0, 100% 35%, 50% 100%, 0 35%); background: linear-gradient(160deg, rgb(255 255 255 / 18%), rgb(255 255 255 / 6%)); }
+.damage-pip.is-filled { background: linear-gradient(115deg, #ffd1da 0 12%, var(--danger-hot) 12% 46%, #fff 46% 50%, #a3122e 50%); }
 
 /* ============================ zones ============================ */
 
 .zone {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--s2);
 }
 
-.zone__label {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  font-family: var(--font-condensed);
-  font-size: var(--t-micro);
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-
-.zone__label::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, var(--line), transparent);
-}
+/* The rows speak for themselves on the board; their labels stay in the DOM for assistive technology and the tests. */
+.zone__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Empty rows keep their height so the board never jumps as cards enter and leave. */
 /* Reserved heights track the same clamps Card.css sizes the cards with, so an empty row is exactly as tall as
@@ -302,7 +285,9 @@ body {
   display: flex;
   align-items: flex-end;
   gap: var(--s3);
-  min-height: calc(clamp(84px, 11.5vh, 134px) + 4px);
+  /* Empty rows keep exactly a filled row's height: the min-height is the border box (the lift room above, this rule's
+   * 4px below) and a filled row adds `.grid__row`'s 3px + 3px around its cards. */
+  min-height: calc(clamp(84px, 11.5vh, 134px) + var(--card-lift-room) + 4px + 6px);
   padding-bottom: var(--s1);
   /* Headroom for a hovered card. The row is a scroll container (below), and a scroll container clips at its
      padding edge — so the 10px rise plus 8% enlarge plus the cost gem's 5px overhang were being cut off at
@@ -320,7 +305,13 @@ body {
 }
 
 /* Backup rows hold `small` cards, so they do not need the forward row's reserved height. */
-.zone__cards--compact { min-height: calc(clamp(56px, 7.5vh, 89px) + 4px); }
+/* A pile's sheet (rung U2b, spec section 6): the card sheet's surface, wide enough for a row of small cards that wraps.
+ * After `.zone__cards {`: card-details.test.tsx slices the stylesheet from that rule's FIRST occurrence. */
+.zone-sheet { width: min(92vw, 960px); }
+.zone-sheet__body { padding: var(--s5); display: flex; flex-direction: column; gap: var(--s4); }
+.zone-sheet .zone__cards { justify-content: flex-start; flex-wrap: wrap; overflow-x: visible; max-height: 60vh; overflow-y: auto; margin-top: 0; }
+
+.zone__cards--compact { min-height: calc(clamp(56px, 7.5vh, 89px) + var(--card-lift-room) + 4px + 6px); }
 
 .zone__cards--empty::before {
   content: 'empty';
@@ -339,10 +330,10 @@ body {
   justify-content: safe center;
   align-items: flex-end;
   min-height: calc(clamp(112px, 16vh, 179px) + 11px);
-  padding: var(--s2) 0;
-  /* Same headroom as `.zone__cards`, for the same reason. */
-  padding-top: calc(var(--s2) + var(--card-lift-room));
-  margin-top: calc(-1 * var(--card-lift-room));
+  /* Same headroom as `.zone__cards`, for the same reason, plus 12px for the fan's lift (rung U2b); and 16px below, where
+   * the fan's outer cards turn their lower corners down. */
+  padding: calc(var(--s2) + var(--card-lift-room) + 12px) 0 var(--s4);
+  margin-top: calc(-1 * (var(--card-lift-room) + 12px));
 }
 
 /* The hand is a `role="grid"` with one `role="row"`, so the cards sit a level deeper than they used to.
@@ -372,6 +363,30 @@ body {
   outline-offset: 2px;
 }
 
+/* The hand fan (spec section 6): cards overlap and arc about the middle — the CENTRE lifts into the row's headroom
+ * (the ends stay put, so nothing leaves the row's box and nothing scrolls). The lift per step shrinks as the hand grows,
+ * so the centre never rises more than 12px: `.hand` is a scroll container, which clips — never scrolls — what leaves
+ * its top, and the headroom must still hold the hovered card's own rise. A hovered card straightens and comes to the
+ * front (its own hover rule lifts it); a focused one, which has no hover lift, straightens and rises 10px. */
+.hand [role='gridcell'] {
+  --o: calc(var(--i, 0) - (var(--n, 1) - 1) / 2);
+  --m: calc((var(--n, 1) - 1) / 2);
+  --lift: calc((var(--o) * var(--o) - var(--m) * var(--m)) * min(2px, 12px / max(1, var(--m) * var(--m))));
+  margin-inline-start: calc(clamp(112px, 16vh, 179px) * 0.716 * -0.2);
+  transform: translateY(var(--lift)) rotate(calc(var(--o) * 2.5deg));
+  transform-origin: 50% 120%;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.hand [role='gridcell']:first-child { margin-inline-start: 0; }
+/* The hand takes the width beside your LB deck, so the outer cards' turn stays inside its box rather than clipped. */
+.table__hand > .hand { flex: 1 1 auto; min-width: 0; }
+.hand [role='gridcell']:hover { z-index: 5; transform: translateY(var(--lift)); }
+.hand [role='gridcell']:focus-within { z-index: 5; transform: translateY(calc(var(--lift) - 10px)); }
+
+/* Backups sit in square slots, so rotating to dull never pushes a neighbour (D29). */
+.zone--square .card { width: var(--ch); }
+.zone--square .card:not(.is-dull) .card__face { inset: auto; top: 0; left: 50%; width: var(--cw); height: var(--ch); transform: translateX(-50%); }
+
 .deck-stack {
   display: flex;
   align-items: center;
@@ -382,17 +397,6 @@ body {
 }
 
 /* ============================ prompt strip ============================ */
-
-.prompt {
-  display: flex;
-  align-items: center;
-  gap: var(--s4);
-  padding: var(--s3) var(--s5);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, rgb(11 18 22 / 92%), rgb(11 18 22 / 70%));
-  box-shadow: 0 -12px 30px -18px rgb(0 0 0 / 90%), 0 12px 30px -18px rgb(0 0 0 / 90%);
-}
 
 .prompt__phase {
   flex: none;
@@ -413,16 +417,31 @@ body {
 }
 
 .prompt__text {
-  font-size: var(--t-md);
+  grid-area: centre;
+  align-self: center;
+  justify-self: center;
+  z-index: 1;
+  max-width: 70ch;
+  padding: var(--s2) var(--s4);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 15px;
   letter-spacing: 0.01em;
+  text-align: center;
 }
 
 /* Rung J1-D15: the stack, bottom to top, beside the prompt. */
 .stack-row {
+  /* Rung U2b: placed in the stack column, over its panel. */
+  grid-area: stack;
+  z-index: 1;
+  align-self: start;
+  margin: calc(var(--s3) + 18px) var(--s3) var(--s3);
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 0;
   padding: var(--s1) var(--s3);
   list-style: none;
   border: 1px solid var(--line-strong);
@@ -439,6 +458,11 @@ body {
 }
 
 .prompt__actions {
+  /* Rung U2b: the actions sit at the right of the centre line; the payment tray renders here too, and widens the column. */
+  grid-area: actions;
+  align-self: center;
+  z-index: 1;
+  padding: var(--s2) var(--s4);
   display: flex;
   gap: var(--s2);
   margin-left: auto;
@@ -718,7 +742,7 @@ body {
   align-items: center;
   gap: var(--s2) var(--s3);
   flex-wrap: wrap;
-  padding: var(--s2) var(--s5);
+  padding: var(--s1) var(--s5);
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -1070,3 +1094,14 @@ body {
 }
 
 .card__paying--chosen { background: var(--gold); color: #000; }
+
+/* Rung U2b: the centre line's primary actions, in the Crystal Arena gold. */
+.prompt__actions .btn--primary {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.06em;
+  color: #1a1200;
+  background: linear-gradient(180deg, #ffe08a, var(--accent-gold) 55%, #d99a12);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 30%) inset, 0 0 18px var(--accent-gold-glow);
+}

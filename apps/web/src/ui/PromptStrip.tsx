@@ -16,6 +16,22 @@ const PHASE_LABEL: Record<string, string> = {
  * row wraps under them instead of pushing the strip off the side. Inline because this rung owns PromptStrip.tsx
  * and not styles.css; every value below is a token the sheet already defines.
  */
+const TRACK: { phase: string; label: string }[] = [
+  { phase: 'active', label: 'Active' }, { phase: 'draw', label: 'Draw' }, { phase: 'main1', label: 'Main 1' },
+  { phase: 'attack', label: 'Attack' }, { phase: 'main2', label: 'Main 2' }, { phase: 'end', label: 'End' },
+]
+
+/** The turn's six phases with the current one lit (UI overhaul spec section 6). Visual only: `.prompt__phase` says it. */
+export function PhaseTrack({ phase }: { phase: string }): JSX.Element {
+  return (
+    <ol className="phase-track" aria-hidden="true">
+      {TRACK.map((t) => (
+        <li key={t.phase} className={t.phase === phase ? 'phase-track__step phase-track__step--now' : 'phase-track__step'}>{t.label}</li>
+      ))}
+    </ol>
+  )
+}
+
 const ACTIONS_WRAP: CSSProperties = { flexWrap: 'wrap', justifyContent: 'flex-end' }
 const ABILITY_BTN: CSSProperties = {
   textTransform: 'none', letterSpacing: '0.01em', fontWeight: 500,
@@ -129,7 +145,11 @@ export function PromptStrip({ view, choices, shown, aiThinking, onChoose, tray, 
 
   return (
     <div className="prompt table__prompt">
-      <span className={yours ? 'prompt__phase prompt__phase--yours' : 'prompt__phase'}>{phase}</span>
+      {/* Rung U2b: the lead of the centre line — the tracker (visual only) and the phase pill, placed together. */}
+      <div className="prompt__lead">
+        <PhaseTrack phase={view.phase} />
+        <span className={yours ? 'prompt__phase prompt__phase--yours' : 'prompt__phase'}>{phase}</span>
+      </div>
       {/*
         * The one channel that tells a player who cannot see the board what the game now wants.
         *

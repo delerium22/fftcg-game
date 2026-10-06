@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type JSX } from 'react'
 import { unimplementedClauseCount, type CardDef } from '@fftcg/engine'
 import type { Choice } from '../game/types.js'
 import { Card, type CardProps } from './Card.js'
+import { useReturnFocus } from './useReturnFocus.js'
 
 /** One thing the sheet's card can do: press to commit it, press to open the payment tray for it, or (rung J7)
  *  press to start picking a SET with this card as the first member. */
@@ -37,6 +38,8 @@ export function CardSheet({ face, def, actions, castBlocked, onCommit, onPay, on
   onSelect?: ((c: Choice) => void) | undefined
   onClose: () => void
 }): JSX.Element {
+  // Rung U2b: back to the card that opened it — a card inside a pile sheet, or on the board.
+  useReturnFocus()
   const ref = useRef<HTMLDialogElement | null>(null)
   const titleId = useId()
   const textId = useId()
