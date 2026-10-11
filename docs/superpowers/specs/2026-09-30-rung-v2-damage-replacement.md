@@ -3,8 +3,8 @@
 > **STATUS: DESIGN, 2026-09-30.** Under the user's standing instruction (loop, recommended option at a crossroads, CR
 > letter, split large mechanics into their own PRs). Decisions marked V2-D are mine and recorded to be overturned here.
 > **V2-A1 built 2026-09-30** (the packet refactor; see "As built (V2-A1)" below). **V2-A2 built 2026-09-30** (the
-> replacement machinery on synthetic cards; see "As built (V2-A2)"). V2-B is not started, and the pool-coverage gap
-> table is unchanged (V2-D10).
+> replacement machinery on synthetic cards; see "As built (V2-A2)"). **V2-B built 2026-10-12** (the five
+> clauses on the real cards; see "As built (V2-B)"): the pool-coverage gap table is empty (V2-D10).
 
 ## The clauses
 
@@ -158,6 +158,63 @@ card pool is unchanged; every test uses synthetic cards. Differences from the pl
   0 differences in winner, cause, turns, command count, command sequence, and 0 in the full post-command state hash.
   Strict self-play and `pnpm test:browser` were not run for this note (session ended); the unit suites were green at
   every commit.
+
+## As built (V2-B)
+
+Plan `2026-09-30-rung-v2b-replacement-cards.md` with revisions R1–R10 (Codex plan review, adjudicated in
+`…-rung-v2b-replacement-cards.codex-review.md`). One commit per card, then the scenarios. No engine, AI or web source
+changed: the five clauses are data in `packages/cards/src/abilities-vol1.ts`, in the V2-A2 vocabulary.
+
+| Card | Ability id | Encoding |
+|---|---|---|
+| Charlotte 27-128S | `27-128S:damage-reduction` | `damageReplacement` `reduce`: `{ target: 'self' }`, `{ reduce: 1000 }` |
+| Yuzuki 13-125R | `13-125R:fire-zero` | `fire-zero`: her controller's Fire Forwards, `byCause: 'ability'`, `byController: 'opponent'`, `{ becomes: 0 }` |
+| Yuzuki 13-125R | `13-125R:water-reduce` | `water-reduce`: her controller's Water Forwards, `{ reduce: 2000 }` |
+| Wuk Lamat 27-122S | `27-122S:damage-increase` | `increase`: any Forward, `bySource` a Forward of her controller, `{ add: 2000 }`, `when` her controller controls 7 Characters |
+| Porom 11-121C | `11-121C:shield` | activated, `{ dull, selfToBreakZone }`, choose 1 Forward (either player's) → `shieldNextDamage 2000` |
+
+Readings (recorded because the card text or the CR does not settle them alone), each pinned by a test on the real cards:
+- **"your opponent's abilities" (Yuzuki).** An action ability (Warrior), an auto-ability (Ward entering), a special
+  ability (Jecht Beam) and a Character's EX Burst — §11.10.3: a Character's EX Burst applies its marked AUTO-ABILITY.
+  Not a Summon, cast or as an EX Burst; not battle; not her controller's own ability; not the opponent's ability on the
+  opponent's own Fire Forward ("you control").
+- **Yuzuki is Water and Fire**, so both clauses reach her. An opponent's ability on her meets both; either order ends at
+  0, so nobody is asked. Battle and a Summon meet only the Water clause.
+- **A dealer that has left the field (§6.4.2).** "If the source of an ability has been removed from its original Zone
+  when that ability needs to reference information from it, the card's information is used in the state it was in
+  just before it left the Zone." A Forward broken with its damaging ability on the stack still deals that damage as a
+  Forward its controller controlled, so Wuk Lamat's increase applies.
+- **Wuk Lamat's replacement is read from the field (§11.12.5.3).** Broken before her own entering ability resolves, she
+  increases nothing, even with 7 Characters left.
+- **Wuk Lamat, "a Forward you control deals damage to a Forward".** Battle damage from her controller's attackers or
+  blocker; the damage of an ability whose source is a Forward (hers, Ward's, Zack's sweep — each Forward a sweep hits is
+  dealt its own damage, each increased). A blocked party is one amount, increased once (§15.1.1.9.8). Not a Summon's
+  damage, not a Backup's ability (Palom, the Warrior), not the opponent's Forward. "To a Forward" includes her
+  controller's own. The count is Forwards and Backups, herself included, read as the damage is dealt.
+- **Porom, "the next damage".** The next damage of any size and cause: a 1000 sweep uses the shield up (1000 → 0), and
+  the 9000 after it lands in full. With Yuzuki's "becomes 0" on the same hit the two orders differ only in whether the
+  shield is spent, so the Forward's controller is asked and may keep it (the V2-A2 reading) — scenario `porom-guards`.
+
+Tests. Per card in `packages/cards/test/abilities-vol1.test.ts`: an exact assertion on each encoded ability, then
+behaviour through real commands (cast, activate, battle, EX Burst), with the negative controls of plan R3/R4. Five
+Layer 3 scenarios with golden traces: `charlotte-endures`, `yuzuki-shields-fire`, `wuk-lamat-rallies`,
+`wuk-lamat-meets-yuzuki` (the ORDER scenario: both answers played, the prompt's wording pinned) and `porom-guards`
+(a shield granted in response, kept by ordering Yuzuki first, then spent on Ifrit). The scenario `trace` gained
+`zero:<target>` and `shield:<card>:<amount>`. A mutation pass (not in the repo): 34 single-token mutants of the five
+encodings; with the exact-AST assertions switched off, the behaviour tests killed 33, the survivor
+(`fire-zero` with `controller: 'any'`) got its own test, and all 34 are killed.
+
+Tests whose assertion this rung deliberately changed: the four "still warns" tests in `abilities-vol1.test.ts` (each
+now asserts no warning); `pool-coverage`'s `EXPECTED_GAPS` (now `{}`, still exact); the two id lists and the button-text
+table in `abilities.test.ts` (the five new ids; Porom's button text); `selfplay.test.ts`'s Vol. 1 check, from
+`unimplementedAbilities > 0` to `0`, with the same check added for ISMCTS and a new strict Vol. 1 MIRROR test — the only
+pairing where both sides hold these cards.
+
+Also: timing-matrix row 11.8.15 is `tested` (a damage replaced to 0 does not trigger Luso); §11.12 stays outside the
+matrix's scope (backlog: its own rows). The conformance audit's row 11.12.5 is `partial`.
+
+Not done, by design: §11.12.5.6 self-replacement is still not modelled as such (Palom's "8000 instead" is an `if`);
+replacement effects on anything but damage to a Forward (out of scope, below).
 
 ## Tests (acceptance)
 
