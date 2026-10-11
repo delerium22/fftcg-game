@@ -2,7 +2,8 @@ import type { Ability } from '@fftcg/engine'
 
 /**
  * Rung V1-B: the hand-written ability ASTs of the Starter Set 2025 Vol. 1 pool (Fire/Water, Zack) — spec
- * `2026-09-29-rung-v1-vol1-pool.md`, V1-D1 (the list), V1-D3 (the table) and V1-D4 (the clauses left for rung V2).
+ * `2026-09-29-rung-v1-vol1-pool.md`, V1-D1 (the list), V1-D3 (the table) and V1-D4 (the five damage-replacement clauses,
+ * encoded in rung V2-B — spec `2026-09-30-rung-v2-damage-replacement.md`).
  *
  * The same rules as `abilities.ts`, which spreads these three maps into its own: plain readonly data (these ride on
  * `CardDef` through `structuredClone`), one const per clause, `text` quoted verbatim from the printed card (the SE
@@ -26,7 +27,7 @@ export const VOL1_CLAUSES: Record<string, number> = {
   '1-170C': 1,    // EX BURST activate, draw
   '3-143C': 1,    // EX BURST ETB search Palom or Porom
   '11-010C': 2,   // [Dull], self-break: +1000 | [Fire][1][Dull], self-break: 5000 damage
-  '11-121C': 2,   // ETB discard, then draw | [Dull], self-break: next damage −2000 (V2)
+  '11-121C': 2,   // ETB discard, then draw | [Dull], put into the Break Zone: the next damage −2000, a one-shot replacement
   '12-005C': 1,   // EX BURST 9000 damage
   '13-013C': 1,   // ETB 4000, or 8000 with a Porom Forward
   '13-125R': 2,   // Fire: becomes 0 from the opponent's abilities | Water: −2000 — both damage replacements
@@ -608,8 +609,7 @@ const CHARLOTTE_BAN: Ability = {
  * ends in a second hand select. Palom is PICTLOGICA · IV, so she is Category IV; Porom and Leonora are IV too.
  *
  * Reading: with an empty hand nothing is discarded, so there is no "discarded card" for either sentence to test, and
- * nothing is drawn — the select with no candidate skips its `then`. Clause 2 ("the next damage dealt to it is reduced
- * by 2000") is a replacement effect for rung V2.
+ * nothing is drawn — the select with no candidate skips its `then`.
  */
 const POROM_ETB: Ability = {
   id: '11-121C:etb',
@@ -630,6 +630,25 @@ const POROM_ETB: Ability = {
         else: [{ kind: 'draw', count: 1 }],
       },
     ],
+  }],
+}
+
+/**
+ * Porom's clause 2 (rung V2-B), the Warrior's `:pump` shape: her own dull and herself are the whole cost (no CP), and
+ * "put into the Break Zone" is not a break (§15.1.1.3.2). "Choose 1 Forward" is unrestricted — either player's. The
+ * effect puts a one-shot replacement on the chosen Forward (`shieldNextDamage`): it reduces the next damage dealt to it
+ * this turn, from any cause, and is gone at the end of the turn. It is used up only when it is applied to a positive
+ * amount, so when another replacement can make the damage 0 first, the Forward's controller may order it so and keep
+ * the shield (§11.12.5.7; the spec's V2-A2 reading).
+ */
+const POROM_SHIELD: Ability = {
+  id: '11-121C:shield',
+  trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, selfToBreakZone: true } },
+  text: '[Dull], put Porom into the Break Zone: Choose 1 Forward. During this turn, the next damage dealt to it is reduced by 2000 instead.',
+  effects: [{
+    kind: 'chooseTargets', min: 1, max: 1,
+    from: { zone: 'forwards', controller: 'any' },
+    then: [{ kind: 'shieldNextDamage', amount: 2000 }],
   }],
 }
 
@@ -675,8 +694,7 @@ export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '1-170C': [FAIRY_SUMMON],
   '3-143C': [LEONORA_ETB],
   '11-010C': [WARRIOR_PUMP, WARRIOR_BURN],
-  // Clause 1 only; clause 2 (the next damage −2000) is rung V2.
-  '11-121C': [POROM_ETB],
+  '11-121C': [POROM_ETB, POROM_SHIELD],
   '12-005C': [IFRIT_SUMMON],
   '13-013C': [PALOM_ETB],
   '13-125R': [YUZUKI_FIRE, YUZUKI_WATER],
