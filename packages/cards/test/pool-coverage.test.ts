@@ -21,11 +21,11 @@ describe('the card pool', () => {
   /**
    * Rung V1-B (plan B-D3, R4): the gaps this build KNOWS about, by card, and nothing else. The Vol. 1 clauses that need
    * damage-modifying replacement effects (spec V1-D4) are finished in rung V2-B, which empties this table card by card:
-   * Wuk Lamat's clause 1 and Porom's clause 2 are left (Charlotte's clause 1 and both of Yuzuki's have landed). Exact on
+   * Porom's clause 2 is left (Charlotte's clause 1, both of Yuzuki's and Wuk Lamat's clause 1 have landed). Exact on
    * purpose — a gap LARGER than listed is an unimplemented clause nobody declared, and a gap SMALLER is a landed clause
    * whose entry was not updated.
    */
-  const EXPECTED_GAPS: Record<string, number> = { '27-122S': 1, '11-121C': 1 }
+  const EXPECTED_GAPS: Record<string, number> = { '11-121C': 1 }
 
   /**
    * Rung V1-B (review M6): the clauses ENCODED with a known deviation from the rules, one line each, naming the rung that

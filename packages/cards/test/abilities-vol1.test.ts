@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CardId, Event, FieldCard, GameState } from '@fftcg/engine'
-import { activationCheck, checkInvariants, deckPickCandidates, describeAbilityCost, findFieldCard, keywordsOf, legalCommands, powerOf, viewFor } from '@fftcg/engine'
+import { actingPlayer, activationCheck, checkInvariants, deckPickCandidates, describeAbilityCost, findFieldCard, keywordsOf, legalCommands, powerOf, viewFor } from '@fftcg/engine'
 import { VOL1_ABILITIES, VOL1_CLAUSES } from '../src/abilities-vol1.js'
 import { DEFS, FIRE_BACKUP, LIGHTNING_BACKUP, WATER_BACKUP, applyNow, deckFile, endPhase, makeGame, passBoth, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
 
@@ -834,9 +834,9 @@ describe('27-122S Wuk Lamat — "When Wuk Lamat enters the field or attacks, cho
     ok(t.state)
   })
 
-  it('still warns for its clause 1 (rung V2): the cast reports exactly one clause missing', () => {
+  it('warns about nothing at cast: all three AST units are encoded (rung V2-B)', () => {
     const r = cast(makeGame(), '27-122S', Array<string>(3).fill(FIRE_BACKUP))
-    expect(r.events.filter((e) => e.type === 'unimplementedAbility').map((e) => e.type === 'unimplementedAbility' && e.clauses)).toEqual([1])
+    expect(r.events.filter((e) => e.type === 'unimplementedAbility')).toEqual([])
   })
 })
 
@@ -1018,9 +1018,9 @@ describe('11-121C Porom — "When Porom enters the field, discard 1 card from yo
   })
 })
 
-/** P0's `source` uses its activated `abilityId` on `target`, paid without discarding (the CP is already on the field). */
-function activateAt(state: GameState, source: CardId, abilityId: string, target: CardId) {
-  const cmd = offered(state, 0, source, abilityId).find((c) => c.type === 'activateAbility' && c.targets.includes(target) && c.payment.discards.length === 0)
+/** `player`'s `source` uses its activated `abilityId` on `target`, paid without discarding (the CP is already on the field). */
+function activateAt(state: GameState, source: CardId, abilityId: string, target: CardId, player: 0 | 1 = 0) {
+  const cmd = offered(state, player, source, abilityId).find((c) => c.type === 'activateAbility' && c.targets.includes(target) && c.payment.discards.length === 0)
   expect(cmd, `${abilityId} is not offered on ${target}`).toBeDefined()
   return apply(state, cmd!)
 }
@@ -1269,5 +1269,216 @@ describe('13-125R Yuzuki — "If a Fire Forward you control is dealt damage by y
     expect(damageEvents(x.events).filter((e) => e.target === yuna)).toEqual([expect.objectContaining({ type: 'battleDamage', original: 3000, amount: 1000 })])
     expect(x.events.some((e) => e.type === 'abilityTriggered' && e.abilityId === '27-125S:damages-forward')).toBe(true)
     expect(fc(x.state, yuna), 'broken by Luso’s trigger, not by 1000 damage').toBeUndefined()
+  })
+})
+
+describe('27-122S Wuk Lamat — "If you control 7 or more Characters, Wuk Lamat gains \"If a Forward you control deals damage to a Forward, the damage increases by 2000 instead.\""', () => {
+  const fire = (n: number) => Array<string>(n).fill(FIRE_BACKUP)
+  const characters = (s: GameState, p: 0 | 1) => s.players[p].forwards.length + s.players[p].backups.length
+  /**
+   * P0 controls Wuk Lamat, `backups` Fire Backups and up to two more Forwards that deal no damage of their own — Yuna,
+   * then Alphinaud (two of one name would lose one to §12.4.6); P1 controls a Zack (9000). NOTE `cast` pays with NEW
+   * Backups, so a cast adds its cost in Backups (and the Character it casts).
+   */
+  function wukBoard(o: { backups?: number; forwards?: 0 | 1 | 2; attackPhase?: boolean } = {}) {
+    let s = o.attackPhase ? endPhase(makeGame()) : makeGame(); let wuk: CardId; let victim: CardId
+    ;[s, wuk] = withField(s, 0, 'forwards', '27-122S')
+    ;[s] = withCp(s, 0, fire(o.backups ?? 0))
+    for (const code of ['27-129S', '20-106R'].slice(0, o.forwards ?? 0)) [s] = withField(s, 0, 'forwards', code)
+    ;[s, victim] = withField(s, 1, 'forwards', '27-123S')
+    return { s, wuk, victim }
+  }
+  const increased = (wuk: CardId, before: number) => [{ by: wuk, before, after: before + 2000 }]
+
+  it('is a damage replacement she carries while her controller controls 7 Characters, first in printed order', () => {
+    expect(def('27-122S').abilities?.map((a) => a.id)).toEqual(['27-122S:damage-increase', '27-122S:etb', '27-122S:attack'])
+    expect(def('27-122S').abilities?.[0]).toEqual({
+      id: '27-122S:damage-increase',
+      trigger: { kind: 'static', effect: {
+        kind: 'damageReplacement', id: 'increase',
+        affects: { target: { controller: 'any', filter: { type: 'forward' } }, bySource: { controller: 'self', filter: { type: 'forward' } } },
+        change: { add: 2000 },
+        when: { kind: 'controlsAtLeast', count: 7, controller: 'self' },
+      } },
+      text: 'If you control 7 or more Characters, Wuk Lamat gains "If a Forward you control deals damage to a Forward, the damage increases by 2000 instead."',
+      effects: [],
+    })
+  })
+
+  it('battle: with 6 Characters Ward deals his 8000; with 7 he deals 10000 — and the opposing blocker’s damage is never increased', () => {
+    for (const [backups, dealt] of [[4, 8000], [5, 10000]] as const) {
+      const b = wukBoard({ backups, attackPhase: true }); let s = b.s; let ward: CardId
+      ;[s, ward] = withField(s, 0, 'forwards', '21-001R')
+      expect(characters(s, 0), 'Wuk Lamat, Ward and the Backups').toBe(backups + 2)
+      const r = battle(s, [ward], b.victim)
+      expect(damageEvents(r.events), `${backups + 2} Characters`).toEqual(expect.arrayContaining([
+        { type: 'battleDamage', target: b.victim, dealers: [ward], original: 8000, amount: dealt, trace: dealt === 8000 ? [] : increased(b.wuk, 8000) },
+        { type: 'battleDamage', target: ward, dealers: [b.victim], original: 9000, amount: 9000, trace: [] },   // the opponent's Forward
+      ]))
+      expect(damageEvents(r.events)).toHaveLength(2)
+      expect(fc(r.state, b.victim) === undefined, '10000 breaks a 9000 Forward; 8000 does not').toBe(dealt === 10000)
+      ok(r.state)
+    }
+  })
+
+  it('battle, as the BLOCKING side: her controller’s blocker deals +2000 and the attacker does not', () => {
+    let s = endPhase(makeGame()); let wuk: CardId; let blocker: CardId; let attacker: CardId
+    ;[s, wuk] = withField(s, 1, 'forwards', '27-122S')
+    ;[s, blocker] = withField(s, 1, 'forwards', '21-001R')     // Ward, 8000
+    ;[s] = withCp(s, 1, fire(5))                               // 7 Characters on P1's side
+    ;[s, attacker] = withField(s, 0, 'forwards', '27-123S')    // P0's Zack, 9000; with no Backup of his own his sweep deals nothing
+    const r = battle(s, [attacker], blocker)
+    expect(damageEvents(r.events)).toEqual(expect.arrayContaining([
+      { type: 'battleDamage', target: attacker, dealers: [blocker], original: 8000, amount: 10000, trace: increased(wuk, 8000) },
+      { type: 'battleDamage', target: blocker, dealers: [attacker], original: 9000, amount: 9000, trace: [] },
+    ]))
+    expect(damageEvents(r.events)).toHaveLength(2)
+    expect(fc(r.state, attacker), '10000 on Zack’s 9000').toBeUndefined()
+    ok(r.state)
+  })
+
+  it('a blocked party’s damage is ONE amount (§15.1.1.9.8), increased once', () => {
+    const b = wukBoard({ backups: 4, attackPhase: true }); let s = b.s; let ward: CardId; let lbZack: CardId
+    ;[s, ward] = withField(s, 0, 'forwards', '21-001R')        // Fire, 8000
+    ;[s, lbZack] = withField(s, 0, 'forwards', '22-112R')      // Fire, 7000 — 7 Characters with Wuk Lamat and 4 Backups
+    expect(characters(s, 0)).toBe(7)
+    let r = battle(s, [ward, lbZack], b.victim)
+    if (r.state.pending?.kind === 'assignPartyDamage') {
+      const t = apply(r.state, { type: 'assignPartyDamage', player: r.state.pending.player, assignments: [{ target: ward, amount: 9000 }] })
+      r = { state: t.state, events: [...r.events, ...t.events] }
+    }
+    expect(damageEvents(r.events).filter((e) => e.target === b.victim)).toEqual([
+      { type: 'battleDamage', target: b.victim, dealers: [ward, lbZack], original: 15000, amount: 17000, trace: increased(b.wuk, 15000) },
+    ])
+    ok(r.state)
+  })
+
+  it('an ability of a Forward she controls: Ward’s 7000 on entering is 9000 with 7 Characters, 7000 with 6', () => {
+    for (const [backups, dealt] of [[1, 7000], [2, 9000]] as const) {
+      const b = wukBoard({ backups })
+      const r = castAt(b.s, '21-001R', fire(3), b.victim)     // + Ward and the three Backups that pay for him
+      expect(characters(r.state, 0), 'Wuk Lamat, Ward, 3 + the Backups').toBe(backups + 5)
+      expect(damageEvents(r.events), `${backups + 5} Characters`).toEqual([
+        { type: 'abilityDamage', source: r.card, target: b.victim, original: 7000, amount: dealt, trace: dealt === 7000 ? [] : increased(b.wuk, 7000) },
+      ])
+      expect(fc(r.state, b.victim) === undefined).toBe(dealt === 9000)
+      ok(r.state)
+    }
+  })
+
+  it('her own ability is a Forward’s: entering as the 7th Character, her 7000 is 9000', () => {
+    let s = makeGame(); let victim: CardId
+    ;[s] = withCp(s, 0, fire(2))
+    ;[s] = withField(s, 0, 'forwards', '27-129S')
+    ;[s, victim] = withField(s, 1, 'forwards', '27-123S')
+    const r = castAt(s, '27-122S', fire(3), victim)
+    expect(characters(r.state, 0)).toBe(7)
+    expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.card, target: victim, original: 7000, amount: 9000, trace: increased(r.card, 7000) }])
+    expect(fc(r.state, victim)).toBeUndefined()
+    ok(r.state)
+  })
+
+  it('"to a Forward" is any Forward: her controller’s Forward damaging her controller’s OWN Forward is increased', () => {
+    const b = wukBoard({ backups: 1 }); let s = b.s; let mine: CardId
+    ;[s, mine] = withField(s, 0, 'forwards', '27-123S')        // P0's own Zack, 9000
+    const r = castAt(s, '21-001R', fire(3), mine)
+    expect(characters(r.state, 0) + (fc(r.state, mine) ? 0 : 1), 'counted as the damage was dealt').toBe(7)
+    expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.card, target: mine, original: 7000, amount: 9000, trace: increased(b.wuk, 7000) }])
+    expect(fc(r.state, mine)).toBeUndefined()
+  })
+
+  it('every Forward a sweep hits is dealt its own damage: Zack’s 5000 to each is 7000 to each', () => {
+    const b = wukBoard({ backups: 5, attackPhase: true }); let s = b.s; let zack: CardId; let other: CardId
+    ;[s, zack] = withField(s, 0, 'forwards', '27-123S')        // 7 Characters; 5 Backups → 5000 to each opposing Forward
+    ;[s, other] = withField(s, 1, 'forwards', '21-001R')       // Ward, 8000
+    const r = apply(s, { type: 'declareAttack', player: 0, attackers: [zack] })
+    expect(damageEvents(r.events)).toEqual(expect.arrayContaining([
+      { type: 'abilityDamage', source: zack, target: b.victim, original: 5000, amount: 7000, trace: increased(b.wuk, 5000) },
+      { type: 'abilityDamage', source: zack, target: other, original: 5000, amount: 7000, trace: increased(b.wuk, 5000) },
+    ]))
+    expect(damageEvents(r.events)).toHaveLength(2)
+    ok(r.state)
+  })
+
+  it('NOT a Summon’s damage: Ifrit’s 9000 stays 9000 with 7 Characters', () => {
+    const b = wukBoard({ forwards: 1 })
+    const r = castAt(b.s, '12-005C', fire(5), b.victim)       // Wuk Lamat, Yuna and the five Backups that pay
+    expect(characters(r.state, 0)).toBe(7)
+    expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.card, target: b.victim, original: 9000, amount: 9000, trace: [] }])
+  })
+
+  it('NOT a Backup’s ability: Palom’s 4000 on entering and the Warrior’s 5000 stay as printed with 7 Characters', () => {
+    const b = wukBoard({ backups: 2, forwards: 1 })
+    const p = castAt(b.s, '13-013C', fire(2), b.victim)       // Palom is the 5th Backup: 7 Characters
+    expect(characters(p.state, 0)).toBe(7)
+    expect(damageEvents(p.events)).toEqual([{ type: 'abilityDamage', source: p.card, target: b.victim, original: 4000, amount: 4000, trace: [] }])
+    const w = wukBoard({ backups: 4, forwards: 2 }); let s = w.s; let warrior: CardId
+    ;[s, warrior] = withField(s, 0, 'backups', '11-010C')      // the 5th Backup; 8 Characters, 7 once he has paid himself
+    const r = activateAt(s, warrior, '11-010C:burn', w.victim)
+    expect(characters(r.state, 0)).toBe(7)
+    expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: warrior, target: w.victim, original: 5000, amount: 5000, trace: [] }])
+  })
+
+  it('NOT the opponent’s Forward: an opposing Ward’s 7000 at her own side stays 7000', () => {
+    let s = makeGame(); let wuk: CardId; let hers: CardId
+    ;[s, wuk] = withField(s, 1, 'forwards', '27-122S')         // Wuk Lamat is P1's, with 7 Characters
+    ;[s, hers] = withField(s, 1, 'forwards', '27-123S')
+    ;[s] = withCp(s, 1, fire(5))
+    const r = castAt(s, '21-001R', fire(3), hers)
+    expect(wuk).toBeDefined()
+    expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.card, target: hers, original: 7000, amount: 7000, trace: [] }])
+  })
+
+  /** P0 casts `code` and aims it at `target`; the item stays ON THE STACK with P1 holding priority. */
+  function castOntoStack(state: GameState, code: string, target: CardId) {
+    let s = state; let card: CardId; let cp: CardId[]
+    ;[s, card] = withHand(s, 0, code)
+    ;[s, cp] = withCp(s, 0, fire(3))
+    const log: Event[] = []
+    s = step(log, s, { type: 'castCharacter', player: 0, card, payment: { dullBackups: cp, discards: [] } })   // a Character enters at once
+    s = step(log, s, { type: 'chooseTargets', player: 0, targets: [target] })                                   // its ETB is placed, aimed
+    s = step(log, s, { type: 'pass', player: 0 })                                                                // P1 may respond
+    expect([s.stack.length, actingPlayer(s)], 'the ETB waits on the stack and P1 holds priority').toEqual([1, 1])
+    return { s, log, card }
+  }
+  /** P1 answers with an Ifrit (9000) on `target`; then whoever holds priority passes until the stack is empty. */
+  function ifritInResponse(state: GameState, log: Event[], target: CardId) {
+    let s = state; let ifrit: CardId; let cp: CardId[]
+    ;[s, ifrit] = withHand(s, 1, '12-005C')
+    ;[s, cp] = withCp(s, 1, fire(5))
+    s = step(log, s, { type: 'castSummon', player: 1, card: ifrit, payment: { dullBackups: cp, discards: [] } })
+    s = step(log, s, { type: 'chooseTargets', player: 1, targets: [target] })
+    for (let i = 0; i < 12 && s.stack.length > 0; i++) s = step(log, s, { type: 'pass', player: actingPlayer(s)! })
+    expect(s.stack).toEqual([])
+    return s
+  }
+
+  it('§6.4.2: a Forward broken with its ability on the stack still deals that damage as a Forward she controlled — increased', () => {
+    const b = wukBoard({ backups: 2, forwards: 1 })            // + Ward and his 3 Backups: 8; 7 once Ward is broken
+    const c = castOntoStack(b.s, '21-001R', b.victim)
+    const s = ifritInResponse(c.s, c.log, c.card)
+    expect(fc(s, c.card), 'Ward was broken in response').toBeUndefined()
+    expect(characters(s, 0)).toBe(7)
+    expect(damageEvents(c.log).filter((e) => e.target === b.victim)).toEqual([
+      { type: 'abilityDamage', source: c.card, target: b.victim, original: 7000, amount: 9000, trace: increased(b.wuk, 7000) },
+    ])
+    ok(s)
+  })
+
+  it('§11.12.5.3: her replacement is read from the field — broken before her own 7000 resolves, nothing increases it', () => {
+    let s = makeGame(); let victim: CardId
+    ;[s] = withCp(s, 0, fire(2))
+    ;[s] = withField(s, 0, 'forwards', '27-129S'); [s] = withField(s, 0, 'forwards', '20-106R')
+    ;[s, victim] = withField(s, 1, 'forwards', '27-123S')
+    const c = castOntoStack(s, '27-122S', victim)             // Wuk Lamat is the 8th Character
+    expect(characters(c.s, 0)).toBe(8)
+    const t = ifritInResponse(c.s, c.log, c.card)
+    expect(fc(t, c.card), 'Wuk Lamat was broken in response').toBeUndefined()
+    expect(characters(t, 0), 'still 7 Characters: only her absence stops the increase').toBe(7)
+    expect(damageEvents(c.log).filter((e) => e.target === victim)).toEqual([
+      { type: 'abilityDamage', source: c.card, target: victim, original: 7000, amount: 7000, trace: [] },
+    ])
+    expect(dmg(t, victim)).toBe(7000)
+    ok(t)
   })
 })
