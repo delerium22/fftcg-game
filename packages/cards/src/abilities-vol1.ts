@@ -19,7 +19,7 @@ import type { Ability } from '@fftcg/engine'
  * printed text would let the two encoded halves hide a real gap on the same card (Wuk Lamat's clause 1).
  */
 export const VOL1_CLAUSES: Record<string, number> = {
-  '27-122S': 3,   // static (V2: damage +2000, a replacement) | ETB | attack — the last two one printed clause
+  '27-122S': 3,   // static: damage +2000, a replacement | ETB | attack — the last two one printed clause
   '27-123S': 3,   // static Haste | ETB sweep | attack sweep — the last two one printed clause
   '27-128S': 3,   // damage −1000, a replacement | cannot be chosen by cost-1 Summons (inert) | the action-ability ban
   '27-129S': 2,   // ETB play a cost-3 Forward | attack: look at the top 3
@@ -526,12 +526,34 @@ const ZACK_ATTACK: Ability = {
 }
 
 /**
+ * Wuk Lamat's clause 1 (rung V2-B): "gains '…'" is a damage replacement she carries while her controller controls 7
+ * Characters — Forwards and Backups, herself included — read as each damage is dealt, from her on the FIELD (§11.12.5.3).
+ *
+ * "a Forward you control deals damage": battle damage from her controller's attackers or blocker, and the damage of an
+ * ability whose source is a Forward — her own clause 2, Ward, Zack's sweep (each Forward it hits is dealt its own
+ * damage). A blocked party deals ONE amount (§15.1.1.9.8), increased once. Not a Summon's damage and not a Backup's
+ * ability (Ifrit, Palom, the Warrior). A Forward that has left the field with its ability on the stack still deals that
+ * damage as the Forward it was (§6.4.2): the dealer carries the ability's controller, and the filter reads the printing.
+ * "to a Forward" is any Forward, her controller's own included.
+ */
+const WUK_LAMAT_INCREASE: Ability = {
+  id: '27-122S:damage-increase',
+  trigger: {
+    kind: 'static',
+    effect: {
+      kind: 'damageReplacement', id: 'increase',
+      affects: { target: { controller: 'any', filter: { type: 'forward' } }, bySource: { controller: 'self', filter: { type: 'forward' } } },
+      change: { add: 2000 },
+      when: { kind: 'controlsAtLeast', count: 7, controller: 'self' },
+    },
+  },
+  text: 'If you control 7 or more Characters, Wuk Lamat gains "If a Forward you control deals damage to a Forward, the damage increases by 2000 instead."',
+  effects: [],   // a static makes something true; it has nothing to run
+}
+
+/**
  * Wuk Lamat's clause 2, the same two-trigger split as Zack. The Forward is CHOSEN as the clause is placed; "If you control
  * 5 or more Characters" is read as it resolves (Palom's shape), over Forwards and Backups, Wuk Lamat included.
- *
- * Her clause 1 ("If you control 7 or more Characters, Wuk Lamat gains 'If a Forward you control deals damage to a
- * Forward, the damage increases by 2000 instead.'") is a replacement effect: rung V2 (spec V1-D4). It stays
- * unimplemented, not inert — it would change play — so she warns about it and `pool-coverage` lists the gap.
  */
 const WUK_LAMAT_CLAUSE_2 = [{
   kind: 'chooseTargets', min: 1, max: 1,
@@ -669,8 +691,8 @@ export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '23-119R': [VINCENT_ETB, VINCENT_WHEN_YOU_DO_SO],
   '23-130H': [LUSO_LB_ETB, LUSO_LB_STANDARD_UNIT],
   '24-126H': [ULTIMA_WEAPON_FIRE, ULTIMA_WEAPON_WATER],
-  // Clause 1 (the +2000 replacement) is rung V2; clause 2 is the `:etb` and `:attack` pair.
-  '27-122S': [WUK_LAMAT_ETB, WUK_LAMAT_ATTACK],
+  // Clause 1 is the replacement; clause 2 is the `:etb` and `:attack` pair.
+  '27-122S': [WUK_LAMAT_INCREASE, WUK_LAMAT_ETB, WUK_LAMAT_ATTACK],
   '27-123S': [ZACK_HASTE, ZACK_ETB, ZACK_ATTACK],
   // Clauses 1 and 3; clause 2 is inert (`VOL1_INERT`).
   '27-128S': [CHARLOTTE_REDUCTION, CHARLOTTE_BAN],
