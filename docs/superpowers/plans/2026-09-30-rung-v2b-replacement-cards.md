@@ -32,3 +32,67 @@
 - [ ] 1: encodings + per-card tests + gap table emptied (one green commit, or per card with the table shrinking).
 - [ ] 2: scenarios + the timing-matrix citations for §11.12.5 rows if the matrix covers them (it covers chapters 9–12: check for 11.12.5 rows and cite).
 - [ ] 3: self-play and gate; spec "As built (V2-B)"; PR; merge.
+
+## Revisions after the plan review (2026-10-12)
+
+Codex (gpt-5.6-sol, xhigh); adjudication in `2026-09-30-rung-v2b-replacement-cards.codex-review.md`. These override the
+plan above.
+
+- **R1 (C1, C2, M7, L1) — the exact encodings.** Each static is
+  `{ id, trigger: { kind: 'static', effect: { kind: 'damageReplacement', id, affects, change, when? } }, text, effects: [] }`,
+  `text` a verbatim slice of the printed text. Abilities sit in PRINTED order in `VOL1_ABILITIES`; the stale "rung V2"
+  comments in `abilities-vol1.ts` go in the same commit as the clause they describe.
+
+  | Card | Ability id | Effect id | `affects` | `change` | `when` | Position |
+  |---|---|---|---|---|---|---|
+  | Charlotte 27-128S | `27-128S:damage-reduction` | `reduce` | `{ target: 'self' }` | `{ reduce: 1000 }` | — | before `:no-action-abilities` |
+  | Yuzuki 13-125R | `13-125R:fire-zero` | `fire-zero` | `{ target: { controller: 'self', filter: { type: 'forward', element: 'fire' } }, byCause: 'ability', byController: 'opponent' }` | `{ becomes: 0 }` | — | first |
+  | Yuzuki 13-125R | `13-125R:water-reduce` | `water-reduce` | `{ target: { controller: 'self', filter: { type: 'forward', element: 'water' } } }` | `{ reduce: 2000 }` | — | second |
+  | Wuk Lamat 27-122S | `27-122S:damage-increase` | `increase` | `{ target: { controller: 'any', filter: { type: 'forward' } }, bySource: { controller: 'self', filter: { type: 'forward' } } }` | `{ add: 2000 }` | `{ kind: 'controlsAtLeast', count: 7, controller: 'self' }` | before `:etb` |
+
+  Porom 11-121C `11-121C:shield`, after `:etb`:
+  `trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, selfToBreakZone: true } }`,
+  `effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'shieldNextDamage', amount: 2000 }] }]`
+  — Warrior 11-010C `:pump`'s shape. The target is declared with the activation, before the cost is paid.
+  If a filter key above is not what `DefFilter` calls it, the as-built name wins and the as-built note says so.
+- **R2 (H1) — one commit per card, each green.** Each card's commit carries its encoding, its tests, its shrunken
+  `EXPECTED_GAPS` entry, its flipped "still warns" test in `abilities-vol1.test.ts`, and its ids in
+  `abilities.test.ts`. The commit that removes the LAST gap also flips `selfplay.test.ts:81` from `> 0` to `0`.
+  These are tests of the behaviour this rung changes; they are listed in the PR body.
+- **R3 (H2, M2, M3) — tests that a wrong encoding fails.** Per card, an exact `toEqual` on the encoded ability, and:
+  - Charlotte: a Forward beside her takes full damage; 1000 → 0 marks nothing and fires no dealt-damage trigger; her
+    reduction applies to battle, ability and Summon damage alike.
+  - Wuk Lamat: 6 Characters (Wuk + 5 Backups) → no increase; a 7th (a Forward) → +2000. With 7: a Summon's damage
+    (Ifrit) and a Backup's ability (Warrior's burn, Palom) are NOT increased; the opponent's Forward dealing damage is
+    not; her controller's Forward damaging her controller's OWN Forward is; a party's packet is increased once.
+  - Porom: found through `legalCommands`; candidates are both players' Forwards and no Backup; not offered while she
+    is dull; no CP is spent; she is in the Break Zone before the ability resolves (and it still resolves); the next
+    damage only; gone at end of turn.
+- **R4 (H3, M1) — Yuzuki's victims are named.** Fire-only victim (Ward 21-001R or Wuk Lamat) for the Fire clause:
+  the opponent's action ability (Warrior's burn), auto-ability (Wuk Lamat's ETB), special ability (Jecht Beam) and
+  Character EX Burst (Ward) → 0; the opponent's Ifrit, cast and as an EX Burst → full; battle → full; her controller's
+  own ability → full. Water-only victim (Charlotte or Yuna) for the Water clause: 5000 → 3000 from any cause, either
+  controller. Yuzuki herself, both clauses: an opponent's ability → 0 with no order prompt (both orders end at 0);
+  battle → −2000. An opponent's Fire Forward is untouched by either.
+- **R5 (H4) — the matrix.** `SCOPE` stays as it is: adding §11.12 means a row for every §11.12 subsection, which is its
+  own job (backlog). Row 11.8.15 becomes `tested`, citing the test that a damage replaced to 0 fires no dealt-damage
+  trigger, on the real cards. Task 2's "cite §11.12.5 rows" is dropped: there are none.
+- **R6 (M4, M5) — scenarios.** `trace` gains `damageReducedToZero` (`zero:<target>`) and `shieldGranted`
+  (`shield:<card>:<amount>`); existing goldens cannot change, since no shipped scenario emits either. The ORDER
+  scenario: six Characters on the Wuk Lamat side BEFORE she is cast (seven when her ETB resolves), a Fire-only victim
+  under the opponent's Yuzuki, the prompt owed by the victim's controller, and both answers played: Yuzuki first →
+  2000 marked; Wuk Lamat first → 0, no damage event.
+- **R7 (M6) — self-play.** `pool-coverage`'s exact, empty table is the structural gate. The Vol. 1 self-play tests
+  assert `unimplementedAbilities` is 0 for random-vs-greedy and for ISMCTS, as integration checks only.
+- **R8 (M8) — the conformance audit.** `2026-09-08-rules-conformance-audit.md`: row 11.12.5 and the J6 ladder cell say
+  what rung V2 built (damage to Forwards) and what stays absent (every other replacement).
+- **R9 (L2) — green.** Green is zero failed tests in `pnpm test` and `pnpm test:browser`, with typecheck and lint
+  clean. `pnpm test` may still exit 1 on the known "Timeout calling onTaskUpdate" worker errors; they are counted and
+  reported beside the pass count, and any other error is a failure. The gate command is unchanged.
+- **R10 (O1, O2) — readings pinned by tests.** §6.4.2: a Forward broken while its damaging ability is on the stack
+  still deals that damage as a Forward its controller controlled, so Wuk Lamat's increase applies. §11.12.5.3: Wuk
+  Lamat herself gone before her ETB resolves → no increase.
+
+Tasks, revised: **1** Charlotte; **2** Yuzuki; **3** Wuk Lamat; **4** Porom — the last gap, with the self-play flip
+(R2, R7); **5** scenarios, `trace`, the matrix row and the audit (R5, R6, R8); **6** gate, spec "As built (V2-B)",
+reviews, PR, merge.
