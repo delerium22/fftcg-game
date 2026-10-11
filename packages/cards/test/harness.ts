@@ -159,6 +159,10 @@ export function trace(events: readonly Event[], names: Record<number, string> = 
       case 'playedFromHand': out.push(`play:${n(e.card)}`); break
       case 'deckExposed': out.push(`look:${e.player}:${e.count}`); break
       case 'abilityNoLegalTarget': out.push(`noTarget:${e.abilityId}`); break
+      // rung V2-B: the damage replacements. A hit replaced to 0 is not damage (no `damage:`/`battle:` line), so it gets
+      // its own; a damage line keeps the FINAL amount.
+      case 'damageReducedToZero': out.push(`zero:${n(e.target)}`); break
+      case 'shieldGranted': out.push(`shield:${n(e.card)}:${e.amount}`); break
       default: break
     }
   }
