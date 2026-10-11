@@ -475,7 +475,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '24-126H:etb-fire', '24-126H:etb-water', '11-121C:etb', '18-129C:gains', '18-129C:jecht-beam', '27-122S:etb',
       '27-122S:attack', '27-123S:haste', '27-123S:etb', '27-123S:attack', '27-128S:no-action-abilities',
       // rung V2-B: the damage replacement clauses
-      '27-128S:damage-reduction', '13-125R:fire-zero', '13-125R:water-reduce', '27-122S:damage-increase',
+      '27-128S:damage-reduction', '13-125R:fire-zero', '13-125R:water-reduce', '27-122S:damage-increase', '11-121C:shield',
     ].sort())
   })
 
@@ -2007,6 +2007,7 @@ describe('the button text for an activated clause (found by playing)', () => {
     '21-010H:play': 'Play 1 Job Warrior or Card Name Warrior of cost 3 or less from your hand onto the field (once per turn)',
     '18-129C:gains': 'Until the end of the turn, Jecht gains Haste, First Strike and Brave',
     '18-129C:jecht-beam': 'Choose 1 Forward. Deal it 8000 damage',
+    '11-121C:shield': 'Choose 1 Forward. During this turn, the next damage dealt to it is reduced by 2000 instead',   // rung V2-B
     // Sphene keeps its once-per-turn marker: that is not a timing condition the engine gates for you, it is
     // what pressing the button COSTS you for the rest of the turn (Codex MAJOR).
     '27-126S:retrieve': 'Choose 1 Forward other than Sphene put in your Break Zone from the field during this turn. Add it to your hand (once per turn)',
