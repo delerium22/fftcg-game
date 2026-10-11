@@ -126,21 +126,23 @@ export function replacementsFor(state: GameState, packet: DamagePacket): Replace
 export interface OrderOutcome { readonly final: number; readonly trace: readonly DamageTraceStep[]; readonly consumes: readonly string[] }
 
 /**
- * §4.3 arithmetic (plan A2-D3, spec V2-D3): the replacements change a RUNNING amount in `order`, which may go negative
- * between steps and keeps its sign for the next change; the final amount below 0 is 0. `becomes: 0` sets it to 0, and
- * a later increase still applies to that 0 (plan Review Focus 1: Yuzuki first, then Wuk Lamat's +2000, is 2000).
+ * The replacements change a RUNNING amount in `order` (plan A2-D3, spec V2-D3); the final amount below 0 is 0.
+ *
+ * Every one of them replaces DAMAGE — "is dealt damage", "deals damage", "the next damage dealt" — so each applies only
+ * while there is damage left to replace: once the running amount is 0 or less, the rest are NOT applied (rung V2-B,
+ * correcting the V2-A2 reading). 0 damage is not damage (ruling 2021-08-19), and the official notice of 2020-03-18
+ * gives the case: Minwu's "the damage becomes 0 instead" applied before a "+1000 damage" effect "will prevent your …
+ * Forward from incurring any damage" — an increase does not revive a hit that became 0. A shield that is not applied is
+ * not used up, and survives for the next packet (plan R2). So a reduction that takes the amount to 0 or below ends it
+ * too; §4.3's negative carry never arises, because nothing changes the amount again.
  */
 export function applyInOrder(amount: number, order: readonly Replacement[]): OrderOutcome {
   let v = amount
   const trace: DamageTraceStep[] = []
   const consumes: string[] = []
   for (const r of order) {
-    // A shield replaces DAMAGE (plan R2): once the running amount is 0 or less there is no damage left for it to
-    // replace (ruling 2021-08-19, "damage is not damage"), so it is not applied — and survives for the next packet.
-    if (r.shield) {
-      if (v <= 0) continue
-      consumes.push(r.id)
-    }
+    if (v <= 0) break   // no damage left for the remaining replacements to replace
+    if (r.shield) consumes.push(r.id)
     const before = v
     v = 'add' in r.change ? v + r.change.add : 'reduce' in r.change ? v - r.change.reduce : 0
     trace.push({ by: r.by, before, after: v })
