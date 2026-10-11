@@ -473,6 +473,8 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '23-119R:when-you-do-so',   // rung V1-D: the reflexive clause
       '24-126H:etb-fire', '24-126H:etb-water', '11-121C:etb', '18-129C:gains', '18-129C:jecht-beam', '27-122S:etb',
       '27-122S:attack', '27-123S:haste', '27-123S:etb', '27-123S:attack', '27-128S:no-action-abilities',
+      // rung V2-B: the damage replacement clauses
+      '27-128S:damage-reduction',
     ].sort())
   })
 

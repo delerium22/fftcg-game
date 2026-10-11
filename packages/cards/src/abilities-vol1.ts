@@ -21,7 +21,7 @@ import type { Ability } from '@fftcg/engine'
 export const VOL1_CLAUSES: Record<string, number> = {
   '27-122S': 3,   // static (V2: damage +2000, a replacement) | ETB | attack — the last two one printed clause
   '27-123S': 3,   // static Haste | ETB sweep | attack sweep — the last two one printed clause
-  '27-128S': 3,   // damage −1000 (V2) | cannot be chosen by cost-1 Summons (inert) | the action-ability ban
+  '27-128S': 3,   // damage −1000, a replacement | cannot be chosen by cost-1 Summons (inert) | the action-ability ban
   '27-129S': 2,   // ETB play a cost-3 Forward | attack: look at the top 3
   '1-170C': 1,    // EX BURST activate, draw
   '3-143C': 1,    // EX BURST ETB search Palom or Porom
@@ -554,9 +554,21 @@ const WUK_LAMAT_ATTACK: Ability = {
 }
 
 /**
+ * Charlotte's clause 1 (rung V2-B): a damage replacement on herself (§11.12.5.2, "instead") — any damage, from battle,
+ * an ability or a Summon, dealt by either player. 1000 or less becomes 0, which is not damage (ruling 2021-08-19):
+ * nothing is marked and no dealt-damage trigger fires.
+ */
+const CHARLOTTE_REDUCTION: Ability = {
+  id: '27-128S:damage-reduction',
+  trigger: { kind: 'static', effect: { kind: 'damageReplacement', id: 'reduce', affects: { target: 'self' }, change: { reduce: 1000 } } },
+  text: 'If Charlotte is dealt damage, reduce the damage by 1000 instead.',
+  effects: [],   // a static makes something true; it has nothing to run
+}
+
+/**
  * Charlotte's clause 3 (rung V1-A3, V1-D15): a continuous `grantFlag` over the opponent's Forwards, read by
- * `activationCheck`. An action ability only; a special ability (Jecht Beam) stays usable. Clause 1 (damage −1000) is a
- * replacement effect for rung V2; clause 2 is inert (`VOL1_INERT`).
+ * `activationCheck`. An action ability only; a special ability (Jecht Beam) stays usable. Clause 2 is inert
+ * (`VOL1_INERT`).
  */
 const CHARLOTTE_BAN: Ability = {
   id: '27-128S:no-action-abilities',
@@ -622,8 +634,8 @@ export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   // Clause 1 (the +2000 replacement) is rung V2; clause 2 is the `:etb` and `:attack` pair.
   '27-122S': [WUK_LAMAT_ETB, WUK_LAMAT_ATTACK],
   '27-123S': [ZACK_HASTE, ZACK_ETB, ZACK_ATTACK],
-  // Clause 3 only: clause 1 (damage −1000) is rung V2 and clause 2 is inert (`VOL1_INERT`).
-  '27-128S': [CHARLOTTE_BAN],
+  // Clauses 1 and 3; clause 2 is inert (`VOL1_INERT`).
+  '27-128S': [CHARLOTTE_REDUCTION, CHARLOTTE_BAN],
   '27-129S': [YUNA_ETB, YUNA_ATTACK],
 }
 
