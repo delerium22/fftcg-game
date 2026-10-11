@@ -456,6 +456,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       // rung V1-B
       '1-170C', '12-005C', '13-013C', '18-003C', '18-094C', '21-001R', '22-112R', '22-123R', '23-130H', '27-129S', '3-143C',
       '11-010C', '20-106R', '21-010H', '23-119R', '24-126H', '11-121C', '18-129C', '27-122S', '27-123S', '27-128S',
+      '13-125R',   // rung V2-B: Yuzuki's clauses are both damage replacements
     ].sort())
     expect(DEFS.flatMap((d) => d.abilities ?? []).map((a) => a.id).sort()).toEqual([
       // Sorted on both sides: these are card codes, so '9-074C' sorts AFTER '27-…' as a string, and pinning
@@ -474,7 +475,7 @@ describe('the ASTs are merged onto the fetched defs, not stored in them', () => 
       '24-126H:etb-fire', '24-126H:etb-water', '11-121C:etb', '18-129C:gains', '18-129C:jecht-beam', '27-122S:etb',
       '27-122S:attack', '27-123S:haste', '27-123S:etb', '27-123S:attack', '27-128S:no-action-abilities',
       // rung V2-B: the damage replacement clauses
-      '27-128S:damage-reduction',
+      '27-128S:damage-reduction', '13-125R:fire-zero', '13-125R:water-reduce',
     ].sort())
   })
 
