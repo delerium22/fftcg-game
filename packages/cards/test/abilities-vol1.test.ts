@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CardId, Event, FieldCard, GameState } from '@fftcg/engine'
 import { activationCheck, checkInvariants, deckPickCandidates, describeAbilityCost, findFieldCard, keywordsOf, legalCommands, powerOf, viewFor } from '@fftcg/engine'
 import { VOL1_ABILITIES, VOL1_CLAUSES } from '../src/abilities-vol1.js'
-import { DEFS, FIRE_BACKUP, LIGHTNING_BACKUP, WATER_BACKUP, applyNow, deckFile, endPhase, makeGame, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
+import { DEFS, FIRE_BACKUP, LIGHTNING_BACKUP, WATER_BACKUP, applyNow, deckFile, endPhase, makeGame, passBoth, setPlayer, step, withCp, withDeckTops, withField, withHand } from './harness.js'
 
 /**
  * Rung V1-B: the Starter Set 2025 Vol. 1 cards (spec 2026-09-29-rung-v1-vol1-pool.md, V1-D1/D3/D4), tested against the
@@ -856,9 +856,115 @@ describe('27-128S Charlotte — "The Forwards opponent controls cannot use actio
     expect(offered(handed, 1, theirs, '19-052C:pump').length, 'Charlotte\u2019s own side is not banned').toBeGreaterThan(0)
   })
 
-  it('still warns for its clause 1 (rung V2); clause 2 is inert, so exactly one clause is reported', () => {
+  it('warns about nothing at cast: clauses 1 and 3 are encoded and clause 2 is inert (rung V2-B)', () => {
     const r = cast(makeGame(), '27-128S', Array<string>(4).fill(WATER_BACKUP))
-    expect(r.events.filter((e) => e.type === 'unimplementedAbility').map((e) => e.type === 'unimplementedAbility' && e.clauses)).toEqual([1])
+    expect(r.events.filter((e) => e.type === 'unimplementedAbility')).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Rung V2-B: the damage replacement clauses (§11.12.5) on the real cards. The engine's damage-replacement suites prove
+// the machinery on synthetic defs; these play the printed cards through real commands.
+// ---------------------------------------------------------------------------
+
+type DamageEvent = Extract<Event, { type: 'abilityDamage' | 'battleDamage' | 'damageReducedToZero' }>
+const damageEvents = (events: readonly Event[]): DamageEvent[] =>
+  events.filter((e): e is DamageEvent => e.type === 'abilityDamage' || e.type === 'battleDamage' || e.type === 'damageReducedToZero')
+const dmg = (s: GameState, id: CardId): number | undefined => fc(s, id)?.damage
+
+/** P0 casts `code` (paid by fresh Backups of `cp`) and aims its "choose 1 Forward" at `target`. */
+function castAt(state: GameState, code: string, cp: string[], target: CardId) {
+  const r = cast(state, code, cp)
+  expect(r.state.pending, `${code} asks for its target`).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 0 }))
+  const t = apply(r.state, { type: 'chooseTargets', player: 0, targets: [target] })
+  return { state: t.state, events: [...r.events, ...t.events], card: r.card }
+}
+
+/** In P0's Attack Phase: P0 attacks with `attackers`, P1 blocks with `blocker`, and the battle damage is dealt. */
+function battle(state: GameState, attackers: CardId[], blocker: CardId) {
+  let s = state
+  const events: Event[] = []
+  const run = (r: { state: GameState; events: Event[] }) => { s = r.state; events.push(...r.events) }
+  run(apply(s, { type: 'declareAttack', player: 0, attackers }))
+  run(passBoth(s))
+  run(apply(s, { type: 'declareBlock', player: 1, blocker }))
+  run(passBoth(s))
+  return { state: s, events }
+}
+
+describe('27-128S Charlotte — "If Charlotte is dealt damage, reduce the damage by 1000 instead."', () => {
+  it('is a damage replacement on herself, first in printed order', () => {
+    expect(def('27-128S').abilities?.map((a) => a.id)).toEqual(['27-128S:damage-reduction', '27-128S:no-action-abilities'])
+    expect(def('27-128S').abilities?.[0]).toEqual({
+      id: '27-128S:damage-reduction',
+      trigger: { kind: 'static', effect: { kind: 'damageReplacement', id: 'reduce', affects: { target: 'self' }, change: { reduce: 1000 } } },
+      text: 'If Charlotte is dealt damage, reduce the damage by 1000 instead.',
+      effects: [],
+    })
+  })
+
+  it('an ability\u2019s 7000 marks 6000 on her, whoever controls her — and the full 7000 on the Forward beside her', () => {
+    for (const side of [0, 1] as const) {
+      let s = makeGame(); let charlotte: CardId
+      ;[s, charlotte] = withField(s, side, 'forwards', '27-128S')
+      const r = castAt(s, '21-001R', Array<string>(3).fill(FIRE_BACKUP), charlotte)   // Ward: "choose 1 Forward. Deal it 7000 damage."
+      expect(damageEvents(r.events), `Charlotte on side ${side}`).toEqual([
+        { type: 'abilityDamage', source: r.card, target: charlotte, original: 7000, amount: 6000, trace: [{ by: charlotte, before: 7000, after: 6000 }] },
+      ])
+      expect(dmg(r.state, charlotte)).toBe(6000)
+      ok(r.state)
+    }
+    let s = makeGame(); let beside: CardId
+    ;[s] = withField(s, 1, 'forwards', '27-128S')
+    ;[s, beside] = withField(s, 1, 'forwards', '27-123S')   // Zack, 9000
+    const r = castAt(s, '21-001R', Array<string>(3).fill(FIRE_BACKUP), beside)
+    expect(damageEvents(r.events), 'her clause names Charlotte, not her side').toEqual([
+      { type: 'abilityDamage', source: r.card, target: beside, original: 7000, amount: 7000, trace: [] },
+    ])
+    expect(dmg(r.state, beside)).toBe(7000)
+  })
+
+  it('a Summon\u2019s damage is reduced too: Ifrit\u2019s 9000 lands as 8000, which is still her power (§12.4.5)', () => {
+    let s = makeGame(); let charlotte: CardId
+    ;[s, charlotte] = withField(s, 1, 'forwards', '27-128S')
+    const r = castAt(s, '12-005C', Array<string>(5).fill(FIRE_BACKUP), charlotte)
+    expect(damageEvents(r.events)).toEqual([
+      { type: 'abilityDamage', source: r.card, target: charlotte, original: 9000, amount: 8000, trace: [{ by: charlotte, before: 9000, after: 8000 }] },
+    ])
+    expect(fc(r.state, charlotte), '8000 damage on 8000 power').toBeUndefined()
+    ok(r.state)
+  })
+
+  it('battle damage is reduced too: blocking Ward (8000) she takes 7000 and survives; Ward takes her 8000 and breaks', () => {
+    let s = endPhase(makeGame()); let ward: CardId; let charlotte: CardId
+    ;[s, ward] = withField(s, 0, 'forwards', '21-001R')
+    ;[s, charlotte] = withField(s, 1, 'forwards', '27-128S')
+    const r = battle(s, [ward], charlotte)
+    expect(damageEvents(r.events)).toEqual(expect.arrayContaining([
+      { type: 'battleDamage', target: charlotte, dealers: [ward], original: 8000, amount: 7000, trace: [{ by: charlotte, before: 8000, after: 7000 }] },
+      { type: 'battleDamage', target: ward, dealers: [charlotte], original: 8000, amount: 8000, trace: [] },
+    ]))
+    expect(damageEvents(r.events)).toHaveLength(2)
+    expect(dmg(r.state, charlotte)).toBe(7000)
+    expect(fc(r.state, ward)).toBeUndefined()
+    ok(r.state)
+  })
+
+  it('1000 becomes 0, and 0 damage is not damage (ruling 2021-08-19): nothing is marked and no damage event names her', () => {
+    let s = endPhase(makeGame()); let zack: CardId; let charlotte: CardId; let beside: CardId
+    ;[s, zack] = withField(s, 0, 'forwards', '27-123S')
+    ;[s] = withCp(s, 0, [FIRE_BACKUP])                       // one Backup: Zack's sweep deals 1000 to each opposing Forward
+    ;[s, charlotte] = withField(s, 1, 'forwards', '27-128S')
+    ;[s, beside] = withField(s, 1, 'forwards', '21-001R')
+    const r = apply(s, { type: 'declareAttack', player: 0, attackers: [zack] })
+    expect(damageEvents(r.events)).toEqual(expect.arrayContaining([
+      { type: 'damageReducedToZero', target: charlotte, dealers: [zack], original: 1000, trace: [{ by: charlotte, before: 1000, after: 0 }] },
+      { type: 'abilityDamage', source: zack, target: beside, original: 1000, amount: 1000, trace: [] },
+    ]))
+    expect(damageEvents(r.events)).toHaveLength(2)
+    expect(dmg(r.state, charlotte)).toBe(0)
+    expect(dmg(r.state, beside)).toBe(1000)
+    ok(r.state)
   })
 })
 

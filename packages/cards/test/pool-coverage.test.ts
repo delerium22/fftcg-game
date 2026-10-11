@@ -20,11 +20,12 @@ import { loadCards } from '../src/index.js'
 describe('the card pool', () => {
   /**
    * Rung V1-B (plan B-D3, R4): the gaps this build KNOWS about, by card, and nothing else. The Vol. 1 clauses that need
-   * damage-modifying replacement effects (spec V1-D4) are finished in rung V2, which empties this table: Wuk Lamat's
-   * clause 1, Charlotte's clause 1, Porom's clause 2 and both of Yuzuki's. Exact on purpose — a gap LARGER than listed is
-   * an unimplemented clause nobody declared, and a gap SMALLER is a landed clause whose entry was not updated.
+   * damage-modifying replacement effects (spec V1-D4) are finished in rung V2-B, which empties this table card by card:
+   * Wuk Lamat's clause 1, Porom's clause 2 and both of Yuzuki's are left (Charlotte's clause 1 has landed). Exact on
+   * purpose — a gap LARGER than listed is an unimplemented clause nobody declared, and a gap SMALLER is a landed clause
+   * whose entry was not updated.
    */
-  const EXPECTED_GAPS: Record<string, number> = { '27-122S': 1, '27-128S': 1, '11-121C': 1, '13-125R': 2 }
+  const EXPECTED_GAPS: Record<string, number> = { '27-122S': 1, '11-121C': 1, '13-125R': 2 }
 
   /**
    * Rung V1-B (review M6): the clauses ENCODED with a known deviation from the rules, one line each, naming the rung that
