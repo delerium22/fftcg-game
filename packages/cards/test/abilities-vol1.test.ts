@@ -1012,9 +1012,9 @@ describe('11-121C Porom — "When Porom enters the field, discard 1 card from yo
     expect(r.events.some((e) => e.type === 'drew')).toBe(false)
   })
 
-  it('still warns for its clause 2 (rung V2)', () => {
+  it('warns about nothing at cast: both clauses are encoded (rung V2-B)', () => {
     const { r } = castPorom([])
-    expect(r.events.filter((e) => e.type === 'unimplementedAbility').map((e) => e.type === 'unimplementedAbility' && e.clauses)).toEqual([1])
+    expect(r.events.filter((e) => e.type === 'unimplementedAbility')).toEqual([])
   })
 })
 
@@ -1480,5 +1480,124 @@ describe('27-122S Wuk Lamat — "If you control 7 or more Characters, Wuk Lamat 
     ])
     expect(dmg(t, victim)).toBe(7000)
     ok(t)
+  })
+})
+
+describe('11-121C Porom — "[Dull], put Porom into the Break Zone: Choose 1 Forward. During this turn, the next damage dealt to it is reduced by 2000 instead."', () => {
+  const SHIELD = '11-121C:shield'
+  /** P0 controls Porom, a Zack (9000) and a Machinist; P1 controls a Ward (8000) and a Machinist. */
+  function poromBoard(over: Partial<FieldCard> = {}) {
+    let s = makeGame(); let porom: CardId; let mine: CardId; let theirs: CardId; let myBackup: CardId[]; let theirBackup: CardId[]
+    ;[s, porom] = withField(s, 0, 'backups', '11-121C', over)
+    ;[s, mine] = withField(s, 0, 'forwards', '27-123S')
+    ;[s, myBackup] = withCp(s, 0, [FIRE_BACKUP])
+    ;[s, theirs] = withField(s, 1, 'forwards', '21-001R')
+    ;[s, theirBackup] = withCp(s, 1, [FIRE_BACKUP])
+    return { s, porom, mine, theirs, backups: [...myBackup, ...theirBackup] }
+  }
+  const shieldsOf = (s: GameState, id: CardId) => fc(s, id)?.shields
+
+  it('is an action ability paid by her own dull and by herself, second in printed order', () => {
+    expect(def('11-121C').abilities?.map((a) => a.id)).toEqual(['11-121C:etb', SHIELD])
+    const shield = def('11-121C').abilities![1]!
+    expect(shield).toEqual({
+      id: SHIELD,
+      trigger: { kind: 'activated', sourceZone: 'field', cost: { dull: true, selfToBreakZone: true } },
+      text: '[Dull], put Porom into the Break Zone: Choose 1 Forward. During this turn, the next damage dealt to it is reduced by 2000 instead.',
+      effects: [{ kind: 'chooseTargets', min: 1, max: 1, from: { zone: 'forwards', controller: 'any' }, then: [{ kind: 'shieldNextDamage', amount: 2000 }] }],
+    })
+    if (shield.trigger.kind !== 'activated') throw new Error('not activated')
+    expect(describeAbilityCost(shield.trigger.cost)).toBe('[Dull], put into the Break Zone')
+  })
+
+  it('is offered on either player’s Forward and on no Backup, costs no CP, and not at all while she is dull', () => {
+    const b = poromBoard()
+    const cmds = offered(b.s, 0, b.porom, SHIELD)
+    expect(cmds.map((c) => (c.type === 'activateAbility' ? c.targets : [])).sort(), '"Choose 1 Forward": one of the two Forwards').toEqual([[b.mine], [b.theirs]].sort())
+    for (const c of cmds) if (c.type === 'activateAbility') expect(c.payment, 'no CP is part of the cost').toEqual({ dullBackups: [], discards: [] })
+    for (const backup of [b.porom, ...b.backups]) {
+      expect(activationCheck(b.s, 0, b.porom, SHIELD, [backup]), 'a Backup is not a Forward').not.toBeNull()
+    }
+    const dull = poromBoard({ status: 'dull' })
+    expect(offered(dull.s, 0, dull.porom, SHIELD), '[Dull] cannot be paid by a dull card').toEqual([])
+    expect(activationCheck(dull.s, 0, dull.porom, SHIELD, [dull.mine])).not.toBeNull()
+  })
+
+  it('she is put into the Break Zone as the COST — not broken — before the ability resolves, and it still resolves', () => {
+    const b = poromBoard(); const log: Event[] = []
+    const cmd = offered(b.s, 0, b.porom, SHIELD).find((c) => c.type === 'activateAbility' && c.targets.includes(b.mine))!
+    let s = step(log, b.s, cmd)
+    expect(s.stack, 'the ability waits on the stack').toHaveLength(1)
+    expect(s.players[0].breakZone, 'the cost is paid already').toContain(b.porom)
+    expect(fc(s, b.porom)).toBeUndefined()
+    expect(log.some((e) => e.type === 'broken' || e.type === 'brokenByAbility'), '"put into the Break Zone" is not a break (§15.1.1.3.2)').toBe(false)
+    expect(shieldsOf(s, b.mine), 'nothing is granted until it resolves').toBeUndefined()
+    s = step(log, s, { type: 'pass', player: 0 }); s = step(log, s, { type: 'pass', player: 1 })
+    expect(log.filter((e) => e.type === 'shieldGranted')).toEqual([{ type: 'shieldGranted', card: b.mine, source: b.porom, amount: 2000 }])
+    expect(shieldsOf(s, b.mine)).toEqual([{ id: `${b.porom}:${s.turn}:0`, reduce: 2000, source: b.porom }])
+    ok(s)
+  })
+
+  it('reduces the NEXT damage only: Jecht Beam’s 8000 lands as 6000, and the Warrior’s 5000 after it lands in full', () => {
+    const b = poromBoard(); let s = b.s; let jecht: CardId; let warrior: CardId
+    ;[s, jecht] = withField(s, 0, 'forwards', '18-129C')
+    ;[s] = withHand(s, 0, '18-129C')
+    ;[s, warrior] = withField(s, 0, 'backups', '11-010C')
+    ;[s] = withCp(s, 0, [FIRE_BACKUP])                         // with the board's Machinist: [Fire][1] for the Warrior
+    s = activateAt(s, b.porom, SHIELD, b.mine).state
+    const beam = activateAt(s, jecht, '18-129C:jecht-beam', b.mine)
+    expect(damageEvents(beam.events)).toEqual([
+      { type: 'abilityDamage', source: jecht, target: b.mine, original: 8000, amount: 6000, trace: [{ by: b.porom, before: 8000, after: 6000 }] },
+    ])
+    expect(dmg(beam.state, b.mine)).toBe(6000)
+    expect(shieldsOf(beam.state, b.mine), 'used up').toBeUndefined()
+    ok(beam.state)
+    const burn = activateAt(beam.state, warrior, '11-010C:burn', b.mine)
+    expect(damageEvents(burn.events)).toEqual([{ type: 'abilityDamage', source: warrior, target: b.mine, original: 5000, amount: 5000, trace: [] }])
+    expect(fc(burn.state, b.mine), '6000 + 5000 on Zack’s 9000').toBeUndefined()
+    ok(burn.state)
+  })
+
+  it('guards the opponent’s Forward just as well, and battle damage as well as an ability’s', () => {
+    const b = poromBoard(); let s = b.s; let taivas: CardId
+    ;[s, taivas] = withField(s, 0, 'forwards', '21-010H')      // Taivas, 9000, with nothing that triggers on attacking
+    s = activateAt(s, b.porom, SHIELD, b.theirs).state
+    expect(shieldsOf(s, b.theirs)).toHaveLength(1)
+    s = endPhase(s)                                            // into P0's Attack Phase: the shield lasts the turn
+    const r = battle(s, [taivas], b.theirs)                    // 9000 into Ward (8000): 7000 with the shield
+    expect(damageEvents(r.events)).toEqual(expect.arrayContaining([
+      { type: 'battleDamage', target: b.theirs, dealers: [taivas], original: 9000, amount: 7000, trace: [{ by: b.porom, before: 9000, after: 7000 }] },
+    ]))
+    expect(dmg(r.state, b.theirs), 'Ward survives a hit that would have broken him').toBe(7000)
+    expect(shieldsOf(r.state, b.theirs)).toBeUndefined()
+    ok(r.state)
+  })
+
+  it('"the next damage" is the next damage, however small: Zack’s 1000 sweep uses the shield up, and his 9000 in battle lands in full', () => {
+    const b = poromBoard()
+    let s = activateAt(b.s, b.porom, SHIELD, b.theirs).state
+    s = endPhase(s)
+    const r = battle(s, [b.mine], b.theirs)                    // Zack attacks: one Backup (the Machinist), so his sweep deals 1000 first
+    expect(damageEvents(r.events).filter((e) => e.target === b.theirs)).toEqual([
+      { type: 'damageReducedToZero', target: b.theirs, dealers: [b.mine], original: 1000, trace: [{ by: b.porom, before: 1000, after: -1000 }] },
+      { type: 'battleDamage', target: b.theirs, dealers: [b.mine], original: 9000, amount: 9000, trace: [] },
+    ])
+    expect(fc(r.state, b.theirs), '9000 on Ward’s 8000').toBeUndefined()
+    ok(r.state)
+  })
+
+  it('"During this turn": an unused shield is gone when the turn ends, and the next turn’s damage lands in full', () => {
+    const b = poromBoard(); let s = b.s; let warrior: CardId
+    ;[s, warrior] = withField(s, 1, 'backups', '11-010C')
+    ;[s] = withCp(s, 1, [FIRE_BACKUP])
+    s = activateAt(s, b.porom, SHIELD, b.mine).state
+    const turn = s.turn
+    for (let i = 0; i < 8 && s.turn === turn; i++) s = endPhase(s)
+    expect(s.turn, 'the turn ended').toBe(turn + 1)
+    expect(shieldsOf(s, b.mine)).toBeUndefined()
+    ok(s)
+    while (s.phase !== 'main1' && !s.pending) s = endPhase(s)
+    const burn = activateAt(s, warrior, '11-010C:burn', b.mine, 1)
+    expect(damageEvents(burn.events)).toEqual([{ type: 'abilityDamage', source: warrior, target: b.mine, original: 5000, amount: 5000, trace: [] }])
   })
 })

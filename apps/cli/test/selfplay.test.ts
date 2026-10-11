@@ -71,14 +71,15 @@ describe('self-play with the real Vol. 2 pool', () => {
 
 // Rung V1-B (plan Task 4, R10): the Vol. 1 pool under play, against Vol. 2, in both seat orders — the J8 test's shape.
 describe('self-play Vol. 1 vs Vol. 2 with their LB decks (rung V1-B)', () => {
-  it('strict random-vs-greedy games complete in both seat orders; Vol. 1 reports its rung-V2 gaps', () => {
+  it('strict random-vs-greedy games complete in both seat orders, and no Vol. 1 card warns (rung V2-B)', () => {
     const defs = loadCards()
     for (const [i, { decks, lbDecks }] of crossDecks().entries()) {
       const r = selfPlay({ games: 4, seed: 1000 + i * 100, decks, lbDecks, defs, agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: true })
       expect(r.failures, `seat order ${i}`).toEqual([]); expect(r.completed).toBe(4)
-      // Wuk Lamat, Charlotte, Porom and Yuzuki print clauses finished in rung V2 (the pool-coverage gap table), so a
-      // Vol. 1 game that casts one warns. The Vol. 2 mirror above asserts 0.
-      expect(r.unimplementedAbilities, `seat order ${i}: no Vol. 1 gap was ever reported`).toBeGreaterThan(0)
+      // Until rung V2-B this asserted `> 0`: Wuk Lamat, Charlotte, Porom and Yuzuki printed damage-replacement clauses the
+      // build did not have, so a Vol. 1 game that cast one warned. They are encoded now. This 0 is an integration check
+      // only — a game that never casts a card cannot warn about it; `pool-coverage`'s empty gap table is the gate.
+      expect(r.unimplementedAbilities, `seat order ${i}: a Vol. 1 clause is unimplemented and not declared inert`).toBe(0)
     }
   }, 300_000)
 
@@ -87,7 +88,22 @@ describe('self-play Vol. 1 vs Vol. 2 with their LB decks (rung V1-B)', () => {
     for (const [i, { decks, lbDecks }] of crossDecks().entries()) {
       const r = selfPlay({ games: 1, seed: 7 + i, decks, lbDecks, defs, agents: [{ kind: 'ismcts', iterations: 4 }, { kind: 'ismcts', iterations: 4 }], strict: true })
       expect(r.failures, `seat order ${i}`).toEqual([]); expect(r.completed).toBe(1)
+      expect(r.unimplementedAbilities, `seat order ${i}`).toBe(0)
     }
+  }, 300_000)
+
+  // Rung V2-B: the Vol. 1 MIRROR. Only here do both sides hold the replacement cards, so only here can Wuk Lamat's
+  // increase meet the other side's Yuzuki, Charlotte or a Porom shield and raise the §11.12.5.7 order choice in play.
+  it('strict Vol. 1 mirror games complete for random, greedy and a small ISMCTS, and nothing warns', () => {
+    const defs = loadCards()
+    const mirror = { decks: [vol1(), vol1()] as [string[], string[]], lbDecks: [vol1Lb(), vol1Lb()] as [string[], string[]] }
+    const r1 = selfPlay({ games: 4, seed: 2000, ...mirror, defs, agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: true })
+    expect(r1.failures).toEqual([]); expect(r1.completed).toBe(4)
+    const r2 = selfPlay({ games: 2, seed: 2100, ...mirror, defs, agents: [{ kind: 'greedy' }, { kind: 'greedy' }], strict: true })
+    expect(r2.failures).toEqual([]); expect(r2.completed).toBe(2)
+    const r3 = selfPlay({ games: 1, seed: 2200, ...mirror, defs, agents: [{ kind: 'ismcts', iterations: 4 }, { kind: 'ismcts', iterations: 4 }], strict: true })
+    expect(r3.failures).toEqual([]); expect(r3.completed).toBe(1)
+    expect([r1, r2, r3].map((r) => r.unimplementedAbilities)).toEqual([0, 0, 0])
   }, 300_000)
 
   it('the AI never proposes a Ward cast that a Water Backup helps pay (21-001R: only Fire CP)', () => {
