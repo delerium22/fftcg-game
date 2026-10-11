@@ -1018,11 +1018,256 @@ describe('11-121C Porom — "When Porom enters the field, discard 1 card from yo
   })
 })
 
-describe('13-125R Yuzuki — both clauses are damage replacements (rung V2)', () => {
-  it('implements nothing yet and says so at cast (a card with no clause implemented reports no count)', () => {
-    expect(def('13-125R').abilities ?? []).toEqual([])
+/** P0's `source` uses its activated `abilityId` on `target`, paid without discarding (the CP is already on the field). */
+function activateAt(state: GameState, source: CardId, abilityId: string, target: CardId) {
+  const cmd = offered(state, 0, source, abilityId).find((c) => c.type === 'activateAbility' && c.targets.includes(target) && c.payment.discards.length === 0)
+  expect(cmd, `${abilityId} is not offered on ${target}`).toBeDefined()
+  return apply(state, cmd!)
+}
+
+/**
+ * P0 attacks with `attacker`, P1 does not block and takes 1 damage; `top`, on P1's deck, is revealed and P1 uses its
+ * EX Burst on `target` (§11.10.2). The burst's damage is P1's: a Character's is an auto-ability, a Summon's is the Summon
+ * (§11.10.3).
+ */
+function burstAt(state: GameState, top: string, attacker: CardId, target: CardId) {
+  let s = state; let tops: CardId[]
+  ;[s, tops] = withDeckTops(s, 1, [top])
+  const events: Event[] = []
+  const run = (r: { state: GameState; events: Event[] }) => { s = r.state; events.push(...r.events) }
+  run(apply(s, { type: 'declareAttack', player: 0, attackers: [attacker] }))
+  run(passBoth(s))
+  run(apply(s, { type: 'declareBlock', player: 1, blocker: null }))
+  run(passBoth(s))
+  expect(s.pending, `${top} is offered as an EX Burst`).toEqual(expect.objectContaining({ kind: 'chooseExBurst', player: 1 }))
+  run(apply(s, { type: 'chooseExBurst', player: 1, use: true }))
+  expect(s.pending).toEqual(expect.objectContaining({ kind: 'chooseTargets', player: 1 }))
+  run(apply(s, { type: 'chooseTargets', player: 1, targets: [target] }))
+  return { state: s, events, burst: tops[0]! }
+}
+
+describe('13-125R Yuzuki — "If a Fire Forward you control is dealt damage by your opponent\'s abilities, the damage becomes 0 instead." and "If a Water Forward you control is dealt damage, reduce the damage by 2000 instead."', () => {
+  const FIRE3 = Array<string>(3).fill(FIRE_BACKUP)
+  const FIRE5 = Array<string>(5).fill(FIRE_BACKUP)
+
+  it('both clauses are damage replacements over her controller’s Forwards, in printed order, and she warns about nothing', () => {
     expect(def('13-125R').abilityClauses).toBe(2)
+    expect(def('13-125R').abilities).toEqual([
+      {
+        id: '13-125R:fire-zero',
+        trigger: { kind: 'static', effect: {
+          kind: 'damageReplacement', id: 'fire-zero',
+          affects: { target: { controller: 'self', filter: { type: 'forward', element: 'fire' } }, byCause: 'ability', byController: 'opponent' },
+          change: { becomes: 0 },
+        } },
+        text: 'If a Fire Forward you control is dealt damage by your opponent\'s abilities, the damage becomes 0 instead.',
+        effects: [],
+      },
+      {
+        id: '13-125R:water-reduce',
+        trigger: { kind: 'static', effect: {
+          kind: 'damageReplacement', id: 'water-reduce',
+          affects: { target: { controller: 'self', filter: { type: 'forward', element: 'water' } } },
+          change: { reduce: 2000 },
+        } },
+        text: 'If a Water Forward you control is dealt damage, reduce the damage by 2000 instead.',
+        effects: [],
+      },
+    ])
     const r = cast(makeGame(), '13-125R', [WATER_BACKUP, FIRE_BACKUP, FIRE_BACKUP])
-    expect(r.events.filter((e) => e.type === 'unimplementedAbility')).toEqual([{ type: 'unimplementedAbility', card: r.card, code: '13-125R' }])
+    expect(r.events.filter((e) => e.type === 'unimplementedAbility')).toEqual([])
+  })
+
+  /** P1 controls Yuzuki and a Fire-only Forward (Ward, 8000); P0 is the opponent. */
+  function fireBoard(base: GameState = makeGame()) {
+    let s = base; let yuzuki: CardId; let ward: CardId
+    ;[s, yuzuki] = withField(s, 1, 'forwards', '13-125R')
+    ;[s, ward] = withField(s, 1, 'forwards', '21-001R')
+    return { s, yuzuki, ward }
+  }
+  const zeroed = (target: CardId, dealer: CardId, original: number, by: CardId) =>
+    [{ type: 'damageReducedToZero', target, dealers: [dealer], original, trace: [{ by, before: original, after: 0 }] }]
+
+  it('Fire: an opponent’s ACTION ability deals 0 (Warrior’s 5000)', () => {
+    const b = fireBoard(); let s = b.s; let warrior: CardId
+    ;[s, warrior] = withField(s, 0, 'backups', '11-010C')
+    ;[s] = withCp(s, 0, [FIRE_BACKUP, FIRE_BACKUP])
+    const r = activateAt(s, warrior, '11-010C:burn', b.ward)
+    expect(damageEvents(r.events)).toEqual(zeroed(b.ward, warrior, 5000, b.yuzuki))
+    expect(dmg(r.state, b.ward)).toBe(0)
+    ok(r.state)
+  })
+
+  it('Fire: an opponent’s AUTO-ability deals 0 (Ward’s 7000 on entering)', () => {
+    const b = fireBoard()
+    const r = castAt(b.s, '21-001R', FIRE3, b.ward)
+    expect(damageEvents(r.events)).toEqual(zeroed(b.ward, r.card, 7000, b.yuzuki))
+    expect(dmg(r.state, b.ward)).toBe(0)
+    ok(r.state)
+  })
+
+  it('Fire: an opponent’s SPECIAL ability deals 0 (Jecht Beam’s 8000)', () => {
+    const b = fireBoard(); let s = b.s; let jecht: CardId
+    ;[s, jecht] = withField(s, 0, 'forwards', '18-129C')
+    ;[s] = withHand(s, 0, '18-129C')
+    const r = activateAt(s, jecht, '18-129C:jecht-beam', b.ward)
+    expect(damageEvents(r.events)).toEqual(zeroed(b.ward, jecht, 8000, b.yuzuki))
+    expect(dmg(r.state, b.ward)).toBe(0)
+    ok(r.state)
+  })
+
+  /** For the EX Bursts the damaged player must be the opponent, so P0 controls Yuzuki, a Fire-only Zack (9000) and the attacker. */
+  function burstBoard() {
+    let s = endPhase(makeGame()); let yuzuki: CardId; let zack: CardId; let attacker: CardId
+    ;[s, yuzuki] = withField(s, 0, 'forwards', '13-125R')
+    ;[s, zack] = withField(s, 0, 'forwards', '27-123S')
+    ;[s, attacker] = withField(s, 0, 'forwards', '21-001R')
+    return { s, yuzuki, zack, attacker }
+  }
+
+  it('Fire: an opponent’s Character EX Burst is an auto-ability (§11.10.3) and deals 0 (Ward’s 7000)', () => {
+    const b = burstBoard()
+    const r = burstAt(b.s, '21-001R', b.attacker, b.zack)
+    expect(damageEvents(r.events)).toEqual(zeroed(b.zack, r.burst, 7000, b.yuzuki))
+    expect(dmg(r.state, b.zack)).toBe(0)
+    ok(r.state)
+  })
+
+  it('Fire: a Summon is not an ability — Ifrit’s 9000 lands in full, cast or as an EX Burst', () => {
+    const b = fireBoard()
+    const r = castAt(b.s, '12-005C', FIRE5, b.ward)
+    expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.card, target: b.ward, original: 9000, amount: 9000, trace: [] }])
+    expect(fc(r.state, b.ward)).toBeUndefined()
+    const c = burstBoard()
+    const x = burstAt(c.s, '12-005C', c.attacker, c.zack)
+    expect(damageEvents(x.events)).toEqual([{ type: 'abilityDamage', source: x.burst, target: c.zack, original: 9000, amount: 9000, trace: [] }])
+    expect(fc(x.state, c.zack)).toBeUndefined()
+    ok(x.state)
+  })
+
+  it('Fire: battle damage lands in full', () => {
+    const b = fireBoard(endPhase(makeGame())); let s = b.s; let attacker: CardId
+    ;[s, attacker] = withField(s, 0, 'forwards', '27-123S', { enteredTurn: 0 })   // Zack, 9000; no Backup, so his sweep deals nothing
+    const r = battle(s, [attacker], b.ward)
+    expect(damageEvents(r.events)).toEqual(expect.arrayContaining([{ type: 'battleDamage', target: b.ward, dealers: [attacker], original: 9000, amount: 9000, trace: [] }]))
+    expect(fc(r.state, b.ward)).toBeUndefined()
+  })
+
+  it('Fire: her controller’s OWN ability lands in full, and so does an ability on the opponent’s Fire Forward', () => {
+    let s = makeGame(); let mine: CardId; let theirs: CardId
+    ;[s] = withField(s, 0, 'forwards', '13-125R')              // Yuzuki is P0's here
+    ;[s, mine] = withField(s, 0, 'forwards', '27-123S')        // P0's own Fire Forward
+    ;[s, theirs] = withField(s, 1, 'forwards', '27-123S')      // the opponent's Fire Forward
+    for (const target of [mine, theirs]) {
+      const r = castAt(s, '21-001R', FIRE3, target)
+      expect(damageEvents(r.events), target === mine ? 'her own side’s ability' : 'not a Forward she protects').toEqual([
+        { type: 'abilityDamage', source: r.card, target, original: 7000, amount: 7000, trace: [] },
+      ])
+    }
+  })
+
+  /** P1 controls Yuzuki and a Water-only Forward (Yuna, 7000). */
+  function waterBoard(base: GameState = makeGame()) {
+    let s = base; let yuzuki: CardId; let yuna: CardId
+    ;[s, yuzuki] = withField(s, 1, 'forwards', '13-125R')
+    ;[s, yuna] = withField(s, 1, 'forwards', '27-129S')
+    return { s, yuzuki, yuna }
+  }
+
+  it('Water: an ability’s 5000 lands as 3000, and a Summon’s 9000 as 7000', () => {
+    const b = waterBoard(); let s = b.s; let warrior: CardId
+    ;[s, warrior] = withField(s, 0, 'backups', '11-010C')
+    ;[s] = withCp(s, 0, [FIRE_BACKUP, FIRE_BACKUP])
+    const r = activateAt(s, warrior, '11-010C:burn', b.yuna)
+    expect(damageEvents(r.events)).toEqual([
+      { type: 'abilityDamage', source: warrior, target: b.yuna, original: 5000, amount: 3000, trace: [{ by: b.yuzuki, before: 5000, after: 3000 }] },
+    ])
+    expect(dmg(r.state, b.yuna)).toBe(3000)
+    ok(r.state)
+    const i = castAt(b.s, '12-005C', FIRE5, b.yuna)
+    expect(damageEvents(i.events)).toEqual([
+      { type: 'abilityDamage', source: i.card, target: b.yuna, original: 9000, amount: 7000, trace: [{ by: b.yuzuki, before: 9000, after: 7000 }] },
+    ])
+    expect(fc(i.state, b.yuna), '7000 on 7000 power').toBeUndefined()
+  })
+
+  it('Water: battle damage is reduced — Yuna blocks Ward (8000), takes 6000 and survives', () => {
+    const b = waterBoard(endPhase(makeGame())); let s = b.s; let ward: CardId
+    ;[s, ward] = withField(s, 0, 'forwards', '21-001R')
+    const r = battle(s, [ward], b.yuna)
+    expect(damageEvents(r.events)).toEqual(expect.arrayContaining([
+      { type: 'battleDamage', target: b.yuna, dealers: [ward], original: 8000, amount: 6000, trace: [{ by: b.yuzuki, before: 8000, after: 6000 }] },
+    ]))
+    expect(dmg(r.state, b.yuna)).toBe(6000)
+    ok(r.state)
+  })
+
+  it('Water: her controller’s own ability is reduced too; the opponent’s Water Forward is not hers to protect', () => {
+    let s = makeGame(); let yuzuki: CardId; let mine: CardId; let theirs: CardId
+    ;[s, yuzuki] = withField(s, 0, 'forwards', '13-125R')
+    ;[s, mine] = withField(s, 0, 'forwards', '27-129S')
+    ;[s, theirs] = withField(s, 1, 'forwards', '27-129S')
+    const own = castAt(s, '21-001R', FIRE3, mine)
+    expect(damageEvents(own.events)).toEqual([
+      { type: 'abilityDamage', source: own.card, target: mine, original: 7000, amount: 5000, trace: [{ by: yuzuki, before: 7000, after: 5000 }] },
+    ])
+    const opp = castAt(s, '21-001R', FIRE3, theirs)
+    expect(damageEvents(opp.events)).toEqual([{ type: 'abilityDamage', source: opp.card, target: theirs, original: 7000, amount: 7000, trace: [] }])
+    expect(fc(opp.state, theirs)).toBeUndefined()
+  })
+
+  it('Yuzuki is Water AND Fire: an opponent’s ability on her meets both clauses, both orders end at 0, and nobody is asked', () => {
+    let s = makeGame(); let yuzuki: CardId
+    ;[s, yuzuki] = withField(s, 1, 'forwards', '13-125R')
+    const r = castAt(s, '21-001R', FIRE3, yuzuki)
+    expect(r.state.pending, 'no §11.12.5.7 prompt: the order cannot change the result').toBeNull()
+    expect(damageEvents(r.events)).toEqual([{
+      type: 'damageReducedToZero', target: yuzuki, dealers: [r.card], original: 7000,
+      trace: [{ by: yuzuki, before: 7000, after: 0 }, { by: yuzuki, before: 0, after: -2000 }],   // §4.3: the running amount may go negative
+    }])
+    expect(dmg(r.state, yuzuki)).toBe(0)
+    ok(r.state)
+  })
+
+  it('Yuzuki is Water AND Fire: battle and a Summon meet only the Water clause', () => {
+    let s = endPhase(makeGame()); let yuzuki: CardId; let ward: CardId
+    ;[s, yuzuki] = withField(s, 1, 'forwards', '13-125R')
+    ;[s, ward] = withField(s, 0, 'forwards', '21-001R')
+    const r = battle(s, [ward], yuzuki)
+    expect(damageEvents(r.events)).toEqual(expect.arrayContaining([
+      { type: 'battleDamage', target: yuzuki, dealers: [ward], original: 8000, amount: 6000, trace: [{ by: yuzuki, before: 8000, after: 6000 }] },
+    ]))
+    expect(dmg(r.state, yuzuki), '6000 on 7000 power').toBe(6000)
+    let t = makeGame(); let y2: CardId
+    ;[t, y2] = withField(t, 1, 'forwards', '13-125R')
+    const i = castAt(t, '12-005C', FIRE5, y2)
+    expect(damageEvents(i.events)).toEqual([
+      { type: 'abilityDamage', source: i.card, target: y2, original: 9000, amount: 7000, trace: [{ by: y2, before: 9000, after: 7000 }] },
+    ])
+    expect(fc(i.state, y2)).toBeUndefined()
+  })
+
+  it('a hit replaced to 0 is not damage, so "When Luso deals damage to a Forward, break it" does not trigger (§11.8.15); a reduced hit still does', () => {
+    // Luso (3000) attacks. Charlotte (Water) blocks under Yuzuki: 3000 − 2000 − 1000 = 0, in either order — no prompt.
+    let s = endPhase(makeGame()); let luso: CardId; let charlotte: CardId
+    ;[s, luso] = withField(s, 0, 'forwards', '27-125S')
+    ;[s] = withField(s, 1, 'forwards', '13-125R')
+    ;[s, charlotte] = withField(s, 1, 'forwards', '27-128S')
+    const r = battle(s, [luso], charlotte)
+    expect(r.state.pending).toBeNull()
+    expect(damageEvents(r.events).filter((e) => e.target === charlotte).map((e) => e.type)).toEqual(['damageReducedToZero'])
+    expect(r.events.some((e) => e.type === 'abilityTriggered' && e.abilityId === '27-125S:damages-forward'), 'Luso dealt no damage').toBe(false)
+    expect(fc(r.state, charlotte), 'Charlotte stands, unmarked').toMatchObject({ damage: 0 })
+    expect(fc(r.state, luso), 'and her 8000 broke Luso').toBeUndefined()
+    ok(r.state)
+    // The same attack into Yuna (Water, no reduction of her own): 3000 − 2000 = 1000 is damage, and Luso breaks her.
+    let t = endPhase(makeGame()); let luso2: CardId; let yuna: CardId
+    ;[t, luso2] = withField(t, 0, 'forwards', '27-125S')
+    ;[t] = withField(t, 1, 'forwards', '13-125R')
+    ;[t, yuna] = withField(t, 1, 'forwards', '27-129S')
+    const x = battle(t, [luso2], yuna)
+    expect(damageEvents(x.events).filter((e) => e.target === yuna)).toEqual([expect.objectContaining({ type: 'battleDamage', original: 3000, amount: 1000 })])
+    expect(x.events.some((e) => e.type === 'abilityTriggered' && e.abilityId === '27-125S:damages-forward')).toBe(true)
+    expect(fc(x.state, yuna), 'broken by Luso’s trigger, not by 1000 damage').toBeUndefined()
   })
 })

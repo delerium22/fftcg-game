@@ -29,7 +29,7 @@ export const VOL1_CLAUSES: Record<string, number> = {
   '11-121C': 2,   // ETB discard, then draw | [Dull], self-break: next damage −2000 (V2)
   '12-005C': 1,   // EX BURST 9000 damage
   '13-013C': 1,   // ETB 4000, or 8000 with a Porom Forward
-  '13-125R': 2,   // both damage replacements (V2)
+  '13-125R': 2,   // Fire: becomes 0 from the opponent's abilities | Water: −2000 — both damage replacements
   '18-003C': 1,   // [Fire], discard: draw 1
   '18-094C': 1,   // [Water], discard: draw 1
   '18-129C': 2,   // [Fire][Water]: Haste, First Strike, Brave | special ability Jecht Beam
@@ -611,6 +611,43 @@ const POROM_ETB: Ability = {
   }],
 }
 
+/**
+ * Yuzuki's two clauses (rung V2-B), both damage replacements over the Forwards HER CONTROLLER controls — herself
+ * included: she is Water and Fire, so both reach her.
+ *
+ * Clause 1: "by your opponent's abilities" is `byCause: 'ability'` with `byController: 'opponent'` — an action ability,
+ * an auto-ability, a special ability, and a Character's EX Burst, which applies its marked auto-ability (§11.10.3). Not
+ * a Summon, cast or as an EX Burst (spec V2-D6); not battle; not her controller's own ability.
+ */
+const YUZUKI_FIRE: Ability = {
+  id: '13-125R:fire-zero',
+  trigger: {
+    kind: 'static',
+    effect: {
+      kind: 'damageReplacement', id: 'fire-zero',
+      affects: { target: { controller: 'self', filter: { type: 'forward', element: 'fire' } }, byCause: 'ability', byController: 'opponent' },
+      change: { becomes: 0 },
+    },
+  },
+  text: 'If a Fire Forward you control is dealt damage by your opponent\'s abilities, the damage becomes 0 instead.',
+  effects: [],   // a static makes something true; it has nothing to run
+}
+
+/** Clause 2: any damage — battle, an ability or a Summon, from either player — to a Water Forward she controls. */
+const YUZUKI_WATER: Ability = {
+  id: '13-125R:water-reduce',
+  trigger: {
+    kind: 'static',
+    effect: {
+      kind: 'damageReplacement', id: 'water-reduce',
+      affects: { target: { controller: 'self', filter: { type: 'forward', element: 'water' } } },
+      change: { reduce: 2000 },
+    },
+  },
+  text: 'If a Water Forward you control is dealt damage, reduce the damage by 2000 instead.',
+  effects: [],
+}
+
 /** Implemented Vol. 1 clauses by card code, spread into `ABILITIES`. Printed order within each card. */
 export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '1-170C': [FAIRY_SUMMON],
@@ -620,6 +657,7 @@ export const VOL1_ABILITIES: Record<string, readonly Ability[]> = {
   '11-121C': [POROM_ETB],
   '12-005C': [IFRIT_SUMMON],
   '13-013C': [PALOM_ETB],
+  '13-125R': [YUZUKI_FIRE, YUZUKI_WATER],
   '18-003C': [MACHINIST_DRAW],
   '18-094C': [GEOMANCER_WATER_DRAW],
   '18-129C': [JECHT_GAINS, JECHT_BEAM],
