@@ -162,7 +162,7 @@ The referee checks that every citation exists; that a cited test tests its ROW i
 | 11.8.12 | Effects applying differently | n/a | none in the pool |
 | 11.8.13 | Conditional auto-abilities check at trigger and at resolution | tested | engine/conditional-triggers#does not trigger with the condition unmet; engine/conditional-triggers#becomes true only after the event; engine/conditional-triggers#became false while the item waited |
 | 11.8.14 | "You may": placed regardless, decided at resolution | tested | cards/abilities#24-063H Hugh Yurg — "you may search |
-| 11.8.15 | Only when the event actually occurs; a replaced event does not trigger | n/a | no replacement effects in the pool and no AST node for one (§11.12.5 is out of scope) |
+| 11.8.15 | Only when the event actually occurs; a replaced event does not trigger (damage replaced to 0 is the pool's one case — rung V2-B; §11.12.5 itself is outside this matrix) | tested | engine/damage-replacement#does not fire on 0, and the blocker survives; cards/abilities-vol1#a hit replaced to 0 is not damage |
 | 11.8.16 | Zone movement triggers | tested | engine/observer-triggers#C2-A2 |
 | 11.8.16.1 | Fail when the card did not reach the zone | n/a | none in the pool |
 | 11.8.16.2 | A search whose card does not reach the zone fails | n/a | none in the pool |

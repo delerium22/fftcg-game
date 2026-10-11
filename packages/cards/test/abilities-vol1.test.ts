@@ -1166,6 +1166,16 @@ describe('13-125R Yuzuki — "If a Fire Forward you control is dealt damage by y
     }
   })
 
+  it('Fire: "you control" — the opponent’s own ability on the opponent’s own Fire Forward is not her business', () => {
+    // Found by mutating the encoding: with `controller: 'any'` this hit became 0, and no other test noticed.
+    let s = makeGame(); let own: CardId
+    ;[s] = withField(s, 1, 'forwards', '13-125R')              // Yuzuki is P1's
+    ;[s, own] = withField(s, 0, 'forwards', '27-123S')         // P0's Zack, hit by P0's own Ward
+    const r = castAt(s, '21-001R', FIRE3, own)
+    expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.card, target: own, original: 7000, amount: 7000, trace: [] }])
+    expect(dmg(r.state, own)).toBe(7000)
+  })
+
   /** P1 controls Yuzuki and a Water-only Forward (Yuna, 7000). */
   function waterBoard(base: GameState = makeGame()) {
     let s = base; let yuzuki: CardId; let yuna: CardId
