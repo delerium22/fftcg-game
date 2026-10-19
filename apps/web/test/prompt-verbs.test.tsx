@@ -8,6 +8,10 @@ import { CARD_DEFS, DECKS } from '../src/deck.js'
 import { buildChoiceSet, paymentAlternatives, preferredChoices } from '../src/game/commands.js'
 import { HUMAN } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung G2 — the prompt names moves you cannot make.
  *
@@ -98,7 +102,7 @@ function* samples(): Generator<Sample> {
 }
 
 describe('G2 — the prompt only names moves the position offers', () => {
-  it('never claims a verb the legal commands do not contain (G2-A1)', () => {
+  slow('never claims a verb the legal commands do not contain (G2-A1)', () => {
     const overclaims: string[] = []
     const byPhase = new Map<string, number>()
     const byVerb = new Map<string, number>()
@@ -131,7 +135,7 @@ describe('G2 — the prompt only names moves the position offers', () => {
     ).toEqual({ byPhase: {}, byVerb: {} })
   }, 60_000)
 
-  it('still names the moves it DOES offer (G2-A2)', () => {
+  slow('still names the moves it DOES offer (G2-A2)', () => {
     // The converse, and the reason A1 cannot be satisfied by a prompt that says nothing. Both directions or
     // neither: a strip that went silent would pass A1 perfectly and be worse than what it replaced.
     //
@@ -156,7 +160,7 @@ describe('G2 — the prompt only names moves the position offers', () => {
     expect(silent.length, silent.slice(0, 4).join(' | ')).toBe(0)
   }, 60_000)
 
-  it('never says "attack" during Main Phase 1, because that is not a Main Phase 1 move (G2-A3)', () => {
+  slow('never says "attack" during Main Phase 1, because that is not a Main Phase 1 move (G2-A3)', () => {
     // Separate from A1 so it cannot pass merely because the sampled boards had no attackers: an attack is
     // declared in the Attack Phase, which Main Phase 1 reaches by passing.
     let mains = 0

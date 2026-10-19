@@ -13,6 +13,10 @@ import { buildChoiceSet, choiceName, displayName, preferredChoices } from '../sr
 import { stepAi } from '../src/game/useGame.js'
 import { HUMAN, type Choice, type GameApi } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung E10 — choices whose subject the board's named zones do not draw.
  *
@@ -218,7 +222,7 @@ describe("an activation's target that no row draws (E10-A3)", () => {
     }
   })
 
-  it('still treats payment as chosen FOR the player, not as a subject', () => {
+  slow('still treats payment as chosen FOR the player, not as a subject', () => {
     // The distinction the change rests on: a target is chosen BY the player and is a subject; the backups
     // dulled to pay are chosen for them and are not. Losing that would light up the whole board.
     //
@@ -387,7 +391,7 @@ describe('a deck search (E10-A2/A3/A4)', () => {
  * there was nothing to clear.
  */
 describe('candidates clear once the choice is made (E10-A5)', () => {
-  it('leaves none of the searched deck cards on the board afterwards', () => {
+  slow('leaves none of the searched deck cards on the board afterwards', () => {
     const found = (() => {
       for (let seed = 1; seed <= 30; seed++) {
         const greedy = new GreedyAgent({ seed, decks: DECKS, depth: 1 })

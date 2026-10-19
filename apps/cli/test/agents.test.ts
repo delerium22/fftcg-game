@@ -9,6 +9,10 @@ import { MAX_ITERATIONS, MAX_ROLLOUT_CAP, describeAgentSpec, makeAgent, parseAge
 import { selfPlay } from '../src/selfplay.js'
 import { mirrorTournament } from '../src/mirror.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 const deck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 const decks = (): [string[], string[]] => { const d = deck(); return [d, d] }
 
@@ -142,7 +146,7 @@ describe('makeAgent', () => {
 })
 
 describe('selfPlay determinism', () => {
-  it('two identical runs produce identical reports (ignoring timing)', () => {
+  slow('two identical runs produce identical reports (ignoring timing)', () => {
     const deck = parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
     const opts = { games: 5, seed: 900, decks: [deck, deck] as [string[], string[]], defs: loadCards(), agents: [{ kind: 'greedy' as const }, { kind: 'random' as const }] as [AgentSpec, AgentSpec], strict: false }
     const r1 = selfPlay(opts)
@@ -298,7 +302,7 @@ describe('the flag reaches the tournament (G1a, and the bug an A/A caught)', () 
     expect(spec).toMatchObject({ kind: 'ismcts', iterations: 200, rolloutCap: 40, budgetMs: 500, minIterations: 64, weights: { damage: 25 } })
   })
 
-  it('the tournament REPORT names the weight, which is where the bug was visible', () => {
+  slow('the tournament REPORT names the weight, which is where the bug was visible', () => {
     // A one-iteration tournament, because this asserts labelling rather than play: what went wrong was that
     // both arms printed `"agents": ["ismcts:200", "ismcts:200"]`, and a report that cannot tell its treatment
     // from its control is a measurement nobody can act on however the games came out.
@@ -310,7 +314,7 @@ describe('the flag reaches the tournament (G1a, and the bug an A/A caught)', () 
     expect(treated.search[0]?.decisions ?? 0, 'the arm never searched, so nothing is proven').toBeGreaterThan(0)
   }, 60_000)
 
-  it('an agent BUILT through the CLI path plays differently under a dominating weight', () => {
+  slow('an agent BUILT through the CLI path plays differently under a dominating weight', () => {
     // The behavioural half, entered where the CLI enters it — `parseAgentSpec` -> `withDefaults` ->
     // `makeAgent` -> `decide` — rather than by constructing a SearchInput directly. Deliberately not asserted
     // through `mirrorTournament`: at a test-affordable iteration count the tournament's outcomes coincide

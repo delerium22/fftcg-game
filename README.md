@@ -64,6 +64,7 @@ pnpm install
 pnpm --filter @fftcg/web dev                           # play in a browser — open the URL it prints
 
 pnpm test                                              # vitest
+FFTCG_SKIP_SLOW=1 pnpm test                            # what CI runs: skips tests marked `slow`
 pnpm typecheck                                         # tsc -b, all packages
 pnpm lint                                               # eslint .
 

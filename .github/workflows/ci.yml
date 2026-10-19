@@ -28,4 +28,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Tests marked `slow` (2 s or more on the dev Mac: whole-game sweeps and search runs, 59 of
+      # 1,734) are skipped here; they take minutes and sit near their timeouts on any runner
+      # (issue #23). `pnpm test` on the Mac still runs them.
       - run: pnpm test
+        env:
+          FFTCG_SKIP_SLOW: '1'

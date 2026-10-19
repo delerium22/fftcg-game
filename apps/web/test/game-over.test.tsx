@@ -9,6 +9,10 @@ import { buildChoiceSet, describeResult } from '../src/game/commands.js'
 import { describeEvent, stepAi } from '../src/game/useGame.js'
 import { AI, HUMAN, type Choice, type ChoiceSet, type GameApi, type LogLine } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * What the browser says when the game ends.
  *
@@ -107,7 +111,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     return document.getElementById(id!)?.textContent ?? ''
   }
 
-  it('is a native dialog with the alertdialog contract', () => {
+  slow('is a native dialog with the alertdialog contract', () => {
     const { state, log } = playToAiWin()
     mountFinished(state, log)
     const d = dialog()
@@ -116,7 +120,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     expect(d.getAttribute('aria-modal'), 'the board behind is still exposed to assistive technology').toBe('true')
   })
 
-  it('names and describes itself with the OUTCOME, not just "Game over"', () => {
+  slow('names and describes itself with the OUTCOME, not just "Game over"', () => {
     // The plan review's CRITICAL, and the third time this shape has been caught in this program. The old
     // banner's only accessible name was `aria-label="Game over"`, so a screen reader announced that and
     // stopped: the player learned the game had ended, not who won. Both relationships are resolved to their
@@ -129,7 +133,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     expect(resolves(d, 'aria-describedby'), 'the dialog is not described by the reason').toBe('You have taken 7 damage.')
   })
 
-  it('puts focus on the HEADING, not the dialog and not the button', () => {
+  slow('puts focus on the HEADING, not the dialog and not the button', () => {
     // Focusing the container announces the dialog's own name and stops. Focusing the button announces the
     // action before the outcome. The heading is what carries "The AI wins", with the reason after it.
     const { state, log } = playToAiWin()
@@ -139,7 +143,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     expect(document.activeElement, 'focus did not land on the outcome').toBe(heading)
   })
 
-  it('calls showModal, which is what makes the board inert', () => {
+  slow('calls showModal, which is what makes the board inert', () => {
     // A SPY, not an emulation. This jsdom implements neither `showModal` nor `inert`, so the actual modality
     // — top layer, focus containment, the board leaving the tab order — is proven in a real browser and
     // nowhere else. What can honestly be checked here is that the lifecycle asks for it.
@@ -162,7 +166,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     }
   })
 
-  it('puts focus back on the new game after Play again', () => {
+  slow('puts focus back on the new game after Play again', () => {
     // The dialog is modal, so the button the player just pressed is destroyed with it and focus falls to
     // `document.body` — measured in a browser, not assumed. From there a keyboard player tabs in from the
     // top of the document to make the first decision of a brand new game, which is the very state this rung
@@ -200,7 +204,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
     expect(document.activeElement, 'the board stole focus back after the player moved it').toBe(elsewhere)
   })
 
-  it('refuses to be dismissed — there is nothing to dismiss to', () => {
+  slow('refuses to be dismissed — there is nothing to dismiss to', () => {
     // `defaultPrevented` read AFTER dispatch. Reading it inside a listener on the target is the mistake the
     // card grid taught: events bubble target-first, so such a listener runs before the handler under test.
     const { state, log } = playToAiWin()
@@ -212,7 +216,7 @@ describe('the game-over dialog is a dialog (rung E7)', () => {
 })
 
 describe('a finished game in a real Board', () => {
-  it('leaks neither a player index nor a rules citation, anywhere in the DOM', () => {
+  slow('leaks neither a player index nor a rules citation, anywhere in the DOM', () => {
     // The whole document, not just `.banner`. `describeEvent` renders the game-over line into the event log
     // independently of the banner, and `Board` keeps the log mounted behind the overlay — so fixing only the
     // banner would have left the identical leak a few pixels lower, in a DOM a screen reader still walks.
@@ -228,13 +232,13 @@ describe('a finished game in a real Board', () => {
     expect(document.querySelector('.banner__title')?.textContent).toBe('The AI wins')
   })
 
-  it('still offers a way to play again', () => {
+  slow('still offers a way to play again', () => {
     const { state, log } = playToAiWin()
     mountFinished(state, log)
     expect(document.querySelector('.banner button')?.textContent).toBe('Play again')
   })
 
-  it('offers no stale choice once the game is over, even if handed one', () => {
+  slow('offers no stale choice once the game is over, even if handed one', () => {
     // The first version of this asserted "no choice buttons" against a fixture built with `buildChoiceSet(v,
     // [])` — an empty choice set asserting it was empty. It could not fail. Hand the finished board a
     // DELIBERATELY non-empty set, so the assertion is about the board's behaviour rather than the fixture's.

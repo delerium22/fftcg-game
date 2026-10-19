@@ -6,6 +6,10 @@ import { selfPlay } from '../src/selfplay.js'
 import { parseDeckFile } from '../src/deck.js'
 import { readFileSync } from 'node:fs'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung G3 — EX Burst on damage (§11.10), the accounting.
  *
@@ -112,7 +116,7 @@ function tallyEvent(t: Tally, e: Event): void {
 
 describe('G3-A1 — every revealed EX Burst is accounted for exactly once', () => {
   for (const [label, answer] of [['always used', true], ['always declined', false]] as const) {
-    it(`closes the sum when the burst is ${label}`, () => {
+    slow(`closes the sum when the burst is ${label}`, () => {
       const t = play(20, answer)
       expect(t.reveals, 'no EX Burst was revealed in 20 games, so this asserts nothing').toBeGreaterThan(20)
       // Both terms are now MEASURED, so this can actually fail: an offer that never happened for some third
@@ -129,7 +133,7 @@ describe('G3-A1 — every revealed EX Burst is accounted for exactly once', () =
     }, CORPUS_TIMEOUT)
   }
 
-  it('a used burst runs the card’s own marked clause, and declining runs nothing (G3-A2)', () => {
+  slow('a used burst runs the card’s own marked clause, and declining runs nothing (G3-A2)', () => {
     // Two independent halves, because either alone can pass while the claim is false.
     //
     // BY ID: `abilityNoLegalTarget` names the clause that ran, and it must be the very id the offer carried.
@@ -156,7 +160,7 @@ describe('G3-A1 — every revealed EX Burst is accounted for exactly once', () =
 })
 
 describe('G3-A8 — at most one EX Burst can ever be pending', () => {
-  it('no engine path deals more than one point of player damage in one resolution', () => {
+  slow('no engine path deals more than one point of player damage in one resolution', () => {
     // The design rests on this. CR §6.5.2.1 batches every point of a multi-point damage resolution BEFORE any
     // EX Burst resolves, and nothing here implements that — because nothing here can reach it: `resolveDamage`
     // has an unblocked party deal ONE point with its members sharing attribution, and blocked members deal
@@ -233,7 +237,7 @@ describe('G3-A4 — an opted-in burst with no legal target settles instead of st
 })
 
 describe('G3-A6/A7 — the agent decides, and the counters can fail', () => {
-  it('a searching agent picks BOTH answers across a corpus, so neither is a default', () => {
+  slow('a searching agent picks BOTH answers across a corpus, so neither is a default', () => {
     // `legalCommands` lists decline first precisely because a budget-starved rollout keeps candidate zero
     // without pricing the rest. If that degradation were the whole story the agent would never use a burst —
     // so seeing both answers chosen is what shows the decision is actually being scored.
@@ -246,7 +250,7 @@ describe('G3-A6/A7 — the agent decides, and the counters can fail', () => {
     expect(r.exBurst.declined, 'the agent never declined a burst — use is acting as a default').toBeGreaterThan(0)
   }, CORPUS_TIMEOUT)
 
-  it('every offer reaches exactly one answer (G3-A7)', () => {
+  slow('every offer reaches exactly one answer (G3-A7)', () => {
     // The gate `unimplementedAbilities: 0` could not be: it counts a different event and stayed at zero
     // throughout the period when every EX Burst was being skipped. This one fails if an offer is ever left
     // unanswered, which is the exact shape of the `attack.ts` bug that erased the decision.

@@ -13,6 +13,10 @@ import { endPhase, makeGame, withHand, withHandSize } from '../../../packages/en
 import { stepAi } from '../src/game/useGame.js'
 import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung I1 — the card sheet.
  *
@@ -197,7 +201,7 @@ describe('I1-A3 — a non-payable choice commits from the sheet with its full la
 })
 
 describe('I1-A4 — no press on the board submits anything', () => {
-  it('over six seeded games, pressing every rendered card at every human decision applies nothing', () => {
+  slow('over six seeded games, pressing every rendered card at every human decision applies nothing', () => {
     let pressed = 0
     for (let seed = 1; seed <= 6; seed++) {
       const greedy = new GreedyAgent({ seed, decks: DECKS, depth: 1 })

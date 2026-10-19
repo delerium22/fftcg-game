@@ -9,6 +9,10 @@ import { buildChoiceSet, preferredChoices } from '../src/game/commands.js'
 import { stepAi } from '../src/game/useGame.js'
 import { AI, HUMAN, type Choice, type GameApi, type LogLine } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * The two channels a player who cannot see the board depends on: what is required, and what happened.
  *
@@ -179,7 +183,7 @@ describe('what the AI did is announced', () => {
     expect(texts, 'the earlier narration was dropped').toContain('New game — you play Starter Vol. 2, the AI plays Starter Vol. 2')
   })
 
-  it('goes polite → off → polite across one mounted board', () => {
+  slow('goes polite → off → polite across one mounted board', () => {
     // Mounting a finished game and finding `off` proves nothing about the TRANSITION. This survives it:
     //
     //     const initialSilenced = useRef(silenced).current

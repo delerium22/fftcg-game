@@ -11,6 +11,10 @@ import { Board } from '../src/ui/Board.js'
 import { buildChoiceSet, headline, paymentAlternatives, preferredChoices } from '../src/game/commands.js'
 import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung F6 — every card you can press says what pressing it does.
  *
@@ -103,7 +107,7 @@ function* positions(): Generator<GameState> {
 }
 
 describe('every pressable card says what pressing it does (F6-A1)', () => {
-  it('leaves NO clickable card silent, across hand, field and the orphan row', () => {
+  slow('leaves NO clickable card silent, across hand, field and the orphan row', () => {
     let silent = 0
     const seen = { hand: 0, field: 0, orphan: 0 }
     const skipped = { hand: 0, field: 0, orphan: 0 }

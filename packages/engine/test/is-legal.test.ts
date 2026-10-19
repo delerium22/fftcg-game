@@ -7,6 +7,10 @@ import { actingPlayer, isLegal, legalCommands } from '../src/legal.js'
 import { nextInt, seedRng } from '../src/rng.js'
 import { makeGame } from './helpers.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung J7-A1 — `isLegal` is the one legality authority: it accepts a command exactly when `apply` does not
  * throw `IllegalCommandError`, for every listed command AND for set-shaped commands `legalCommands` did not
@@ -41,7 +45,7 @@ function probes(s: GameState, rng: ReturnType<typeof seedRng>): [Command[], Retu
 }
 
 describe('J7-A1 — isLegal accepts exactly what apply accepts', () => {
-  it('over 20 seeds of random walks, listed commands and unlisted set probes agree', () => {
+  slow('over 20 seeds of random walks, listed commands and unlisted set probes agree', () => {
     let listed = 0, probed = 0, unlistedAccepted = 0
     for (let seed = 1; seed <= 20; seed++) {
       let s = makeGame({ seed })

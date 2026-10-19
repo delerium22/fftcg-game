@@ -23,6 +23,10 @@ import {
 } from '../src/game/useGame.js'
 import { makeGame, withField } from '../../../packages/engine/test/helpers.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 const newGame = (seed: number, defs: CardDef[] = CARD_DEFS): GameState => createGame({ seed, decks: DECKS, defs })
 
 /**
@@ -376,7 +380,7 @@ describe("an AI move label reads the pending it ANSWERED, not the one that repla
    * for a target's printed verb) and `v.fields[...].deck` (for the picked cards). By the time the label is
    * written, the pending it answered is gone and the deck has already moved.
    */
-  it('labels a search as PLAY, not as a take, when the AI answers it', () => {
+  slow('labels a search as PLAY, not as a take, when the AI answers it', () => {
     const labels: string[] = []
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
       let state = newGame(seed)
@@ -564,7 +568,7 @@ describe('a complete headless game (B-A1/B-A2/B-A4)', () => {
     expect(playFullGame(SEED).log.map((l) => l.text)).toEqual(played.log.map((l) => l.text))
   })
 
-  it('B-A2: EVERY command type the engine can ask for is reachable from the choice set alone', () => {
+  slow('B-A2: EVERY command type the engine can ask for is reachable from the choice set alone', () => {
     // Taking the first choice every time is one narrow path through the game: the human never blocks (the
     // no-block option is first), never splits party damage, and never fills a hand past the discard limit. So
     // sweep seeds AND several human policies — first choice, last choice, and a couple of deterministic
@@ -859,7 +863,7 @@ describe('a complete headless game WITH abilities (C1-A3)', () => {
     expect(log.some((l) => l.text.includes('is dulled') || l.text.includes('gains Haste') || l.text.includes('damage to'))).toBe(true)
   })
 
-  it('is deterministic for a fixed seed and policy', () => {
+  slow('is deterministic for a fixed seed and policy', () => {
     const a = playFullGame(1, POLICIES[0], ABILITY_DEFS).log.map((l) => l.text)
     expect(playFullGame(1, POLICIES[0], ABILITY_DEFS).log.map((l) => l.text)).toEqual(a)
   })
