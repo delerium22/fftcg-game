@@ -5,6 +5,8 @@ name: ci
 # automatically.
 # Unit tests only (vitest). The Playwright specs (pnpm test:browser) are not run here:
 # the screenshot baseline is recorded on macOS only.
+# macOS runner: on the 4-core Linux runner 12 of 149 test files timed out (search-heavy
+# tests ran ~3x slower than on the dev Mac). The repo is public, so macOS minutes are free.
 
 on:
   pull_request:
@@ -16,7 +18,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
       # No version input: package.json pins packageManager (pnpm@11.20.0).
