@@ -12,6 +12,10 @@ import { PromptStrip } from '../src/ui/PromptStrip.js'
 import { buildChoiceSet, paymentAlternatives, preferredChoices } from '../src/game/commands.js'
 import { HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung G6 — for one decision in seven, the only button is "Concede".
  *
@@ -97,7 +101,7 @@ function unpressable(d: Decision): string[] {
 
 // 40 seeds of greedy play plus a few hundred full-board mounts is well past vitest's 5 s default.
 describe('G6 — the strip never offers Concede alone', () => {
-  it('renders no button where every answer is on a card (G6-A1), and every other strip intact (G6-A2)', () => {
+  slow('renders no button where every answer is on a card (G6-A1), and every other strip intact (G6-A2)', () => {
     let seen = 0
     let hazard = 0          // decisions where the CHOICES would put Concede alone — the before-figure
     let concedeAlone = 0    // decisions where the RENDERED strip's only button is Concede — must be 0
@@ -135,7 +139,7 @@ describe('G6 — the strip never offers Concede alone', () => {
     expect(concedeAlone, `${concedeAlone} of ${seen} decisions still render Concede as the only button (G6-A1)`).toBe(0)
   }, 120_000)
 
-  it('leaves the card the prompt points at pressable, at exactly those decisions (G6-A4)', () => {
+  slow('leaves the card the prompt points at pressable, at exactly those decisions (G6-A4)', () => {
     let checked = 0
     const stranded: string[] = []
     for (const d of decisions()) {

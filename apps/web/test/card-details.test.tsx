@@ -14,6 +14,10 @@ import { CardDetails } from '../src/ui/CardDetails.js'
 import { buildChoiceSet, preferredChoices } from '../src/game/commands.js'
 import { AI, HUMAN, type Choice, type ChoiceSet, type GameApi } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * The card details panel, driven through the REAL `Board` from a REAL mulligan view.
  *
@@ -564,7 +568,7 @@ describe('the field zones as keyboard grids (rung E3b-2)', () => {
     expect(said, 'a granted keyword is not announced').toContain('Haste granted')
   })
 
-  it('lets a blocker be chosen with the ATTACKER readable — the case E3a could not serve', () => {
+  slow('lets a blocker be chosen with the ATTACKER readable — the case E3a could not serve', () => {
     // Deciding a block means reading a Forward on the opponent's side of the board. Reached by playing, not
     // hand-built: the fixture-that-cannot-occur mistake has been made twice in this program already.
     //
@@ -770,7 +774,7 @@ describe('the public piles, opened and read (rung E3b-3)', () => {
     expectDescribedBy(target, firstCardText(s!, owner, 'damageZone'))
   })
 
-  it('opens and reads REMOVED FROM GAME, which the board never showed at all', () => {
+  slow('opens and reads REMOVED FROM GAME, which the board never showed at all', () => {
     // Suppressing these buttons entirely survived the suite. The zone is public (spec C7-1) and was not
     // rendered anywhere before this rung — not even as a count.
     const s = withPile(HUMAN, 'removedFromGame') ?? withPile(AI, 'removedFromGame')

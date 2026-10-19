@@ -1,0 +1,36 @@
+name: ci
+
+# Runs the test suite on every pull request and on push to main.
+# Added by the 2026-10-19 test-suite audit (D1b): before this, nothing ran these tests
+# automatically.
+# Unit tests only (vitest). The Playwright specs (pnpm test:browser) are not run here:
+# the screenshot baseline is recorded on macOS only.
+# macOS runner: on the 4-core Linux runner 12 of 149 test files timed out (search-heavy
+# tests ran ~3x slower than on the dev Mac). The repo is public, so macOS minutes are free.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      # No version input: package.json pins packageManager (pnpm@11.20.0).
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Tests marked `slow` (2 s or more on the dev Mac: whole-game sweeps and search runs, 59 of
+      # 1,734) are skipped here; they take minutes and sit near their timeouts on any runner
+      # (issue #23). `pnpm test` on the Mac still runs them.
+      - run: pnpm test
+        env:
+          FFTCG_SKIP_SLOW: '1'

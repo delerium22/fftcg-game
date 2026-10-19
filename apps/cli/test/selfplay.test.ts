@@ -9,6 +9,10 @@ import { parseDeckFile } from '../src/deck.js'
 import { mirrorTournament, pairedBootstrapCi, type MirrorReport } from '../src/mirror.js'
 import { newGameStats, playGame, readSearchCounters, selfPlay } from '../src/selfplay.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 const deck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2.txt', import.meta.url), 'utf8'))
 const decks = (): [string[], string[]] => { const d = deck(); return [d, d] }
 const lbDeck = (): string[] => parseDeckFile(readFileSync(new URL('../../../decks/starter-2025-vol2-lb.txt', import.meta.url), 'utf8'))
@@ -23,7 +27,7 @@ const crossDecks = (): { decks: [string[], string[]]; lbDecks: [string[], string
 ]
 
 describe('self-play with the real Vol. 2 pool', () => {
-  it('20 random games complete without engine errors', () => {
+  slow('20 random games complete without engine errors', () => {
     const r = selfPlay({ games: 20, seed: 100, decks: decks(), defs: loadCards() })
     expect(r.failures).toEqual([])
     expect(r.completed).toBe(20)
@@ -38,7 +42,7 @@ describe('self-play with the real Vol. 2 pool', () => {
     expect(r.search).toEqual([null, null])                // D-A4: no search ran, so no counters — not zeros
   }, 60_000)
 
-  it('greedy beats random decisively (30 games, depth 1, both seats)', () => {
+  slow('greedy beats random decisively (30 games, depth 1, both seats)', () => {
     const a = selfPlay({ games: 15, seed: 500, decks: decks(), defs: loadCards(), agents: [{ kind: 'greedy' }, { kind: 'random' }], strict: false })
     const b = selfPlay({ games: 15, seed: 600, decks: decks(), defs: loadCards(), agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: false })
     expect(a.failures).toEqual([]); expect(b.failures).toEqual([])
@@ -48,19 +52,19 @@ describe('self-play with the real Vol. 2 pool', () => {
     expect(a.msPerDecision[0]).toBeGreaterThan(0); expect(b.msPerDecision[1]).toBeGreaterThan(0)   // guards against a broken timer/counter passing vacuously
   }, 180_000)
 
-  it('greedy vs greedy terminates', () => {
+  slow('greedy vs greedy terminates', () => {
     const r = selfPlay({ games: 5, seed: 700, decks: decks(), defs: loadCards(), agents: [{ kind: 'greedy' }, { kind: 'greedy' }], strict: false })
     expect(r.failures).toEqual([]); expect(r.completed).toBe(5)
   }, 180_000)
 
-  it('W5: 5 greedy-vs-greedy games under strict (invariants/mutation/dead-end checks) complete without engine errors', () => {
+  slow('W5: 5 greedy-vs-greedy games under strict (invariants/mutation/dead-end checks) complete without engine errors', () => {
     const r = selfPlay({ games: 5, seed: 800, decks: decks(), defs: loadCards(), agents: [{ kind: 'greedy' }, { kind: 'greedy' }], strict: true })
     expect(r.failures).toEqual([]); expect(r.completed).toBe(5)
   }, 180_000)
 
   // Rung J8 (review C1/H1): the shipped LB decks under play — the search must name an LB-deck card at the root,
   // and the sweep and the invariants must hold across whole games.
-  it('J8: strict games WITH the LB decks complete for random, greedy and a small ISMCTS', () => {
+  slow('J8: strict games WITH the LB decks complete for random, greedy and a small ISMCTS', () => {
     const defs = loadCards()
     const r1 = selfPlay({ games: 4, seed: 900, decks: decks(), lbDecks: lbDecks(), defs, agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: true })
     expect(r1.failures).toEqual([]); expect(r1.completed).toBe(4)
@@ -71,7 +75,7 @@ describe('self-play with the real Vol. 2 pool', () => {
 
 // Rung V1-B (plan Task 4, R10): the Vol. 1 pool under play, against Vol. 2, in both seat orders — the J8 test's shape.
 describe('self-play Vol. 1 vs Vol. 2 with their LB decks (rung V1-B)', () => {
-  it('strict random-vs-greedy games complete in both seat orders; Vol. 1 reports its rung-V2 gaps', () => {
+  slow('strict random-vs-greedy games complete in both seat orders; Vol. 1 reports its rung-V2 gaps', () => {
     const defs = loadCards()
     for (const [i, { decks, lbDecks }] of crossDecks().entries()) {
       const r = selfPlay({ games: 4, seed: 1000 + i * 100, decks, lbDecks, defs, agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: true })
@@ -82,7 +86,7 @@ describe('self-play Vol. 1 vs Vol. 2 with their LB decks (rung V1-B)', () => {
     }
   }, 300_000)
 
-  it('strict games complete for a small ISMCTS in both seat orders', () => {
+  slow('strict games complete for a small ISMCTS in both seat orders', () => {
     const defs = loadCards()
     for (const [i, { decks, lbDecks }] of crossDecks().entries()) {
       const r = selfPlay({ games: 1, seed: 7 + i, decks, lbDecks, defs, agents: [{ kind: 'ismcts', iterations: 4 }, { kind: 'ismcts', iterations: 4 }], strict: true })
@@ -194,7 +198,7 @@ describe('playGame accumulates search cost per seat', () => {
 })
 
 describe('D-A4: the report carries the real search agent counters', () => {
-  it('reports ismcts cost for its own seat and nothing for the other', () => {
+  slow('reports ismcts cost for its own seat and nothing for the other', () => {
     const r = selfPlay({ games: 1, seed: 340, decks: decks(), defs: loadCards(), agents: [{ kind: 'ismcts', iterations: 8 }, { kind: 'greedy' }], strict: false })
     expect(r.failures).toEqual([])
     const cost = r.search[0]
@@ -278,7 +282,7 @@ describe('mirrorTournament', () => {
     expect(r.agents).toEqual(['random', 'random'])
   }, 60_000)
 
-  it('is deterministic', () => {
+  slow('is deterministic', () => {
     const opts = { pairs: 3, seed: 310, decks: decks(), defs: loadCards(), agents: [{ kind: 'greedy' as const }, { kind: 'random' as const }] as [{ kind: 'greedy' }, { kind: 'random' }], strict: false, bootstrapSamples: 300 }
     expect(stripTiming(mirrorTournament(opts))).toEqual(stripTiming(mirrorTournament(opts)))
   }, 180_000)
@@ -303,7 +307,7 @@ describe('mirrorTournament', () => {
     expect(new Set(r.failures.map((f) => f.seatOfA))).toEqual(new Set([0, 1]))
   }, 60_000)
 
-  it('attributes a lopsided matchup to the AGENT, not to a seat', () => {
+  slow('attributes a lopsided matchup to the AGENT, not to a seat', () => {
     const common = { pairs: 6, seed: 330, decks: decks(), defs: loadCards(), strict: false, bootstrapSamples: 1000 }
     const greedyFirst = mirrorTournament({ ...common, agents: [{ kind: 'greedy' }, { kind: 'random' }] })
     const randomFirst = mirrorTournament({ ...common, agents: [{ kind: 'random' }, { kind: 'greedy' }] })

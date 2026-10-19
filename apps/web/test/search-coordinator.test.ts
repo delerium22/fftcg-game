@@ -9,6 +9,10 @@ import {
   type Clock, type SearchRequestHandlers, type SearchTransport, type SearchTransportFactory, type TransportHandlers,
 } from '../src/game/search/coordinator.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 const GAME_SEED = 4242
 const STEP_MS = 600
 const WATCHDOG_MS = 5_000
@@ -326,13 +330,13 @@ describe('SearchCoordinator: a failed worker still finishes a whole game (D2-A5)
     return { result: current, warnings }
   }
 
-  it('finishes when the worker cannot be constructed at all', () => {
+  slow('finishes when the worker cannot be constructed at all', () => {
     const { result, warnings } = drive(() => { throw new Error('Worker is not defined') })
     expect(result.result).not.toBeNull()
     expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)
   }, 60_000)
 
-  it('finishes when every post throws a clone error', () => {
+  slow('finishes when every post throws a clone error', () => {
     const { result, warnings } = drive(() => ({
       post: () => { throw new DOMException('could not be cloned', 'DataCloneError') },
       terminate: () => {},
@@ -341,7 +345,7 @@ describe('SearchCoordinator: a failed worker still finishes a whole game (D2-A5)
     expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)
   }, 60_000)
 
-  it('finishes when the worker accepts requests and never replies', () => {
+  slow('finishes when the worker accepts requests and never replies', () => {
     const { result, warnings } = drive(() => ({ post: () => {}, terminate: () => {} }))
     expect(result.result).not.toBeNull()
     expect(warnings.filter((w) => w.includes(FALLBACK_WARNING))).toHaveLength(1)

@@ -13,6 +13,10 @@ import {
 import { stepAi } from '../src/game/useGame.js'
 import { HUMAN, type Choice } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung I2 — the payment picker's model, pure and engine-checked.
  *
@@ -51,7 +55,7 @@ function* humanPositions(seeds: number[], cap = 400): Generator<GameState> {
 const sourcesOf = (p: Payment): string[] => [...p.dullBackups.map((b) => `b${b}`), ...p.discards.map((d) => `d${d.card}:${d.element}`)]
 
 describe('the legal list is the choice plus its alternatives', () => {
-  it('lists the preferred payment first and every alternative after it', () => {
+  slow('lists the preferred payment first and every alternative after it', () => {
     for (const s of humanPositions([1, 2, 3])) {
       for (const c of payableChoices(s).choices) {
         const legal = legalPaymentsOf(c)
@@ -63,7 +67,7 @@ describe('the legal list is the choice plus its alternatives', () => {
 })
 
 describe('I2-A3 / I2-A6 — a source is offered only while it still leads to a listed payment', () => {
-  it('every reachable selection is a subset of a listed payment, and completes exactly when it equals one', () => {
+  slow('every reachable selection is a subset of a listed payment, and completes exactly when it equals one', () => {
     let checked = 0
     for (const s of humanPositions([1, 2, 3, 4, 5, 6])) {
       const { view, choices } = payableChoices(s)

@@ -5,6 +5,10 @@ import { GreedyAgent } from '@fftcg/ai'
 import { loadCards } from '@fftcg/cards'
 import { parseDeckFile } from '../src/deck.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * The two things the AI must never get wrong, as PROPERTIES over played games rather than as hand-built
  * positions.
@@ -41,7 +45,7 @@ function winsOutright(s: GameState, c: Command, me: number): boolean {
 }
 
 describe('the AI never walks past a win (greedy, 60 seeded games)', () => {
-  it('takes a winning attack whenever one exists', () => {
+  slow('takes a winning attack whenever one exists', () => {
     let declarations = 0
     let available = 0
     const missed: string[] = []
@@ -88,7 +92,7 @@ describe('declining a block into a loss is deliberate, not a miss', () => {
     return t
   }
 
-  it('only ever declines a fatal block when every block loses too (see the rejected G5 note)', () => {
+  slow('only ever declines a fatal block when every block loses too (see the rejected G5 note)', () => {
     // The counterpart, and it exists to pin the REASON rather than the behaviour. The AI regularly declines a
     // block and dies — 32 games in 120 — and that is correct: both answers score exactly -terminal because the
     // attacker simply declares another attack, so blocking delays a point and nothing more. Forcing the block

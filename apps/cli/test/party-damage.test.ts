@@ -6,6 +6,10 @@ import { parseDeckFile } from '../src/deck.js'
 import { IsmctsAgent } from '@fftcg/ai'
 import { endPhase, makeGame, passBoth, withField } from '../../../packages/engine/test/helpers.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung K1-A2 — the position that found the rung: seed 8, turn 6. Cloud (protected by his own trigger) and
  * Shantotto attack as a party; the AI blocks with Billy Bob (8000) and owes the split. Before K1 the search
@@ -31,7 +35,7 @@ function fromDeck(s: GameState, player: 0 | 1, codes: readonly string[]): GameSt
 }
 
 describe('K1-A2 — the seed-8 split, real cards, 64 iterations', () => {
-  it('breaks Shantotto in at least 9 of 10 seeds', () => {
+  slow('breaks Shantotto in at least 9 of 10 seeds', () => {
     let s: GameState = endPhase(makeGame({ defs: DEFS, decks: DECKS }))
     let safe: CardId, soft: CardId, blocker: CardId
     ;[s, safe] = withField(s, 0, 'forwards', CLOUD, { flags: ['cannotBeBroken', 'cannotBeReturnedByOpponent'] })

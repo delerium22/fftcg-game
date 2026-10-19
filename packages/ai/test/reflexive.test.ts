@@ -6,6 +6,10 @@ import { GreedyAgent } from '../src/greedy.js'
 import { IsmctsAgent } from '../src/ismcts/agent.js'
 import { VANILLA_POOL, deckOf, makeDef, makeGame, withField, withHand } from '../../engine/test/helpers.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung V1-D (plan D-D2, R2): the AI and "When you do so". The select that fires a reflexive clause is priced THROUGH that
  * clause's effects — Vincent's 9000 on the best opposing Forward — so the "you may" put is taken when it buys a kill;
@@ -94,7 +98,7 @@ describe('V1-D — strict self-play with a reflexive clause', () => {
     expect(fired, 'no game reached the reflexive clause — the check proved nothing').toBeGreaterThan(0)
   })
 
-  it('small ISMCTS games complete, and the reflexive clause is reached', () => {
+  slow('small ISMCTS games complete, and the reflexive clause is reached', () => {
     let fired = 0
     for (const seed of [1, 2, 3]) fired += reflexives(play(seed, [new IsmctsAgent({ seed, decks: DECKS, iterations: 4 }), new GreedyAgent({ seed, decks: DECKS })]))
     expect(fired, 'no ISMCTS game reached the reflexive clause').toBeGreaterThan(0)

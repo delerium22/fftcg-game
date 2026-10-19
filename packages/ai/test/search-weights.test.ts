@@ -6,6 +6,10 @@ import { searchIsmcts, DEFAULT_ROLLOUT_COMMAND_CAP } from '../src/ismcts/search.
 import { IsmctsAgent } from '../src/ismcts/agent.js'
 import { settleWindows, DEFAULT_DECK, makeGame } from '../../engine/test/helpers.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung G1a — the search takes its weights as data.
  *
@@ -85,7 +89,7 @@ describe('the search actually uses the weights it is given (G1a)', () => {
     expect(empty.diagnostics.evaluations).toBe(plain.diagnostics.evaluations)
   })
 
-  it('a weight big enough to dominate CHANGES the command, so the override provably reaches the rollouts', () => {
+  slow('a weight big enough to dominate CHANGES the command, so the override provably reaches the rollouts', () => {
     // Not a claim about play strength — a claim about wiring. An override that reached nothing would leave
     // every one of these identical, which is exactly the defect a `weights` field can have while typechecking.
     const differed: number[] = []

@@ -14,6 +14,10 @@ import {
 import { IsmctsAgent } from '../src/ismcts/agent.js'
 import { DEFAULT_DECK, VANILLA_POOL, attackInto, deckOf, endPhase, makeDef, makeGame, withField, withHand, withHandSize } from '../../engine/test/helpers.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -552,7 +556,7 @@ describe('fairness is non-interference (D-9)', () => {
     return { ...s, players }
   }
 
-  it('two live states with the same view and deck multiset produce the same trace', () => {
+  slow('two live states with the same view and deck multiset produce the same trace', () => {
     // No Forwards for player 0: an attack would put one of player 1's unseen cards into their damage zone,
     // which is public, and the two games would stop being the same information set after two plies.
     let a = withHandSize(makeGame(), 0, 5)
@@ -605,7 +609,7 @@ describe('fairness is non-interference (D-9)', () => {
 })
 
 describe('determinism (D-A3, D-8)', () => {
-  it('two fresh same-seed agents over one view trace agree on every command and diagnostic', () => {
+  slow('two fresh same-seed agents over one view trace agree on every command and diagnostic', () => {
     let s = makeGame()
     const decks = decksOf(s)
     const views: PlayerView[] = []

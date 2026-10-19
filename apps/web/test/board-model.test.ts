@@ -7,6 +7,10 @@ import { project, type BoardModel } from '../src/game/presentation/boardModel.js
 import { AI, HUMAN } from '../src/game/types.js'
 import { stepAi } from '../src/game/useGame.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 const game = (seed: number): GameState => createGame({
   seed, defs: CARD_DEFS,
   decks: [DECK_CHOICES.vol2.main, DECK_CHOICES.vol1.main],
@@ -79,7 +83,7 @@ describe('project (spec section 4.1)', () => {
     expect(m.result).toBeNull()
   })
 
-  it('holds the invariants, the names and the layered power over a self-play corpus (Review Focus 1-5)', () => {
+  slow('holds the invariants, the names and the layered power over a self-play corpus (Review Focus 1-5)', () => {
     let positions = 0
     // What the corpus must reach, or the assertions below prove nothing about it (plan review finding 2).
     const saw = { pumped: false, knownHand: false, lbFaceUp: false, elsewhere: false, breakZone: false, damageZone: false, removedFromGame: false, stack: false }

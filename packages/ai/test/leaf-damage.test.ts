@@ -8,6 +8,10 @@ import { rolloutToCap, searchIsmcts, DEFAULT_ROLLOUT_COMMAND_CAP } from '../src/
 import { DEFAULT_WEIGHTS } from '../src/evaluate.js'
 import { settleWindows, DEFAULT_DECK, makeGame } from '../../engine/test/helpers.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Rung G1's GATE, and the instrument has to be right before the number it produces is allowed to decide
  * anything. The whole point of the histogram is to say whether a damage curve could reprice enough leaves to
@@ -79,7 +83,7 @@ describe('the leaf-damage histogram is keyed on the ROOT player (G1 gate)', () =
 })
 
 describe('the recorded cell is the leaf that was actually priced (G1 gate)', () => {
-  it('matches the damage of the state `leafReward` sees, not the state before settlement', () => {
+  slow('matches the damage of the state `leafReward` sees, not the state before settlement', () => {
     // The rollout does not stop where its command loop stops: `resolveForcedDecisions` runs afterwards, and it
     // can deal the damage of a declared attack and can END the game. Recording the pre-settlement position
     // therefore both misplaces damage and books a heuristic leaf for a state that is really terminal —

@@ -12,6 +12,10 @@ import { buildChoiceSet, choiceName, describeChoice, occurrenceOf, preferredChoi
 import { stepAi } from '../src/game/useGame.js'
 import { AI, HUMAN, type Choice, type GameApi } from '../src/game/types.js'
 
+// Slow tests (2 s or more on the dev Mac) are skipped in CI, which sets FFTCG_SKIP_SLOW=1.
+// `pnpm test` still runs them. See .github/workflows/ci.yml.
+const slow = it.skipIf(process.env.FFTCG_SKIP_SLOW === '1')
+
 /**
  * Two cards of the same code, told apart (rung E9).
  *
@@ -500,7 +504,7 @@ describe('choices whose subject the board does not draw', () => {
     return groups
   }
 
-  it('an activation keeps ONE BUTTON PER TARGET — the worst thing this rung turned up', () => {
+  slow('an activation keeps ONE BUTTON PER TARGET — the worst thing this rung turned up', () => {
     // `payableKey` was `source:ability`, so `legalCommands`'s one-command-per-target collapsed into a single
     // button and whichever Forward happened to come first was pumped. Silently deciding a live choice for the
     // player is the exact operation this rung's plan review refused — and it was already shipping.
