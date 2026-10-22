@@ -1,5 +1,7 @@
 # fftcg-game
 
+**Paused since 2026-10-12.** Resume from the handoffs in `.claude/worktrees/rung-a-heuristic-ai` (rules rung V2-B, branch `feat/v2b-replacement-cards`) and `.claude/worktrees/ui-overhaul` (UI rung U2c, branch `feat/u2c-drawer-preview-settings`).
+
 A personal digital implementation of the *Final Fantasy Trading Card Game* (Square Enix):
 a rules engine plus a text hotseat CLI, built as a from-scratch exercise. Not affiliated
 with Square Enix.
