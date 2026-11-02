@@ -1233,7 +1233,7 @@ describe('13-125R Yuzuki — "If a Fire Forward you control is dealt damage by y
     expect(r.state.pending, 'no §11.12.5.7 prompt: the order cannot change the result').toBeNull()
     expect(damageEvents(r.events)).toEqual([{
       type: 'damageReducedToZero', target: yuzuki, dealers: [r.card], original: 7000,
-      trace: [{ by: yuzuki, before: 7000, after: 0 }, { by: yuzuki, before: 0, after: -2000 }],   // §4.3: the running amount may go negative
+      trace: [{ by: yuzuki, before: 7000, after: 0 }],   // the Fire clause comes first in the canonical order; at 0 the Water clause no longer applies (the other order: 7000 → 5000 → 0)
     }])
     expect(dmg(r.state, yuzuki)).toBe(0)
     ok(r.state)
