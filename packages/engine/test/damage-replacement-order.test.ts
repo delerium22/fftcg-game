@@ -4,7 +4,7 @@ import type { CardDef, PlayerId } from '../src/types.js'
 import type { CardId, GameState, Pending } from '../src/state.js'
 import type { Event } from '../src/events.js'
 import { findFieldCard } from '../src/state.js'
-import { applyDamagePacket, previewDamagePacket, replacementChoice } from '../src/damage.js'
+import { applyDamagePacket, previewDamagePacket, replacementChoice, replacementOrderPending } from '../src/damage.js'
 import { apply } from '../src/apply.js'
 import { actingPlayer, forcedDecision, isLegal, legalCommands } from '../src/legal.js'
 import { drainResolution, enqueueTrigger } from '../src/resolve.js'
@@ -28,12 +28,22 @@ const etb = (code: string, effects: readonly Effect[]): Ability => ({ id: `${cod
 
 /** "If a Forward you control deals damage to a Forward, the damage increases by 2000 instead." */
 const WUK = withAbilities(makeDef({ code: 'O-WUK', power: 8000 }), replacement('O-WUK', 'wuk', { target: { controller: 'any' }, bySource: { controller: 'self', filter: { type: 'forward' } } }, { add: 2000 }))
-/** "If <this> is dealt damage, the damage becomes 0 instead" — a battle-reachable "becomes 0" for these fixtures. */
+/** "If <this> is dealt damage, the damage becomes 0 instead" — for the test that needs a plain "becomes 0" beside an increase. */
 const NULL = withAbilities(makeDef({ code: 'O-NULL', power: 7000 }), replacement('O-NULL', 'null', { target: 'self' }, { becomes: 0 }))
-const NULL_FS = withAbilities(makeDef({ code: 'O-NULLFS', power: 5000, keywords: ['firstStrike'] }), replacement('O-NULLFS', 'null', { target: 'self' }, { becomes: 0 }))
-/** Yuzuki's Fire clause: "If a Fire Forward you control is dealt damage by your opponent's abilities, the damage becomes 0 instead." */
+/**
+ * "If <this> is dealt damage, reduce the damage by N instead", N the packet's original amount in the test that uses it: with
+ * a +2000 beside it the orders give two outcomes — reduce first is 0 and stops, +2000 first is N + 2000 − N = 2000.
+ */
+const reducer = (code: string, n: number, power: number, keywords: CardDef['keywords'] = []): CardDef =>
+  withAbilities(makeDef({ code, power, keywords }), replacement(code, 'red', { target: 'self' }, { reduce: n }))
+const RED9 = reducer('O-RED9', 9000, 7000)
+const RED8 = reducer('O-RED8', 8000, 7000)
+const RED4 = reducer('O-RED4', 4000, 7000)
+const RED5 = reducer('O-RED5', 5000, 7000)
+const RED7_FS = reducer('O-RED7FS', 7000, 5000, ['firstStrike'])
+/** Yuzuki's Fire clause with a reduction: "If a Fire Forward you control is dealt damage by your opponent's abilities, reduce the damage by 5000 instead." */
 const YUZUKI = withAbilities(makeDef({ code: 'O-YUZ', type: 'backup', power: null }),
-  replacement('O-YUZ', 'fire', { target: { controller: 'self', filter: { element: 'fire' } }, byCause: 'ability', byController: 'opponent' }, { becomes: 0 }))
+  replacement('O-YUZ', 'red', { target: { controller: 'self', filter: { element: 'fire' } }, byCause: 'ability', byController: 'opponent' }, { reduce: 5000 }))
 const FIRE = makeDef({ code: 'O-FIRE', elements: ['fire'], power: 9000 })
 /** Ifrit's shape on a Forward (so Wuk Lamat's "a Forward you control deals damage" reads it): choose 1, deal 5000. */
 const BURNER = withAbilities(makeDef({ code: 'O-BURN', power: 3000 }),
@@ -45,7 +55,7 @@ const PALOM = withAbilities(makeDef({ code: 'O-PAL', power: 3000 }),
 const SWEEP = withAbilities(makeDef({ code: 'O-SWEEP', power: 3000 }),
   etb('O-SWEEP', [{ kind: 'forEach', from: { zone: 'forwards', controller: 'opponent' }, do: [{ kind: 'dull' }, { kind: 'damage', amount: 5000 }] }]))
 
-const POOL = [...VANILLA_POOL, WUK, NULL, NULL_FS, YUZUKI, FIRE, BURNER, PALOM, SWEEP]
+const POOL = [...VANILLA_POOL, WUK, NULL, RED9, RED8, RED4, RED5, RED7_FS, YUZUKI, FIRE, BURNER, PALOM, SWEEP]
 const game = (): GameState => makeGame({ defs: POOL })
 const dmg = (s: GameState, id: CardId): number | undefined => findFieldCard(s, id)?.card.damage
 const ok = (s: GameState): void => expect(checkInvariants(s)).toEqual([])
@@ -64,12 +74,12 @@ const answer = (s: GameState, final: number) => applyNow(s, { type: 'chooseRepla
 const damageEvents = (events: readonly Event[]) => events.filter((e) => e.type === 'battleDamage' || e.type === 'abilityDamage' || e.type === 'damageReducedToZero')
 
 describe('battle: the order is asked before the batch lands (plan A2-D4, R4)', () => {
-  it('Wuk Lamat +2000 against "becomes 0": two outcomes, the blocker\'s controller is asked, each answer lands its amount', () => {
+  it('Wuk Lamat +2000 against "reduce by 9000": two outcomes, the blocker\'s controller is asked, each answer lands its amount', () => {
     for (const final of [0, 2000]) {
       let s = game(); let a: CardId, b: CardId
       ;[s] = withField(s, 0, 'forwards', 'O-WUK')
       ;[s, a] = withField(s, 0, 'forwards', 'V-F8')
-      ;[s, b] = withField(s, 1, 'forwards', 'O-NULL')
+      ;[s, b] = withField(s, 1, 'forwards', 'O-RED9')
       s = endPhase(s)
       const r = blockWith(attackInto(s, [a]).state, b)
       const p = orderPending(r.state)
@@ -94,7 +104,7 @@ describe('battle: the order is asked before the batch lands (plan A2-D4, R4)', (
     ;[s] = withField(s, 0, 'forwards', 'O-WUK')
     ;[s, m1] = withField(s, 0, 'forwards', 'V-F1')
     ;[s, m2] = withField(s, 0, 'forwards', 'V-F2')
-    ;[s, b] = withField(s, 1, 'forwards', 'O-NULL', { status: 'active' })
+    ;[s, b] = withField(s, 1, 'forwards', 'O-RED8', { status: 'active' })
     s = endPhase(s)
     let r = blockWith(attackInto(s, [m1, m2]).state, b)
     // The blocker's split over the party is owed first (§10.1.4.2.1), then the order.
@@ -110,8 +120,8 @@ describe('battle: the order is asked before the batch lands (plan A2-D4, R4)', (
 
   it('a split: every split packet that owes an order asks, the held split survives each prompt, and only then anything lands (plan R4)', () => {
     let s = game(); let m1: CardId, m2: CardId, b: CardId
-    ;[s, m1] = withField(s, 0, 'forwards', 'O-NULL')
-    ;[s, m2] = withField(s, 0, 'forwards', 'O-NULL')
+    ;[s, m1] = withField(s, 0, 'forwards', 'O-RED4')
+    ;[s, m2] = withField(s, 0, 'forwards', 'O-RED4')
     ;[s] = withField(s, 1, 'forwards', 'O-WUK')
     ;[s, b] = withField(s, 1, 'forwards', 'V-F7')
     s = endPhase(s)
@@ -133,9 +143,9 @@ describe('battle: the order is asked before the batch lands (plan A2-D4, R4)', (
   it('First Strike: the first batch asks before it lands, its held occurrence carries the final amount, the second batch asks its own (Review Focus 4)', () => {
     let s = game(); let a: CardId, b: CardId
     ;[s] = withField(s, 0, 'forwards', 'O-WUK')
-    ;[s, a] = withField(s, 0, 'forwards', 'O-NULLFS')
+    ;[s, a] = withField(s, 0, 'forwards', 'O-RED7FS')
     ;[s] = withField(s, 1, 'forwards', 'O-WUK')
-    ;[s, b] = withField(s, 1, 'forwards', 'O-NULL')
+    ;[s, b] = withField(s, 1, 'forwards', 'O-RED5')
     s = endPhase(s)
     const r = blockWith(attackInto(s, [a]).state, b)
     expect(orderPending(r.state)).toMatchObject({ player: 1, target: b, original: 5000 })
@@ -161,7 +171,7 @@ describe('battle: the order is asked before the batch lands (plan A2-D4, R4)', (
     let s = game(); let a: CardId, b: CardId
     ;[s] = withField(s, 0, 'forwards', 'O-WUK')
     ;[s, a] = withField(s, 0, 'forwards', 'V-F2')
-    ;[s, b] = withField(s, 1, 'forwards', 'O-NULL')
+    ;[s, b] = withField(s, 1, 'forwards', 'O-RED5')
     s = endPhase(s)
     const r = blockWith(attackInto(s, [a]).state, b)
     expect(() => apply(r.state, { type: 'chooseReplacementOrder', player: 0, order: 0 })).toThrow(IllegalCommandError)
@@ -181,7 +191,7 @@ describe('ability damage: the frame suspends and lands nothing until every order
     return s.defs[code]!.abilities!.find((x) => x.trigger.kind === 'enterField')!
   }
 
-  it("Yuzuki's \"becomes 0\" against Wuk Lamat's +2000 on the opponent's ability: the damaged Forward's controller is asked (Review Focus 1)", () => {
+  it("a Fire Forward's \"reduce by 5000\" against Wuk Lamat's +2000 on the opponent's ability: the damaged Forward's controller is asked (Review Focus 1)", () => {
     for (const final of [0, 2000]) {
       let s = game(); let src: CardId, f: CardId
       ;[s] = withField(s, 0, 'forwards', 'O-WUK')
@@ -210,9 +220,9 @@ describe('ability damage: the frame suspends and lands nothing until every order
     ;[s, f] = withField(s, 1, 'forwards', 'O-FIRE')
     s = applyNow(fire(s, src), { type: 'chooseTargets', player: 0, targets: [f] }).state
     const p = orderPending(s)
-    expect(p.replacements).toEqual([{ id: `${wuk}:wuk`, by: wuk, change: { add: 2000 } }, { id: `${yz}:fire`, by: yz, change: { becomes: 0 } }])
-    expect(p.options).toEqual([[`${wuk}:wuk`, `${yz}:fire`], [`${yz}:fire`, `${wuk}:wuk`]])
-    expect(p.outcomes).toEqual([{ final: 0, consumes: [] }, { final: 2000, consumes: [] }])
+    expect(p.replacements).toEqual([{ id: `${wuk}:wuk`, by: wuk, change: { add: 2000 } }, { id: `${yz}:red`, by: yz, change: { reduce: 5000 } }])
+    expect(p.options).toEqual([[`${wuk}:wuk`, `${yz}:red`], [`${yz}:red`, `${wuk}:wuk`]])
+    expect(p.outcomes).toEqual([{ final: 2000, consumes: [] }, { final: 0, consumes: [] }])
   })
 
   it("Palom's shape resumes through the chooser and the `if`, and records the chosen target once", () => {
@@ -300,14 +310,24 @@ describe('ability damage: the frame suspends and lands nothing until every order
 
 describe('when there is a choice at all (plan A2-D4, R2)', () => {
   const shield = (id: string, source: CardId, reduce = 2000) => ({ id, reduce, source })
-  it('no prompt when every order gives the same result: 1000 − 2000 + 2000 either way (spec V2-D3)', () => {
+  it('no prompt when every order gives the same result: 3000 − 2000 + 2000 either way (spec V2-D3)', () => {
+    let s = game(); let a: CardId, f: CardId
+    ;[s] = withField(s, 0, 'forwards', 'O-WUK')
+    ;[s, a] = withField(s, 0, 'forwards', 'V-F6')
+    ;[s, f] = withField(s, 1, 'forwards', 'V-F8', { shields: [shield('p:1:0', 5)] })
+    const p = { target: f, amount: 3000, cause: 'battle' as const, causeController: 0 as const, dealers: [{ source: a, sourceController: 0 as const }] }
+    expect(replacementChoice(s, p)).toBeNull()
+    expect(applyDamagePacket(s, p).final).toBe(3000)
+  })
+  it('a shield and a +2000 on a 1000 hit give two outcomes, 0 (the shield first stops at 0) or 1000: the damaged Forward\'s controller is asked', () => {
     let s = game(); let a: CardId, f: CardId
     ;[s] = withField(s, 0, 'forwards', 'O-WUK')
     ;[s, a] = withField(s, 0, 'forwards', 'V-F6')
     ;[s, f] = withField(s, 1, 'forwards', 'V-F8', { shields: [shield('p:1:0', 5)] })
     const p = { target: f, amount: 1000, cause: 'battle' as const, causeController: 0 as const, dealers: [{ source: a, sourceController: 0 as const }] }
-    expect(replacementChoice(s, p)).toBeNull()
-    expect(applyDamagePacket(s, p).final).toBe(1000)
+    const choice = replacementChoice(s, p)
+    expect(choice?.outcomes.map((o) => o.final).sort((x, y) => x - y)).toEqual([0, 1000])
+    expect(replacementOrderPending(s, p, choice!, 'battle').player).toBe(1)
   })
   it('two equal shields and a 1000 hit: either is used up, the same outcome — no prompt, the canonical order spends the first', () => {
     let s = game(); let a: CardId, f: CardId

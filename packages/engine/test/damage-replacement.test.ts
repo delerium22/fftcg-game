@@ -59,16 +59,16 @@ const fromFrame = (s: GameState, target: CardId, source: CardId, controller: 0 |
 
 describe('§4.3 arithmetic (plan A2-D3, spec V2-D3)', () => {
   const r = (by: number, change: DamageChange): Replacement => ({ id: `${by}`, by, change })
-  it('a running amount may go negative between steps and keeps its sign: 1000 − 2000 + 2000 = 1000, either order', () => {
-    expect(applyInOrder(1000, [r(1, { reduce: 2000 }), r(2, { add: 2000 })])).toEqual({ final: 1000, consumes: [], trace: [{ by: 1, before: 1000, after: -1000 }, { by: 2, before: -1000, after: 1000 }] })
+  it('a reduction that takes the amount to 0 or below ends it: reduce 2000 first stops at 0, add 2000 first gives 1000', () => {
+    expect(applyInOrder(1000, [r(1, { reduce: 2000 }), r(2, { add: 2000 })])).toEqual({ final: 0, consumes: [], trace: [{ by: 1, before: 1000, after: -1000 }] })
     expect(applyInOrder(1000, [r(2, { add: 2000 }), r(1, { reduce: 2000 })]).final).toBe(1000)
   })
   it('a final amount below 0 is 0', () => {
     expect(applyInOrder(1000, [r(1, { reduce: 3000 })]).final).toBe(0)
   })
-  it('"becomes 0" sets the running amount; a later increase still applies to that 0 (plan Review Focus 1)', () => {
+  it('"becomes 0" sets the running amount; a later increase does not revive it (the notice of 2020-03-18)', () => {
     expect(applyInOrder(7000, [r(1, { add: 2000 }), r(2, { becomes: 0 })]).final).toBe(0)
-    expect(applyInOrder(7000, [r(2, { becomes: 0 }), r(1, { add: 2000 })]).final).toBe(2000)
+    expect(applyInOrder(7000, [r(2, { becomes: 0 }), r(1, { add: 2000 })]).final).toBe(0)
   })
 })
 
