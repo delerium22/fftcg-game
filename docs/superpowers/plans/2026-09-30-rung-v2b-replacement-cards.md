@@ -92,6 +92,8 @@ plan above.
 - **R10 (O1, O2) — readings pinned by tests.** §6.4.2: a Forward broken while its damaging ability is on the stack
   still deals that damage as a Forward its controller controlled, so Wuk Lamat's increase applies. §11.12.5.3: Wuk
   Lamat herself gone before her ETB resolves → no increase.
+- **R11 (code review, Codex LOW) — the Vol. 1 mirror self-play test.** `selfplay.test.ts` gains a strict Vol. 1
+  mirror test, the only pairing where both sides hold these cards; R7 did not list it. Kept.
 
 Tasks, revised: **1** Charlotte; **2** Yuzuki; **3** Wuk Lamat; **4** Porom — the last gap, with the self-play flip
 (R2, R7); **5** scenarios, `trace`, the matrix row and the audit (R5, R6, R8); **6** gate, spec "As built (V2-B)",

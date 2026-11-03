@@ -50,10 +50,15 @@ cannot break Garland") that damage reduced to 0 is not damage.
   affected Forward, and the packet resumes from it; when every order gives the same result, no prompt (the order is
   observably irrelevant). AI: enumerates the orders (at most 4 modifiers in this pool). Keys: the new pending digests
   by the ordered replacement ids.
-- **V2-D3 — arithmetic (§4.3).** Modifications apply in the chosen order to the running amount, which may go
-  negative between steps (§4.3 keeps the negative for the next change); the final amount below 0 is 0. Example: a
-  1000 hit with Porom's −2000 then Wuk Lamat's +2000 is 1000 − 2000 = −1000, then −1000 + 2000 = 1000; the reverse
-  order is 1000 + 2000 − 2000 = 1000. The orders agree, so no prompt. Pin the arithmetic in a test.
+- **V2-D3 — arithmetic (revised in rung V2-B).** Modifications apply in the chosen order to the running amount.
+  Once it is 0 or less, no further modification applies: no increase, no reduction, no shield (a shield not applied is
+  not used up). Each of them replaces damage, and 0 damage is not damage (V2-D4); the notice of 2020-03-18 gives the
+  case: Minwu's "the damage becomes 0" applied before a +1000 increase leaves the Forward with no damage. The final
+  amount below 0 is 0. Example: a 1000 hit with Porom's −2000 first is −1000, and Wuk Lamat's +2000 does not apply:
+  0, the shield spent. The reverse order is 1000 + 2000 − 2000 = 1000, the shield spent. The orders differ, so the
+  Forward's controller is asked. Pin the arithmetic in a test. Until V2-B the running amount kept its sign for the
+  next change (as §4.3 does for a value such as power) and an increase applied to a 0; the V2-B code review
+  overturned both on the notice.
 - **V2-D4 — 0 damage is not damage** (official ruling 2021-08-19; the 2020-03-18 notice). A final amount of 0 marks no
   damage and emits no `battleDamage`/`abilityDamage` and no dealt-damage trigger (Luso's break-on-damage does not
   fire); a separate non-triggering event `damageReducedToZero { target, original, trace }` narrates it. A positive
@@ -129,7 +134,8 @@ Commits 58dfa1d (statics, §4.3 arithmetic, 0 is not damage), ea047dc (shields),
 consumer), 7c15770 (AI pricing, web and CLI). Plan `2026-09-30-rung-v2a2-replacements.md` with revisions R1–R9. The
 card pool is unchanged; every test uses synthetic cards. Differences from the plan, and readings:
 - Readings (the plan's, recorded because the CR text does not settle them): a static keeps applying to a running 0
-  after "becomes 0" (Yuzuki first, then Wuk Lamat's +2000, is 2000 — plan Review Focus 1); a SHIELD applies only while
+  after "becomes 0" (Yuzuki first, then Wuk Lamat's +2000, is 2000 — plan Review Focus 1; overturned in rung V2-B,
+  see V2-D3); a SHIELD applies only while
   the running amount is positive, otherwise it is not applied and survives (R2, ruling 2021-08-19). Distinct outcomes
   compare `(final, the multiset of consumed shield AMOUNTS)` — decided 2026-10-06, replacing the literal shield-id
   comparison: shields of one amount are interchangeable (one End Phase expiry; the source only names it), so two equal
@@ -198,7 +204,8 @@ Readings (recorded because the card text or the CR does not settle them alone), 
 Tests. Per card in `packages/cards/test/abilities-vol1.test.ts`: an exact assertion on each encoded ability, then
 behaviour through real commands (cast, activate, battle, EX Burst), with the negative controls of plan R3/R4. Five
 Layer 3 scenarios with golden traces: `charlotte-endures`, `yuzuki-shields-fire`, `wuk-lamat-rallies`,
-`wuk-lamat-meets-yuzuki` (the ORDER scenario: both answers played, the prompt's wording pinned) and `porom-guards`
+`wuk-lamat-meets-yuzuki` (written as the ORDER scenario; since the review fixes below, both orders give 0 and
+nobody is asked) and `porom-guards`
 (a shield granted in response, kept by ordering Yuzuki first, then spent on Ifrit). The scenario `trace` gained
 `zero:<target>` and `shield:<card>:<amount>`. A mutation pass (not in the repo): 34 single-token mutants of the five
 encodings; with the exact-AST assertions switched off, the behaviour tests killed 33, the survivor
@@ -212,6 +219,18 @@ pairing where both sides hold these cards.
 
 Also: timing-matrix row 11.8.15 is `tested` (a damage replaced to 0 does not trigger Luso); §11.12 stays outside the
 matrix's scope (backlog: its own rows). The conformance audit's row 11.12.5 is `partial`.
+
+**Review fixes (2026-11-03).** Both code reviews on d27db62 (Codex, Fable) said CHANGES_REQUIRED. Accepted:
+- Codex HIGH: an increase applied to a running 0 after "becomes 0", against the notice of 2020-03-18. V2-D3 is
+  revised: once the running amount is 0 or less, nothing further applies. The V2-A2 order tests that used "becomes 0"
+  against +2000 as their two-outcome packet now use a synthetic "reduce by the packet's amount", which keeps their
+  outcomes {0, 2000}; the arithmetic tests, Yuzuki's Water-and-Fire trace and `wuk-lamat-meets-yuzuki` pin the new
+  rule (the commit lists each test).
+- Fable HIGH: Wuk Lamat's +2000 applied to a Character's EX Burst from the Damage Zone. A card there has no
+  controller, so it is not "a Forward you control": a `bySource` scope never admits an EX Burst packet.
+- LOW: the audit row now names Palom's self-replacement; the opposing-Ward Wuk Lamat test asserts her static was live
+  instead of `toBeDefined()`; the Luso/Charlotte test names the engine test it relies on.
+Rejected: Codex MEDIUM "always prompt when two replacements apply" — V2-D2 decided no prompt when the orders agree.
 
 Not done, by design: §11.12.5.6 self-replacement is still not modelled as such (Palom's "8000 instead" is an `if`);
 replacement effects on anything but damage to a Forward (out of scope, below).
