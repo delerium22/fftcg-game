@@ -1259,6 +1259,7 @@ describe('13-125R Yuzuki — "If a Fire Forward you control is dealt damage by y
 
   it('a hit replaced to 0 is not damage, so "When Luso deals damage to a Forward, break it" does not trigger (§11.8.15); a reduced hit still does', () => {
     // Luso (3000) attacks. Charlotte (Water) blocks under Yuzuki: 3000 − 2000 − 1000 = 0, in either order — no prompt.
+    // The rule "0 damage deals no damage, so no dealt-damage trigger" is pinned in the engine by damage-replacement.test.ts, "in battle, Luso's shape … does not fire on 0".
     let s = endPhase(makeGame()); let luso: CardId; let charlotte: CardId
     ;[s, luso] = withField(s, 0, 'forwards', '27-125S')
     ;[s] = withField(s, 1, 'forwards', '13-125R')
@@ -1435,7 +1436,8 @@ describe('27-122S Wuk Lamat — "If you control 7 or more Characters, Wuk Lamat 
     ;[s, hers] = withField(s, 1, 'forwards', '27-123S')
     ;[s] = withCp(s, 1, fire(5))
     const r = castAt(s, '21-001R', fire(3), hers)
-    expect(wuk).toBeDefined()
+    expect(findFieldCard(r.state, wuk), 'her static is live: Wuk Lamat stands on P1\'s field as a Forward').toMatchObject({ zone: 'forwards', owner: 1 })
+    expect(characters(r.state, 1), 'and P1 controls 7 Characters, so 7000 is due to the scope, not to an unmet condition').toBe(7)
     expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.card, target: hers, original: 7000, amount: 7000, trace: [] }])
   })
 
