@@ -44,7 +44,7 @@ describe('scenario: Wuk Lamat meets Yuzuki — "becomes 0" and +2000 give 0 in e
     expect(log.some((e) => e.type === 'abilityDamage'), 'and no damage was dealt').toBe(false)
     expect(log.some((e) => e.type === 'damageReducedToZero'), 'the hit became 0').toBe(true)
     expect(findFieldCard(s, ward), 'Ward stands').toBeDefined()
-    expect(viewFor(s, 0).pending).toEqual(viewFor(s, 1).pending)
+    expect([viewFor(s, 0).pending, viewFor(s, 1).pending], 'neither seat sees a prompt').toEqual([null, null])
     ok(s)
   })
 
@@ -59,7 +59,7 @@ describe('scenario: Wuk Lamat meets Yuzuki — "becomes 0" and +2000 give 0 in e
     ok(b.s)
   })
 
-  it('L3 wuk-lamat-meets-yuzuki — Ward is dealt nothing', () => {
+  it('L3 wuk-lamat-meets-yuzuki — Ward is dealt nothing: the golden trace', () => {
     const b = board()
     expect(findFieldCard(b.s, b.ward)?.card.damage).toBe(0)
     expect(b.log.filter((e) => e.type === 'abilityDamage')).toEqual([])

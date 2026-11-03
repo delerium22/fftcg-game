@@ -1479,6 +1479,25 @@ describe('27-122S Wuk Lamat — "If you control 7 or more Characters, Wuk Lamat 
     return s
   }
 
+  it('a small hit meets Yuzuki\'s Water −2000: Undead Princess\'s 2000 is 0 or 2000 by the order, so Yuzuki\'s controller is asked', () => {
+    // Nothing applies once the damage is 0 (spec V2-D3, revised in V2-B): −2000 first stops at 0; +2000 first is 4000 − 2000.
+    for (const final of [0, 2000]) {
+      let s = endPhase(makeGame()); let princess: CardId; let yuzuki: CardId
+      ;[s] = withField(s, 0, 'forwards', '27-122S')
+      ;[s, princess] = withField(s, 0, 'forwards', '19-052C')   // Undead Princess, 2000
+      ;[s] = withField(s, 0, 'forwards', '27-129S')
+      ;[s] = withCp(s, 0, fire(4))                                // 7 Characters: Wuk Lamat's increase is live
+      ;[s, yuzuki] = withField(s, 1, 'forwards', '13-125R')     // Water and Fire; battle meets only the Water clause
+      const r = battle(s, [princess], yuzuki)
+      const p = r.state.pending
+      if (p?.kind !== 'chooseReplacementOrder') throw new Error(`expected a replacement order, got ${p?.kind ?? 'none'}`)
+      expect(p).toMatchObject({ player: 1, target: yuzuki, original: 2000 })
+      expect(p.outcomes.map((o) => o.final).sort((a, b) => a - b)).toEqual([0, 2000])
+      const t = apply(r.state, { type: 'chooseReplacementOrder', player: 1, order: p.outcomes.findIndex((o) => o.final === final) })
+      expect(findFieldCard(t.state, yuzuki)?.card.damage).toBe(final)
+    }
+  })
+
   it('§6.4.2: a Forward broken with its ability on the stack still deals that damage as a Forward she controlled — increased', () => {
     const b = wukBoard({ backups: 2, forwards: 1 })            // + Ward and his 3 Backups: 8; 7 once Ward is broken
     const c = castOntoStack(b.s, '21-001R', b.victim)

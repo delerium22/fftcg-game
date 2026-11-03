@@ -349,8 +349,8 @@ export function describeDamageChange(change: DamageChange, shield = false): stri
 }
 
 /**
- * One option of a `chooseReplacementOrder`, worded for a button (plan A2-D7): "Yuzuki's reduction to 0, then Wuk
- * Lamat's +2000 → 2000". A shield the order leaves unused says so — which one survives is the difference. ONE
+ * One option of a `chooseReplacementOrder`, worded for a button (plan A2-D7): "Wuk Lamat's +2000, then Yuzuki's −2000
+ * → 2000". A shield the order leaves unused says so — which one survives is the difference. ONE
  * wording, so the browser and the terminal cannot describe the same option differently. `nameOf` names a card.
  */
 export function describeReplacementOrder(pending: Extract<Pending, { kind: 'chooseReplacementOrder' }>, order: number, nameOf: (id: CardId) => string): string {
