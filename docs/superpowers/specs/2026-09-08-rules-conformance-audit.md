@@ -72,7 +72,7 @@ unreachable, not skipped).
 | 11.10 | EX Burst | ok | G3. Not offered on lethal damage (the game is over first) — correct under §12.4.1 ordering. |
 | 11.11.2 | Cancel when all targets invalid at resolution, apply to the still-valid ones | ok | `resolve.ts` re-filters candidates at resolution. |
 | 11.12.4.6 | Ongoing-effect layering order | absent | Only power bonus / keywords / flags exist; no type/text/controller changes to order. |
-| 11.12.5 | Replacement effects | partial | Damage to a Forward only, built in rung V2 ([spec](2026-09-30-rung-v2-damage-replacement.md)): `damageReplacement` statics, Porom's one-shot shields and the §11.12.5.7 order choice, on Wuk Lamat, Charlotte, Porom and Yuzuki. Every other replacement is absent — no pool card prints one — and §11.12.5.6 self-replacement is not modelled as such. |
+| 11.12.5 | Replacement effects | partial | Damage to a Forward only, built in rung V2 ([spec](2026-09-30-rung-v2-damage-replacement.md)): `damageReplacement` statics, Porom's one-shot shields and the §11.12.5.7 order choice, on Wuk Lamat, Charlotte, Porom and Yuzuki. Every other replacement is absent: no pool card prints one, except Palom's self-replacement ("8000 instead"), which is modelled as an `if`, not as a §11.12.5.6 self-replacement. |
 | 12.4.4 / 12.4.5 | Zero power / lethal damage break as rule processes | ok | `runRuleProcesses`; C11 notes one intra-frame ordering deviation (`resolve.ts:611`). |
 | 13 | Infinite loops | absent | `MAX_RESOLUTION_STEPS = 512` is a safety cap, not the §13 procedure. Acceptable. |
 | 14 | Illegal actions rewind | ok by construction | `apply` is pure; an illegal command throws and the old state stands. |
