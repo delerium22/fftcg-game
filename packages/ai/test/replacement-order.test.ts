@@ -20,20 +20,22 @@ const replacement = (code: string, slug: string, affects: DamageScope, change: D
 })
 const withAbilities = (def: CardDef, ...abilities: Ability[]): CardDef => ({ ...def, hasAbilities: true, abilityClauses: abilities.length, abilities })
 const WUK = withAbilities(makeDef({ code: 'A-WUK', power: 8000 }), replacement('A-WUK', 'wuk', { target: { controller: 'any' }, bySource: { controller: 'self', filter: { type: 'forward' } } }, { add: 2000 }))
-const NULL = withAbilities(makeDef({ code: 'A-NULL', power: 7000 }), replacement('A-NULL', 'null', { target: 'self' }, { becomes: 0 }))
-const POOL = [...VANILLA_POOL, WUK, NULL]
+/** "If <this> is dealt damage, reduce the damage by 9000 instead": against V-F8's 9000 and Wuk Lamat's +2000 the orders
+ * give 0 or 2000 (rung V2-B: a "becomes 0" no longer does, since nothing applies once the damage is 0). */
+const RED9 = withAbilities(makeDef({ code: 'A-RED9', power: 7000 }), replacement('A-RED9', 'red', { target: 'self' }, { reduce: 9000 }))
+const POOL = [...VANILLA_POOL, WUK, RED9]
 
 const decksOf = (s: GameState): [string[], string[]] => ([0, 1] as const).map((p) => {
   const q = s.players[p]
   return [...q.deck, ...q.hand, ...q.forwards.map((c) => c.id), ...q.backups.map((c) => c.id), ...q.damageZone, ...q.breakZone, ...q.removedFromGame].map((id) => s.cards[id]!.code)
 }) as [string[], string[]]
 
-/** P0 attacks with a Forward under Wuk Lamat into P1's "becomes 0" blocker: P1 owes the order (outcomes 0 and 2000). */
+/** P0 attacks with a Forward under Wuk Lamat into P1's "reduce by 9000" blocker: P1 owes the order (outcomes 0 and 2000). */
 function asked(): { s: GameState; b: CardId } {
   let s = makeGame({ defs: POOL }); let a: CardId, b: CardId
   ;[s] = withField(s, 0, 'forwards', 'A-WUK')
   ;[s, a] = withField(s, 0, 'forwards', 'V-F8')
-  ;[s, b] = withField(s, 1, 'forwards', 'A-NULL')
+  ;[s, b] = withField(s, 1, 'forwards', 'A-RED9')
   s = blockWith(attackInto(endPhase(s), [a]).state, b).state
   if (s.pending?.kind !== 'chooseReplacementOrder') throw new Error('fixture: no order owed')
   return { s, b }
