@@ -91,7 +91,9 @@ function scopeAdmits(state: GameState, source: CardId, controller: PlayerId, sco
   if (scope.byController === 'opponent' && packet.causeController !== opponentOf(controller)) return false
   // Plan R8: EVERY dealer is a card of the static's controller matching the filter. A mixed-controller packet does not
   // arise in this pool (a party is one player's), so "every" and "any" agree on every packet the pool can build.
+  // An EX Burst is dealt from the Damage Zone, where a card has no controller: it is not "a Forward you control".
   const by = scope.bySource
+  if (by && packet.exBurst) return false
   if (by && !packet.dealers.every((d) => d.sourceController === controller && matchesDefFilter(defOf(state, d.source), by.filter))) return false
   return true
 }

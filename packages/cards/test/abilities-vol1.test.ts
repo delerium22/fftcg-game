@@ -1439,6 +1439,20 @@ describe('27-122S Wuk Lamat — "If you control 7 or more Characters, Wuk Lamat 
     expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.card, target: hers, original: 7000, amount: 7000, trace: [] }])
   })
 
+  it('NOT a Character\'s EX Burst: a card revealed from the Damage Zone is no Forward she controls — Ward\'s 7000 stays 7000', () => {
+    let s = endPhase(makeGame()); let wuk: CardId; let zack: CardId; let attacker: CardId
+    ;[s, wuk] = withField(s, 1, 'forwards', '27-122S', { status: 'dull' })   // Wuk Lamat is P1's, who takes the damage and uses the burst; dull, so she cannot block
+    ;[s] = withField(s, 1, 'forwards', '27-129S', { status: 'dull' })
+    ;[s] = withCp(s, 1, fire(5))                               // 7 Characters on P1's side (Wuk Lamat, Yuna, 5 Backups): her static is live
+    ;[s, zack] = withField(s, 0, 'forwards', '27-123S')
+    ;[s, attacker] = withField(s, 0, 'forwards', '21-001R')
+    expect(characters(s, 1)).toBe(7)
+    const r = burstAt(s, '21-001R', attacker, zack)
+    expect(damageEvents(r.events)).toEqual([{ type: 'abilityDamage', source: r.burst, target: zack, original: 7000, amount: 7000, trace: [] }])
+    expect(fc(r.state, wuk), 'Wuk Lamat stands').toBeDefined()
+    ok(r.state)
+  })
+
   /** P0 casts `code` and aims it at `target`; the item stays ON THE STACK with P1 holding priority. */
   function castOntoStack(state: GameState, code: string, target: CardId) {
     let s = state; let card: CardId; let cp: CardId[]
