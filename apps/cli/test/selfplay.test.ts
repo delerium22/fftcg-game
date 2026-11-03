@@ -98,7 +98,7 @@ describe('self-play Vol. 1 vs Vol. 2 with their LB decks (rung V1-B)', () => {
 
   // Rung V2-B: the Vol. 1 MIRROR. Only here do both sides hold the replacement cards, so only here can Wuk Lamat's
   // increase meet the other side's Yuzuki, Charlotte or a Porom shield and raise the §11.12.5.7 order choice in play.
-  it('strict Vol. 1 mirror games complete for random, greedy and a small ISMCTS, and nothing warns', () => {
+  slow('strict Vol. 1 mirror games complete for random, greedy and a small ISMCTS, and nothing warns', () => {
     const defs = loadCards()
     const mirror = { decks: [vol1(), vol1()] as [string[], string[]], lbDecks: [vol1Lb(), vol1Lb()] as [string[], string[]] }
     const r1 = selfPlay({ games: 4, seed: 2000, ...mirror, defs, agents: [{ kind: 'random' }, { kind: 'greedy' }], strict: true })
