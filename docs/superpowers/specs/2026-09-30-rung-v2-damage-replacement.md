@@ -56,9 +56,12 @@ cannot break Garland") that damage reduced to 0 is not damage.
   case: Minwu's "the damage becomes 0" applied before a +1000 increase leaves the Forward with no damage. The final
   amount below 0 is 0. Example: a 1000 hit with Porom's −2000 first is −1000, and Wuk Lamat's +2000 does not apply:
   0, the shield spent. The reverse order is 1000 + 2000 − 2000 = 1000, the shield spent. The orders differ, so the
-  Forward's controller is asked. Pin the arithmetic in a test. Until V2-B the running amount kept its sign for the
-  next change (as §4.3 does for a value such as power) and an increase applied to a 0; the V2-B code review
-  overturned both on the notice.
+  Forward's controller is asked. Pin the arithmetic in a test. Until V2-B an increase applied to a 0, and the running
+  amount kept its sign for the next change (as §4.3 says of a negative value "changed again"). The notice decides
+  the first case only ("becomes 0" before an increase). The second is a reading: a reduction to 0 or below leaves no
+  damage either (0 damage is not damage, V2-D4), so the next change has nothing to change, as a shield already had
+  (V2-A2 R2). The other reading — "becomes 0" stops an increase but −1000 does not — would make a bigger reduction
+  let more damage through.
 - **V2-D4 — 0 damage is not damage** (official ruling 2021-08-19; the 2020-03-18 notice). A final amount of 0 marks no
   damage and emits no `battleDamage`/`abilityDamage` and no dealt-damage trigger (Luso's break-on-damage does not
   fire); a separate non-triggering event `damageReducedToZero { target, original, trace }` narrates it. A positive
